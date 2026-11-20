@@ -47,7 +47,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
   const [groupName, setGroupName] = useState(config.targetGroupName || 'REEMBOLSOS AGUERO INOX');
   const [groupJid, setGroupJid] = useState(config.targetGroupJid || '1203632948192841@g.us');
   const [verifyToken, setVerifyToken] = useState(config.verifyToken || 'aguero_reembolsos_token_2025');
-  const [autoReply, setAutoReply] = useState(config.autoReplyConfirmation ?? true);
+  const [autoReply, setAutoReply] = useState(config.autoReplyConfirmation === true);
   const [filterEmployees, setFilterEmployees] = useState(config.filterOnlyAuthorizedEmployees ?? true);
   
   // Composio non-secret identifiers

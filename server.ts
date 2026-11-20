@@ -1902,7 +1902,7 @@ Sua tarefa:
     targetGroupJid: '',
     webhookUrl: 'https://ais-dev-kzcltgdgvpyofef2yzk45l-143571443840.us-east1.run.app/api/webhooks/whatsapp-receipts',
     verifyToken: 'aguero_reembolsos_token_2025',
-    autoReplyConfirmation: true,
+    autoReplyConfirmation: false,
     filterOnlyAuthorizedEmployees: true,
     authorizedPhones: [
       '+55 11 91789-7747', // Gustavo Aguero (Administrador / Gestor)
@@ -2141,7 +2141,7 @@ Sua tarefa:
       normalizedPhone: norm,
       name: input.name || prev?.name || raw,
       isGroup,
-      ocrAutoReply: input.ocrAutoReply !== undefined ? Boolean(input.ocrAutoReply) : (prev?.ocrAutoReply ?? true),
+      ocrAutoReply: input.ocrAutoReply !== undefined ? Boolean(input.ocrAutoReply) : (prev?.ocrAutoReply ?? false),
       enabledAt: prev?.enabledAt || new Date().toISOString(),
     });
     if (!skipPersist) persistOcrLockRegistry();
@@ -2218,7 +2218,7 @@ Sua tarefa:
           jidOrPhone: c.jidOrPhone,
           name: c.name,
           isGroup: Boolean(c.isGroup || String(c.jidOrPhone).endsWith('@g.us')),
-          ocrAutoReply: c.ocrAutoReply ?? true,
+          ocrAutoReply: c.ocrAutoReply === true,
         },
         true
       );
@@ -2329,7 +2329,7 @@ Sua tarefa:
       const nextAutoReply =
         input.ocrAutoReply !== undefined
           ? Boolean(input.ocrAutoReply)
-          : lockEntry?.ocrAutoReply ?? (prev.ocrAutoReply ?? true);
+          : lockEntry?.ocrAutoReply ?? (prev.ocrAutoReply === true);
 
       const nextName =
         input.name && input.name !== raw && input.name !== canonicalDisplay
@@ -2379,7 +2379,7 @@ Sua tarefa:
     }
 
     const initialOcrEnabled = Boolean(lockEntry) || Boolean(allowOcrChange && input.ocrEnabled);
-    const initialAutoReply = input.ocrAutoReply ?? lockEntry?.ocrAutoReply ?? true;
+    const initialAutoReply = input.ocrAutoReply !== undefined ? Boolean(input.ocrAutoReply) : (lockEntry?.ocrAutoReply ?? false);
     const createdName = input.name || lockEntry?.name || canonicalDisplay;
 
     if (initialOcrEnabled) {
@@ -2815,7 +2815,7 @@ Sua tarefa:
             jidOrPhone: whatsAppReceiptsConfig.targetGroupJid,
             name: whatsAppReceiptsConfig.targetGroupName || whatsAppReceiptsConfig.targetGroupJid,
             isGroup: whatsAppReceiptsConfig.targetGroupJid.endsWith('@g.us'),
-            ocrAutoReply: true,
+            ocrAutoReply: false,
           },
           true
         );
@@ -2829,7 +2829,7 @@ Sua tarefa:
                 jidOrPhone: jid,
                 name: String(rec.sourceGroupName || rec.sourceContactName || jid).trim(),
                 isGroup: jid.endsWith('@g.us'),
-                ocrAutoReply: true,
+                ocrAutoReply: false,
               },
               true
             );
@@ -4818,7 +4818,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         composioEntityId: whatsAppReceiptsConfig.composioEntityId || 'aguero_inox_comercial',
         composioAuthConfigId: whatsAppReceiptsConfig.composioAuthConfigId || '',
         composioRealtimeEnabled: whatsAppReceiptsConfig.composioRealtimeEnabled ?? true,
-        autoReplyConfirmation: whatsAppReceiptsConfig.autoReplyConfirmation ?? true,
+        autoReplyConfirmation: whatsAppReceiptsConfig.autoReplyConfirmation === true,
         authorizedPhones: whatsAppReceiptsConfig.authorizedPhones || [],
         lastPingAt: whatsAppReceiptsConfig.lastPingAt,
         lastSyncAt: whatsAppReceiptsConfig.lastSyncAt,
@@ -7370,10 +7370,12 @@ DIRETRIZES ESSENCIAIS:
             receiptId: newRec.id,
           });
 
-          const shouldReplyConfirmation =
-            !evt.fromMe &&
-            (channelRecord ? channelRecord.ocrAutoReply !== false : true) &&
-            whatsAppReceiptsConfig.autoReplyConfirmation !== false;
+          const lockForChannel =
+            getOcrLockEntry(evt.remoteJid) || (!evt.isGroup ? getOcrLockEntry(evt.senderPhone) : undefined);
+          const channelWantsReply =
+            channelRecord?.ocrAutoReply === true ||
+            (channelRecord?.ocrAutoReply === undefined && lockForChannel?.ocrAutoReply === true);
+          const shouldReplyConfirmation = !evt.fromMe && channelWantsReply;
 
           if (shouldReplyConfirmation) {
             const confirmText = `✅ *AgueroFlow OCR — Comprovante Registrado*\nEstabelecimento: ${newRec.establishmentName}\nValor: R$ ${Number(newRec.totalAmount).toFixed(2)}\nCategoria: ${String(newRec.category || 'outros').toUpperCase()}\nEnviado por: ${evt.senderName}`;
@@ -7702,12 +7704,19 @@ DIRETRIZES ESSENCIAIS:
 
   // Bridge Pin Target Group for Receipt OCR (explicitly enables & locks OCR on this group)
   app.post('/api/whatsapp/bridge/select-group', (req: Request, res: Response) => {
-    const { groupJid, groupName } = req.body || {};
+    const { groupJid, groupName, ocrAutoReply } = req.body || {};
     if (!groupJid || !groupName) {
       return res.status(400).json({ success: false, error: 'Informe groupJid e groupName.' });
     }
     const cleanJid = String(groupJid).trim();
     const cleanName = String(groupName).trim();
+    const existingChannel = findManagedContact(cleanJid);
+    const resolvedAutoReply =
+      ocrAutoReply !== undefined
+        ? Boolean(ocrAutoReply)
+        : existingChannel?.ocrEnabled
+        ? Boolean(existingChannel.ocrAutoReply === true)
+        : false;
 
     whatsAppReceiptsConfig = {
       ...whatsAppReceiptsConfig,
@@ -7725,7 +7734,7 @@ DIRETRIZES ESSENCIAIS:
         name: cleanName,
         isGroup: cleanJid.endsWith('@g.us'),
         ocrEnabled: true,
-        ocrAutoReply: true,
+        ocrAutoReply: resolvedAutoReply,
         source: 'whatsapp_sync',
       },
       { allowOcrChange: true }
@@ -7735,7 +7744,9 @@ DIRETRIZES ESSENCIAIS:
       success: true,
       config: whatsAppReceiptsConfig,
       contact: updated,
-      message: `OCR ativado e blindado para "${cleanName}"!`,
+      message: resolvedAutoReply
+        ? `OCR ativado e blindado para "${cleanName}" (com resposta no grupo).`
+        : `OCR ativado e blindado para "${cleanName}" (modo silencioso — resposta no grupo opcional).`,
     });
   });
 
@@ -7936,7 +7947,7 @@ DIRETRIZES ESSENCIAIS:
             isGroup: Boolean(item.isGroup || String(item.jidOrPhone).endsWith('@g.us')),
             contactType: item.contactType,
             ocrEnabled: true,
-            ocrAutoReply: item.ocrAutoReply ?? true,
+            ocrAutoReply: item.ocrAutoReply === true,
             notes: item.notes,
             source: item.source || 'whatsapp_sync',
           },
@@ -7966,12 +7977,22 @@ DIRETRIZES ESSENCIAIS:
       ? whatsAppContacts.find((c) => c.id === id)
       : findManagedContact(String(jidOrPhone || ''));
 
+    const nextOcrEnabledForExisting =
+      existing && ocrEnabled !== undefined ? Boolean(ocrEnabled) : existing ? !existing.ocrEnabled : true;
+    const resolvedExistingAutoReply = existing
+      ? ocrAutoReply !== undefined
+        ? Boolean(ocrAutoReply)
+        : !existing.ocrEnabled && nextOcrEnabledForExisting
+        ? false
+        : Boolean(existing.ocrAutoReply === true)
+      : false;
+
     const updated = existing
       ? upsertManagedContact(
           {
             ...existing,
-            ocrEnabled: ocrEnabled !== undefined ? Boolean(ocrEnabled) : !existing.ocrEnabled,
-            ocrAutoReply: ocrAutoReply !== undefined ? Boolean(ocrAutoReply) : existing.ocrAutoReply,
+            ocrEnabled: nextOcrEnabledForExisting,
+            ocrAutoReply: resolvedExistingAutoReply,
           },
           { allowOcrChange: true }
         )
@@ -7981,7 +8002,7 @@ DIRETRIZES ESSENCIAIS:
             name: name || String(jidOrPhone),
             isGroup: Boolean(isGroup || String(jidOrPhone).endsWith('@g.us')),
             ocrEnabled: ocrEnabled !== undefined ? Boolean(ocrEnabled) : true,
-            ocrAutoReply: ocrAutoReply !== undefined ? Boolean(ocrAutoReply) : true,
+            ocrAutoReply: ocrAutoReply !== undefined ? Boolean(ocrAutoReply) : false,
             source: 'whatsapp_sync',
           },
           { allowOcrChange: true }
@@ -7993,11 +8014,22 @@ DIRETRIZES ESSENCIAIS:
       persistWaConfig();
     }
 
+    const onlyAutoReplyToggled =
+      existing &&
+      ocrAutoReply !== undefined &&
+      (ocrEnabled === undefined || Boolean(ocrEnabled) === Boolean(existing.ocrEnabled));
+
     res.json({
       success: true,
       contact: updated,
-      message: updated?.ocrEnabled
-        ? `Leitura OCR ativada e blindada para "${updated.name}".`
+      message: onlyAutoReplyToggled
+        ? updated?.ocrAutoReply
+          ? `Confirmação OCR no chat ativada para "${updated.name}".`
+          : `Modo silencioso ativado para "${updated?.name}" (lê OCR sem enviar mensagem no grupo).`
+        : updated?.ocrEnabled
+        ? updated.ocrAutoReply
+          ? `Leitura OCR ativada para "${updated.name}" (com resposta no chat).`
+          : `Leitura OCR ativada para "${updated.name}" (modo silencioso — só no painel).`
         : `Leitura OCR desativada para "${updated?.name}".`,
     });
   });

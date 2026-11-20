@@ -299,6 +299,7 @@ export async function fetchWhatsAppBridgeGroups(): Promise<{
 export async function selectWhatsAppBridgeGroup(payload: {
   groupJid: string;
   groupName: string;
+  ocrAutoReply?: boolean;
 }): Promise<{
   success: boolean;
   contact?: WhatsAppManagedContact;

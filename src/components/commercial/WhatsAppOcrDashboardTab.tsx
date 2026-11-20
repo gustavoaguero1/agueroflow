@@ -18,6 +18,8 @@ import {
   FileDown,
   FileSpreadsheet,
   History,
+  MessageSquare,
+  MessageSquareOff,
   Pencil,
   Plus,
   RefreshCw,
@@ -28,12 +30,14 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  WhatsAppManagedContact,
   WhatsAppOcrDashboardResponse,
   WhatsAppOcrReceiptItem,
 } from '../../types/whatsappComposio';
 import {
   createManualOcrReceipt,
   restoreOcrReceiptsToServer,
+  toggleWhatsAppContactOcr,
   triggerWhatsAppBridgeCatchUp,
   updateOcrReceipt,
   updateOcrReceiptStatus,
@@ -120,6 +124,7 @@ export const WhatsAppOcrDashboardTab: React.FC<WhatsAppOcrDashboardTabProps> = (
   const [categoryFilter, setCategoryFilter] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [busyReceiptId, setBusyReceiptId] = useState<string | null>(null);
+  const [busyChannelId, setBusyChannelId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncWindow, setSyncWindow] = useState<
     'since_disconnect' | '2h' | '6h' | 'today' | '24h'
@@ -248,6 +253,34 @@ export const WhatsAppOcrDashboardTab: React.FC<WhatsAppOcrDashboardTabProps> = (
       }
     } finally {
       setBusyReceiptId(null);
+    }
+  };
+
+  const handleToggleChannelAutoReply = async (ch: WhatsAppManagedContact) => {
+    setBusyChannelId(ch.id);
+    try {
+      const nextReply = !(ch.ocrAutoReply === true);
+      const res = await toggleWhatsAppContactOcr({
+        id: ch.id,
+        jidOrPhone: ch.jidOrPhone,
+        name: ch.name,
+        isGroup: ch.isGroup,
+        ocrEnabled: true,
+        ocrAutoReply: nextReply,
+      });
+      if (res.success) {
+        await onRefresh();
+        onToast(
+          'success',
+          nextReply
+            ? `Resposta de leitura OCR ativada no grupo "${ch.name}".`
+            : `Modo silencioso ativado para "${ch.name}" (OCR lê sem enviar mensagem no grupo).`
+        );
+      } else {
+        onToast('error', res.error || 'Erro ao alterar confirmação no grupo.');
+      }
+    } finally {
+      setBusyChannelId(null);
     }
   };
 
@@ -630,20 +663,52 @@ export const WhatsAppOcrDashboardTab: React.FC<WhatsAppOcrDashboardTabProps> = (
           </div>
 
           <p className="text-xs text-[#6E6E73] dark:text-slate-400 leading-relaxed max-w-4xl">
-            Cada leitura OCR é gravada com proteção tripla (servidor atômico + cópia de segurança + cofre na nuvem) para nunca perder seu histórico. Edite qualquer registro ou exporte em Excel/PDF.
+            Cada leitura OCR é gravada com proteção tripla (servidor atômico + cópia de segurança + cofre na nuvem). Enviar mensagem de confirmação no grupo é <strong className="text-[#1D1D1F] dark:text-white">opcional</strong> — clique no botão ao lado de cada canal abaixo para alternar entre modo silencioso e resposta no WhatsApp.
           </p>
 
           {enabledChannels.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
-              {enabledChannels.map((ch) => (
-                <span
-                  key={ch.id}
-                  className="px-2.5 py-1 bg-[#E8F8EE] dark:bg-slate-900 border border-[#166534]/20 dark:border-emerald-500/30 rounded-lg text-[11px] font-medium text-[#166534] dark:text-emerald-300 inline-flex items-center gap-1.5"
-                >
-                  {ch.isGroup && <Users className="w-3 h-3 shrink-0" />}
-                  <span>{ch.name}</span>
-                </span>
-              ))}
+              {enabledChannels.map((ch) => {
+                const repliesInGroup = ch.ocrAutoReply === true;
+                return (
+                  <div
+                    key={ch.id}
+                    className="pl-2.5 pr-1.5 py-1 bg-[#E8F8EE] dark:bg-slate-900 border border-[#166534]/20 dark:border-emerald-500/30 rounded-lg text-[11px] font-medium text-[#166534] dark:text-emerald-300 inline-flex flex-wrap items-center gap-2"
+                  >
+                    <span className="inline-flex items-center gap-1.5 font-semibold">
+                      {ch.isGroup && <Users className="w-3 h-3 shrink-0" />}
+                      <span>{ch.name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busyChannelId === ch.id}
+                      onClick={() => handleToggleChannelAutoReply(ch)}
+                      title={
+                        repliesInGroup
+                          ? 'Clique para desativar o envio da mensagem OCR no grupo (deixar silencioso)'
+                          : 'Clique para ativar o envio opcional da confirmação OCR no grupo'
+                      }
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                        repliesInGroup
+                          ? 'bg-[#0071E3] text-white border-[#0071E3] hover:bg-[#0077ED]'
+                          : 'bg-white dark:bg-slate-800 text-[#6E6E73] dark:text-slate-300 border-black/[0.12] dark:border-slate-700 hover:text-[#1D1D1F] dark:hover:text-white'
+                      }`}
+                    >
+                      {repliesInGroup ? (
+                        <>
+                          <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                          <span>Envia msg no grupo: ON</span>
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquareOff className="w-2.5 h-2.5 shrink-0" />
+                          <span>Só Painel (Silencioso)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

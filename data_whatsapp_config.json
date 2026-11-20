@@ -6,7 +6,7 @@
   "targetGroupJid": "",
   "webhookUrl": "https://ais-dev-kzcltgdgvpyofef2yzk45l-143571443840.us-east1.run.app/api/webhooks/whatsapp-receipts",
   "verifyToken": "aguero_reembolsos_token_2025",
-  "autoReplyConfirmation": true,
+  "autoReplyConfirmation": false,
   "filterOnlyAuthorizedEmployees": true,
   "authorizedPhones": [
     "+55 11 91789-7747",
@@ -16,7 +16,7 @@
     "+55 19 98456-7890"
   ],
   "status": "conectado",
-  "lastPingAt": "2026-11-20T14:37:51.112Z",
+  "lastPingAt": "2026-11-20T15:05:39.766Z",
   "instanceUrl": "http://localhost:8080",
   "instanceName": "meuteste",
   "apiKey": "mude-me",

@@ -164,7 +164,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
   const [entityId, setEntityId] = useState('aguero_inox_comercial');
   const [authConfigId, setAuthConfigId] = useState('');
   const [connectedPhoneNumber, setConnectedPhoneNumber] = useState('+55 11 91789-7747');
-  const [autoReplyConfirmation, setAutoReplyConfirmation] = useState(true);
+  const [autoReplyConfirmation, setAutoReplyConfirmation] = useState(false);
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
 
   const [isSavingConn, setIsSavingConn] = useState(false);
@@ -224,7 +224,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
         setEntityId(st.config.composioEntityId || 'aguero_inox_comercial');
         setAuthConfigId(st.config.composioAuthConfigId || '');
         setConnectedPhoneNumber(st.config.connectedPhoneNumber || '+55 11 91789-7747');
-        setAutoReplyConfirmation(st.config.autoReplyConfirmation ?? true);
+        setAutoReplyConfirmation(st.config.autoReplyConfirmation === true);
         setRealtimeEnabled(st.config.composioRealtimeEnabled ?? true);
       }
 
@@ -533,6 +533,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
   }, [contacts, draftTarget]);
 
   const isCurrentTargetOcrActive = Boolean(activeChannelContact?.ocrEnabled);
+  const isCurrentTargetOcrAutoReply = activeChannelContact?.ocrAutoReply === true;
 
   const handleToggleCurrentTargetOcr = async () => {
     if (!draftTarget.trim()) return;
@@ -543,6 +544,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
       name: draftContactName.trim() || draftTarget.trim(),
       isGroup: targetIsGrp,
       ocrEnabled: !isCurrentTargetOcrActive,
+      ocrAutoReply: !isCurrentTargetOcrActive ? false : isCurrentTargetOcrAutoReply,
     });
     if (res.success) {
       await loadAll(false);
@@ -550,11 +552,36 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
         'success',
         res.message ||
           (!isCurrentTargetOcrActive
-            ? 'Leitura OCR ativada para este canal.'
+            ? 'Leitura OCR ativada para este canal (modo silencioso).'
             : 'Leitura OCR desativada para este canal.')
       );
     } else {
       showToast('error', res.error || 'Falha ao atualizar OCR do canal.');
+    }
+  };
+
+  const handleToggleCurrentTargetOcrAutoReply = async () => {
+    if (!draftTarget.trim() || !isCurrentTargetOcrActive) return;
+    const targetIsGrp = draftIsGroup || draftTarget.trim().endsWith('@g.us');
+    const nextReply = !isCurrentTargetOcrAutoReply;
+    const res = await toggleWhatsAppContactOcr({
+      id: activeChannelContact?.id,
+      jidOrPhone: draftTarget.trim(),
+      name: draftContactName.trim() || draftTarget.trim(),
+      isGroup: targetIsGrp,
+      ocrEnabled: true,
+      ocrAutoReply: nextReply,
+    });
+    if (res.success) {
+      await loadAll(false);
+      showToast(
+        'success',
+        nextReply
+          ? 'Confirmação de leitura OCR no chat ativada.'
+          : 'Modo silencioso ativado (OCR não envia mensagem no chat/grupo).'
+      );
+    } else {
+      showToast('error', res.error || 'Falha ao atualizar resposta OCR.');
     }
   };
 
@@ -679,18 +706,47 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
         const res = await selectWhatsAppBridgeGroup({
           groupJid: group.jid,
           groupName: group.subject,
+          ocrAutoReply: false,
         });
         if (res.success) {
           setPinnedGroupJid(group.jid);
           setPinnedGroupName(group.subject);
           await loadAll(false);
-          showToast('success', res.message || `OCR ativado para "${group.subject}".`);
+          showToast('success', res.message || `OCR ativado para "${group.subject}" (modo silencioso).`);
         } else {
           showToast('error', res.error || 'Erro ao ativar OCR do grupo.');
         }
       }
     } catch (err: any) {
       showToast('error', err?.message || 'Erro ao atualizar permissão OCR do grupo.');
+    }
+  };
+
+  const handleToggleGroupOcrAutoReply = async (group: WhatsAppGroupSummary) => {
+    try {
+      const existing = contacts.find((c) => c.jidOrPhone === group.jid);
+      const nextReply = !(existing?.ocrAutoReply === true);
+      const res = await toggleWhatsAppContactOcr({
+        id: existing?.id,
+        jidOrPhone: group.jid,
+        name: group.subject,
+        isGroup: true,
+        ocrEnabled: true,
+        ocrAutoReply: nextReply,
+      });
+      if (res.success) {
+        await loadAll(false);
+        showToast(
+          'success',
+          nextReply
+            ? `Resposta OCR no grupo "${group.subject}" ativada.`
+            : `Modo silencioso ativado para "${group.subject}" (não envia mensagem no grupo).`
+        );
+      } else {
+        showToast('error', res.error || 'Erro ao alterar resposta OCR no grupo.');
+      }
+    } catch (err: any) {
+      showToast('error', err?.message || 'Erro ao alterar resposta OCR no grupo.');
     }
   };
 
@@ -1346,6 +1402,26 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                   </button>
                 )}
 
+                {draftTarget.trim() && isCurrentTargetOcrActive && (
+                  <button
+                    type="button"
+                    onClick={handleToggleCurrentTargetOcrAutoReply}
+                    title={
+                      isCurrentTargetOcrAutoReply
+                        ? 'Clique para parar de enviar a mensagem de confirmação OCR neste canal'
+                        : 'Clique para ativar o envio opcional da confirmação OCR neste canal'
+                    }
+                    className={`px-3 py-1.5 border rounded-lg text-xs font-semibold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer ${
+                      isCurrentTargetOcrAutoReply
+                        ? 'bg-cyan-950/50 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/80'
+                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>{isCurrentTargetOcrAutoReply ? 'Msg OCR no Chat: ON' : 'OCR Silencioso (Só Painel)'}</span>
+                  </button>
+                )}
+
                 {!draftIsGroup && isBridgeConnected && isComposioConnected && (
                   <select
                     value={sendVia}
@@ -1939,10 +2015,9 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                 ) : (
                   <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl bg-slate-900/40 max-h-[380px] overflow-y-auto custom-scrollbar">
                     {discoveredGroups.map((grp) => {
-                      const isPinned = Boolean(
-                        pinnedGroupJid === grp.jid ||
-                          contacts.some((c) => c.jidOrPhone === grp.jid && c.ocrEnabled)
-                      );
+                      const matchedContact = contacts.find((c) => c.jidOrPhone === grp.jid);
+                      const isPinned = Boolean(pinnedGroupJid === grp.jid || matchedContact?.ocrEnabled);
+                      const repliesInGroup = matchedContact?.ocrAutoReply === true;
                       return (
                         <div
                           key={grp.jid}
@@ -1959,7 +2034,9 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                               {isPinned && (
                                 <>
                                   <span aria-hidden="true">·</span>
-                                  <span className="text-emerald-400 font-semibold whitespace-nowrap">OCR Ativo</span>
+                                  <span className="text-emerald-400 font-semibold whitespace-nowrap">
+                                    {repliesInGroup ? 'OCR Ativo (Responde no grupo)' : 'OCR Ativo (Silencioso)'}
+                                  </span>
                                 </>
                               )}
                             </div>
@@ -1984,6 +2061,24 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                             >
                               {isPinned ? 'OCR Ativo (Desativar)' : 'Ativar OCR'}
                             </button>
+                            {isPinned && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleGroupOcrAutoReply(grp)}
+                                title={
+                                  repliesInGroup
+                                    ? 'Desativar envio de mensagem de leitura OCR no grupo'
+                                    : 'Ativar envio opcional da mensagem de leitura OCR no grupo'
+                                }
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition border cursor-pointer ${
+                                  repliesInGroup
+                                    ? 'bg-cyan-950/50 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/80'
+                                    : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {repliesInGroup ? 'Msg no Grupo: ON' : 'Msg no Grupo: OFF (Silencioso)'}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

@@ -69,7 +69,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     targetGroupJid: '12036302847123984@g.us',
     webhookUrl: typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp-receipts` : '',
     verifyToken: 'aguero_reembolsos_token_2025',
-    autoReplyConfirmation: true,
+    autoReplyConfirmation: false,
     filterOnlyAuthorizedEmployees: true,
     authorizedPhones: ['+55 19 98123-4567', '+55 19 99234-5678', '+55 11 97654-3210'],
     status: 'conectado',

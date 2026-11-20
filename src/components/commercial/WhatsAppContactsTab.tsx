@@ -46,7 +46,7 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
   const [newPhoneOrJid, setNewPhoneOrJid] = useState('');
   const [newContactType, setNewContactType] = useState<WhatsAppContactType>('cliente');
   const [newOcrEnabled, setNewOcrEnabled] = useState(false);
-  const [newOcrAutoReply, setNewOcrAutoReply] = useState(true);
+  const [newOcrAutoReply, setNewOcrAutoReply] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isImportingClients, setIsImportingClients] = useState(false);
@@ -149,7 +149,7 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
         name: contact.name,
         isGroup: contact.isGroup,
         ocrEnabled: nextEnabled,
-        ocrAutoReply: contact.ocrAutoReply,
+        ocrAutoReply: nextEnabled ? false : contact.ocrAutoReply === true,
       });
       if (res.success) {
         await onRefresh();
@@ -165,11 +165,12 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
   const handleToggleAutoReply = async (contact: WhatsAppManagedContact) => {
     setBusyId(`reply_${contact.id}`);
     try {
+      const nextAutoReply = !(contact.ocrAutoReply === true);
       const res = await toggleWhatsAppContactOcr({
         id: contact.id,
         jidOrPhone: contact.jidOrPhone,
         ocrEnabled: contact.ocrEnabled,
-        ocrAutoReply: !contact.ocrAutoReply,
+        ocrAutoReply: nextAutoReply,
       });
       if (res.success) {
         await onRefresh();
@@ -216,7 +217,7 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
             </h3>
             <p className="text-xs text-[#6E6E73] dark:text-slate-300 leading-relaxed max-w-4xl">
               Por segurança, nenhum grupo ou contato recebe leituras nem mensagens automáticas do{' '}
-              <strong className="text-[#1D1D1F] dark:text-white">AgueroFlow OCR</strong> por padrão. O robô só lê imagens e envia confirmação nos canais que você ativar manualmente abaixo ({ocrActiveCount} canal(is) com OCR ativo no momento).
+              <strong className="text-[#1D1D1F] dark:text-white">AgueroFlow OCR</strong> por padrão. Ao ativar o OCR em um canal ({ocrActiveCount} ativo(s)), ele lê silenciosamente só para o painel — enviar mensagem de confirmação no grupo é <strong className="text-[#1D1D1F] dark:text-white">opcional</strong> na coluna "Confirmação no Chat".
             </p>
           </div>
         </div>
@@ -324,7 +325,7 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
                   disabled={!newOcrEnabled}
                   className="rounded border-slate-700 text-cyan-500 focus:ring-0 disabled:opacity-40"
                 />
-                <span>Responder confirmação no WhatsApp</span>
+                <span>Enviar confirmação da leitura OCR no grupo/chat (opcional)</span>
               </label>
             </div>
           </div>
@@ -473,13 +474,13 @@ export const WhatsAppContactsTab: React.FC<WhatsAppContactsTabProps> = ({
                             type="button"
                             onClick={() => handleToggleAutoReply(contact)}
                             disabled={isBusy}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition whitespace-nowrap ${
-                              contact.ocrAutoReply !== false
+                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition whitespace-nowrap cursor-pointer ${
+                              contact.ocrAutoReply === true
                                 ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300'
-                                : 'bg-slate-900 border-slate-700 text-slate-400'
+                                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
                             }`}
                           >
-                            {contact.ocrAutoReply !== false ? 'Responde no WhatsApp' : 'Modo Silencioso (Só Painel)'}
+                            {contact.ocrAutoReply === true ? 'Envia msg no grupo (ON)' : 'Silencioso (Só Painel)'}
                           </button>
                         ) : (
                           <span className="text-[11px] text-slate-500">Bloqueado (OCR desligado)</span>
