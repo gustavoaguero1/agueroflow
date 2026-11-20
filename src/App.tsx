@@ -84,6 +84,29 @@ function MainRouter() {
     }
   }, [user, isMaster, organization]);
 
+  // Global lightweight keep-alive heartbeat while ERP is open so Cloud Run keeps the WhatsApp ND/OCR bridge online in real time
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const pingKeepAlive = () => {
+      if (!active) return;
+      fetch('/api/whatsapp/bridge/keepalive', { method: 'GET', cache: 'no-store' }).catch(() => undefined);
+    };
+    pingKeepAlive();
+    const timer = window.setInterval(pingKeepAlive, 25_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') pingKeepAlive();
+    };
+    window.addEventListener('focus', pingKeepAlive);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', pingKeepAlive);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user]);
+
   const navigate = (route: 'landing' | 'login' | 'master-panel' | 'app', section?: NavSection) => {
     setCurrentRoute(route);
     if (section) setCurrentNavSection(section);

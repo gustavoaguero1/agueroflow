@@ -1957,12 +1957,24 @@ Sua tarefa:
     console.warn('Aviso: Falha ao carregar data_whatsapp_config.json:', err);
   }
 
+  let persistWaConfigTimer: ReturnType<typeof setTimeout> | null = null;
   const persistWaConfig = () => {
+    if (persistWaConfigTimer) {
+      clearTimeout(persistWaConfigTimer);
+      persistWaConfigTimer = null;
+    }
     try {
       fs.writeFileSync(WA_CONFIG_FILE, JSON.stringify(whatsAppReceiptsConfig, null, 2), 'utf-8');
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_config.json:', err);
     }
+  };
+  const schedulePersistWaConfig = () => {
+    if (persistWaConfigTimer) return;
+    persistWaConfigTimer = setTimeout(() => {
+      persistWaConfigTimer = null;
+      persistWaConfig();
+    }, 1500);
   };
 
   let whatsAppMessages: any[] = [];
@@ -2213,7 +2225,12 @@ Sua tarefa:
     }
   }
 
+  let persistWaContactsTimer: ReturnType<typeof setTimeout> | null = null;
   const persistWaContacts = () => {
+    if (persistWaContactsTimer) {
+      clearTimeout(persistWaContactsTimer);
+      persistWaContactsTimer = null;
+    }
     try {
       // Enforce OCR lock invariant right before every disk write so no sync can ever deactivate a locked channel
       for (let i = 0; i < whatsAppContacts.length; i++) {
@@ -2235,6 +2252,13 @@ Sua tarefa:
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_contacts.json:', err);
     }
+  };
+  const schedulePersistWaContacts = () => {
+    if (persistWaContactsTimer) return;
+    persistWaContactsTimer = setTimeout(() => {
+      persistWaContactsTimer = null;
+      persistWaContacts();
+    }, 1500);
   };
 
   const findManagedContact = (jidOrPhone: string) => {
@@ -3047,10 +3071,11 @@ Sua tarefa:
     const extraNotes: string[] = [];
 
     for (const line of lines) {
-      // Cost center like 2004/26 or 1926/26 or "Obra: ..." or "Obra 2004/26"
+      // Cost center like 2004/26, 1926/26, "21 - escritorio fixo", "Obra: ..." or "Obra 2004/26"
       if (
         !costCenter &&
         (/^\d{3,5}\/\d{2}(\s+.*)?$/i.test(line) ||
+          /^\d{1,5}\s*[-–]\s*[A-Za-zÀ-ÖØ-öø-ÿ].{1,}$/i.test(line) ||
           /^(centro\s+de\s+custo|centro\s+de\s+custos|obra|cc)\s*[:\-]?\s+\S+/i.test(line))
       ) {
         costCenter = line.replace(/^(centro\s+de\s+custos?|obra|cc)\s*[:\-]?\s*/i, '').trim();
@@ -3111,10 +3136,10 @@ Sua tarefa:
         continue;
       }
 
-      // Pure amount line (e.g., "1.700", "2200", "R$ 2.800,00", "Valor: 400")
+      // Pure amount line (e.g., "1.700", "2200", "10,00", "5,50", "R$ 2.800,00", "Valor: 400")
       if (
         !amount &&
-        /^(valor\s*[:\-]?\s*)?(r\$\s*)?(\d{1,3}(\.\d{3})+|\d{2,7})(,\d{1,2})?$/i.test(line)
+        /^(valor\s*[:\-]?\s*)?(r\$\s*)?(\d{1,3}(\.\d{3})+(,\d{1,2})?|\d{1,7},\d{1,2}|\d{2,7})$/i.test(line)
       ) {
         amount = parseBrazilianMoneyNumber(line.replace(/^valor\s*[:\-]?\s*/i, ''));
         continue;
@@ -3258,6 +3283,7 @@ REGRAS DE NEGÓCIO OBRIGATÓRIAS:
 3. CAMPOS CADASTRAIS INTERNOS = "OK": Se a mensagem NÃO informar explicitamente Cod.Funcionário, Chave Pix, CPF/CNPJ, C.c (conta) ou Banco, retorne exatamente "OK" nesses campos (pois a equipe interna já possui cadastro bancário no financeiro). Só preencha com o dado real se estiver na mensagem!
 4. Se houver telefone ou observações extras, preencha phone e notes.
 5. Se a mensagem for apenas bate-papo (ex: "bom dia", "ok feito", "obrigado", "pode pagar", uma pergunta sem dados de ND), retorne isNdRequest: false.
+6. INCLUA TESTES E FORMATOS CURTOS: Mensagens com estrutura de ND que contenham a palavra "TESTE" (ex: "ND MDO - TESTE", valores baixos como "10,00", ou centros de custo simples como "21 - escritorio fixo" ou "GESTAO DE ESTOQUE") SÃO solicitações válidas (isNdRequest: true) e DEVEM ser extraídas normalmente!
 
 Mensagem recebida no grupo "${rule.groupName}":
 """
@@ -3318,6 +3344,12 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
       };
 
       const isNd = Boolean(parsed.isNdRequest) && Boolean(String(parsed.receiverName || '').trim()) && Number(parsed.amount) > 0;
+      if (!isNd && cleanText && /\b(nd|d\s+mdo|nota\s+de\s+d[eé]bito)\b/i.test(cleanText)) {
+        const heuristicCheck = heuristicExtractNdFromMessage(cleanText, projYear);
+        if (heuristicCheck.isNdRequest) {
+          return heuristicCheck;
+        }
+      }
       const cleanNatureza = String(parsed.natureza || 'NOTA DE DEBITO')
         .replace(/^(n?d\s*(mdo)?\s*[-–:]\s*)/i, '')
         .trim()
@@ -6794,6 +6826,18 @@ DIRETRIZES ESSENCIAIS:
   };
 
   const inFlightNdMessageIds = new Set<string>();
+  const evaluatedNonNdMessageIds = new Set<string>();
+  let ndPendingScanInFlight = false;
+  let debouncedNdHistoryScanTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const rememberNonNdMessageId = (id: string) => {
+    if (!id) return;
+    evaluatedNonNdMessageIds.add(id);
+    if (evaluatedNonNdMessageIds.size > 5000) {
+      const oldest = evaluatedNonNdMessageIds.values().next().value;
+      if (oldest) evaluatedNonNdMessageIds.delete(oldest);
+    }
+  };
 
   const findMatchingActiveNdRule = (
     remoteJid: string,
@@ -6818,97 +6862,119 @@ DIRETRIZES ESSENCIAIS:
     });
   };
 
-  const scanArchivedMessagesForPendingNds = async (lookbackHours = 6): Promise<{
+  const scanArchivedMessagesForPendingNds = async (
+    lookbackHours = 6,
+    opts?: { includePreviouslyIgnored?: boolean }
+  ): Promise<{
     scannedMessages: number;
     generatedCount: number;
     generatedRecords: WhatsAppNdRecord[];
   }> => {
     const activeRules = whatsAppNdRules.filter((r) => r.active && r.groupJid);
-    if (activeRules.length === 0) {
+    if (activeRules.length === 0 || ndPendingScanInFlight) {
       return { scannedMessages: 0, generatedCount: 0, generatedRecords: [] };
     }
-    const cutoffMs = Date.now() - Math.min(Math.max(lookbackHours, 1), 72) * 60 * 60 * 1000;
-    const processedIds = new Set<string>(
-      whatsAppNdRecords.map((r) => String(r.sourceMessageId || '')).filter(Boolean)
-    );
-    const processedFingerprints = new Set<string>(
-      whatsAppNdRecords
-        .map((r) => `${r.sourceGroupJid}|${String(r.sourceMessageText || '').trim().toLowerCase()}`)
-        .filter((s) => s.length > 5)
-    );
-
-    const candidates = whatsAppMessages
-      .filter((m) => {
-        const ts = new Date(m.createdAt || 0).getTime();
-        if (!Number.isFinite(ts) || ts < cutoffMs) return false;
-        const text = String(m.text || '').trim();
-        if (!text || text.length < 8) return false;
-        if (
-          text.startsWith('📄 *Nota de Débito Gerada') ||
-          text.startsWith('✅ *AgueroFlow') ||
-          text.startsWith('🤖 *AgueroFlow') ||
-          text.startsWith('[Foto') ||
-          text.startsWith('[Áudio')
-        ) {
-          return false;
-        }
-        if (parseAgueroMention(text)) return false;
-        const extId = String(m.externalMessageId || '').trim();
-        if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) return false;
-        const matchedRule = findMatchingActiveNdRule(
-          String(m.chatJid || m.contactPhone || ''),
-          String(m.participantPhone || m.contactPhone || ''),
-          String(m.groupName || m.contactName || ''),
-          Boolean(m.isGroup || String(m.chatJid || '').endsWith('@g.us'))
-        );
-        if (!matchedRule) return false;
-        const fp = `${matchedRule.groupJid}|${text.toLowerCase()}`;
-        if (processedFingerprints.has(fp)) return false;
-        return true;
-      })
-      .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
-      .slice(0, 25);
-
-    const generatedRecords: WhatsAppNdRecord[] = [];
-    for (const msg of candidates) {
-      const matchedRule = findMatchingActiveNdRule(
-        String(msg.chatJid || msg.contactPhone || ''),
-        String(msg.participantPhone || msg.contactPhone || ''),
-        String(msg.groupName || msg.contactName || ''),
-        Boolean(msg.isGroup || String(msg.chatJid || '').endsWith('@g.us'))
+    ndPendingScanInFlight = true;
+    try {
+      const cutoffMs = Date.now() - Math.min(Math.max(lookbackHours, 1), 72) * 60 * 60 * 1000;
+      const processedIds = new Set<string>(
+        whatsAppNdRecords.map((r) => String(r.sourceMessageId || '')).filter(Boolean)
       );
-      if (!matchedRule) continue;
-      const extId = String(msg.externalMessageId || msg.id || '').trim();
-      if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) continue;
-      if (extId) inFlightNdMessageIds.add(extId);
-      try {
-        const extracted = await extractNdFromGroupMessageWithAi(String(msg.text || ''), matchedRule);
-        if (extracted.isNdRequest) {
-          const out = await processNdRequestAndDispatch({
-            rule: matchedRule,
-            extracted,
-            rawText: String(msg.text || ''),
-            sourceMessageId: extId || undefined,
-            dispatchWhatsApp: true,
-            dispatchEmail: true,
-            senderName: msg.participantName || msg.contactName || 'WhatsApp',
-          });
-          generatedRecords.push(out.record);
-          if (extId) processedIds.add(extId);
-          processedFingerprints.add(`${matchedRule.groupJid}|${String(msg.text || '').trim().toLowerCase()}`);
-        }
-      } catch (err: any) {
-        console.warn('⚠️ [ND Pending Scan]:', err?.message || err);
-      } finally {
-        if (extId) inFlightNdMessageIds.delete(extId);
-      }
-    }
+      const processedFingerprints = new Set<string>(
+        whatsAppNdRecords
+          .map((r) => `${r.sourceGroupJid}|${String(r.sourceMessageText || '').trim().toLowerCase()}`)
+          .filter((s) => s.length > 5)
+      );
 
-    return {
-      scannedMessages: candidates.length,
-      generatedCount: generatedRecords.length,
-      generatedRecords,
-    };
+      const candidates = whatsAppMessages
+        .filter((m) => {
+          const ts = new Date(m.createdAt || 0).getTime();
+          if (!Number.isFinite(ts) || ts < cutoffMs) return false;
+          const text = String(m.text || '').trim();
+          if (!text || text.length < 8) return false;
+          if (
+            text.startsWith('📄 *Nota de Débito Gerada') ||
+            text.startsWith('✅ *AgueroFlow') ||
+            text.startsWith('🤖 *AgueroFlow') ||
+            text.startsWith('[Foto') ||
+            text.startsWith('[Áudio')
+          ) {
+            return false;
+          }
+          if (parseAgueroMention(text)) return false;
+          const extId = String(m.externalMessageId || '').trim();
+          if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) return false;
+          if (extId && !opts?.includePreviouslyIgnored && evaluatedNonNdMessageIds.has(extId)) return false;
+          const matchedRule = findMatchingActiveNdRule(
+            String(m.chatJid || m.contactPhone || ''),
+            String(m.participantPhone || m.contactPhone || ''),
+            String(m.groupName || m.contactName || ''),
+            Boolean(m.isGroup || String(m.chatJid || '').endsWith('@g.us'))
+          );
+          if (!matchedRule) return false;
+          // Only fall back to text fingerprint deduplication when externalMessageId is missing
+          if (!extId) {
+            const fp = `${matchedRule.groupJid}|${text.toLowerCase()}`;
+            if (processedFingerprints.has(fp)) return false;
+          }
+          return true;
+        })
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+        .slice(0, 25);
+
+      const generatedRecords: WhatsAppNdRecord[] = [];
+      for (const msg of candidates) {
+        const matchedRule = findMatchingActiveNdRule(
+          String(msg.chatJid || msg.contactPhone || ''),
+          String(msg.participantPhone || msg.contactPhone || ''),
+          String(msg.groupName || msg.contactName || ''),
+          Boolean(msg.isGroup || String(msg.chatJid || '').endsWith('@g.us'))
+        );
+        if (!matchedRule) continue;
+        const extId = String(msg.externalMessageId || msg.id || '').trim();
+        if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) continue;
+        if (extId) inFlightNdMessageIds.add(extId);
+        try {
+          const extracted = await extractNdFromGroupMessageWithAi(String(msg.text || ''), matchedRule);
+          if (extracted.isNdRequest) {
+            const out = await processNdRequestAndDispatch({
+              rule: matchedRule,
+              extracted,
+              rawText: String(msg.text || ''),
+              sourceMessageId: extId || undefined,
+              dispatchWhatsApp: true,
+              dispatchEmail: true,
+              senderName: msg.participantName || msg.contactName || 'WhatsApp',
+            });
+            generatedRecords.push(out.record);
+            if (extId) processedIds.add(extId);
+            processedFingerprints.add(`${matchedRule.groupJid}|${String(msg.text || '').trim().toLowerCase()}`);
+          } else if (extId) {
+            rememberNonNdMessageId(extId);
+          }
+        } catch (err: any) {
+          console.warn('⚠️ [ND Pending Scan]:', err?.message || err);
+        } finally {
+          if (extId) inFlightNdMessageIds.delete(extId);
+        }
+      }
+
+      return {
+        scannedMessages: candidates.length,
+        generatedCount: generatedRecords.length,
+        generatedRecords,
+      };
+    } finally {
+      ndPendingScanInFlight = false;
+    }
+  };
+
+  const scheduleDebouncedNdHistoryScan = () => {
+    if (debouncedNdHistoryScanTimer) return;
+    debouncedNdHistoryScanTimer = setTimeout(() => {
+      debouncedNdHistoryScanTimer = null;
+      scanArchivedMessagesForPendingNds(4).catch(() => undefined);
+    }, 2500);
   };
 
   const runActiveChannelsCatchUpSweep = async (
@@ -6978,39 +7044,42 @@ DIRETRIZES ESSENCIAIS:
       whatsAppNdRecords.map((r) => String(r.sourceMessageId || '')).filter(Boolean)
     );
 
+    const isFastReconnectSweep = sourceLabel === 'reconexao_auto_4s';
     const scanRes = await scanAndCatchUpChannels({
       targetJids: Array.from(targetJids),
       alreadyProcessedReceiptIds,
       ndRuleJids,
       alreadyProcessedNdMsgIds,
       sinceMs,
+      skipHistoryPull: isFastReconnectSweep,
     });
 
-    // Also run passive read-only history sync (today since 00:00 Brasília) for all active ND/OCR/scheduled-job groups
-    // so @aguero and ND catch-up immediately see offline messages sent while disconnected!
-    const passiveHistoryJids = new Set<string>(targetJids);
-    for (const j of whatsAppScheduledJobs) {
-      if (j.active && j.sourceChatJid) passiveHistoryJids.add(j.sourceChatJid);
-    }
-    for (const g of getWhatsAppBridgeStatus().groups || []) {
-      const n = normalizeSearchStr(g.subject || '');
-      if (/\b(nd|nds|reembolso|reembolsos|custo|custos|nota de debito)\b/.test(n)) {
-        passiveHistoryJids.add(g.jid);
-      }
-    }
-    const { dateBr: todayBrForSync } = getBrazilNowParts();
-    const todayStartMs = new Date(`${todayBrForSync}T00:00:00-03:00`).getTime();
+    // Run passive read-only history sync (today since 00:00 Brasília) for monitored chats without stalling initial reconnect queue
     let passiveHistorySyncedMsgs = 0;
-    for (const jid of Array.from(passiveHistoryJids).slice(0, 10)) {
-      const hRes = await syncChatHistoryOnDemand({
-        chatJid: jid,
-        sinceMs: Number.isFinite(todayStartMs) ? todayStartMs : sinceMs,
-        fallbackAnchors: buildFallbackAnchorsForChat(jid),
-        maxBatches: 2,
-        countPerBatch: 50,
-      }).catch(() => null);
-      if (hRes) {
-        passiveHistorySyncedMsgs += (hRes.receivedFromHistorySync || 0) + (hRes.archivedFromCache || 0);
+    if (!isFastReconnectSweep) {
+      const passiveHistoryJids = new Set<string>(targetJids);
+      for (const j of whatsAppScheduledJobs) {
+        if (j.active && j.sourceChatJid) passiveHistoryJids.add(j.sourceChatJid);
+      }
+      for (const g of getWhatsAppBridgeStatus().groups || []) {
+        const n = normalizeSearchStr(g.subject || '');
+        if (/\b(nd|nds|reembolso|reembolsos|custo|custos|nota de debito)\b/.test(n)) {
+          passiveHistoryJids.add(g.jid);
+        }
+      }
+      const { dateBr: todayBrForSync } = getBrazilNowParts();
+      const todayStartMs = new Date(`${todayBrForSync}T00:00:00-03:00`).getTime();
+      for (const jid of Array.from(passiveHistoryJids).slice(0, 6)) {
+        const hRes = await syncChatHistoryOnDemand({
+          chatJid: jid,
+          sinceMs: Number.isFinite(todayStartMs) ? todayStartMs : sinceMs,
+          fallbackAnchors: buildFallbackAnchorsForChat(jid),
+          maxBatches: 1,
+          countPerBatch: 30,
+        }).catch(() => null);
+        if (hRes) {
+          passiveHistorySyncedMsgs += (hRes.receivedFromHistorySync || 0) + (hRes.archivedFromCache || 0);
+        }
       }
     }
 
@@ -7060,6 +7129,41 @@ DIRETRIZES ESSENCIAIS:
   };
 
   registerWhatsAppBridgeHooks({
+    isPriorityMonitoredJid: (remoteJid) => {
+      if (!remoteJid) return false;
+      if (findMatchingActiveNdRule(remoteJid, remoteJid, undefined, remoteJid.endsWith('@g.us'))) return true;
+      if (isChannelLockedForOcr(remoteJid)) return true;
+      const managed = findManagedContact(remoteJid);
+      if (managed?.ocrEnabled) return true;
+      const pinnedJid = whatsAppReceiptsConfig.targetGroupJid || '';
+      if (pinnedJid && pinnedJid !== DEMO_GROUP_JID && remoteJid === pinnedJid) return true;
+      return false;
+    },
+    shouldIgnoreGroupJid: (groupJid, groupName) => {
+      if (!groupJid || !groupJid.endsWith('@g.us')) return false;
+      // 1. NEVER ignore any group present in ND rules (active or paused), OCR channels/locks, AI rules, or Scheduled Jobs
+      if (whatsAppNdRules.some((r) => r.groupJid === groupJid)) return false;
+      if (isChannelLockedForOcr(groupJid)) return false;
+      const managed = findManagedContact(groupJid);
+      if (managed?.ocrEnabled) return false;
+      const pinnedJid = whatsAppReceiptsConfig.targetGroupJid || '';
+      if (pinnedJid && pinnedJid !== DEMO_GROUP_JID && groupJid === pinnedJid) return false;
+      if (whatsAppScheduledJobs.some((j) => j.targetJid === groupJid || j.sourceChatJid === groupJid)) return false;
+      if (whatsAppAiRules.some((r) => r.targetJid === groupJid)) return false;
+      // 2. If we do not know the group's name yet (brand-new group), NEVER ignore it
+      const cleanName = normalizeSearchStr(groupName || managed?.name || '');
+      if (!cleanName || cleanName.endsWith('@g.us')) return false;
+      // 3. Always allow corporate / Aguero / operational / test groups even before a rule is attached
+      if (
+        /\b(aguero|inox|nd|nds|nota|debito|reembolso|reembolsos|obra|obras|programa|programacao|programacoes|servico|servicos|financeiro|comercial|compras|engenharia|montagem|equipe|operacao|operacoes|diretoria|gerencia|adm|administrativo|rh|dp|ia|bot|teste|testes|logistica|almoxarifado|producao|qualidade|orcamento)\b/i.test(
+          cleanName
+        )
+      ) {
+        return false;
+      }
+      // 4. Known unmonitored personal/promo/social group -> bypass Baileys sequential offline queue so ND/OCR stay instant!
+      return true;
+    },
     shouldDownloadMedia: ({ remoteJid, isGroup, text, isCatchUp }) => {
       // ONLY download images/audios for channels that actually need media processing,
       // preventing noisy promo/social groups from clogging Baileys media downloads!
@@ -7093,13 +7197,16 @@ DIRETRIZES ESSENCIAIS:
         summary: `WhatsApp conectado via Dispositivos Conectados (${connectedNumber} · ${connectedName}).`,
       });
 
-      // Automatic post-reconnect OCR, ND & passive offline history catch-up sweeps (6s and 18s after open)
+      // Automatic post-reconnect OCR, ND & passive offline history catch-up sweeps (4s, 18s and 45s after open)
       setTimeout(() => {
-        runActiveChannelsCatchUpSweep('reconexao_auto_6s').catch(() => undefined);
-      }, 6000);
+        runActiveChannelsCatchUpSweep('reconexao_auto_4s').catch(() => undefined);
+      }, 4000);
       setTimeout(() => {
         runActiveChannelsCatchUpSweep('reconexao_auto_18s').catch(() => undefined);
       }, 18000);
+      setTimeout(() => {
+        scanArchivedMessagesForPendingNds(6).catch(() => undefined);
+      }, 45000);
     },
     onConnectionClose: (reason) => {
       if (whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
@@ -7138,6 +7245,24 @@ DIRETRIZES ESSENCIAIS:
         createdAt: histEvt.timestampIso,
         deferPersist: true,
       });
+
+      // Safety net: if a recent message (last 4h) arrives in an active ND rule group via history_sync/chats.upsert/append,
+      // ensure it gets evaluated even if the live path skipped it due to reconnect timing!
+      const msgTsMs = new Date(histEvt.timestampIso || 0).getTime();
+      const txt = String(histEvt.text || '').trim();
+      if (
+        Number.isFinite(msgTsMs) &&
+        Date.now() - msgTsMs <= 4 * 60 * 60 * 1000 &&
+        txt.length >= 8 &&
+        !txt.startsWith('📄 *Nota de Débito Gerada') &&
+        !txt.startsWith('✅ *AgueroFlow') &&
+        !txt.startsWith('🤖 *AgueroFlow') &&
+        !evaluatedNonNdMessageIds.has(histEvt.messageId) &&
+        !whatsAppNdRecords.some((r) => r.sourceMessageId === histEvt.messageId) &&
+        findMatchingActiveNdRule(histEvt.remoteJid, histEvt.senderPhone, histEvt.groupName, histEvt.isGroup)
+      ) {
+        scheduleDebouncedNdHistoryScan();
+      }
     },
     onIncomingMessage: async (evt) => {
       const normalizedAuthorized = (whatsAppReceiptsConfig.authorizedPhones || []).map((p: string) =>
@@ -7146,26 +7271,33 @@ DIRETRIZES ESSENCIAIS:
       const isEmployee = evt.isGroup || normalizedAuthorized.includes(normalizeWhatsAppPhone(evt.senderPhone));
       let linkedReceiptId: string | undefined;
 
-      // Sync sender/group into Contacts Registry (strict OCR opt-in defaults to FALSE!)
-      const channelRecord = upsertManagedContact({
-        jidOrPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
-        name: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
-        isGroup: evt.isGroup,
-        contactType: isEmployee ? 'funcionario' : 'cliente',
-        lastMessageAt: evt.timestampIso || new Date().toISOString(),
-        source: 'whatsapp_sync',
-      });
-
-      if (evt.isGroup && evt.senderPhone && !evt.fromMe) {
-        upsertManagedContact({
-          jidOrPhone: evt.senderPhone,
-          name: evt.senderName,
-          isGroup: false,
+      // Sync sender/group into Contacts Registry (strict OCR opt-in defaults to FALSE! Debounced disk write to avoid I/O stalls)
+      const channelRecord = upsertManagedContact(
+        {
+          jidOrPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
+          name: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
+          isGroup: evt.isGroup,
           contactType: isEmployee ? 'funcionario' : 'cliente',
           lastMessageAt: evt.timestampIso || new Date().toISOString(),
           source: 'whatsapp_sync',
-        });
+        },
+        { skipPersist: true }
+      );
+
+      if (evt.isGroup && evt.senderPhone && !evt.fromMe) {
+        upsertManagedContact(
+          {
+            jidOrPhone: evt.senderPhone,
+            name: evt.senderName,
+            isGroup: false,
+            contactType: isEmployee ? 'funcionario' : 'cliente',
+            lastMessageAt: evt.timestampIso || new Date().toISOString(),
+            source: 'whatsapp_sync',
+          },
+          { skipPersist: true }
+        );
       }
+      schedulePersistWaContacts();
 
       // STRICT OCR OPT-IN: NEVER run OCR or auto-reply unless this exact group/contact is explicitly enabled/locked!
       const senderContact = !evt.isGroup ? findManagedContact(evt.senderPhone) : undefined;
@@ -7300,10 +7432,11 @@ DIRETRIZES ESSENCIAIS:
         status: evt.fromMe ? 'enviado' : 'recebido',
         sentByUserName: evt.fromMe ? evt.senderName : undefined,
         createdAt: evt.timestampIso,
+        deferPersist: true,
       });
 
       whatsAppReceiptsConfig.lastPingAt = new Date().toISOString();
-      persistWaConfig();
+      schedulePersistWaConfig();
 
       // Check @aguero mention trigger in the active chat/group FIRST (supports attached/quoted images & audios + catch-up)
       const mentionParsed = parseAgueroMention(evt.text);
@@ -7394,6 +7527,7 @@ DIRETRIZES ESSENCIAIS:
               });
               didHandleNd = true;
             } else if (cleanEvtText && !cleanEvtText.startsWith('[Foto') && !cleanEvtText.startsWith('[Áudio')) {
+              if (msgIdKey) rememberNonNdMessageId(msgIdKey);
               addWebhookLog({
                 method: 'WA_ND_AUTOMATION',
                 event: 'nd_mensagem_ignorada',
@@ -7446,6 +7580,34 @@ DIRETRIZES ESSENCIAIS:
       console.warn('⚠️ [WhatsApp Web Bridge] Falha ao retomar sessão salva:', err?.message || err);
     });
   }
+
+  // Lightweight 45-second background safety net: checks in-memory archived messages from the last 4h
+  // for active ND rule groups (<1ms when idle; skips already-processed and non-ND chatter IDs)
+  if (!(globalThis as any).__agueroflowNdSafetyInterval) {
+    (globalThis as any).__agueroflowNdSafetyInterval = setInterval(() => {
+      if (whatsAppNdRules.some((r) => r.active && r.groupJid)) {
+        scanArchivedMessagesForPendingNds(4).catch(() => undefined);
+      }
+    }, 45_000);
+  }
+
+  // Ultra-fast keep-alive heartbeat endpoint (keeps Cloud Run warm & WhatsApp bridge alive while ERP is open)
+  app.get('/api/whatsapp/bridge/keepalive', (_req: Request, res: Response) => {
+    ensureWhatsAppBridgeResumed();
+    const status = getWhatsAppBridgeStatus();
+    if (status.state === 'conectado' && whatsAppNdRules.some((r) => r.active && r.groupJid)) {
+      scanArchivedMessagesForPendingNds(4).catch(() => undefined);
+    }
+    res.json({
+      ok: true,
+      state: status.state,
+      connectedNumber: status.connectedNumber || '',
+      activeNdRules: whatsAppNdRules.filter((r) => r.active).length,
+      recordsCount: whatsAppNdRecords.length,
+      latestRecordId: whatsAppNdRecords[0]?.id || null,
+      ts: new Date().toISOString(),
+    });
+  });
 
   // Bridge Status (also auto-resumes persisted paired session if container just woke from idle)
   app.get('/api/whatsapp/bridge/status', (req: Request, res: Response) => {
@@ -8329,7 +8491,7 @@ DIRETRIZES ESSENCIAIS:
         ]);
       }
 
-      await scanArchivedMessagesForPendingNds(lookbackHours);
+      await scanArchivedMessagesForPendingNds(lookbackHours, { includePreviouslyIgnored: true });
 
       const generatedCount = Math.max(0, whatsAppNdRecords.length - beforeCount);
       res.json({

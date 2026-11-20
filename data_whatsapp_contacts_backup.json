@@ -1,5 +1,125 @@
 [
   {
+    "id": "wact_1795185472040_51oa",
+    "jidOrPhone": "+266769512059080",
+    "normalizedPhone": "266769512059080",
+    "name": "+266769512059080",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T13:25:38.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:52.040Z",
+    "updatedAt": "2026-11-20T14:37:52.040Z"
+  },
+  {
+    "id": "wact_1795185450997_e1q6",
+    "jidOrPhone": "+42318447010043",
+    "normalizedPhone": "42318447010043",
+    "name": "+42318447010043",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T01:38:03.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:30.997Z",
+    "updatedAt": "2026-11-20T14:37:39.671Z"
+  },
+  {
+    "id": "wact_1795185444781_ajle",
+    "jidOrPhone": "+66636618924061",
+    "normalizedPhone": "66636618924061",
+    "name": "+66636618924061",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T12:56:23.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:24.781Z",
+    "updatedAt": "2026-11-20T14:37:42.273Z"
+  },
+  {
+    "id": "wact_1795185433792_dewq",
+    "jidOrPhone": "+197959388024870",
+    "normalizedPhone": "197959388024870",
+    "name": "+197959388024870",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T13:21:42.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:13.791Z",
+    "updatedAt": "2026-11-20T14:37:13.791Z"
+  },
+  {
+    "id": "wact_1795185431567_e0nv",
+    "jidOrPhone": "+105480521265170",
+    "normalizedPhone": "105480521265170",
+    "name": "+105480521265170",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T12:55:40.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:11.567Z",
+    "updatedAt": "2026-11-20T14:37:11.567Z"
+  },
+  {
+    "id": "wact_1795185421443_sf5a",
+    "jidOrPhone": "+24386958581979",
+    "normalizedPhone": "24386958581979",
+    "name": "+24386958581979",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T13:19:40.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:01.443Z",
+    "updatedAt": "2026-11-20T14:37:01.443Z"
+  },
+  {
+    "id": "wact_1795185420535_7j88",
+    "jidOrPhone": "+55 43 9985-8950",
+    "normalizedPhone": "554399858950",
+    "name": "Emi",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T14:11:08.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:00.534Z",
+    "updatedAt": "2026-11-20T14:37:15.029Z"
+  },
+  {
+    "id": "wact_1795185420505_qlhd",
+    "jidOrPhone": "+55 21 97640-4200",
+    "normalizedPhone": "5521976404200",
+    "name": "Geberson",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": true,
+    "notes": "",
+    "lastMessageAt": "2026-11-20T14:09:45.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-20T14:37:00.505Z",
+    "updatedAt": "2026-11-20T14:37:00.530Z"
+  },
+  {
     "id": "wact_1795179707303_x3mu",
     "jidOrPhone": "+232697234468931",
     "normalizedPhone": "232697234468931",
@@ -380,14 +500,14 @@
     "normalizedPhone": "16771897622742",
     "name": "Denise Farias",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:58:09.831Z",
+    "lastMessageAt": "2026-11-20T13:53:25.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:59:00.016Z",
-    "updatedAt": "2026-11-20T13:01:47.325Z"
+    "updatedAt": "2026-11-20T14:37:08.718Z"
   },
   {
     "id": "wact_1795179539985_pdgq",
@@ -575,14 +695,14 @@
     "normalizedPhone": "141819870486534",
     "name": "Wilton",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:30.074Z",
+    "lastMessageAt": "2026-11-19T23:21:22.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:57:00.102Z",
-    "updatedAt": "2026-11-20T13:01:47.490Z"
+    "updatedAt": "2026-11-20T14:37:46.439Z"
   },
   {
     "id": "wact_1795179420057_27uh",
@@ -590,14 +710,14 @@
     "normalizedPhone": "103805098139868",
     "name": "Nicolas",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:57:13.440Z",
+    "lastMessageAt": "2026-11-19T23:35:21.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:57:00.056Z",
-    "updatedAt": "2026-11-20T13:01:47.430Z"
+    "updatedAt": "2026-11-20T14:37:51.110Z"
   },
   {
     "id": "wact_1795179420021_zhyb",
@@ -605,14 +725,14 @@
     "normalizedPhone": "249082350157959",
     "name": "Henrique Nascimento",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:57:16.715Z",
+    "lastMessageAt": "2026-11-20T12:14:24.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:57:00.021Z",
-    "updatedAt": "2026-11-20T13:01:47.369Z"
+    "updatedAt": "2026-11-20T14:37:51.915Z"
   },
   {
     "id": "wact_1795179420017_nndy",
@@ -620,14 +740,14 @@
     "normalizedPhone": "103405884338184",
     "name": "Gutierry",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:30.739Z",
+    "lastMessageAt": "2026-11-19T23:22:14.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:57:00.017Z",
-    "updatedAt": "2026-11-20T13:01:47.364Z"
+    "updatedAt": "2026-11-20T14:37:45.015Z"
   },
   {
     "id": "wact_1795179420015_c5l3",
@@ -635,14 +755,14 @@
     "normalizedPhone": "190348924055556",
     "name": "Gustavo H",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:51.938Z",
+    "lastMessageAt": "2026-11-19T23:36:07.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:57:00.015Z",
-    "updatedAt": "2026-11-20T13:01:47.362Z"
+    "updatedAt": "2026-11-20T14:37:51.604Z"
   },
   {
     "id": "wact_1795179420004_83q9",
@@ -665,14 +785,14 @@
     "normalizedPhone": "162611773595671",
     "name": "Fred",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:39.032Z",
+    "lastMessageAt": "2026-11-19T23:25:21.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:56:59.998Z",
-    "updatedAt": "2026-11-20T13:01:47.342Z"
+    "updatedAt": "2026-11-20T14:37:46.562Z"
   },
   {
     "id": "wact_1795179419993_ktwo",
@@ -695,14 +815,14 @@
     "normalizedPhone": "160228100284568",
     "name": "Caixeta",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:41.932Z",
+    "lastMessageAt": "2026-11-19T23:28:11.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:56:59.981Z",
-    "updatedAt": "2026-11-20T13:01:47.317Z"
+    "updatedAt": "2026-11-20T14:37:50.751Z"
   },
   {
     "id": "wact_1795179419964_7iy8",
@@ -755,14 +875,14 @@
     "normalizedPhone": "150302565117957",
     "name": "Maria",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:01:28.801Z",
+    "lastMessageAt": "2026-11-19T23:03:42.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:48.014Z",
-    "updatedAt": "2026-11-20T13:01:47.419Z"
+    "updatedAt": "2026-11-20T14:37:20.505Z"
   },
   {
     "id": "wact_1795179348004_u352",
@@ -770,14 +890,14 @@
     "normalizedPhone": "193269334048934",
     "name": "luiz",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:57:21.474Z",
+    "lastMessageAt": "2026-11-19T23:13:09.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:48.004Z",
-    "updatedAt": "2026-11-20T13:01:47.407Z"
+    "updatedAt": "2026-11-20T14:37:43.768Z"
   },
   {
     "id": "wact_1795179347996_tbct",
@@ -800,14 +920,14 @@
     "normalizedPhone": "88789942849781",
     "name": "Dery Salles",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:41.024Z",
+    "lastMessageAt": "2026-11-20T01:22:39.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:47.962Z",
-    "updatedAt": "2026-11-20T13:01:47.326Z"
+    "updatedAt": "2026-11-20T14:37:11.032Z"
   },
   {
     "id": "wact_1795179347932_xln5",
@@ -815,14 +935,14 @@
     "normalizedPhone": "31224529702943",
     "name": ".",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:01:41.750Z",
+    "lastMessageAt": "2026-11-19T23:02:52.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:47.932Z",
-    "updatedAt": "2026-11-20T13:01:47.274Z"
+    "updatedAt": "2026-11-20T14:37:17.951Z"
   },
   {
     "id": "wact_1795179336106_8s8i",
@@ -860,14 +980,14 @@
     "normalizedPhone": "44723645497490",
     "name": "Wellington Mol",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:25.108Z",
+    "lastMessageAt": "2026-11-20T12:10:16.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:29.180Z",
-    "updatedAt": "2026-11-20T13:01:47.488Z"
+    "updatedAt": "2026-11-20T14:37:07.082Z"
   },
   {
     "id": "wact_1795179329098_ncpz",
@@ -875,14 +995,14 @@
     "normalizedPhone": "79551535263973",
     "name": "𝙵𝚊𝚋𝚒𝚘 𝙲𝚘𝚛𝚛𝚒𝚍𝚘𝚗𝚒",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:30.899Z",
+    "lastMessageAt": "2026-11-20T12:11:54.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:29.098Z",
-    "updatedAt": "2026-11-20T13:01:47.335Z"
+    "updatedAt": "2026-11-20T14:37:09.842Z"
   },
   {
     "id": "wact_1795179323997_xtpj",
@@ -890,14 +1010,14 @@
     "normalizedPhone": "210109967945929",
     "name": "Clínica das Máquinas",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:22.543Z",
+    "lastMessageAt": "2026-11-20T12:05:42.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:23.997Z",
-    "updatedAt": "2026-11-20T13:01:47.322Z"
+    "updatedAt": "2026-11-20T14:37:07.244Z"
   },
   {
     "id": "wact_1795179311375_nrkt",
@@ -905,14 +1025,14 @@
     "normalizedPhone": "267533546422315",
     "name": "Vinicius Dias",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:05.866Z",
+    "lastMessageAt": "2026-11-20T11:53:36.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:11.375Z",
-    "updatedAt": "2026-11-20T13:01:47.484Z"
+    "updatedAt": "2026-11-20T14:37:01.374Z"
   },
   {
     "id": "wact_1795179311367_hg1z",
@@ -920,14 +1040,14 @@
     "normalizedPhone": "205505712619689",
     "name": "The Best",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:21.588Z",
+    "lastMessageAt": "2026-11-20T11:03:26.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:55:11.367Z",
-    "updatedAt": "2026-11-20T13:01:47.471Z"
+    "updatedAt": "2026-11-20T14:37:06.874Z"
   },
   {
     "id": "wact_1795179311321_lrvm",
@@ -995,14 +1115,14 @@
     "normalizedPhone": "38848079880199",
     "name": "🙏Prof.Minotti📚🇧🇷",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:00:24.413Z",
+    "lastMessageAt": "2026-11-20T12:26:07.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:59.839Z",
-    "updatedAt": "2026-11-20T13:01:47.281Z"
+    "updatedAt": "2026-11-20T14:37:44.886Z"
   },
   {
     "id": "wact_1795179288391_797z",
@@ -1055,14 +1175,14 @@
     "normalizedPhone": "146398322397371",
     "name": "Paula Madeira",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:33.456Z",
+    "lastMessageAt": "2026-11-19T22:44:29.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:35.314Z",
-    "updatedAt": "2026-11-20T13:01:47.435Z"
+    "updatedAt": "2026-11-20T14:37:09.087Z"
   },
   {
     "id": "wact_1795179275258_vvte",
@@ -1115,14 +1235,14 @@
     "normalizedPhone": "246204923408622",
     "name": "viniciusrochaj53",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:59:55.146Z",
+    "lastMessageAt": "2026-11-20T12:03:58.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.624Z",
-    "updatedAt": "2026-11-20T13:01:47.486Z"
+    "updatedAt": "2026-11-20T14:37:03.068Z"
   },
   {
     "id": "wact_1795179263623_jrkb",
@@ -1145,14 +1265,14 @@
     "normalizedPhone": "148082704560329",
     "name": "Um Pai Estiloso",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:55.996Z",
+    "lastMessageAt": "2026-11-20T12:05:34.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.620Z",
-    "updatedAt": "2026-11-20T13:01:47.477Z"
+    "updatedAt": "2026-11-20T14:37:03.985Z"
   },
   {
     "id": "wact_1795179263614_oxa5",
@@ -1250,14 +1370,14 @@
     "normalizedPhone": "273611327836170",
     "name": "Renan",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:53:09.584Z",
+    "lastMessageAt": "2026-11-20T13:25:31.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.604Z",
-    "updatedAt": "2026-11-20T13:01:47.445Z"
+    "updatedAt": "2026-11-20T14:37:52.002Z"
   },
   {
     "id": "wact_1795179263603_idfn",
@@ -1385,14 +1505,14 @@
     "normalizedPhone": "23420490240145",
     "name": "Marcio",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:28.746Z",
+    "lastMessageAt": "2026-11-20T11:50:21.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.590Z",
-    "updatedAt": "2026-11-20T13:01:47.412Z"
+    "updatedAt": "2026-11-20T14:37:45.386Z"
   },
   {
     "id": "wact_1795179263589_ubmb",
@@ -1430,14 +1550,14 @@
     "normalizedPhone": "75724601950322",
     "name": "Leandro",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:00.846Z",
+    "lastMessageAt": "2026-11-19T23:05:45.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.586Z",
-    "updatedAt": "2026-11-20T13:01:47.397Z"
+    "updatedAt": "2026-11-20T14:37:27.392Z"
   },
   {
     "id": "wact_1795179263585_gwgy",
@@ -1490,14 +1610,14 @@
     "normalizedPhone": "260111826215114",
     "name": "Jefinho",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:59:11.289Z",
+    "lastMessageAt": "2026-11-20T00:44:00.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.574Z",
-    "updatedAt": "2026-11-20T13:01:47.379Z"
+    "updatedAt": "2026-11-20T14:37:34.758Z"
   },
   {
     "id": "wact_1795179263573_oms0",
@@ -1625,14 +1745,14 @@
     "normalizedPhone": "157840165605564",
     "name": "gb",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:50:46.753Z",
+    "lastMessageAt": "2026-11-20T04:19:06.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.562Z",
-    "updatedAt": "2026-11-20T13:01:47.352Z"
+    "updatedAt": "2026-11-20T14:37:11.313Z"
   },
   {
     "id": "wact_1795179263559_ac62",
@@ -1670,14 +1790,14 @@
     "normalizedPhone": "255812681371762",
     "name": "Ewerton Bacinello",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:56:08.127Z",
+    "lastMessageAt": "2026-11-19T23:07:13.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.555Z",
-    "updatedAt": "2026-11-20T13:01:47.333Z"
+    "updatedAt": "2026-11-20T14:37:31.371Z"
   },
   {
     "id": "wact_1795179263555_0glz",
@@ -1700,14 +1820,14 @@
     "normalizedPhone": "66636585418814",
     "name": "Ediclécio Dionizio",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:52:27.289Z",
+    "lastMessageAt": "2026-11-20T10:03:36.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:54:23.553Z",
-    "updatedAt": "2026-11-20T13:01:47.328Z"
+    "updatedAt": "2026-11-20T14:37:06.590Z"
   },
   {
     "id": "wact_1795179263552_oik1",
@@ -1925,14 +2045,14 @@
     "normalizedPhone": "240161719865482",
     "name": "The Gui",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:25.133Z",
+    "lastMessageAt": "2026-11-19T23:25:23.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.373Z",
-    "updatedAt": "2026-11-20T13:02:59.219Z"
+    "updatedAt": "2026-11-20T14:37:46.684Z"
   },
   {
     "id": "wact_1795179031372_h9p0",
@@ -1955,14 +2075,14 @@
     "normalizedPhone": "153102766350509",
     "name": "Ricardo😎",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:28.232Z",
+    "lastMessageAt": "2026-11-20T13:24:53.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.371Z",
-    "updatedAt": "2026-11-20T13:02:59.219Z"
+    "updatedAt": "2026-11-20T14:37:49.437Z"
   },
   {
     "id": "wact_1795179031370_mgjc",
@@ -2030,14 +2150,14 @@
     "normalizedPhone": "54301389000737",
     "name": "Netinho",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:01:25.389Z",
+    "lastMessageAt": "2026-11-19T23:11:43.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.366Z",
-    "updatedAt": "2026-11-20T13:01:47.428Z"
+    "updatedAt": "2026-11-20T14:37:44.516Z"
   },
   {
     "id": "wact_1795179031365_5zl6",
@@ -2240,14 +2360,14 @@
     "normalizedPhone": "220649700221041",
     "name": "Gabriel Pascutti",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:51.139Z",
+    "lastMessageAt": "2026-11-20T13:23:15.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.357Z",
-    "updatedAt": "2026-11-20T13:02:59.214Z"
+    "updatedAt": "2026-11-20T14:37:41.963Z"
   },
   {
     "id": "wact_1795179031357_978a",
@@ -2270,14 +2390,14 @@
     "normalizedPhone": "47399292649547",
     "name": "Gabriel",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:48.689Z",
+    "lastMessageAt": "2026-11-20T13:54:37.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.356Z",
-    "updatedAt": "2026-11-20T13:02:59.213Z"
+    "updatedAt": "2026-11-20T14:37:21.247Z"
   },
   {
     "id": "wact_1795179031356_zp7s",
@@ -2345,14 +2465,14 @@
     "normalizedPhone": "46196752183352",
     "name": "Bryan",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:50.489Z",
+    "lastMessageAt": "2026-11-20T12:09:20.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.355Z",
-    "updatedAt": "2026-11-20T13:02:59.212Z"
+    "updatedAt": "2026-11-20T14:37:06.999Z"
   },
   {
     "id": "wact_1795179031354_oa2o",
@@ -2360,14 +2480,14 @@
     "normalizedPhone": "190348756258859",
     "name": "Bruno Figueiredo",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:01:11.631Z",
+    "lastMessageAt": "2026-11-19T23:09:48.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.354Z",
-    "updatedAt": "2026-11-20T13:01:47.313Z"
+    "updatedAt": "2026-11-20T14:37:30.127Z"
   },
   {
     "id": "wact_1795179031354_bqbc",
@@ -2499,10 +2619,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:33:40.000Z",
+    "lastMessageAt": "2026-11-20T14:11:02.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:46:59.891Z",
-    "updatedAt": "2026-11-20T12:48:48.646Z"
+    "updatedAt": "2026-11-20T14:37:01.205Z"
   },
   {
     "id": "wact_1795123035830_4gxf",
@@ -2885,14 +3005,14 @@
     "normalizedPhone": "269741881069660",
     "name": "Talis",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:55:42.694Z",
+    "lastMessageAt": "2026-11-19T22:37:40.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:37:32.010Z",
-    "updatedAt": "2026-11-20T13:01:47.470Z"
+    "updatedAt": "2026-11-20T14:37:15.341Z"
   },
   {
     "id": "wact_1795120652002_aufr",
@@ -2900,14 +3020,14 @@
     "normalizedPhone": "96006108672145",
     "name": "Adm 4819 Clube do Homem",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:02:25.133Z",
+    "lastMessageAt": "2026-11-20T13:54:33.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:37:32.002Z",
-    "updatedAt": "2026-11-20T13:02:59.210Z"
+    "updatedAt": "2026-11-20T14:37:22.492Z"
   },
   {
     "id": "wact_1795120646594_ongi",
@@ -2919,10 +3039,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:57:54.060Z",
+    "lastMessageAt": "2026-11-20T14:10:09.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:37:26.594Z",
-    "updatedAt": "2026-11-20T13:01:47.284Z"
+    "updatedAt": "2026-11-20T14:37:00.495Z"
   },
   {
     "id": "wact_1795120640279_hzq2",
@@ -2990,14 +3110,14 @@
     "normalizedPhone": "103685006823501",
     "name": "Renan Antônio",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:01:13.107Z",
+    "lastMessageAt": "2026-11-20T13:54:55.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:34:19.988Z",
-    "updatedAt": "2026-11-20T13:01:47.446Z"
+    "updatedAt": "2026-11-20T14:37:24.659Z"
   },
   {
     "id": "wact_1795120459090_4hob",
@@ -3408,16 +3528,16 @@
     "id": "wact_1795119890960_v84s",
     "jidOrPhone": "+55 11 96501-6958",
     "normalizedPhone": "5511965016958",
-    "name": "Gustavo",
+    "name": "Camilly Vitoria",
     "isGroup": false,
-    "contactType": "cliente",
+    "contactType": "funcionario",
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T20:40:42.000Z",
+    "lastMessageAt": "2026-11-20T14:11:11.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:24:50.959Z",
-    "updatedAt": "2026-11-19T20:40:42.949Z"
+    "updatedAt": "2026-11-20T14:37:17.150Z"
   },
   {
     "id": "wact_1795119800928_e07l",
@@ -3567,7 +3687,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z"
+    "updatedAt": "2026-11-20T14:37:11.565Z",
+    "lastMessageAt": "2026-11-20T12:55:40.000Z"
   },
   {
     "id": "wact_1795119800926_tmjq",
@@ -3625,10 +3746,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:42:07.000Z",
+    "lastMessageAt": "2026-11-20T13:54:33.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z"
+    "updatedAt": "2026-11-20T14:37:22.490Z"
   },
   {
     "id": "wact_1795119800926_zidq",
@@ -3688,7 +3809,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z"
+    "updatedAt": "2026-11-20T14:37:06.997Z",
+    "lastMessageAt": "2026-11-20T12:09:20.000Z"
   },
   {
     "id": "wact_1795119800925_1tjj",
@@ -3703,8 +3825,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z",
-    "lastMessageAt": "2026-11-19T20:53:41.000Z"
+    "updatedAt": "2026-11-20T14:37:49.435Z",
+    "lastMessageAt": "2026-11-20T13:24:53.000Z"
   },
   {
     "id": "wact_1795119800925_7mfs",
@@ -3780,8 +3902,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z",
-    "lastMessageAt": "2026-11-19T21:17:15.000Z"
+    "updatedAt": "2026-11-20T14:37:07.080Z",
+    "lastMessageAt": "2026-11-20T12:10:16.000Z"
   },
   {
     "id": "wact_1795119800924_vaq2",
@@ -3796,7 +3918,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z"
+    "updatedAt": "2026-11-20T14:37:17.148Z",
+    "lastMessageAt": "2026-11-20T14:11:11.000Z"
   },
   {
     "id": "wact_1795119800924_not6",
@@ -3811,7 +3934,8 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z"
+    "updatedAt": "2026-11-20T14:37:44.884Z",
+    "lastMessageAt": "2026-11-20T12:26:07.000Z"
   },
   {
     "id": "wact_1795119800924_9u5e",
@@ -4214,10 +4338,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T01:13:32.000Z",
+    "lastMessageAt": "2026-11-20T13:25:31.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:03:17.050Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z",
+    "updatedAt": "2026-11-20T14:37:52.000Z",
     "participantsCount": 1015
   },
   {
@@ -4245,10 +4369,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T20:56:56.000Z",
+    "lastMessageAt": "2026-11-19T23:13:09.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:02:11.559Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z",
+    "updatedAt": "2026-11-20T14:37:43.766Z",
     "participantsCount": 573
   },
   {
@@ -4291,10 +4415,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T21:15:24.000Z",
+    "lastMessageAt": "2026-11-20T13:25:38.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:00:31.506Z",
-    "updatedAt": "2026-11-20T13:03:18.938Z",
+    "updatedAt": "2026-11-20T14:37:52.037Z",
     "participantsCount": 1085
   },
   {

@@ -157,8 +157,8 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
   const [loadingPreviewPdf, setLoadingPreviewPdf] = useState(false);
   const [busyRecordId, setBusyRecordId] = useState<string | null>(null);
 
-  const loadState = async () => {
-    setLoading(true);
+  const loadState = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetchWhatsAppNdState();
       if (res.success) {
@@ -187,19 +187,31 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
           if (sender && !sender.includes('resend.dev')) return sender;
           return prev;
         });
-      } else {
+      } else if (!silent) {
         setBanner({ type: 'error', text: res.error || 'Falha ao carregar automação de NDs.' });
       }
     } catch (err: any) {
-      setBanner({ type: 'error', text: err?.message || 'Erro de conexão com o servidor.' });
+      if (!silent) {
+        setBanner({ type: 'error', text: err?.message || 'Erro de conexão com o servidor.' });
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadState();
+    loadState(false);
   }, [organizationId]);
+
+  // Silent live refresh every 10s so incoming WhatsApp NDs appear automatically in the panel without manual F5
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && !showRuleForm) {
+        loadState(true);
+      }
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [organizationId, showRuleForm]);
 
   useEffect(() => {
     const handleOAuthMessage = (event: MessageEvent) => {
@@ -718,7 +730,7 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
 
             <button
               type="button"
-              onClick={loadState}
+              onClick={() => loadState(false)}
               disabled={loading}
               className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#F2F2F7] dark:bg-slate-900 dark:hover:bg-slate-800 border border-black/[0.1] dark:border-slate-700 text-xs font-medium text-[#1D1D1F] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 transition"
             >

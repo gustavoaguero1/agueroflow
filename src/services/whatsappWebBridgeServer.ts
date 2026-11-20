@@ -82,6 +82,8 @@ export interface BridgeHooks {
     hasImage: boolean;
     hasAudio: boolean;
   }) => boolean;
+  isPriorityMonitoredJid?: (remoteJid: string) => boolean;
+  shouldIgnoreGroupJid?: (groupJid: string, groupName?: string) => boolean;
   onConnectionOpen?: (info: { connectedNumber: string; connectedName: string; connectedJid: string }) => void;
   onConnectionClose?: (reason: string) => void;
 }
@@ -145,6 +147,7 @@ const chatEventQueues = new Map<string, Promise<void>>();
 let persistStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 const groupsCache = new Map<string, WhatsAppGroupSummary>();
+const persistedGroupNamesByJid = new Map<string, string>();
 const contactsCache = new Map<
   string,
   { jid: string; phoneDigits: string; formattedPhone: string; name: string; updatedAt: string }
@@ -303,6 +306,13 @@ function loadPersistedBridgeState() {
         }
       }
     }
+    if (parsed?.knownGroupNames && typeof parsed.knownGroupNames === 'object') {
+      for (const [jid, name] of Object.entries(parsed.knownGroupNames as Record<string, any>)) {
+        if (jid && typeof name === 'string' && name.trim()) {
+          persistedGroupNamesByJid.set(jid, name.trim());
+        }
+      }
+    }
   } catch (err: any) {
     console.warn('⚠️ [WhatsApp Web Bridge] Falha ao ler data_whatsapp_bridge_state.json:', err?.message || err);
   }
@@ -321,6 +331,13 @@ function schedulePersistBridgeState() {
       for (const [jid, val] of Array.from(oldestAnchorByChatJid.entries()).slice(-300)) {
         oldestAnchorsObj[jid] = val;
       }
+      const knownGroupNamesObj: Record<string, string> = {};
+      for (const [jid, name] of persistedGroupNamesByJid.entries()) {
+        if (jid && name) knownGroupNamesObj[jid] = name;
+      }
+      for (const [jid, g] of groupsCache.entries()) {
+        if (jid && g?.subject) knownGroupNamesObj[jid] = g.subject;
+      }
       const payload = {
         lastOnlineAt: lastOnlineAt || new Date().toISOString(),
         lastCatchUpAt,
@@ -329,6 +346,7 @@ function schedulePersistBridgeState() {
         chatAnchors: chatAnchorsObj,
         oldestChatAnchors: oldestAnchorsObj,
         recentMessageKeys: Array.from(recentMessageKeysById.values()).slice(-2000),
+        knownGroupNames: knownGroupNamesObj,
       };
       const tmp = `${BRIDGE_STATE_FILE}.tmp`;
       fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), 'utf-8');
@@ -426,6 +444,8 @@ async function resolveGroupSubject(sock: WASocket, groupJid: string): Promise<st
   try {
     const meta = await sock.groupMetadata(groupJid);
     if (meta?.subject) {
+      rawGroupMetaCache.set(groupJid, { meta, fetchedAt: Date.now() });
+      persistedGroupNamesByJid.set(groupJid, meta.subject);
       groupsCache.set(groupJid, {
         jid: groupJid,
         subject: meta.subject,
@@ -438,7 +458,7 @@ async function resolveGroupSubject(sock: WASocket, groupJid: string): Promise<st
   } catch {
     // Ignore metadata lookup errors on restricted groups
   }
-  return groupJid.replace('@g.us', '');
+  return persistedGroupNamesByJid.get(groupJid) || groupJid.replace('@g.us', '');
 }
 
 export async function refreshBridgeGroups(): Promise<WhatsAppGroupSummary[]> {
@@ -449,7 +469,10 @@ export async function refreshBridgeGroups(): Promise<WhatsAppGroupSummary[]> {
     const allGroups = await activeSocket.groupFetchAllParticipating();
     groupsCache.clear();
     const list: WhatsAppGroupSummary[] = [];
+    const nowMs = Date.now();
     for (const [jid, meta] of Object.entries(allGroups || {})) {
+      rawGroupMetaCache.set(jid, { meta, fetchedAt: nowMs });
+      if (meta.subject) persistedGroupNamesByJid.set(jid, meta.subject);
       const summary: WhatsAppGroupSummary = {
         jid,
         subject: meta.subject || jid,
@@ -461,6 +484,7 @@ export async function refreshBridgeGroups(): Promise<WhatsAppGroupSummary[]> {
       list.push(summary);
     }
     list.sort((a, b) => a.subject.localeCompare(b.subject, 'pt-BR'));
+    schedulePersistBridgeState();
     return list;
   } catch (err: any) {
     console.warn('⚠️ [WhatsApp Web Bridge] Falha ao listar grupos:', err?.message || err);
@@ -475,9 +499,17 @@ function stopWatchdog() {
   }
 }
 
+let lastWatchdogTickMs = Date.now();
+const rawGroupMetaCache = new Map<string, { meta: any; fetchedAt: number }>();
+
 function startWatchdog() {
   stopWatchdog();
+  lastWatchdogTickMs = Date.now();
   watchdogTimer = setInterval(() => {
+    const nowMs = Date.now();
+    const tickGapMs = nowMs - lastWatchdogTickMs;
+    lastWatchdogTickMs = nowMs;
+
     if (manualStopRequested || isStarting || reconnectTimer) return;
     if (!activeSocket) {
       if (hasPersistedBridgeSession() && !lastDisconnectWasFatalLogout && bridgeState !== 'desconectado') {
@@ -490,17 +522,26 @@ function startWatchdog() {
       const isClosed =
         Boolean(wsAny?.isClosed) ||
         (typeof wsAny?.readyState === 'number' && wsAny.readyState !== 1 && wsAny.readyState !== 0);
+      const lastActMs = lastActivityAt ? new Date(lastActivityAt).getTime() : 0;
+      const wokeFromFreeze = tickGapMs > 75_000;
       if (isClosed) {
         console.warn('🩺 [WhatsApp Web Bridge] Watchdog detectou WebSocket fechado silenciosamente — reconectando...');
-        lastDisconnectedAtMs = Date.now();
+        lastDisconnectedAtMs = nowMs;
         lastDisconnectReason = 'WebSocket encerrado silenciosamente pelo proxy/rede (auto-recuperação)';
         scheduleReconnect(1500, 'watchdog_closed_ws');
+      } else if (wokeFromFreeze && (!lastActMs || nowMs - lastActMs > 60_000)) {
+        console.warn(
+          `🩺 [WhatsApp Web Bridge] Watchdog detectou pausa do container (${Math.round(tickGapMs / 1000)}s) — renovando conexão para receber fila offline...`
+        );
+        lastDisconnectedAtMs = nowMs - tickGapMs;
+        lastDisconnectReason = 'Container acordou de hibernação — reconectando ponte WhatsApp';
+        scheduleReconnect(1000, 'watchdog_container_wake');
       } else {
         lastOnlineAt = new Date().toISOString();
         schedulePersistBridgeState();
       }
     }
-  }, 45_000);
+  }, 20_000);
 }
 
 async function destroyCurrentSocket() {
@@ -998,17 +1039,30 @@ async function processSingleWAMessage(
   }
 
   const inCatchUpWindow = nowMs <= catchUpWindowUntilMs && catchUpSinceMs > 0;
+  const isPriorityMonitored = Boolean(hooks.isPriorityMonitoredJid?.(remoteJid));
   let isCatchUp = Boolean(opts?.forceMediaRetry || opts?.forceNdRetry);
 
   if (sourceMode === 'history_sync' || sourceMode === 'append') {
     if (opts?.forceMediaRetry || opts?.forceNdRetry) {
       // Explicit rescan already checked opts.sinceMs above
       isCatchUp = true;
+    } else if (sourceMode === 'append' && isPriorityMonitored && ageMs <= 6 * 60 * 60 * 1000) {
+      // NEVER drop live/offline append messages in monitored ND or OCR channels (deduped by messageId/records)
+      isCatchUp = ageMs > 90_000;
+      if (inCatchUpWindow) {
+        catchUpWindowUntilMs = Math.max(catchUpWindowUntilMs, nowMs + 5 * 60 * 1000);
+      }
+    } else if (sourceMode === 'history_sync' && isPriorityMonitored && ageMs <= 2 * 60 * 60 * 1000) {
+      // Recent messages in monitored ND/OCR channels delivered via history sync must also be evaluated
+      isCatchUp = true;
     } else if (inCatchUpWindow && msgTsMs >= catchUpSinceMs) {
       // Strictly respect the active catchUpSinceMs cutoff (disconnect time or user-selected window)
       isCatchUp = true;
-    } else if (sourceMode === 'append' && ageMs <= 15 * 60 * 1000) {
-      // Allow live phone/web sync appends within the last 15 minutes
+      if (sourceMode === 'append') {
+        catchUpWindowUntilMs = Math.max(catchUpWindowUntilMs, nowMs + 5 * 60 * 1000);
+      }
+    } else if (sourceMode === 'append' && ageMs <= 30 * 60 * 1000) {
+      // Allow live phone/web sync appends within the last 30 minutes
       isCatchUp = ageMs > 90_000;
     } else {
       // Historical message older than the active cutoff -> skip triggering OCR/@aguero/ND
@@ -1291,6 +1345,7 @@ export async function scanAndCatchUpChannels(params: {
   alreadyProcessedNdMsgIds?: Set<string>;
   lookbackHours?: number;
   sinceMs?: number;
+  skipHistoryPull?: boolean;
 }): Promise<{
   retriedPendingMedia: number;
   rescannedCachedImages: number;
@@ -1323,7 +1378,7 @@ export async function scanAndCatchUpChannels(params: {
 
   // Set exact catch-up cutoff so any incoming on-demand history sync batch ONLY processes messages >= effectiveSinceMs
   catchUpSinceMs = effectiveSinceMs;
-  catchUpWindowUntilMs = nowMs + 3 * 60 * 1000;
+  catchUpWindowUntilMs = Math.max(catchUpWindowUntilMs, nowMs + 10 * 60 * 1000);
 
   let retriedPendingMedia = 0;
   let rescannedCachedImages = 0;
@@ -1357,7 +1412,7 @@ export async function scanAndCatchUpChannels(params: {
       const tsMs = tsSec > 0 ? tsSec * 1000 : nowMs;
       if (tsMs < effectiveSinceMs) continue;
 
-      const norm = normalizeMessageContent(msg.message);
+      const { normalized: norm } = unwrapNormalizedMessageContent(msg.message);
       if (!norm) continue;
       const extracted = extractTextAndMediaFromNormalized(norm);
 
@@ -1376,14 +1431,16 @@ export async function scanAndCatchUpChannels(params: {
       }
     }
 
-    // 3. Request on-demand history pull from primary phone (strictly filtered by catchUpSinceMs = effectiveSinceMs)
-    const anchor = lastAnchorByChatJid.get(jid);
-    if (anchor && typeof (sock as any).fetchMessageHistory === 'function') {
-      try {
-        await (sock as any).fetchMessageHistory(20, anchor.key, anchor.timestampMs);
-        historyPullRequested += 1;
-      } catch (pullErr: any) {
-        console.warn(`⚠️ [WA Catch-Up] fetchMessageHistory (${jid}):`, pullErr?.message || pullErr);
+    // 3. Request on-demand history pull from primary phone only when explicitly needed
+    if (!params.skipHistoryPull) {
+      const anchor = lastAnchorByChatJid.get(jid);
+      if (anchor && typeof (sock as any).fetchMessageHistory === 'function') {
+        try {
+          await (sock as any).fetchMessageHistory(20, anchor.key, anchor.timestampMs);
+          historyPullRequested += 1;
+        } catch (pullErr: any) {
+          console.warn(`⚠️ [WA Catch-Up] fetchMessageHistory (${jid}):`, pullErr?.message || pullErr);
+        }
       }
     }
   }
@@ -1621,15 +1678,39 @@ export async function startWhatsAppBridgeSession(options?: {
       browser: Browsers.ubuntu('Chrome'),
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      syncFullHistory: true,
-      shouldSyncHistoryMessage: () => true,
+      // CRITICAL: drop status@broadcast, @newsletter, @broadcast AND known unmonitored high-noise personal/promo groups
+      // BEFORE Baileys' sequential offlineNodeProcessor so monitored ND/OCR/corporate groups drain in <2 seconds!
+      shouldIgnoreJid: (jid: string) => {
+        if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter') || jid.endsWith('@broadcast')) {
+          return true;
+        }
+        if (jid.endsWith('@g.us') && hooks.shouldIgnoreGroupJid) {
+          const knownName = groupsCache.get(jid)?.subject || persistedGroupNamesByJid.get(jid);
+          return Boolean(hooks.shouldIgnoreGroupJid(jid, knownName));
+        }
+        return false;
+      },
+      // Only request full multi-year history on fresh QR pairing; on reconnect keep RECENT + ON_DEMAND fast!
+      syncFullHistory: !sessionWasRegistered,
+      shouldSyncHistoryMessage: (histMsg: any) => {
+        if (!sessionWasRegistered) return true;
+        // Skip giant FULL (syncType 3) archive blobs on normal reconnects so live/offline queues stay instant
+        return histMsg?.syncType !== 3;
+      },
       keepAliveIntervalMs: 20_000,
-      connectTimeoutMs: 60_000,
-      defaultQueryTimeoutMs: 45_000,
+      connectTimeoutMs: 45_000,
+      defaultQueryTimeoutMs: 20_000,
       qrTimeout: 45_000,
-      retryRequestDelayMs: 600,
-      maxMsgRetryCount: 3,
+      retryRequestDelayMs: 250,
+      maxMsgRetryCount: 2,
       generateHighQualityLinkPreview: false,
+      cachedGroupMetadata: async (jid: string) => {
+        const entry = rawGroupMetaCache.get(jid);
+        if (entry && Date.now() - entry.fetchedAt < 5 * 60 * 1000) {
+          return entry.meta;
+        }
+        return undefined;
+      },
       getMessage: async (key) => {
         const msgId = key?.id || '';
         if (!msgId) return undefined;
@@ -1766,7 +1847,7 @@ export async function startWhatsAppBridgeSession(options?: {
             catchUpSinceMs > 0 && nowMs <= catchUpWindowUntilMs
               ? Math.min(catchUpSinceMs, computedSince)
               : computedSince;
-          catchUpWindowUntilMs = nowMs + 5 * 60 * 1000;
+          catchUpWindowUntilMs = nowMs + 20 * 60 * 1000;
         }
 
         reconnectAttempts = 0;
@@ -2050,6 +2131,15 @@ export async function startWhatsAppBridgeSession(options?: {
       );
       const mode = upsert.type === 'notify' ? 'notify' : 'append';
       for (const msg of sorted) {
+        const rJid = msg.key?.remoteJid || '';
+        if (rJid && hooks.isPriorityMonitoredJid?.(rJid)) {
+          const tsSec = extractTimestampSec(msg.messageTimestamp);
+          const { normalized } = unwrapNormalizedMessageContent(msg.message);
+          const preview = normalized ? extractTextAndMediaFromNormalized(normalized).text.slice(0, 60) : '(sem conteúdo/ciphertext)';
+          console.log(
+            `📨 [WA Monitorado] mode=${mode} fromMe=${Boolean(msg.key?.fromMe)} jid=${rJid} id=${msg.key?.id} ts=${tsSec ? new Date(tsSec * 1000).toISOString() : 'now'} text=${JSON.stringify(preview)}`
+          );
+        }
         enqueueIncomingMessage(sock, msg, mode);
       }
     });
