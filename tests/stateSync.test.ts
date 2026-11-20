@@ -11,6 +11,7 @@ function memStore(init: Record<string, string> = {}) {
     list: async (p) => [...m.keys()].filter((k) => k.startsWith(p)),
     download: async (n) => m.get(n)!,
     upload: async (n, d) => { m.set(n, d); },
+    delete: async (n) => { m.delete(n); },
   };
   return { m, store };
 }
@@ -48,6 +49,33 @@ test('uploads changed file after debounce', async () => {
   await w.flush();
   w.close();
   assert.equal(m.get('server-state/data_whatsapp_auth/creds.json')?.toString(), 'C');
+});
+
+test('watches directory created after start', async () => {
+  const dir = tmp();
+  const { m, store } = memStore();
+  const w = watchState(store, dir, STATE_PATHS, 20);
+  fs.mkdirSync(path.join(dir, 'data_whatsapp_auth'));
+  await new Promise((r) => setTimeout(r, 50));
+  fs.writeFileSync(path.join(dir, 'data_whatsapp_auth', 'creds.json'), 'N');
+  await new Promise((r) => setTimeout(r, 100));
+  await w.flush();
+  w.close();
+  assert.equal(m.get('server-state/data_whatsapp_auth/creds.json')?.toString(), 'N');
+});
+
+test('deleted file removed from store', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'data_whatsapp_auth'));
+  const f = path.join(dir, 'data_whatsapp_auth', 'creds.json');
+  fs.writeFileSync(f, 'C');
+  const { m, store } = memStore({ 'server-state/data_whatsapp_auth/creds.json': 'C' });
+  const w = watchState(store, dir, STATE_PATHS, 20);
+  fs.unlinkSync(f);
+  await new Promise((r) => setTimeout(r, 100));
+  await w.flush();
+  w.close();
+  assert.ok(!m.has('server-state/data_whatsapp_auth/creds.json'));
 });
 
 test('null store is a no-op', async () => {
