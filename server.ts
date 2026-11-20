@@ -455,7 +455,7 @@ async function main() {
 
   app.set('trust proxy', 1); // Cloud Run: one front proxy, so req.ip is the client IP
   // rawBody: Composio signatures are computed over the exact bytes received
-  app.use(express.json({ limit: '50mb', verify: (req, _res, buf) => { (req as any).rawBody = buf; } }));
+  app.use(express.json({ limit: '50mb', verify: (req, _res, buf) => { if (req.url?.startsWith('/api/composio/whatsapp/webhook')) (req as any).rawBody = buf; } }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
@@ -3764,6 +3764,14 @@ Sua missão é extrair rigorosamente os seguintes campos:
   }
 
   const WA_SECRET_FIELDS = ['apiKey', 'verifyToken', 'composioWebhookSecret'];
+  const isMasked = (v: unknown) => typeof v === 'string' && v.startsWith('••••');
+  // The stored key only goes to the stored instance, never to a caller-supplied URL.
+  const storedKeyFor = (instanceUrl: unknown, apiKey: unknown) =>
+    (apiKey && !isMasked(apiKey) ? apiKey : '') ||
+    (!instanceUrl || instanceUrl === whatsAppReceiptsConfig.instanceUrl ? whatsAppReceiptsConfig.apiKey : '');
+  // Records are org-tagged: reads need membership, admin mutations need the role-checked org.
+  const inCallerOrg = (req: Request, rec: any) => req.user!.master || Object.hasOwn(req.user!.orgs, rec?.organizationId);
+  const ownedByReqOrg = (req: Request, rec: any) => req.user!.master || rec?.organizationId === req.orgId;
   const maskWaConfig = (cfg: any) => {
     const out = { ...cfg };
     for (const k of WA_SECRET_FIELDS) if (typeof out[k] === 'string' && out[k]) out[k] = '••••' + out[k].slice(-4);
@@ -3782,7 +3790,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   app.post('/api/whatsapp/config', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     // Masked values echoed back by the UI are not new secrets.
     const incoming = Object.fromEntries(
-      Object.entries(req.body || {}).filter(([, v]) => !(typeof v === 'string' && v.startsWith('••••')))
+      Object.entries(req.body || {}).filter(([, v]) => !isMasked(v))
     );
     whatsAppReceiptsConfig = {
       ...whatsAppReceiptsConfig,
@@ -3799,12 +3807,13 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
   // List reimbursements
   app.get('/api/reimbursements/list', (req: Request, res: Response) => {
+    const receipts = reimbursementReceipts.filter((r) => inCallerOrg(req, r));
     res.json({
       success: true,
-      receipts: reimbursementReceipts,
-      totalCount: reimbursementReceipts.length,
-      pendingCount: reimbursementReceipts.filter((r) => r.status === 'pendente').length,
-      approvedTotalAmount: reimbursementReceipts
+      receipts,
+      totalCount: receipts.length,
+      pendingCount: receipts.filter((r) => r.status === 'pendente').length,
+      approvedTotalAmount: receipts
         .filter((r) => r.status === 'aprovado' || r.status === 'abatido_fundo_missao' || r.status === 'reembolsado')
         .reduce((sum, r) => sum + (r.totalAmount || 0), 0),
     });
@@ -3881,6 +3890,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
     if (idx === -1) {
       return res.status(404).json({ error: 'Comprovante não encontrado.' });
     }
+    if (!ownedByReqOrg(req, reimbursementReceipts[idx])) return res.status(403).json({ error: 'forbidden' });
 
     reimbursementReceipts[idx] = {
       ...reimbursementReceipts[idx],
@@ -3914,6 +3924,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   // Delete single receipt
   app.delete('/api/reimbursements/:id', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const { id } = req.params;
+    if (reimbursementReceipts.some((r) => r.id === id && !ownedByReqOrg(req, r))) return res.status(403).json({ error: 'forbidden' });
     const prevLen = reimbursementReceipts.length;
     reimbursementReceipts = reimbursementReceipts.filter((r) => r.id !== id);
     if (reimbursementReceipts.length !== prevLen) {
@@ -3958,8 +3969,6 @@ Sua missão é extrair rigorosamente os seguintes campos:
       success: true,
       status: whatsAppReceiptsConfig.status,
       message: 'Endpoint de Webhook WhatsApp do AgueroFlow ativo.',
-      targetGroup: whatsAppReceiptsConfig.targetGroupName || 'Qualquer grupo autorizado',
-      targetGroupJid: whatsAppReceiptsConfig.targetGroupJid || 'Auto-detectar ao receber',
       provider: whatsAppReceiptsConfig.provider,
       aiModel: 'Gemini Multimodal OCR',
     });
@@ -4298,12 +4307,12 @@ Sua missão é extrair rigorosamente os seguintes campos:
   }
 
   // Active Outbound Sync with Evolution API / Z-API / Gateway
-  app.post('/api/whatsapp/sync-active', async (req: Request, res: Response) => {
+  app.post('/api/whatsapp/sync-active', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
       const { instanceUrl, apiKey, instanceName, targetGroupJid, provider } = req.body;
 
       const effectiveUrl = instanceUrl || whatsAppReceiptsConfig.instanceUrl;
-      const effectiveKey = apiKey || whatsAppReceiptsConfig.apiKey;
+      const effectiveKey = storedKeyFor(instanceUrl, apiKey);
       const effectiveInstance = instanceName || whatsAppReceiptsConfig.instanceName || 'aguero-reembolsos';
       const effectiveGroup = targetGroupJid || whatsAppReceiptsConfig.targetGroupJid;
       const effectiveProvider = provider || whatsAppReceiptsConfig.provider || 'evolution_api';
@@ -4514,10 +4523,10 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Test connection to Evolution API / Z-API
-  app.post('/api/whatsapp/test-connection', async (req: Request, res: Response) => {
+  app.post('/api/whatsapp/test-connection', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     const { instanceUrl, apiKey, instanceName } = req.body;
     const effectiveUrl = instanceUrl || whatsAppReceiptsConfig.instanceUrl;
-    const effectiveKey = apiKey || whatsAppReceiptsConfig.apiKey;
+    const effectiveKey = storedKeyFor(instanceUrl, apiKey);
     const effectiveInstance = instanceName || whatsAppReceiptsConfig.instanceName || 'aguero-reembolsos';
 
     if (!effectiveUrl) {
@@ -4653,7 +4662,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
       whatsAppReceiptsConfig.targetGroupJid = targetGroupJid;
     }
 
-    if (verifyToken) {
+    if (verifyToken && !isMasked(verifyToken)) {
       whatsAppReceiptsConfig.verifyToken = verifyToken;
     }
 
@@ -5024,8 +5033,8 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
   // 6. Send 1-to-1 Commercial / Operational WhatsApp Message via Composio SDK
   app.post('/api/composio/whatsapp/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+    const organizationId = req.orgId || 'org_aguero_default';
     const {
-      organizationId = 'org_aguero_default',
       toNumber,
       contactName,
       contactType = 'cliente',
@@ -7790,8 +7799,8 @@ DIRETRIZES ESSENCIAIS:
 
   // Bridge Send Message (Supports BOTH Groups @g.us and Private 1-to-1)
   app.post('/api/whatsapp/bridge/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+    const organizationId = req.orgId || 'org_aguero_default';
     const {
-      organizationId = 'org_aguero_default',
       toJidOrPhone,
       contactName,
       contactType = 'cliente',
@@ -8831,6 +8840,7 @@ DIRETRIZES ESSENCIAIS:
     if (!record) {
       return res.status(404).json({ success: false, error: 'Nota de Débito não encontrada.' });
     }
+    if (!inCallerOrg(req, record)) return res.status(403).json({ error: 'forbidden' });
     try {
       const pdfBuffer = getOrGenerateNdPdfBuffer(record);
       const safeName = record.fileName || sanitizeNdFileName(record.projNumber, record.natureza, record.receiverName);
@@ -8866,6 +8876,7 @@ DIRETRIZES ESSENCIAIS:
     if (!record) {
       return res.status(404).json({ success: false, error: 'Nota de Débito não encontrada.' });
     }
+    if (!inCallerOrg(req, record)) return res.status(403).json({ error: 'forbidden' });
     const rule = whatsAppNdRules.find((r) => r.id === record.ruleId);
     const to = parseEmailListInput(req.body?.to || rule?.outlookTo || record.emailTo || []);
     const cc = parseEmailListInput(req.body?.cc || rule?.outlookCc || record.emailCc || []);
@@ -8926,6 +8937,7 @@ DIRETRIZES ESSENCIAIS:
     if (!record) {
       return res.status(404).json({ success: false, error: 'Nota de Débito não encontrada.' });
     }
+    if (!inCallerOrg(req, record)) return res.status(403).json({ error: 'forbidden' });
     const targetJid = String(req.body?.groupJid || record.sourceGroupJid || '').trim();
     if (!targetJid) {
       return res.status(400).json({ success: false, error: 'Grupo de destino não identificado.' });
@@ -9947,6 +9959,7 @@ Retorne JSON estrito.`;
     if (idx < 0) {
       return res.status(404).json({ success: false, error: 'Comprovante OCR não encontrado.' });
     }
+    if (!inCallerOrg(req, reimbursementReceipts[idx])) return res.status(403).json({ error: 'forbidden' });
 
     const prev = reimbursementReceipts[idx];
     const editedAt = new Date().toISOString();

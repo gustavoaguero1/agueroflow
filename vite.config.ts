@@ -17,6 +17,8 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Server-side stores (WhatsApp session keys, configs, ND PDFs) live in the project root; Vite defaults kept.
+      fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', 'data_*', '**/data_*/**'] },
     },
   };
 });
