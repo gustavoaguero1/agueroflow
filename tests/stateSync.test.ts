@@ -78,6 +78,36 @@ test('deleted file removed from store', async () => {
   assert.ok(!m.has('server-state/data_whatsapp_auth/creds.json'));
 });
 
+test('flush uploads change not yet seen by watcher', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'data_whatsapp_auth'));
+  const { m, store } = memStore();
+  const w = watchState(store, dir, STATE_PATHS, 5000);
+  fs.writeFileSync(path.join(dir, 'data_whatsapp_auth', 'creds.json'), 'NEW');
+  fs.writeFileSync(path.join(dir, 'data_z.json'), 'Z');
+  await w.flush();
+  w.close();
+  assert.equal(m.get('server-state/data_whatsapp_auth/creds.json')?.toString(), 'NEW');
+  assert.equal(m.get('server-state/data_z.json')?.toString(), 'Z');
+});
+
+test('watcher callback survives removed directory', async () => {
+  const dir = tmp();
+  const sub = path.join(dir, 'data_nd_pdfs');
+  fs.mkdirSync(sub);
+  const { m, store } = memStore();
+  const w = watchState(store, dir, STATE_PATHS, 20);
+  fs.rmSync(sub, { recursive: true });
+  await new Promise((r) => setTimeout(r, 80));
+  fs.mkdirSync(sub); // recreated: must be watched again
+  await new Promise((r) => setTimeout(r, 80));
+  fs.writeFileSync(path.join(sub, 'a.pdf'), 'A');
+  await new Promise((r) => setTimeout(r, 100));
+  await w.flush();
+  w.close();
+  assert.equal(m.get('server-state/data_nd_pdfs/a.pdf')?.toString(), 'A');
+});
+
 test('null store is a no-op', async () => {
   const r = await restoreState(null, tmp(), STATE_PATHS);
   assert.deepEqual(r, { restored: 0, seeded: 0 });

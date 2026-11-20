@@ -43,7 +43,16 @@ function walk(dir: string, rel = ''): string[] {
   return out;
 }
 
-const localFiles = (root: string, paths: string[]) => walk(root).filter((r) => matches(r, paths));
+// Root files + recursive dir specs only (never walks node_modules etc.); tolerant of dirs vanishing.
+function localFiles(root: string, paths: string[]): string[] {
+  const out: string[] = [];
+  try { for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isFile()) out.push(e.name); } catch { /* ignore */ }
+  for (const p of paths) if (p.endsWith('/')) {
+    const d = p.slice(0, -1);
+    try { out.push(...walk(root, d)); } catch { /* dir missing */ }
+  }
+  return out.filter((r) => matches(r, paths));
+}
 
 export async function restoreState(store: StateStore | null, root: string, paths: string[]) {
   const res = { restored: 0, seeded: 0 };
@@ -72,7 +81,9 @@ export function watchState(store: StateStore | null, root: string, paths: string
   const pending = new Set<string>();
   const timers = new Map<string, NodeJS.Timeout>();
   const inflight = new Set<Promise<void>>();
-  const watchers: fs.FSWatcher[] = [];
+  const sig = (rel: string) => { try { const st = fs.statSync(path.join(root, rel)); return `${st.mtimeMs}:${st.size}`; } catch { return undefined; } };
+  const uploaded = new Map<string, string>(); // last synced mtime:size per file
+  if (store) for (const rel of localFiles(root, paths)) uploaded.set(rel, sig(rel)!); // baseline: restore/seed just synced these
 
   const push = async (rel: string) => {
     pending.delete(rel);
@@ -81,10 +92,12 @@ export function watchState(store: StateStore | null, root: string, paths: string
       try { data = fs.readFileSync(path.join(root, rel)); } // re-read at upload time
       catch (e: any) {
         if (e?.code !== 'ENOENT' && e?.code !== 'EISDIR') throw e;
-        if (e.code === 'ENOENT') await store!.delete(PREFIX + rel); // file gone: propagate deletion
+        if (e.code === 'ENOENT') { await store!.delete(PREFIX + rel); uploaded.delete(rel); } // file gone: propagate deletion
         return;
       }
+      const s0 = sig(rel);
       await store!.upload(PREFIX + rel, data);
+      if (s0) uploaded.set(rel, s0);
     } catch (e: any) {
       console.warn(`☁️ Falha ao sincronizar ${rel}: ${e?.message ?? e}`);
     }
@@ -100,21 +113,27 @@ export function watchState(store: StateStore | null, root: string, paths: string
     }, debounceMs));
   };
 
-  const watched = new Set<string>();
+  const watched = new Map<string, fs.FSWatcher>();
+  const unwatch = (d: string) => { watched.get(d)?.close(); watched.delete(d); };
   const watchDir = (d: string) => {
     const abs = path.join(root, d);
     if (watched.has(d) || !fs.existsSync(abs)) return;
     try {
-      watchers.push(fs.watch(abs, (_ev, f) => {
+      const w = fs.watch(abs, (_ev, f) => {
         if (!f) return;
         const rel = d ? `${d}/${f}` : String(f);
-        if (!d && dirNames.includes(rel)) { // dir spec appeared after boot: watch it and upload what is already inside
-          watchDir(rel);
-          if (watched.has(rel)) for (const r of walk(root, rel)) schedule(`${rel}/${r}`);
-        }
+        try {
+          if (d && !fs.existsSync(abs)) unwatch(d); // dir deleted: allow re-watch when recreated
+          if (!d && dirNames.includes(rel)) { // dir spec appeared after boot: watch it and upload what is already inside
+            watchDir(rel);
+            for (const r of walk(root, rel)) schedule(r);
+          }
+        } catch (e: any) { console.warn(`☁️ Falha ao observar ${rel}: ${e?.message ?? e}`); }
         schedule(rel);
-      }));
-      watched.add(d);
+      });
+      w.on('error', (e) => { console.warn(`☁️ Erro no watcher de ${d || '.'}: ${e.message}`); unwatch(d); });
+      w.on('close', () => { if (watched.get(d) === w) watched.delete(d); });
+      watched.set(d, w);
     } catch { console.warn(`☁️ Não foi possível observar ${d || '.'}`); }
   };
   const dirNames = paths.filter((p) => p.endsWith('/')).map((p) => p.slice(0, -1));
@@ -123,9 +142,14 @@ export function watchState(store: StateStore | null, root: string, paths: string
   return {
     async flush() {
       for (const [rel, t] of timers) { clearTimeout(t); timers.delete(rel); }
+      if (store) { // guarantee: catch changes/deletions the watcher has not reported yet
+        const now = new Set(localFiles(root, paths));
+        for (const rel of now) if (sig(rel) !== uploaded.get(rel)) pending.add(rel);
+        for (const rel of uploaded.keys()) if (!now.has(rel)) pending.add(rel);
+      }
       await Promise.all([...inflight, ...[...pending].map(push)]);
     },
-    close() { watchers.forEach((w) => w.close()); timers.forEach(clearTimeout); },
+    close() { [...watched.keys()].forEach(unwatch); timers.forEach(clearTimeout); },
   };
 }
 
