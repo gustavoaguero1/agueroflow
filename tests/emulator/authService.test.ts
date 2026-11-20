@@ -51,7 +51,7 @@ test('migrates plaintext password on first login', async () => {
   assert.equal((await credentialLogin(h, { nameOrEmail: 'User m1', password: 'bad999' })).ok, false);
   const r = await credentialLogin(h, { nameOrEmail: 'User m1', password: 'plain99' });
   assert.equal(r.ok, true);
-  if (r.ok) assert.equal(r.uid, 'uid_m1');
+  if (r.ok) assert.equal(r.uid, 'member_m1');
   const m = (await h.db.doc('org_members/m1').get()).data()!;
   assert.equal('passwordHash' in m, false);
   const cred = (await h.db.doc('member_credentials/m1').get()).data()!;
@@ -251,4 +251,45 @@ test('migration skips when plaintext changed', async () => {
   assert.equal((await h.db.doc('org_members/m1').get()).get('passwordHash'), 'newer99');
   assert.equal((await h.db.doc('member_credentials/m1').get()).exists, false);
   assert.equal(await migratePlaintextPassword(h, 'm1', 'newer99'), true);
+});
+
+test('credential login ignores member.userId', async () => {
+  const masterUid = (await (async () => {
+    await h.db.doc('member_credentials/_master_').set({ hash: await hashPassword('x9Secret') });
+    const m = await credentialLogin(h, { nameOrEmail: MASTER, password: 'x9Secret' });
+    return m.ok ? m.uid : '';
+  })());
+  assert.match(masterUid, /^master_/);
+  await h.auth.createUser({ uid: 'victim' });
+  for (const [id, userId] of [['m1', masterUid], ['m2', 'victim']]) {
+    await member(id, { userId });
+    await h.db.doc(`member_credentials/${id}`).set({ hash: await hashPassword('secret1') });
+    const r = await credentialLogin(h, { nameOrEmail: `${id}@x.com`, password: 'secret1' });
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.uid, `member_${id}`);
+    assert.equal(tokenUid(r.token), `member_${id}`);
+    assert.deepEqual((await h.auth.getUser(r.uid)).customClaims, { master: false, orgs: { org_a: 'Operacional' } });
+  }
+  assert.deepEqual((await h.auth.getUser(masterUid)).customClaims, { master: true, orgs: {} });
+  assert.equal((await h.auth.getUser('victim')).customClaims, undefined);
+});
+
+test('first access ignores member.userId', async () => {
+  await member('m1', { userId: 'victim' });
+  await h.auth.createUser({ uid: 'victim' });
+  const { token } = await issueFirstAccessToken(h, 'm1', 'admin_uid');
+  const r = await completeFirstAccess(h, token, 'newpass1');
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(tokenUid(r.token), 'member_m1');
+  assert.equal((await h.auth.getUser('victim')).customClaims, undefined);
+});
+
+test('member login claims come only from its own doc', async () => {
+  await member('m1');
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  await h.db.doc('org_members/x1').set({ id: 'x1', orgId: 'org_b', userId: 'member_m1', userEmail: 'x@x.com', userName: 'X', role: 'Admin', active: true });
+  const r = await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'secret1' });
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual((await h.auth.getUser(r.uid)).customClaims, { master: false, orgs: { org_a: 'Operacional' } });
 });

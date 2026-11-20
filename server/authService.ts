@@ -33,7 +33,6 @@ const fallbackMasterUid = (email: string) => `master_${sha256(norm(email)).toStr
 const isMasterEmail = (email?: string | null) => !!email && masterEmails().includes(norm(email));
 
 const orgOf = (m: Partial<OrgMember> & { organizationId?: string }) => m.orgId || m.organizationId || '';
-const memberUid = (m: OrgMember) => m.userId || `member_${m.id}`;
 const toMember = (d: DocumentSnapshot): OrgMember => {
   const { passwordHash: _omit, ...data } = d.data() as OrgMember;
   return { ...data, id: d.id, orgId: orgOf(data) };
@@ -49,12 +48,12 @@ async function ensureUser(h: AdminHandles, uid: string, props: { email?: string;
 }
 
 async function mintMemberToken(h: AdminHandles, m: OrgMember): Promise<{ uid: string; token: string }> {
-  const uid = memberUid(m);
+  // Always member_<id>: userId/userEmail on org_members are admin-writable, so they must not pick the uid or grant claims.
+  // Only our master path mints master_* uids, which is what makes the uid check in claimsFor safe.
+  const uid = `member_${m.id}`;
   await ensureUser(h, uid, { displayName: m.userName });
-  // Only docs bound to this uid plus the member's own doc: its userEmail is admin-typed and must not grant anything.
-  const docs = await activeMemberDocs(h, uid, null);
   const own = await h.db.doc(`org_members/${m.id}`).get();
-  await h.auth.setCustomUserClaims(uid, orgClaims(own.exists ? [...docs, own] : docs));
+  await h.auth.setCustomUserClaims(uid, orgClaims(own.exists ? [own] : []));
   return { uid, token: await h.auth.createCustomToken(uid) };
 }
 
