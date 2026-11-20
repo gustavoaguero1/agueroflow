@@ -50,11 +50,13 @@ Cloud Run -> serviço -> **Editar e implantar nova revisão** -> **Escalonamento
 2. Publique o código: faça o merge da branch em `main` e o AI Studio puxa/implanta.
 3. **Diagnóstico:** abra o app já logado como master, abra o console do navegador (F12 -> Console) e rode:
    `fetch('/api/health').then(r=>r.json()).then(console.log)`
+   Rode **no console da aba do app, logado como master** - o token de acesso vai junto automaticamente.
+   Se `diagnostics` não aparecer na resposta, você não está logado como master ou o servidor está sem credencial: confira de novo o Passo 1.
    Confira que **todos** os itens de `diagnostics` estão `true`. Preencha a tabela abaixo.
-4. **Só então** publique as regras do Firestore:
+4. **ATENÇÃO: só publique as regras depois que a nova versão do app estiver no ar e o diagnóstico estiver todo `true`. Publicar as regras novas antes tranca todo mundo para fora do app antigo.** Só então publique as regras do Firestore:
    `npx firebase deploy --only firestore --config firebase.deploy.json --project gen-lang-client-0444631531`
    (o banco tem nome próprio, por isso o arquivo `firebase.deploy.json` em vez do `firebase.json`).
-   Alternativa sem terminal: Cloud Console -> Firestore -> escolha o banco `ai-studio-agueroflowgestoo-...` -> **Regras** -> cole o conteúdo de `firestore.rules` -> Publicar. (Índices: o comando acima os publica; pelo console, crie-os manualmente se o app pedir.)
+   Alternativa sem terminal: Cloud Console -> Firestore -> escolha exatamente o banco `ai-studio-agueroflowgestoo-fd1a8235-af5f-4faa-8f53-85d81fa6ae61` (confira o ID completo; não use o `(default)`) -> **Regras** -> cole o conteúdo de `firestore.rules` -> Publicar (mesmo aviso acima vale aqui). (Índices: o comando acima os publica; pelo console, crie-os manualmente se o app pedir.)
 5. Opcional: `npm run migrate:passwords` (precisa das credenciais do Passo 1 no ambiente). Converte senhas antigas em texto puro para hash e mostra só contagens. Sem isso, a conversão acontece sozinha no primeiro login de cada pessoa.
 6. Para colaboradores sem senha: na tela **Estrutura**, gere o link de primeiro acesso e envie a cada um.
 
@@ -62,12 +64,11 @@ Cloud Run -> serviço -> **Editar e implantar nova revisão** -> **Escalonamento
 
 Preencher na etapa 3 (data: ______ ; host: ______________)
 
-| Item de `diagnostics` | Valor (true/false) | Observação |
-|---|---|---|
-| | | |
-| | | |
-| | | |
-| | | |
-| | | |
+| Item de `diagnostics` | Esperado | Valor obtido | Observação |
+|---|---|---|---|
+| `admin` | true | | |
+| `firestoreRead` | true | | |
+| `bucketWrite` | true | | |
+| `customToken` | true | | |
 
 Liberado para publicar as regras? ( ) sim ( ) não - assinado por: ____________

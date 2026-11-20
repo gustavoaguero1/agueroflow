@@ -13,10 +13,13 @@ export async function runMigration(h: AdminHandles): Promise<{ migrated: number;
   const legacyRef = h.db.doc('system_security/master_auth');
   const legacy = (await legacyRef.get()).get('passwordHash');
   if (typeof legacy === 'string' && legacy) {
-    const batch = h.db.batch();
-    batch.set(h.db.doc(`member_credentials/${MASTER_CRED_ID}`), { hash: await hashPassword(legacy), updatedAt: new Date().toISOString() });
-    batch.update(legacyRef, { passwordHash: FieldValue.delete() });
-    await batch.commit();
+    const credRef = h.db.doc(`member_credentials/${MASTER_CRED_ID}`);
+    const hash = await hashPassword(legacy);
+    await h.db.runTransaction(async (tx) => {
+      // Never overwrite a credential the master already set; just drop the plaintext.
+      if (typeof (await tx.get(credRef)).get('hash') !== 'string') tx.set(credRef, { hash, updatedAt: new Date().toISOString() });
+      tx.update(legacyRef, { passwordHash: FieldValue.delete() });
+    });
     migrated++;
   } else skipped++;
   return { migrated, skipped };

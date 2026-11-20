@@ -23,3 +23,11 @@ test('migrate script migrates all plaintext members', async () => {
   assert.equal((await h.db.doc('system_security/master_auth').get()).get('passwordHash'), undefined);
   assert.deepEqual(await runMigration(h), { migrated: 0, skipped: 4 });
 });
+
+test('master legacy plaintext does not overwrite existing credential', async () => {
+  await h.db.doc('member_credentials/_master_').set({ hash: 'existing-hash' });
+  await h.db.doc('system_security/master_auth').set({ passwordHash: 'old-plain' });
+  await runMigration(h);
+  assert.equal((await h.db.doc('member_credentials/_master_').get()).get('hash'), 'existing-hash');
+  assert.equal((await h.db.doc('system_security/master_auth').get()).get('passwordHash'), undefined);
+});
