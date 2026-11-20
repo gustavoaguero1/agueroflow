@@ -60,6 +60,7 @@ import {
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { getAdmin, adminStatus } from './server/firebaseAdmin';
+import { effectiveOrg } from './server/orgDefaults';
 import type {
   WhatsAppNdRecord,
   WhatsAppNdRule,
@@ -732,7 +733,7 @@ async function main() {
     try {
       const orgId = req.orgId; // undefined only for master without orgId: lists all
       const list = readOnboardingsStore()
-        .filter((o) => !orgId || o.organizationId === orgId)
+        .filter((o) => !orgId || effectiveOrg(o.organizationId) === orgId)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       res.json({ success: true, count: list.length, data: list });
     } catch (err: any) {
@@ -752,7 +753,7 @@ async function main() {
 
       const items = readOnboardingsStore();
       const idx = items.findIndex((o) => o.id === id);
-      if (idx >= 0 && !req.user!.master && items[idx].organizationId !== req.orgId) {
+      if (idx >= 0 && !req.user!.master && effectiveOrg(items[idx].organizationId) !== req.orgId) {
         return res.status(403).json({ error: 'forbidden' });
       }
       if (idx >= 0) {
@@ -778,7 +779,7 @@ async function main() {
     try {
       const { id } = req.params;
       const all = readOnboardingsStore();
-      if (!req.user!.master && all.some((o) => o.id === id && o.organizationId !== req.orgId)) {
+      if (!req.user!.master && all.some((o) => o.id === id && effectiveOrg(o.organizationId) !== req.orgId)) {
         return res.status(403).json({ error: 'forbidden' });
       }
       const items = all.filter((o) => o.id !== id);
@@ -2607,7 +2608,7 @@ Sua tarefa:
     const createdAtIso = msg.createdAt || new Date().toISOString();
     const record = {
       id: msg.id || `wamsg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: msg.organizationId || 'org_aguero_default',
+      organizationId: effectiveOrg(msg.organizationId),
       direction: msg.direction || 'outbound',
       contactPhone: formattedPhone,
       contactName: msg.contactName || formattedPhone || 'Contato WhatsApp',
@@ -2699,7 +2700,7 @@ Sua tarefa:
   const defaultReceipts: any[] = [
     {
       id: 'rec_001',
-      organizationId: 'org_aguero_default',
+      organizationId: effectiveOrg(undefined),
       whatsappMessageId: 'wam_987213401',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2724,7 +2725,7 @@ Sua tarefa:
     },
     {
       id: 'rec_002',
-      organizationId: 'org_aguero_default',
+      organizationId: effectiveOrg(undefined),
       whatsappMessageId: 'wam_987213402',
       employeeName: 'André Luiz Souza',
       employeePhone: '+55 19 98456-7890',
@@ -2747,7 +2748,7 @@ Sua tarefa:
     },
     {
       id: 'rec_003',
-      organizationId: 'org_aguero_default',
+      organizationId: effectiveOrg(undefined),
       whatsappMessageId: 'wam_987213403',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2771,7 +2772,7 @@ Sua tarefa:
     },
     {
       id: 'rec_004',
-      organizationId: 'org_aguero_default',
+      organizationId: effectiveOrg(undefined),
       whatsappMessageId: 'wam_987213404',
       employeeName: 'Marcos Roberto Santos',
       employeePhone: '+55 19 98234-5678',
@@ -3457,7 +3458,7 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
 
     const record: WhatsAppNdRecord = {
       id: `wand_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: rule.organizationId || 'org_aguero_default',
+      organizationId: effectiveOrg(rule.organizationId),
       ruleId: rule.id,
       projNumber,
       projYear,
@@ -3562,7 +3563,7 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
         record.whatsappSent = true;
         record.whatsappSentAt = new Date().toISOString();
         recordWhatsAppMessage({
-          organizationId: record.organizationId || 'org_aguero_default',
+          organizationId: effectiveOrg(record.organizationId),
           direction: 'outbound',
           contactPhone: rule.groupJid,
           contactName: rule.groupName,
@@ -3770,8 +3771,8 @@ Sua missão é extrair rigorosamente os seguintes campos:
     (apiKey && !isMasked(apiKey) ? apiKey : '') ||
     (!instanceUrl || instanceUrl === whatsAppReceiptsConfig.instanceUrl ? whatsAppReceiptsConfig.apiKey : '');
   // Records are org-tagged: reads need membership, admin mutations need the role-checked org.
-  const inCallerOrg = (req: Request, rec: any) => req.user!.master || Object.hasOwn(req.user!.orgs, rec?.organizationId);
-  const ownedByReqOrg = (req: Request, rec: any) => req.user!.master || rec?.organizationId === req.orgId;
+  const inCallerOrg = (req: Request, rec: any) => req.user!.master || Object.hasOwn(req.user!.orgs, effectiveOrg(rec?.organizationId));
+  const ownedByReqOrg = (req: Request, rec: any) => req.user!.master || effectiveOrg(rec?.organizationId) === req.orgId;
   const maskWaConfig = (cfg: any) => {
     const out = { ...cfg };
     for (const k of WA_SECRET_FIELDS) if (typeof out[k] === 'string' && out[k]) out[k] = '••••' + out[k].slice(-4);
@@ -3831,7 +3832,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newReceipt = {
         id: `rec_${Date.now()}`,
-        organizationId: 'org_aguero_default',
+        organizationId: effectiveOrg(undefined),
         whatsappMessageId: `manual_${Date.now()}`,
         employeeName: employeeName || 'Carlos Eduardo Silva',
         employeePhone: employeePhone || '+55 19 98123-4567',
@@ -4032,7 +4033,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   ) {
     const defaultSource = options.source || 'whatsapp_real';
     const method = options.triggerMethod || 'POST';
-    const orgId = options.organizationId || 'org_aguero_default';
+    const orgId = effectiveOrg(options.organizationId);
 
     // Unwrap Composio trigger wrapper if present ({ payload / data })
     const unwrapped =
@@ -4596,7 +4597,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
         const newRec = {
           id: `rec_batch_${Date.now()}_${i}`,
-          organizationId: 'org_aguero_default',
+          organizationId: effectiveOrg(undefined),
           whatsappMessageId: `batch_${Date.now()}_${i}`,
           employeeName: employeeName || f.employeeName || 'Carlos Eduardo Silva',
           employeePhone: employeePhone || f.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber,
@@ -4710,7 +4711,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newRec = {
         id: `rec_test_${Date.now()}`,
-        organizationId: 'org_aguero_default',
+        organizationId: effectiveOrg(undefined),
         whatsappMessageId: `test_wa_${Date.now()}`,
         employeeName: 'Gustavo Aguero (Administrador)',
         employeePhone: whatsAppReceiptsConfig.connectedPhoneNumber || process.env.OWNER_PHONE || '',
@@ -5033,7 +5034,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
   // 6. Send 1-to-1 Commercial / Operational WhatsApp Message via Composio SDK
   app.post('/api/composio/whatsapp/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
-    const organizationId = req.orgId || 'org_aguero_default';
+    const organizationId = effectiveOrg(req.orgId);
     const {
       toNumber,
       contactName,
@@ -5394,7 +5395,7 @@ Avalie rigorosamente:
 
     if (sendRes.success) {
       recordWhatsAppMessage({
-        organizationId: 'org_aguero_default',
+        organizationId: effectiveOrg(undefined),
         direction: 'outbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -6040,7 +6041,7 @@ INSTRUÇÕES:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: 'org_aguero_default',
+          organizationId: effectiveOrg(undefined),
           direction: 'outbound',
           contactPhone: job.targetJidOrPhone,
           contactName: job.targetLabel || job.targetJidOrPhone,
@@ -6619,7 +6620,7 @@ Classifique e extraia em JSON estrito:
         });
         if (sendRes.success) {
           recordWhatsAppMessage({
-            organizationId: 'org_aguero_default',
+            organizationId: effectiveOrg(undefined),
             direction: 'outbound',
             contactPhone: resolvedTarget.jidOrPhone,
             contactName: resolvedTarget.label,
@@ -6831,7 +6832,7 @@ DIRETRIZES ESSENCIAIS:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: 'org_aguero_default',
+          organizationId: effectiveOrg(undefined),
           direction: 'outbound',
           contactPhone: useOwnerDm && ownerDigits ? formatWhatsAppPhoneDisplay(ownerDigits) : params.isGroup ? params.remoteJid : params.senderPhone,
           contactName: useOwnerDm ? 'Meu WhatsApp (Resposta @aguero)' : params.isGroup ? params.groupName || params.remoteJid : params.senderName,
@@ -7271,7 +7272,7 @@ DIRETRIZES ESSENCIAIS:
     onHistoryMessage: (histEvt) => {
       // Passive read-only archival of offline/synced WhatsApp messages so @aguero summaries NEVER miss offline history!
       recordWhatsAppMessage({
-        organizationId: 'org_aguero_default',
+        organizationId: effectiveOrg(undefined),
         direction: histEvt.fromMe ? 'outbound' : 'inbound',
         contactPhone: histEvt.isGroup ? histEvt.remoteJid : histEvt.senderPhone,
         contactName: histEvt.isGroup ? histEvt.groupName || histEvt.remoteJid : histEvt.senderName,
@@ -7374,7 +7375,7 @@ DIRETRIZES ESSENCIAIS:
 
           const newRec = {
             id: `rec_wa_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            organizationId: 'org_aguero_default',
+            organizationId: effectiveOrg(undefined),
             whatsappMessageId: evt.messageId,
             employeeName: evt.senderName,
             employeePhone: evt.senderPhone,
@@ -7434,7 +7435,7 @@ DIRETRIZES ESSENCIAIS:
             if (replyRes.success) {
               didSendOcrConfirmation = true;
               recordWhatsAppMessage({
-                organizationId: 'org_aguero_default',
+                organizationId: effectiveOrg(undefined),
                 direction: 'outbound',
                 contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
                 contactName: evt.isGroup ? evt.groupName : evt.senderName,
@@ -7461,7 +7462,7 @@ DIRETRIZES ESSENCIAIS:
 
       // Record chat message in unified WhatsApp hub inbox
       recordWhatsAppMessage({
-        organizationId: 'org_aguero_default',
+        organizationId: effectiveOrg(undefined),
         direction: evt.fromMe ? 'outbound' : 'inbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -7799,7 +7800,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Bridge Send Message (Supports BOTH Groups @g.us and Private 1-to-1)
   app.post('/api/whatsapp/bridge/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
-    const organizationId = req.orgId || 'org_aguero_default';
+    const organizationId = effectiveOrg(req.orgId);
     const {
       toJidOrPhone,
       contactName,
@@ -8603,7 +8604,7 @@ DIRETRIZES ESSENCIAIS:
     const base = createDefaultNdRuleForGroup({
       groupJid,
       groupName,
-      organizationId: body.organizationId || 'org_aguero_default',
+      organizationId: effectiveOrg(body.organizationId),
     });
 
     const newRule: WhatsAppNdRule = {
@@ -8789,7 +8790,7 @@ DIRETRIZES ESSENCIAIS:
           ...createDefaultNdRuleForGroup({
             groupJid: '',
             groupName: 'Teste / Gerador Avulso',
-            organizationId: 'org_aguero_default',
+            organizationId: effectiveOrg(undefined),
           }),
           id: 'wand_rule_default_test',
           nextProjNumber: Math.max(4925, maxExistingProj + 1),
@@ -10033,7 +10034,7 @@ Retorne JSON estrito.`;
     const nowIso = new Date().toISOString();
     const newRec = {
       id: `rec_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: 'org_aguero_default',
+      organizationId: effectiveOrg(undefined),
       employeeName: String(body.employeeName || body.editedBy || 'Lançamento Manual').trim(),
       employeePhone: String(body.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber || '').trim(),
       receiptDate: String(body.receiptDate || nowIso.slice(0, 10)).trim(),
