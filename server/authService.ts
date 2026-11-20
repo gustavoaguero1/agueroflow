@@ -148,6 +148,33 @@ async function masterLogin(h: AdminHandles, email: string, password: string): Pr
   return { ok: true, token: await h.auth.createCustomToken(uid), uid, isMaster: true };
 }
 
+type Secret = { plain: string } | { hash: string };
+
+async function memberSecret(h: AdminHandles, memberId: string): Promise<Secret | null> {
+  const [raw, cred] = await Promise.all([
+    h.db.doc(`org_members/${memberId}`).get(),
+    h.db.doc(`member_credentials/${memberId}`).get(),
+  ]);
+  const plain = raw.get('passwordHash');
+  // Plaintext left by the legacy client is newer than any stored hash (setPassword deletes it), so it wins.
+  if (typeof plain === 'string' && plain) return { plain };
+  const hash = cred.get('hash');
+  return typeof hash === 'string' ? { hash } : null;
+}
+
+async function checkSecret(h: AdminHandles, memberId: string, s: Secret, password: string): Promise<boolean> {
+  if ('hash' in s) return verifyPassword(password, s.hash);
+  if (!sameText(password, s.plain)) return false;
+  await migratePlaintextPassword(h, memberId, s.plain);
+  return true;
+}
+
+/** True only if the member has a password and `password` matches it (migrating legacy plaintext). */
+export async function verifyMemberPassword(h: AdminHandles, memberId: string, password: string): Promise<boolean> {
+  const s = await memberSecret(h, memberId);
+  return !!s && !!password && checkSecret(h, memberId, s, password);
+}
+
 export async function credentialLogin(
   h: AdminHandles, input: { nameOrEmail: string; password: string; company?: string },
 ): Promise<LoginResult> {
@@ -158,14 +185,8 @@ export async function credentialLogin(
   if ('error' in resolved) return { ok: false, error: resolved.error };
   const { member, org } = resolved;
 
-  const [raw, cred] = await Promise.all([
-    h.db.doc(`org_members/${member.id}`).get(),
-    h.db.doc(`member_credentials/${member.id}`).get(),
-  ]);
-  const plain = raw.get('passwordHash');
-  const hasPlain = typeof plain === 'string' && !!plain;
-  const credHash = cred.get('hash');
-  if (!hasPlain && typeof credHash !== 'string') {
+  const secret = await memberSecret(h, member.id);
+  if (!secret) {
     return {
       ok: false, isFirstAccess: true, memberName: member.userName,
       error: 'Primeiro acesso detectado: Cadastre sua senha pessoal para continuar.',
@@ -174,12 +195,9 @@ export async function credentialLogin(
   if (!password || password.trim().length < MIN_PASSWORD) {
     return { ok: false, error: 'Por favor, informe sua senha de acesso (mínimo 6 caracteres).' };
   }
-  // Plaintext left by the legacy client is newer than any stored hash (setPassword deletes it), so it wins.
-  const valid = hasPlain ? sameText(password, plain) : await verifyPassword(password, credHash);
-  if (!valid) {
+  if (!(await checkSecret(h, member.id, secret, password))) {
     return { ok: false, error: 'Senha incorreta. Verifique os dados digitados ou utilize "Continuar com Google".' };
   }
-  if (hasPlain) await migratePlaintextPassword(h, member.id, plain);
 
   const { uid, token } = await mintMemberToken(h, member);
   return { ok: true, token, uid, isMaster: false, member, org };
@@ -248,15 +266,41 @@ export async function syncSession(
   return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: docs[0].get('userId') || uid } : null };
 }
 
+// userId on org_members is admin-writable: never let it reach a master identity (forced logout / claim overwrite).
+async function boundUser(h: AdminHandles, memberId: string) {
+  const bound = (await h.db.doc(`org_members/${memberId}`).get()).get('userId');
+  if (typeof bound !== 'string' || !bound || bound === `member_${memberId}`) return null;
+  const u = await h.auth.getUser(bound).catch((e) => { if (isNotFound(e)) return null; throw e; });
+  return u && u.customClaims?.master !== true ? u : null;
+}
+
+async function setClaimsIfExists(h: AdminHandles, uid: string, claims: () => Promise<Claims>) {
+  try {
+    await h.auth.setCustomUserClaims(uid, await claims());
+  } catch (e) {
+    if (!isNotFound(e)) throw e; // never logged in
+  }
+}
+
+/** Call after a member's role/org changes. Inactive or missing members get their sessions revoked. */
+export async function refreshMemberClaims(h: AdminHandles, memberId: string): Promise<void> {
+  const snap = await h.db.doc(`org_members/${memberId}`).get();
+  if (!snap.exists || snap.get('active') !== true) return revokeMemberSessions(h, memberId);
+  const uid = `member_${memberId}`;
+  await setClaimsIfExists(h, uid, () => buildClaims(h, uid));
+  const bound = await boundUser(h, memberId);
+  if (bound) await setClaimsIfExists(h, bound.uid, () => buildClaims(h, bound.uid, bound.email, bound.emailVerified));
+}
+
 /**
  * Call after deactivating/removing a member. Clears the password identity's claims, recomputes the bound
  * Google uid's claims (its next syncSession restores email-based ones), and revokes both refresh tokens.
  */
 export async function revokeMemberSessions(h: AdminHandles, memberId: string): Promise<void> {
   const uid = `member_${memberId}`;
-  const bound = (await h.db.doc(`org_members/${memberId}`).get()).get('userId');
+  const bound = await boundUser(h, memberId);
   const targets: [string, () => Promise<Claims>][] = [[uid, async () => ({ master: false, orgs: {} })]];
-  if (typeof bound === 'string' && bound && bound !== uid) targets.push([bound, () => buildClaims(h, bound)]);
+  if (bound) targets.push([bound.uid, () => buildClaims(h, bound.uid)]);
   for (const [u, claims] of targets) {
     try {
       await h.auth.setCustomUserClaims(u, await claims());
