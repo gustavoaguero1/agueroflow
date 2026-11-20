@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { getAdmin, type AdminHandles } from '../../server/firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from '../../server/passwords.ts';
 import {
-  credentialLogin, syncSession, issueFirstAccessToken, checkFirstAccessToken, completeFirstAccess,
+  credentialLogin, syncSession, migratePlaintextPassword, issueFirstAccessToken, checkFirstAccessToken, completeFirstAccess,
 } from '../../server/authService.ts';
 
 const PROJECT = 'demo-agueroflow';
@@ -110,7 +110,8 @@ test('master plaintext migrated', async () => {
 });
 
 test('master uses existing auth uid', async () => {
-  await h.auth.createUser({ uid: 'google_master', email: MASTER });
+  await h.auth.importUsers([{ uid: 'google_master', email: MASTER, emailVerified: true,
+    providerData: [{ uid: 'g-sub', providerId: 'google.com', email: MASTER }] }]);
   await h.db.doc('member_credentials/_master_').set({ hash: await hashPassword('x9Secret') });
   const r = await credentialLogin(h, { nameOrEmail: MASTER, password: 'x9Secret' });
   assert.equal(r.ok && r.uid, 'google_master');
@@ -133,7 +134,7 @@ test('session resolves member by uid without email', async () => {
 test('binds userId by email on session', async () => {
   await member('m1');
   await h.auth.createUser({ uid: 'g1', email: 'm1@x.com' });
-  const r = await syncSession(h, 'g1', 'M1@X.com');
+  const r = await syncSession(h, 'g1', 'M1@X.com', true);
   assert.equal(r.member?.id, 'm1');
   assert.equal((await h.db.doc('org_members/m1').get()).data()!.userId, 'g1');
 });
@@ -143,9 +144,9 @@ test('claims include every active membership with role', async () => {
   await h.db.doc('org_members/m2').set({ id: 'm2', organizationId: 'org_b', userEmail: 'u1@x.com', userName: 'U', role: 'Supervisor', active: true });
   await member('m3', { orgId: 'org_c', userId: 'u1', active: false });
   await h.auth.createUser({ uid: 'u1', email: 'u1@x.com' });
-  const r = await syncSession(h, 'u1', 'u1@x.com');
+  const r = await syncSession(h, 'u1', 'u1@x.com', true);
   assert.deepEqual(r.claims, { master: false, orgs: { org_a: 'Admin', org_b: 'Supervisor' } });
-  const master = await syncSession(h, 'u1', MASTER);
+  const master = await syncSession(h, 'u1', MASTER, true);
   assert.equal(master.claims.master, true);
 });
 
@@ -183,4 +184,71 @@ test('completeFirstAccess sets password and returns token', async () => {
   assert.equal(m.passwordSet, true);
   assert.equal('passwordHash' in m, false);
   assert.equal((await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'newpass1' })).ok, true);
+});
+
+test('unverified or password-only auth user with master email is not used as master uid', async () => {
+  await h.auth.createUser({ uid: 'attacker', email: MASTER, password: 'whatever1' });
+  await h.db.doc('member_credentials/_master_').set({ hash: await hashPassword('x9Secret') });
+  const r = await credentialLogin(h, { nameOrEmail: MASTER, password: 'x9Secret' });
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.match(r.uid, /^master_[0-9a-f]{16}$/);
+  assert.equal((await h.auth.getUser('attacker')).customClaims, undefined);
+});
+
+test('member with master email does not get master claim', async () => {
+  await member('m1', { userEmail: MASTER });
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  const r = await credentialLogin(h, { nameOrEmail: 'User m1', password: 'secret1' });
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.isMaster, false);
+  assert.deepEqual((await h.auth.getUser(r.uid)).customClaims, { master: false, orgs: { org_a: 'Operacional' } });
+});
+
+test('member email of other org does not grant that org', async () => {
+  await member('m1', { userEmail: 'victim@x.com' });
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  await h.db.doc('org_members/v1').set({ id: 'v1', orgId: 'org_b', userEmail: 'victim@x.com', userName: 'Victim', role: 'Admin', active: true });
+  const r = await credentialLogin(h, { nameOrEmail: 'User m1', password: 'secret1' });
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.deepEqual((await h.auth.getUser(r.uid)).customClaims, { master: false, orgs: { org_a: 'Operacional' } });
+  assert.equal((await h.db.doc('org_members/v1').get()).get('userId'), undefined);
+});
+
+test('unverified email grants nothing', async () => {
+  await member('m1');
+  await h.auth.createUser({ uid: 'g1', email: 'm1@x.com' });
+  const r = await syncSession(h, 'g1', 'm1@x.com');
+  assert.deepEqual(r, { claims: { master: false, orgs: {} }, member: null });
+  assert.equal((await h.db.doc('org_members/m1').get()).get('userId'), undefined);
+  await h.auth.createUser({ uid: 'g2', email: MASTER });
+  assert.equal((await syncSession(h, 'g2', MASTER, false)).claims.master, false);
+});
+
+test('email-matched doc bound to other uid ignored', async () => {
+  await member('m1', { userId: 'other' });
+  await h.auth.createUser({ uid: 'g1', email: 'm1@x.com' });
+  const r = await syncSession(h, 'g1', 'm1@x.com', true);
+  assert.deepEqual(r, { claims: { master: false, orgs: {} }, member: null });
+  assert.equal((await h.db.doc('org_members/m1').get()).get('userId'), 'other');
+});
+
+test('first access failure does not consume token', async () => {
+  await member('m1');
+  const { token } = await issueFirstAccessToken(h, 'm1', 'admin_uid');
+  await h.db.doc('org_members/m1').delete();
+  const r = await completeFirstAccess(h, token, 'newpass1');
+  assert.equal(r.ok, false);
+  assert.equal((await h.db.doc(`first_access_tokens/${token}`).get()).get('used'), false);
+  assert.equal((await h.db.doc('member_credentials/m1').get()).exists, false);
+});
+
+test('migration skips when plaintext changed', async () => {
+  await member('m1', { passwordHash: 'newer99' });
+  assert.equal(await migratePlaintextPassword(h, 'm1', 'older99'), false);
+  assert.equal((await h.db.doc('org_members/m1').get()).get('passwordHash'), 'newer99');
+  assert.equal((await h.db.doc('member_credentials/m1').get()).exists, false);
+  assert.equal(await migratePlaintextPassword(h, 'm1', 'newer99'), true);
 });

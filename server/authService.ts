@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentSnapshot, type Transaction, type WriteBatch } from 'firebase-admin/firestore';
 import type { AdminHandles } from './firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import type { OrgMember, Organization, UserRole } from '../src/types/index.ts';
@@ -51,7 +51,10 @@ async function ensureUser(h: AdminHandles, uid: string, props: { email?: string;
 async function mintMemberToken(h: AdminHandles, m: OrgMember): Promise<{ uid: string; token: string }> {
   const uid = memberUid(m);
   await ensureUser(h, uid, { displayName: m.userName });
-  await h.auth.setCustomUserClaims(uid, await buildClaims(h, uid, m.userEmail));
+  // Only docs bound to this uid plus the member's own doc: its userEmail is admin-typed and must not grant anything.
+  const docs = await activeMemberDocs(h, uid, null);
+  const own = await h.db.doc(`org_members/${m.id}`).get();
+  await h.auth.setCustomUserClaims(uid, orgClaims(own.exists ? [...docs, own] : docs));
   return { uid, token: await h.auth.createCustomToken(uid) };
 }
 
@@ -85,15 +88,24 @@ export async function resolveMember(
   return { member, org };
 }
 
-export async function migratePlaintextPassword(h: AdminHandles, memberId: string): Promise<boolean> {
+function writePassword(w: Transaction | WriteBatch, h: AdminHandles, memberId: string, hash: string, flags: object) {
+  const at = now();
+  (w as WriteBatch).set(h.db.doc(`member_credentials/${memberId}`), { hash, updatedAt: at });
+  // Always drop legacy plaintext so it can never shadow the new hash.
+  (w as WriteBatch).update(h.db.doc(`org_members/${memberId}`), { ...flags, passwordHash: FieldValue.delete() });
+}
+
+/** Migrates only if the stored plaintext still equals `expectedPlain` (when given), atomically. */
+export async function migratePlaintextPassword(h: AdminHandles, memberId: string, expectedPlain?: string): Promise<boolean> {
   const ref = h.db.doc(`org_members/${memberId}`);
-  const plain = (await ref.get()).get('passwordHash');
+  const plain = expectedPlain ?? (await ref.get()).get('passwordHash');
   if (typeof plain !== 'string' || !plain) return false;
-  const batch = h.db.batch();
-  batch.set(h.db.doc(`member_credentials/${memberId}`), { hash: await hashPassword(plain), updatedAt: now() });
-  batch.update(ref, { passwordHash: FieldValue.delete() });
-  await batch.commit();
-  return true;
+  const hash = await hashPassword(plain);
+  return h.db.runTransaction(async (tx) => {
+    if ((await tx.get(ref)).get('passwordHash') !== plain) return false;
+    writePassword(tx, h, memberId, hash, {});
+    return true;
+  });
 }
 
 async function masterLogin(h: AdminHandles, email: string, password: string): Promise<LoginResult> {
@@ -122,13 +134,17 @@ async function masterLogin(h: AdminHandles, email: string, password: string): Pr
     return { ok: false, error: 'Senha do Usuário Master incorreta. Utilize sua senha cadastrada ou clique em "Continuar com Google".' };
   }
 
-  let uid: string;
-  try {
-    uid = (await h.auth.getUserByEmail(email)).uid;
-  } catch (e) {
+  // Reuse an existing Auth user only if Google verified it; anyone can sign up an unverified account with this email.
+  const existing = await h.auth.getUserByEmail(email).catch((e) => {
     if ((e as { code?: string }).code !== 'auth/user-not-found') throw e;
+    return null;
+  });
+  let uid: string;
+  if (existing?.emailVerified && existing.providerData.some((p) => p.providerId === 'google.com')) {
+    uid = existing.uid;
+  } else {
     uid = fallbackMasterUid(email);
-    await ensureUser(h, uid, { email });
+    await ensureUser(h, uid, { displayName: email }); // no email: it may already belong to another Auth user
   }
   await h.auth.setCustomUserClaims(uid, { master: true, orgs: {} } satisfies Claims);
   return { ok: true, token: await h.auth.createCustomToken(uid), uid, isMaster: true };
@@ -165,25 +181,30 @@ export async function credentialLogin(
   if (!valid) {
     return { ok: false, error: 'Senha incorreta. Verifique os dados digitados ou utilize "Continuar com Google".' };
   }
-  if (hasPlain) await migratePlaintextPassword(h, member.id);
+  if (hasPlain) await migratePlaintextPassword(h, member.id, plain);
 
   const { uid, token } = await mintMemberToken(h, member);
   return { ok: true, token, uid, isMaster: false, member, org };
 }
 
-async function activeMemberDocs(h: AdminHandles, uid: string, email?: string | null) {
+// `email` must already be verified by the caller; email matches bound to another uid are skipped.
+async function activeMemberDocs(h: AdminHandles, uid: string, email: string | null) {
   const members = h.db.collection('org_members');
   const byUid = (await members.where('userId', '==', uid).where('active', '==', true).get()).docs;
   const byEmail = email
     ? (await members.where('userEmail', '==', norm(email)).where('active', '==', true).get()).docs
+      .filter((d) => !d.get('userId') || d.get('userId') === uid)
     : [];
   const seen = new Set(byUid.map((d) => d.id));
   return [...byUid, ...byEmail.filter((d) => !seen.has(d.id))];
 }
 
-function claimsFor(uid: string, email: string | null | undefined, docs: DocumentSnapshot[]): Claims {
+function claimsFor(uid: string, email: string | null, docs: DocumentSnapshot[]): Claims {
   const master = isMasterEmail(email) || masterEmails().some((e) => fallbackMasterUid(e) === uid);
-  if (master) return { master: true, orgs: {} };
+  return master ? { master: true, orgs: {} } : orgClaims(docs);
+}
+
+function orgClaims(docs: DocumentSnapshot[]): Claims {
   const orgs: Claims['orgs'] = {};
   for (const d of docs) {
     const m = toMember(d);
@@ -192,13 +213,17 @@ function claimsFor(uid: string, email: string | null | undefined, docs: Document
   return { master: false, orgs };
 }
 
-export async function buildClaims(h: AdminHandles, uid: string, email?: string | null): Promise<Claims> {
-  return claimsFor(uid, email, await activeMemberDocs(h, uid, email));
+export async function buildClaims(
+  h: AdminHandles, uid: string, email?: string | null, emailVerified = false,
+): Promise<Claims> {
+  const e = emailVerified ? email ?? null : null;
+  return claimsFor(uid, e, await activeMemberDocs(h, uid, e));
 }
 
 export async function syncSession(
-  h: AdminHandles, uid: string, email?: string | null,
+  h: AdminHandles, uid: string, rawEmail?: string | null, emailVerified = false,
 ): Promise<{ claims: Claims; member: OrgMember | null }> {
+  const email = emailVerified ? rawEmail ?? null : null;
   const docs = await activeMemberDocs(h, uid, email);
   await Promise.all(docs.filter((d) => !d.get('userId')).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
   const claims = claimsFor(uid, email, docs);
@@ -210,13 +235,12 @@ export async function setPassword(h: AdminHandles, memberId: string, newPassword
   if (!newPassword || newPassword.trim().length < MIN_PASSWORD) throw new Error(ERR_SHORT_NEW);
   const ref = h.db.doc(`org_members/${memberId}`);
   if (!(await ref.get()).exists) throw new Error(ERR_NO_MEMBER);
-  const at = now();
   const batch = h.db.batch();
-  batch.set(h.db.doc(`member_credentials/${memberId}`), { hash: await hashPassword(newPassword), updatedAt: at });
-  // Also drop any legacy plaintext so it can never shadow the new hash.
-  batch.update(ref, { passwordSet: true, passwordSetAt: at, updatedAt: at, passwordHash: FieldValue.delete() });
+  writePassword(batch, h, memberId, await hashPassword(newPassword), passwordSetFlags());
   await batch.commit();
 }
+
+const passwordSetFlags = (at = now()) => ({ passwordSet: true, passwordSetAt: at, updatedAt: at });
 
 export async function issueFirstAccessToken(
   h: AdminHandles, memberId: string, createdBy: string,
@@ -257,7 +281,8 @@ export async function completeFirstAccess(
   if (!newPassword || newPassword.trim().length < MIN_PASSWORD) return { ok: false, error: ERR_SHORT_NEW };
   if (typeof token !== 'string' || !TOKEN_RE.test(token)) return { ok: false, error: ERR_TOKEN_INVALID };
   const tokenRef = h.db.doc(`first_access_tokens/${token}`);
-  // Consume atomically so two concurrent submits cannot both succeed.
+  const hash = await hashPassword(newPassword);
+  // Consume the token and write the password in one transaction: single use, and never burned on a failed write.
   const consumed = await h.db.runTransaction(async (tx): Promise<{ error: string } | { memberId: string }> => {
     const snap = await tx.get(tokenRef);
     const err = tokenError(snap);
@@ -265,10 +290,10 @@ export async function completeFirstAccess(
     const mSnap = await tx.get(h.db.doc(`org_members/${snap.get('memberId')}`));
     if (!mSnap.exists || !mSnap.get('active')) return { error: ERR_NO_MEMBER };
     tx.update(tokenRef, { used: true, usedAt: now() });
+    writePassword(tx, h, mSnap.id, hash, passwordSetFlags());
     return { memberId: mSnap.id };
   });
   if ('error' in consumed) return { ok: false, error: consumed.error };
-  await setPassword(h, consumed.memberId, newPassword);
   const member = toMember(await h.db.doc(`org_members/${consumed.memberId}`).get());
   return { ok: true, token: (await mintMemberToken(h, member)).token };
 }
