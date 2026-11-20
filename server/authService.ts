@@ -52,8 +52,7 @@ async function mintMemberToken(h: AdminHandles, m: OrgMember): Promise<{ uid: st
   // Only our master path mints master_* uids, which is what makes the uid check in claimsFor safe.
   const uid = `member_${m.id}`;
   await ensureUser(h, uid, { displayName: m.userName });
-  const own = await h.db.doc(`org_members/${m.id}`).get();
-  await h.auth.setCustomUserClaims(uid, orgClaims(own.exists ? [own] : []));
+  await h.auth.setCustomUserClaims(uid, await buildClaims(h, uid));
   return { uid, token: await h.auth.createCustomToken(uid) };
 }
 
@@ -212,9 +211,22 @@ function orgClaims(docs: DocumentSnapshot[]): Claims {
   return { master: false, orgs };
 }
 
+// Password users (uid member_<id>) carry exactly their own active doc; no email lookup, no binding.
+async function ownMemberDocs(h: AdminHandles, uid: string): Promise<DocumentSnapshot[] | null> {
+  const id = /^member_(.+)$/.exec(uid)?.[1];
+  if (!id) return null;
+  if (id.includes('/')) return [];
+  const d = await h.db.doc(`org_members/${id}`).get();
+  return d.exists && d.get('active') === true ? [d] : [];
+}
+
+const isNotFound = (e: unknown) => (e as { code?: string }).code === 'auth/user-not-found';
+
 export async function buildClaims(
   h: AdminHandles, uid: string, email?: string | null, emailVerified = false,
 ): Promise<Claims> {
+  const own = await ownMemberDocs(h, uid);
+  if (own) return orgClaims(own);
   const e = emailVerified ? email ?? null : null;
   return claimsFor(uid, e, await activeMemberDocs(h, uid, e));
 }
@@ -222,12 +234,37 @@ export async function buildClaims(
 export async function syncSession(
   h: AdminHandles, uid: string, rawEmail?: string | null, emailVerified = false,
 ): Promise<{ claims: Claims; member: OrgMember | null }> {
+  const own = await ownMemberDocs(h, uid);
+  if (own) {
+    const claims = orgClaims(own);
+    await h.auth.setCustomUserClaims(uid, claims);
+    return { claims, member: own[0] ? toMember(own[0]) : null };
+  }
   const email = emailVerified ? rawEmail ?? null : null;
   const docs = await activeMemberDocs(h, uid, email);
   await Promise.all(docs.filter((d) => !d.get('userId')).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
   const claims = claimsFor(uid, email, docs);
   await h.auth.setCustomUserClaims(uid, claims);
   return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: docs[0].get('userId') || uid } : null };
+}
+
+/**
+ * Call after deactivating/removing a member. Clears the password identity's claims, recomputes the bound
+ * Google uid's claims (its next syncSession restores email-based ones), and revokes both refresh tokens.
+ */
+export async function revokeMemberSessions(h: AdminHandles, memberId: string): Promise<void> {
+  const uid = `member_${memberId}`;
+  const bound = (await h.db.doc(`org_members/${memberId}`).get()).get('userId');
+  const targets: [string, () => Promise<Claims>][] = [[uid, async () => ({ master: false, orgs: {} })]];
+  if (typeof bound === 'string' && bound && bound !== uid) targets.push([bound, () => buildClaims(h, bound)]);
+  for (const [u, claims] of targets) {
+    try {
+      await h.auth.setCustomUserClaims(u, await claims());
+      await h.auth.revokeRefreshTokens(u);
+    } catch (e) {
+      if (!isNotFound(e)) throw e; // never logged in: nothing to revoke
+    }
+  }
 }
 
 export async function setPassword(h: AdminHandles, memberId: string, newPassword: string): Promise<void> {

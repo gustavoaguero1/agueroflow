@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { getAdmin, type AdminHandles } from '../../server/firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from '../../server/passwords.ts';
 import {
-  credentialLogin, syncSession, migratePlaintextPassword, issueFirstAccessToken, checkFirstAccessToken, completeFirstAccess,
+  credentialLogin, syncSession, migratePlaintextPassword, revokeMemberSessions, issueFirstAccessToken, checkFirstAccessToken, completeFirstAccess,
 } from '../../server/authService.ts';
 
 const PROJECT = 'demo-agueroflow';
@@ -292,4 +292,43 @@ test('member login claims come only from its own doc', async () => {
   const r = await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'secret1' });
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual((await h.auth.getUser(r.uid)).customClaims, { master: false, orgs: { org_a: 'Operacional' } });
+});
+
+test('password login then sync keeps claims', async () => {
+  await member('m1', { role: 'Gerente' });
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  const r = await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'secret1' });
+  assert.equal(r.ok, true);
+  const s = await syncSession(h, 'member_m1');
+  assert.deepEqual(s.claims, { master: false, orgs: { org_a: 'Gerente' } });
+  assert.equal(s.member?.id, 'm1');
+  assert.deepEqual((await h.auth.getUser('member_m1')).customClaims, s.claims);
+  assert.equal((await h.db.doc('org_members/m1').get()).get('userId'), undefined);
+});
+
+test('inactive member sync clears claims', async () => {
+  await member('m1');
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  assert.equal((await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'secret1' })).ok, true);
+  await h.db.doc('org_members/m1').update({ active: false });
+  assert.deepEqual(await syncSession(h, 'member_m1'), { claims: { master: false, orgs: {} }, member: null });
+  assert.deepEqual((await h.auth.getUser('member_m1')).customClaims, { master: false, orgs: {} });
+});
+
+test('revokeMemberSessions clears claims', async () => {
+  await member('m1', { userId: 'g1' });
+  await member('m2', { orgId: 'org_b', userId: 'g1', role: 'Admin' });
+  await h.db.doc('member_credentials/m1').set({ hash: await hashPassword('secret1') });
+  await h.auth.createUser({ uid: 'g1', email: 'm1@x.com', emailVerified: true });
+  await syncSession(h, 'g1', 'm1@x.com', true);
+  assert.equal((await credentialLogin(h, { nameOrEmail: 'm1@x.com', password: 'secret1' })).ok, true);
+  const t0 = Math.floor(Date.now() / 1000) * 1000; // tokensValidAfterTime has 1s resolution
+  await h.db.doc('org_members/m1').update({ active: false });
+  await revokeMemberSessions(h, 'm1');
+  assert.ok(Date.parse((await h.auth.getUser('g1')).tokensValidAfterTime ?? '') >= t0);
+  const mu = await h.auth.getUser('member_m1');
+  assert.deepEqual(mu.customClaims, { master: false, orgs: {} });
+  assert.ok(Date.parse(mu.tokensValidAfterTime ?? '') >= t0);
+  assert.deepEqual((await h.auth.getUser('g1')).customClaims, { master: false, orgs: { org_b: 'Admin' } });
+  await revokeMemberSessions(h, 'm2'); // bound uid exists, member_m2 never logged in: no throw
 });
