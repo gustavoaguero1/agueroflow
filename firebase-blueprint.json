@@ -1,0 +1,276 @@
+{
+  "entities": {
+    "Organization": {
+      "title": "Organization",
+      "description": "Empresa ou organização cadastrada no AgueroFlow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 120 },
+        "slug": { "type": "string", "maxLength": 50 },
+        "cnpj": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "OrgMember": {
+      "title": "OrgMember",
+      "description": "Vínculo de usuário a uma organização com papel RBAC",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string", "maxLength": 120 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["Admin", "Gerente", "Supervisor", "Operacional", "Visualizador"] },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "userId", "userEmail", "role"]
+    },
+    "WorkOrder": {
+      "title": "WorkOrder",
+      "description": "Ordem de Serviço com ciclo de vida completo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "unitId": { "type": "string" },
+        "costCenterId": { "type": "string" },
+        "assetId": { "type": "string" },
+        "orderNumber": { "type": "string", "maxLength": 30 },
+        "title": { "type": "string", "maxLength": 180 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "priority": { "type": "string", "enum": ["baixa", "media", "alta", "critica"] },
+        "status": { "type": "string", "enum": ["rascunho", "planejada", "agendada", "em_execucao", "pausada", "concluida", "encerrada"] },
+        "requesterId": { "type": "string" },
+        "requesterName": { "type": "string", "maxLength": 100 },
+        "assignedTeam": { "type": "string", "maxLength": 100 },
+        "assignedUsers": { "type": "array" },
+        "scheduledStartDate": { "type": "string" },
+        "scheduledEndDate": { "type": "string" },
+        "actualStartDate": { "type": "string" },
+        "actualEndDate": { "type": "string" },
+        "estimatedCost": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 1500 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "orderNumber", "title", "status", "priority"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Trilha de auditoria das ações na plataforma",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string", "maxLength": 120 },
+        "module": { "type": "string", "maxLength": 60 },
+        "action": { "type": "string", "maxLength": 60 },
+        "targetId": { "type": "string" },
+        "details": { "type": "string", "maxLength": 1000 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "orgId", "userId", "module", "action", "timestamp"]
+    },
+    "WorkOrderStatusConfig": {
+      "title": "WorkOrderStatusConfig",
+      "description": "Estados configuráveis do fluxo operacional de Ordens de Serviço",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "name": { "type": "string", "maxLength": 60 },
+        "description": { "type": "string", "maxLength": 255 },
+        "color": { "type": "string", "maxLength": 30 },
+        "badgeBg": { "type": "string", "maxLength": 60 },
+        "badgeText": { "type": "string", "maxLength": 60 },
+        "badgeBorder": { "type": "string", "maxLength": 60 },
+        "order": { "type": "number" },
+        "isInitial": { "type": "boolean" },
+        "isCompleted": { "type": "boolean" },
+        "requiresNotes": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "name", "order"]
+    },
+    "RhEmployee": {
+      "title": "RhEmployee",
+      "description": "Colaborador de RH para folha e provisionamento de 13º",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "hourlyRateCarteira": { "type": "number" },
+        "hourlyRatePorFora": { "type": "number" },
+        "monthlyHours": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "registrationNumber", "name", "admissionDate", "hourlyRateCarteira"]
+    },
+    "RhThirteenthCalculation": {
+      "title": "RhThirteenthCalculation",
+      "description": "Registro de provisionamento e apuração do 13º salário",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orgId": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "referenceYear": { "type": "number" },
+        "monthsWorked": { "type": "number" },
+        "thirteenthFullCarteira": { "type": "number" },
+        "firstInstallmentTotal": { "type": "number" },
+        "secondInstallmentTotalNet": { "type": "number" },
+        "status": { "type": "string" },
+        "calculatedAt": { "type": "string" }
+      },
+      "required": ["id", "orgId", "employeeId", "referenceYear", "monthsWorked"]
+    },
+    "WhatsAppScheduledJob": {
+      "title": "WhatsAppScheduledJob",
+      "description": "Comando programado recorrente vinculado a grupos ou usuários do WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 120 },
+        "organizationId": { "type": "string", "maxLength": 120 },
+        "name": { "type": "string", "maxLength": 160 },
+        "active": { "type": "boolean" },
+        "jobType": { "type": "string", "enum": ["group_cost_summary", "ai_message", "fixed_message"] },
+        "scheduleTime": { "type": "string", "pattern": "^\\d{2}:\\d{2}$" },
+        "timezone": { "type": "string", "maxLength": 60 },
+        "recurrence": { "type": "string", "enum": ["daily", "weekdays", "once"] },
+        "oneShotDate": { "type": "string", "maxLength": 20 },
+        "targetJidOrPhone": { "type": "string", "maxLength": 120 },
+        "targetLabel": { "type": "string", "maxLength": 160 },
+        "sourceChatJid": { "type": "string", "maxLength": 120 },
+        "sourceChatLabel": { "type": "string", "maxLength": 160 },
+        "promptInstruction": { "type": "string", "maxLength": 2000 },
+        "runCount": { "type": "number" },
+        "lastRunAt": { "type": "string" },
+        "lastRunStatus": { "type": "string", "enum": ["sucesso", "erro"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "scheduleTime", "targetJidOrPhone", "promptInstruction"]
+    },
+    "WhatsAppOcrReceipt": {
+      "title": "WhatsAppOcrReceipt",
+      "description": "Comprovante ou Nota de Débito extraído via OCR no WhatsApp com histórico protegido",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 120 },
+        "receiptDate": { "type": "string", "maxLength": 20 },
+        "establishmentName": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 80 },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 40 },
+        "employeeName": { "type": "string", "maxLength": 160 },
+        "sourceChatJid": { "type": "string", "maxLength": 120 },
+        "sourceGroupName": { "type": "string", "maxLength": 160 },
+        "editedAt": { "type": "string" },
+        "editedBy": { "type": "string", "maxLength": 120 }
+      },
+      "required": ["id", "establishmentName", "totalAmount"]
+    },
+    "WhatsAppNdRule": {
+      "title": "WhatsAppNdRule",
+      "description": "Regra de automação de Notas de Débito (ND) por grupo do WhatsApp e roteamento Outlook",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 120 },
+        "organizationId": { "type": "string", "maxLength": 120 },
+        "name": { "type": "string", "maxLength": 160 },
+        "active": { "type": "boolean" },
+        "groupJid": { "type": "string", "maxLength": 120 },
+        "groupName": { "type": "string", "maxLength": 160 },
+        "nextProjNumber": { "type": "number" },
+        "emitterName": { "type": "string", "maxLength": 160 },
+        "companyName": { "type": "string", "maxLength": 220 },
+        "defaultDesignation": { "type": "string", "maxLength": 80 },
+        "sendPdfToWhatsAppGroup": { "type": "boolean" },
+        "autoEmailEnabled": { "type": "boolean" },
+        "outlookSubjectTemplate": { "type": "string", "maxLength": 300 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "groupJid"]
+    },
+    "WhatsAppNdRecord": {
+      "title": "WhatsAppNdRecord",
+      "description": "Histórico permanente de Notas de Débito (ND) geradas em PDF via WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 120 },
+        "projNumber": { "type": "number" },
+        "projYear": { "type": "number" },
+        "fileName": { "type": "string", "maxLength": 240 },
+        "receiverName": { "type": "string", "maxLength": 180 },
+        "natureza": { "type": "string", "maxLength": 160 },
+        "costCenter": { "type": "string", "maxLength": 180 },
+        "amount": { "type": "number" },
+        "paymentDate": { "type": "string", "maxLength": 30 },
+        "emailStatus": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projNumber", "receiverName", "amount"]
+    }
+  },
+  "firestore": {
+    "/organizations/{orgId}": {
+      "schema": "Organization",
+      "description": "Dados da organização"
+    },
+    "/org_members/{memberId}": {
+      "schema": "OrgMember",
+      "description": "Membros e perfis das organizações"
+    },
+    "/work_orders/{orderId}": {
+      "schema": "WorkOrder",
+      "description": "Ordens de serviço da organização"
+    },
+    "/work_order_statuses/{statusId}": {
+      "schema": "WorkOrderStatusConfig",
+      "description": "Configuração de estados personalizados para Ordens de Serviço"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Logs de auditoria e conformidade"
+    },
+    "/rh_employees/{employeeId}": {
+      "schema": "RhEmployee",
+      "description": "Colaboradores do módulo de RH e 13º Salário"
+    },
+    "/rh_calculations/{calculationId}": {
+      "schema": "RhThirteenthCalculation",
+      "description": "Cálculos de 13º Salário auditados"
+    },
+    "/whatsapp_scheduled_jobs/{jobId}": {
+      "schema": "WhatsAppScheduledJob",
+      "description": "Comandos programados do Assistente IA vinculados a grupos e usuários do WhatsApp"
+    },
+    "/whatsapp_ocr_receipts/{receiptId}": {
+      "schema": "WhatsAppOcrReceipt",
+      "description": "Cofre em nuvem do histórico de comprovantes OCR e Notas de Débito"
+    },
+    "/whatsapp_nd_rules/{ruleId}": {
+      "schema": "WhatsAppNdRule",
+      "description": "Regras de automação de Notas de Débito e envio por Outlook vinculadas a grupos"
+    },
+    "/whatsapp_nd_records/{recordId}": {
+      "schema": "WhatsAppNdRecord",
+      "description": "Histórico de Notas de Débito geradas em PDF"
+    }
+  }
+}

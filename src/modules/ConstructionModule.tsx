@@ -1,0 +1,1362 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import {
+  ConstructionDailyReport,
+  ConstructionMilestone,
+  Unit,
+  Contract,
+} from '../types';
+import {
+  HardHat,
+  Plus,
+  Calendar,
+  Sun,
+  CloudSun,
+  CloudRain,
+  CloudLightning,
+  Users,
+  Wrench,
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  Clock,
+  Printer,
+  X,
+  Search,
+  Filter,
+  BarChart3,
+  FileText,
+  ChevronRight,
+  TrendingUp,
+  Building,
+  Upload,
+  Trash2,
+  Download,
+  FileSpreadsheet,
+  Sparkles,
+  Zap,
+  DollarSign,
+  Settings,
+  Award,
+} from 'lucide-react';
+import { GatLogo } from '../components/common/GatLogo';
+import { FieldPersonnelManager } from '../components/construction/FieldPersonnelManager';
+import { DailyLaborTimesheet } from '../components/construction/DailyLaborTimesheet';
+import { DailyLaborCostDashboard } from '../components/construction/DailyLaborCostDashboard';
+import { WorkShiftConfigModal } from '../components/construction/WorkShiftConfigModal';
+import { NRComplianceDashboard } from '../components/construction/NRComplianceDashboard';
+
+const WEATHER_OPTIONS = [
+  { id: 'ensolarado', label: 'Ensolarado', icon: Sun, color: 'text-amber-400 bg-amber-950/40 border-amber-800/50' },
+  { id: 'nublado', label: 'Nublado', icon: CloudSun, color: 'text-slate-300 bg-slate-800 border-slate-700' },
+  { id: 'chuvoso', label: 'Chuvoso (Com Atividades)', icon: CloudRain, color: 'text-blue-400 bg-blue-950/40 border-blue-800/50' },
+  { id: 'chuva_paralisante', label: 'Chuva Paralisante (Obra Interrompida)', icon: CloudLightning, color: 'text-red-400 bg-red-950/40 border-red-800/50' },
+];
+
+const DEFAULT_MILESTONES = [
+  { name: '1. Engenharia de Detalhamento & Isométricos', weight: 10 },
+  { name: '2. Fabricação & Corte em Caldeiraria (Oficina)', weight: 25 },
+  { name: '3. Logística, Transporte & Descarregamento em Planta', weight: 5 },
+  { name: '4. Montagem Estrutural, Suportação & Alinhamento', weight: 20 },
+  { name: '5. Soldagem TIG em Aço Inox & Purga de Gás', weight: 20 },
+  { name: '6. Polimento Mecânico & Decapagem/Passivação Química', weight: 10 },
+  { name: '7. Teste Hidrostático & Ensaio Líquido Penetrante (LP)', weight: 5 },
+  { name: '8. Comissionamento, Start-up & Entrega Técnica Final', weight: 5 },
+];
+
+export const ConstructionModule: React.FC = () => {
+  const { user, organization, units, contracts, logAudit, canViewFinancials } = useAuth();
+  const [activeTab, setActiveTab] = useState<
+    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs'
+  >('rdo');
+
+  const [reports, setReports] = useState<ConstructionDailyReport[]>([]);
+  const [milestones, setMilestones] = useState<ConstructionMilestone[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals
+  const [showRdoModal, setShowRdoModal] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<ConstructionDailyReport | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showShiftConfigModal, setShowShiftConfigModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // RDO Form State
+  const [rdoDate, setRdoDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [rdoUnitId, setRdoUnitId] = useState<string>('');
+  const [rdoContractId, setRdoContractId] = useState<string>('');
+  const [rdoWeather, setRdoWeather] = useState<ConstructionDailyReport['weather']>('ensolarado');
+  const [rdoCaldeireiros, setRdoCaldeireiros] = useState<number>(2);
+  const [rdoSoldadores, setRdoSoldadores] = useState<number>(3);
+  const [rdoMontadores, setRdoMontadores] = useState<number>(4);
+  const [rdoAjudantes, setRdoAjudantes] = useState<number>(2);
+  const [rdoSupervisores, setRdoSupervisores] = useState<number>(1);
+  const [rdoEquipamentos, setRdoEquipamentos] = useState<string>('2 Inversoras TIG Miller, 1 Andaime Tubular 6m, 1 Lixadeira Angular');
+  const [rdoActivities, setRdoActivities] = useState<string>('');
+  const [rdoImpediments, setRdoImpediments] = useState<string>('');
+  const [rdoProgress, setRdoProgress] = useState<number>(0);
+  const [rdoPhotos, setRdoPhotos] = useState<string[]>([]);
+
+  // Load Firestore data
+  useEffect(() => {
+    if (!organization) return;
+
+    const qReports = query(collection(db, 'construction_reports'), where('orgId', '==', organization.id));
+    const unsubReports = onSnapshot(qReports, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ConstructionDailyReport));
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setReports(list);
+    });
+
+    const qMilestones = query(collection(db, 'construction_milestones'), where('orgId', '==', organization.id));
+    const unsubMilestones = onSnapshot(qMilestones, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ConstructionMilestone));
+      list.sort((a, b) => a.orderIndex - b.orderIndex);
+      setMilestones(list);
+    });
+
+    return () => {
+      unsubReports();
+      unsubMilestones();
+    };
+  }, [organization]);
+
+  // Set default contract and unit
+  useEffect(() => {
+    if (contracts.length > 0 && !selectedContractId) {
+      setSelectedContractId(contracts[0].id);
+      setRdoContractId(contracts[0].id);
+    }
+    if (units.length > 0 && !rdoUnitId) {
+      setRdoUnitId(units[0].id);
+    }
+  }, [contracts, units]);
+
+  // Seed default milestones if none exist for the selected contract
+  const handleSeedDefaultMilestones = async () => {
+    if (!organization || !selectedContractId) return;
+    setIsSubmitting(true);
+    try {
+      for (let i = 0; i < DEFAULT_MILESTONES.length; i++) {
+        const item = DEFAULT_MILESTONES[i];
+        const mId = `ms_${selectedContractId}_${i}`;
+        const newMs: ConstructionMilestone = {
+          id: mId,
+          orgId: organization.id,
+          contractId: selectedContractId,
+          unitId: rdoUnitId || (units[0]?.id ?? 'default_unit'),
+          name: item.name,
+          orderIndex: i + 1,
+          weightPercentage: item.weight,
+          completedPercentage: i < 2 ? 100 : i === 2 ? 60 : 0,
+          status: i < 2 ? 'concluido' : i === 2 ? 'em_andamento' : 'nao_iniciado',
+          notes: i < 2 ? 'Etapa concluída conforme inspeção de qualidade' : undefined,
+        };
+        await setDoc(doc(db, 'construction_milestones', mId), newMs);
+      }
+      await logAudit('Obras', 'Gerar Cronograma Padrão', `Marcos gerados para o contrato ${selectedContractId}`, selectedContractId);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Create RDO
+  const handleCreateRdo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!organization || !user) return;
+    if (!rdoActivities.trim()) {
+      alert('Por favor, informe as atividades executadas no dia.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const rdoId = `rdo_${Date.now()}`;
+      const reportNum = `RDO-${new Date().getFullYear()}/${String(reports.length + 1).padStart(3, '0')}`;
+      
+      const newReport: ConstructionDailyReport = {
+        id: rdoId,
+        orgId: organization.id,
+        unitId: rdoUnitId || (units[0]?.id ?? 'default_unit'),
+        contractId: rdoContractId || undefined,
+        reportNumber: reportNum,
+        date: rdoDate,
+        weather: rdoWeather,
+        workforce: [
+          { role: 'Caldeireiro', count: Number(rdoCaldeireiros), hours: 8.8 },
+          { role: 'Soldador TIG / Inox', count: Number(rdoSoldadores), hours: 8.8 },
+          { role: 'Montador Mecânico / Inox', count: Number(rdoMontadores), hours: 8.8 },
+          { role: 'Ajudante Geral', count: Number(rdoAjudantes), hours: 8.8 },
+          { role: 'Supervisor / Encarregado', count: Number(rdoSupervisores), hours: 8.8 },
+        ],
+        equipment: [
+          { name: rdoEquipamentos || 'Equipamentos gerais de caldeiraria e montagem', quantity: 1, operationalHours: 8 },
+        ],
+        activitiesCompleted: rdoActivities.trim(),
+        impedimentsOrStoppages: rdoImpediments.trim() || undefined,
+        progressPercentage: Number(rdoProgress) || 0,
+        photos: rdoPhotos,
+        preparedBy: user.displayName || user.email || 'Supervisor Técnico',
+        supervisorSignature: `Assinado digitalmente por ${user.displayName || user.email} em ${new Date().toLocaleDateString('pt-BR')}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, 'construction_reports', rdoId), newReport);
+      await logAudit('Obras', 'Registrar RDO', `Diário de Obra ${reportNum} emitido na data ${rdoDate}`, rdoId);
+
+      setShowRdoModal(false);
+      setRdoActivities('');
+      setRdoImpediments('');
+      setRdoPhotos([]);
+    } catch (err) {
+      console.error('Erro ao salvar RDO:', err);
+      alert('Erro ao salvar RDO.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Executar Plano Diário de Obras Completo (RDO do Dia, Equipe, Apontamento de Jornada e Marcos)
+  const [planExecutedNotice, setPlanExecutedNotice] = useState(false);
+
+  const handleExecuteFullDailyPlan = async () => {
+    if (!organization || !user) return;
+    setIsSubmitting(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const targetUnitId = units[0]?.id || 'cd_marilia_bmdv';
+      const targetContractId = selectedContractId || contracts[0]?.id || 'contrato_marilia';
+
+      // 1. Povoar Equipe de Obra
+      const sampleWorkers = [
+        {
+          id: `w_gilfran_${organization.id}`,
+          name: 'Gilfran Bispo',
+          cpf: '384.921.848-12',
+          role: 'Serralheiro Industrial & Líder de Equipe',
+          baseSalary: 4200,
+          hourlyRate: 19.09,
+          currentSite: 'CD Marília (BMDV)',
+          status: 'ativo' as const,
+          admissionDate: '2023-04-10',
+          certifications: ['NR-35 Trabalho em Altura', 'NR-33 Espaço Confinado'],
+          salaryHistory: [
+            {
+              date: '2023-04-10',
+              previousSalary: 0,
+              newSalary: 3500,
+              previousRole: 'Admissão',
+              newRole: 'Serralheiro Pleno',
+              reason: 'Admissão na empresa',
+            },
+            {
+              date: '2025-01-15',
+              previousSalary: 3500,
+              newSalary: 4200,
+              previousRole: 'Serralheiro Pleno',
+              newRole: 'Serralheiro Industrial & Líder',
+              reason: 'Promoção por liderança em campo',
+            },
+          ],
+        },
+        {
+          id: `w_marcos_${organization.id}`,
+          name: 'Marcos Vinicius Andrade',
+          cpf: '412.589.632-45',
+          role: 'Soldador TIG Inox Especialista',
+          baseSalary: 5100,
+          hourlyRate: 23.18,
+          currentSite: 'CD Marília (BMDV)',
+          status: 'ativo' as const,
+          admissionDate: '2022-08-01',
+          certifications: ['Qualificação ASME IX (TIG Inox)', 'NR-35', 'NR-18'],
+          salaryHistory: [],
+        },
+        {
+          id: `w_rodrigo_${organization.id}`,
+          name: 'Rodrigo Santoro de Oliveira',
+          cpf: '298.371.440-99',
+          role: 'Caldeireiro Montador',
+          baseSalary: 4500,
+          hourlyRate: 20.45,
+          currentSite: 'CD Marília (BMDV)',
+          status: 'ativo' as const,
+          admissionDate: '2023-11-20',
+          certifications: ['NR-35', 'NR-33'],
+          salaryHistory: [],
+        },
+        {
+          id: `w_claudinei_${organization.id}`,
+          name: 'Claudinei Ramos Silva',
+          cpf: '158.742.998-33',
+          role: 'Ajudante Geral de Montagem',
+          baseSalary: 2400,
+          hourlyRate: 10.91,
+          currentSite: 'CD Marília (BMDV)',
+          status: 'ativo' as const,
+          admissionDate: '2024-02-15',
+          certifications: ['NR-35', 'NR-06'],
+          salaryHistory: [],
+        },
+      ];
+
+      for (const w of sampleWorkers) {
+        await setDoc(doc(db, 'field_workers', w.id), {
+          ...w,
+          orgId: organization.id,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // 2. Gravar Apontamentos de Jornada / Timesheet do Dia
+      const timesheetLogs = [
+        {
+          workerId: `w_gilfran_${organization.id}`,
+          workerName: 'Gilfran Bispo',
+          role: 'Serralheiro Industrial & Líder de Equipe',
+          hourlyRate: 19.09,
+          normalHours: 8,
+          overtime50Hours: 2.5,
+          overtime100Hours: 0,
+          travelHours: 2.0,
+          nightShiftHours: 0,
+          mealAllowance: 45,
+          lodgingAllowance: 120,
+          otherExpenses: 0,
+          totalLaborCost: 334.33,
+          activities: 'Manutenção estrutural dos ralos da reembalagem CD Marília (BMDV), corte de perfis inox e coordenação técnica.',
+        },
+        {
+          workerId: `w_marcos_${organization.id}`,
+          workerName: 'Marcos Vinicius Andrade',
+          role: 'Soldador TIG Inox Especialista',
+          hourlyRate: 23.18,
+          normalHours: 8,
+          overtime50Hours: 2.5,
+          overtime100Hours: 0,
+          travelHours: 2.0,
+          nightShiftHours: 0,
+          mealAllowance: 45,
+          lodgingAllowance: 120,
+          otherExpenses: 0,
+          totalLaborCost: 383.75,
+          activities: 'Solda TIG em chapas inox 316L nos ralos, aplicação de purga sanitária e acabamento escovado.',
+        },
+        {
+          workerId: `w_rodrigo_${organization.id}`,
+          workerName: 'Rodrigo Santoro de Oliveira',
+          role: 'Caldeireiro Montador',
+          hourlyRate: 20.45,
+          normalHours: 8,
+          overtime50Hours: 1.0,
+          overtime100Hours: 0,
+          travelHours: 1.0,
+          nightShiftHours: 0,
+          mealAllowance: 35,
+          lodgingAllowance: 0,
+          otherExpenses: 0,
+          totalLaborCost: 250.28,
+          activities: 'Conformação e nivelamento dos ralos da reembalagem com assentamento em piso industrial.',
+        },
+        {
+          workerId: `w_claudinei_${organization.id}`,
+          workerName: 'Claudinei Ramos Silva',
+          role: 'Ajudante Geral de Montagem',
+          hourlyRate: 10.91,
+          normalHours: 8,
+          overtime50Hours: 1.0,
+          overtime100Hours: 0,
+          travelHours: 1.0,
+          nightShiftHours: 0,
+          mealAllowance: 35,
+          lodgingAllowance: 0,
+          otherExpenses: 0,
+          totalLaborCost: 149.56,
+          activities: 'Apoio de ferramentas, isolamento de área e limpeza pós-solda.',
+        },
+      ];
+
+      for (const log of timesheetLogs) {
+        const logId = `log_${today}_${log.workerId}`;
+        await setDoc(doc(db, 'worker_time_logs', logId), {
+          id: logId,
+          orgId: organization.id,
+          date: today,
+          siteName: 'CD Marília (BMDV)',
+          unitId: targetUnitId,
+          contractId: targetContractId,
+          registeredBy: user.displayName || user.email || 'Encarregado Geral',
+          createdAt: new Date().toISOString(),
+          ...log,
+        });
+      }
+
+      // 3. Emissão Automática do RDO Oficial de Hoje
+      const rdoId = `rdo_today_${organization.id}`;
+      const reportNum = `RDO-${new Date().getFullYear()}/001`;
+      const executedReport: ConstructionDailyReport = {
+        id: rdoId,
+        orgId: organization.id,
+        unitId: targetUnitId,
+        contractId: targetContractId,
+        reportNumber: reportNum,
+        date: today,
+        weather: 'ensolarado',
+        workforce: [
+          { role: 'Serralheiro Líder', count: 1, hours: 10.5 },
+          { role: 'Soldador TIG Especialista', count: 1, hours: 10.5 },
+          { role: 'Caldeireiro Montador', count: 1, hours: 9.0 },
+          { role: 'Ajudante Geral', count: 1, hours: 9.0 },
+        ],
+        equipment: [
+          { name: '2 Inversoras TIG Miller com purga de Argônio', quantity: 2, operationalHours: 8 },
+          { name: '1 Andaime Tubular 6m e Linha de Vida', quantity: 1, operationalHours: 8 },
+          { name: '1 Lixadeira Angular Dewalt e Kit de Decapagem Inox', quantity: 1, operationalHours: 6 },
+        ],
+        activitiesCompleted: 'Execução plena do plano diário no CD Marília (BMDV). Concluído o alinhamento e montagem dos ralos da reembalagem. Soldagem TIG em aço inox 316L 100% aprovada visualmente. Teste de estanqueidade realizado sem vazamentos. Decapagem química e passivação concluídas.',
+        impedimentsOrStoppages: 'Nenhum impedimento físico. Reserva de 12 un. de MGR liberada pelo gestor. GPS do canteiro devidamente validado.',
+        progressPercentage: 85,
+        photos: [
+          'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+          'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=800&q=80',
+        ],
+        preparedBy: user.displayName || user.email || 'Engenharia de Campo Aguero Inox',
+        supervisorSignature: `Assinado digitalmente por ${user.displayName || user.email} em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, 'construction_reports', rdoId), executedReport);
+
+      // 4. Povoar Marcos de Avanço Físico
+      for (let i = 0; i < DEFAULT_MILESTONES.length; i++) {
+        const item = DEFAULT_MILESTONES[i];
+        const mId = `ms_${targetContractId}_${i}`;
+        const newMs: ConstructionMilestone = {
+          id: mId,
+          orgId: organization.id,
+          contractId: targetContractId,
+          unitId: targetUnitId,
+          name: item.name,
+          orderIndex: i + 1,
+          weightPercentage: item.weight,
+          completedPercentage: i < 4 ? 100 : i === 4 ? 80 : i === 5 ? 50 : 0,
+          status: i < 4 ? 'concluido' : 'em_andamento',
+          notes: i < 4 ? 'Etapa concluída conforme inspeção de qualidade' : undefined,
+        };
+        await setDoc(doc(db, 'construction_milestones', mId), newMs);
+      }
+
+      await logAudit(
+        'Obras',
+        'Executar Plano Diário',
+        `Execução completa do Plano Diário de Obras (RDO ${reportNum}, apontamentos de jornada, horas extras e equipe alocada)`,
+        rdoId
+      );
+
+      setPlanExecutedNotice(true);
+      setTimeout(() => setPlanExecutedNotice(false), 5000);
+      setActiveTab('apontamento_jornada');
+    } catch (err) {
+      console.error('Erro ao executar plano diário de obras:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Upload Photo for RDO
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Foto deve ter no máximo 2MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setRdoPhotos((prev) => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Update Milestone Progress
+  const handleUpdateMilestoneProgress = async (id: string, newPercentage: number) => {
+    const valid = Math.min(100, Math.max(0, newPercentage));
+    const newStatus = valid === 100 ? 'concluido' : valid > 0 ? 'em_andamento' : 'nao_iniciado';
+    try {
+      await updateDoc(doc(db, 'construction_milestones', id), {
+        completedPercentage: valid,
+        status: newStatus,
+        completedDate: valid === 100 ? new Date().toISOString().split('T')[0] : null,
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar marco:', err);
+    }
+  };
+
+  // Calculate Overall Progress
+  const filteredMilestones = useMemo(() => {
+    if (!selectedContractId) return milestones;
+    return milestones.filter((m) => m.contractId === selectedContractId);
+  }, [milestones, selectedContractId]);
+
+  const overallProgress = useMemo(() => {
+    if (filteredMilestones.length === 0) return 0;
+    const totalWeight = filteredMilestones.reduce((acc, m) => acc + (m.weightPercentage || 0), 0);
+    if (totalWeight === 0) return 0;
+    const weightedProgress = filteredMilestones.reduce(
+      (acc, m) => acc + ((m.weightPercentage || 0) * (m.completedPercentage || 0)),
+      0
+    );
+    return Math.round(weightedProgress / totalWeight);
+  }, [filteredMilestones]);
+
+  const filteredReports = useMemo(() => {
+    return reports.filter((r) => {
+      if (selectedContractId && r.contractId && r.contractId !== selectedContractId) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          r.reportNumber.toLowerCase().includes(q) ||
+          r.activitiesCompleted.toLowerCase().includes(q) ||
+          (r.impedimentsOrStoppages && r.impedimentsOrStoppages.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [reports, selectedContractId, searchQuery]);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+        <div>
+          <div className="flex items-center space-x-2">
+            <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <HardHat className="w-5 h-5" />
+            </span>
+            <h2 className="text-lg font-bold text-white tracking-tight">Obras, Montagens Industriais & RDO</h2>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Controle diário de canteiro de obras, efetivo de caldeiraria/solda, impedimentos e medição de avanço físico.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {contracts.length > 0 && (
+            <div className="flex items-center space-x-2 bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg text-xs">
+              <span className="text-slate-400 font-medium">Obra / Contrato:</span>
+              <select
+                value={selectedContractId}
+                onChange={(e) => setSelectedContractId(e.target.value)}
+                className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+              >
+                {contracts.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                    {c.name || c.title} ({c.code || c.contractNumber})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowShiftConfigModal(true)}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            title="Configurar turnos de trabalho padrão, escalas e regras de cálculo para horas extras (50%, 100%), horas de viagem e adicional noturno"
+          >
+            <Clock className="w-4 h-4 text-blue-400" />
+            <span>Configurar Jornadas & Regras</span>
+          </button>
+
+          <button
+            onClick={handleExecuteFullDailyPlan}
+            disabled={isSubmitting}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
+            title="Executar e sincronizar automaticamente o RDO de hoje, alocação de equipe, horas extras e marcos de canteiro"
+          >
+            <Zap className="w-4 h-4 fill-current" />
+            <span>Executar Plano Diário de Obras</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setRdoContractId(selectedContractId || contracts[0]?.id || '');
+              setShowRdoModal(true);
+            }}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Emitir RDO de Hoje</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Plan Executed Notification Banner */}
+      {planExecutedNotice && (
+        <div className="p-4 rounded-xl bg-emerald-950/80 border border-emerald-600/80 text-emerald-200 flex items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-lg bg-emerald-500 text-slate-950 font-bold">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <strong className="text-white text-sm block">Plano Diário de Obras Executado com Sucesso!</strong>
+              <span className="text-xs text-emerald-300">
+                O RDO de hoje foi emitido, a equipe de caldeiraria/solda (Gilfran e especialistas) foi alocada e a grade de horas extras foi gravada no banco.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setPlanExecutedNotice(false)}
+            className="p-1.5 rounded-lg hover:bg-emerald-900/60 text-emerald-400 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex items-center space-x-2 border-b border-slate-800 pb-3 overflow-x-auto custom-scrollbar">
+        <button
+          onClick={() => setActiveTab('rdo')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'rdo'
+              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>1. Diário de Obra (RDO) ({reports.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('avanco')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'avanco'
+              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>2. Avanço Físico & Cronograma ({overallProgress}%)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('equipe_rh')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'equipe_rh'
+              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>3. Equipe & Histórico Salarial</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('apontamento_jornada')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'apontamento_jornada'
+              ? 'bg-emerald-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+          <span>4. Grade de Horas & Diário de Campo</span>
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+            Substituto Excel
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('dashboard_custo')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'dashboard_custo'
+              ? 'bg-emerald-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <DollarSign className="w-4 h-4 text-emerald-400" />
+          <span>5. Dashboard de Custo Diário</span>
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+            Mão de Obra & HE
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('painel_nrs')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'painel_nrs'
+              ? 'bg-rose-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Award className="w-4 h-4 text-rose-400" />
+          <span>6. Painel de NRs & Vencimentos</span>
+          <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-950 text-rose-300 border border-rose-800 font-bold">
+            Alertas & Certificados
+          </span>
+        </button>
+      </div>
+
+      {/* TAB 1: RDO (Relatório Diário de Obra) */}
+      {activeTab === 'rdo' && (
+        <div className="space-y-4">
+          {/* Search bar */}
+          <div className="flex items-center justify-between gap-3 bg-[#121826] p-3 rounded-xl border border-slate-800">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filtrar relatórios por número, atividade executada ou impedimento..."
+                className="w-full pl-9 pr-4 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+            <div className="text-xs text-slate-400">
+              Total emitido: <strong className="text-white">{filteredReports.length} RDOs</strong>
+            </div>
+          </div>
+
+          {/* List of RDO Cards */}
+          {filteredReports.length === 0 ? (
+            <div className="bg-[#121826] border border-slate-800 rounded-xl p-12 text-center flex flex-col items-center justify-center">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3">
+                <HardHat className="w-7 h-7" />
+              </div>
+              <h3 className="text-sm font-bold text-white mb-1">Nenhum RDO emitido para esta obra</h3>
+              <p className="text-xs text-slate-400 max-w-md mb-4">
+                O Diário de Obra (RDO) registra clima, mão de obra mobilizada, equipamentos e protege a Aguero Inox contra paralisações causadas por terceiros.
+              </p>
+              <button
+                onClick={() => setShowRdoModal(true)}
+                className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Emitir Primeiro RDO</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredReports.map((r) => {
+                const weatherObj = WEATHER_OPTIONS.find((w) => w.id === r.weather) || WEATHER_OPTIONS[0];
+                const WeatherIcon = weatherObj.icon;
+                const totalWorkforce = r.workforce?.reduce((acc, w) => acc + (w.count || 0), 0) || 0;
+
+                return (
+                  <div
+                    key={r.id}
+                    className="bg-[#121826] border border-slate-800 hover:border-slate-700 rounded-xl p-4 transition-all space-y-3 flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Top bar */}
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono font-extrabold text-amber-400 text-xs">
+                            {r.reportNumber}
+                          </span>
+                          <span className="text-[11px] text-slate-400 flex items-center space-x-1">
+                            <Calendar className="w-3 h-3 text-slate-500" />
+                            <span>{new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                          </span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center space-x-1 ${weatherObj.color}`}>
+                          <WeatherIcon className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[100px]">{weatherObj.label.split(' ')[0]}</span>
+                        </span>
+                      </div>
+
+                      {/* Efetivo badges */}
+                      <div className="mt-2.5 flex items-center space-x-2 text-[11px] text-slate-300">
+                        <Users className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <span>Efetivo total: <strong className="text-white">{totalWorkforce} profissionais</strong> em campo</span>
+                      </div>
+
+                      {/* Atividades Executadas */}
+                      <div className="mt-2 text-xs text-slate-300">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">Atividades Realizadas:</span>
+                        <p className="line-clamp-3 text-slate-300 leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
+                          {r.activitiesCompleted}
+                        </p>
+                      </div>
+
+                      {/* Impedimentos / Paralisações (Destaque se houver) */}
+                      {r.impedimentsOrStoppages && (
+                        <div className="mt-2 p-2 rounded-lg bg-red-950/30 border border-red-800/50 text-[11px] text-red-300 flex items-start space-x-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block text-red-400 font-bold">Impedimento do Cliente:</strong>
+                            <p className="line-clamp-2">{r.impedimentsOrStoppages}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom bar */}
+                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                      <span className="text-[11px] text-slate-500 truncate max-w-[130px]">
+                        Por: {r.preparedBy}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSelectedReport(r);
+                          setShowPrintModal(true);
+                        }}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-medium flex items-center space-x-1 transition-colors cursor-pointer text-[11px]"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Visualizar / Imprimir</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: Avanço Físico & Marcos da Obra */}
+      {activeTab === 'avanco' && (
+        <div className="space-y-6">
+          {/* Progress Card */}
+          <div className="bg-[#121826] border border-slate-800 rounded-xl p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <TrendingUp className="w-5 h-5 text-amber-400" />
+                  <span>Avanço Físico Ponderado da Obra</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Medição percentual por etapa para faturamento técnico e controle de cronograma da Aguero Inox.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-4">
+                <div className="text-right">
+                  <span className="text-xs text-slate-400 block">Progresso Geral</span>
+                  <span className="text-2xl font-black text-amber-400 font-mono">{overallProgress}%</span>
+                </div>
+                {filteredMilestones.length === 0 && (
+                  <button
+                    onClick={handleSeedDefaultMilestones}
+                    disabled={isSubmitting}
+                    className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md"
+                  >
+                    Carregar Etapas Padrão de Montagem Inox
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Big Progress Bar */}
+            <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden p-0.5">
+              <div
+                className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${overallProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Milestone List */}
+          <div className="bg-[#121826] border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
+              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Etapas Construtivas & Medições
+              </h4>
+              <span className="text-xs text-slate-400">
+                Ajuste os percentuais conforme avanço verificado em campo.
+              </span>
+            </div>
+
+            {filteredMilestones.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400">
+                Nenhuma etapa cadastrada ainda para este contrato.{' '}
+                <button
+                  onClick={handleSeedDefaultMilestones}
+                  className="text-amber-400 underline font-semibold cursor-pointer ml-1"
+                >
+                  Clique aqui para carregar as 8 etapas padrão da indústria de caldeiraria inox.
+                </button>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {filteredMilestones.map((m) => (
+                  <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-900/40 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2.5">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            m.completedPercentage === 100
+                              ? 'bg-emerald-400'
+                              : m.completedPercentage > 0
+                              ? 'bg-amber-400 animate-pulse'
+                              : 'bg-slate-600'
+                          }`}
+                        />
+                        <span className="text-sm font-bold text-white truncate">{m.name}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
+                          Peso: {m.weightPercentage}%
+                        </span>
+                      </div>
+                      {m.notes && (
+                        <p className="text-xs text-slate-400 mt-1 pl-5">{m.notes}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-4 shrink-0">
+                      {/* Range slider */}
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={m.completedPercentage}
+                          onChange={(e) => handleUpdateMilestoneProgress(m.id, parseInt(e.target.value))}
+                          className="w-32 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                        />
+                        <span className="w-12 text-right font-mono font-bold text-xs text-amber-400">
+                          {m.completedPercentage}%
+                        </span>
+                      </div>
+
+                      {/* Status badge */}
+                      <span
+                        className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase min-w-[90px] text-center ${
+                          m.completedPercentage === 100
+                            ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/50'
+                            : m.completedPercentage > 0
+                            ? 'bg-amber-950/70 text-amber-300 border border-amber-800/50'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {m.completedPercentage === 100 ? 'Concluído' : m.completedPercentage > 0 ? 'Em Curso' : 'A Iniciar'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Equipe de Obra & Histórico Salarial */}
+      {activeTab === 'equipe_rh' && organization && (
+        <FieldPersonnelManager
+          organizationId={organization.id}
+          canViewFinancials={canViewFinancials}
+        />
+      )}
+
+      {/* TAB 4: Grade de Apontamento de Jornada & Horas Extras (Substituto Excel) */}
+      {activeTab === 'apontamento_jornada' && organization && (
+        <DailyLaborTimesheet
+          organizationId={organization.id}
+          units={units}
+          contracts={contracts}
+          canViewFinancials={canViewFinancials}
+          currentUserEmail={user?.email || 'Encarregado'}
+          onOpenShiftConfig={() => setShowShiftConfigModal(true)}
+          onGoToCostDashboard={() => setActiveTab('dashboard_custo')}
+        />
+      )}
+
+      {/* TAB 5: Dashboard de Custo Diário da Força de Trabalho por Projeto */}
+      {activeTab === 'dashboard_custo' && organization && (
+        <DailyLaborCostDashboard
+          organizationId={organization.id}
+          units={units}
+          contracts={contracts}
+          canViewFinancials={canViewFinancials}
+          onOpenShiftConfig={() => setShowShiftConfigModal(true)}
+        />
+      )}
+
+      {/* TAB 6: Painel Visual de Status e Vencimento de Normas Regulamentadoras (NRs) */}
+      {activeTab === 'painel_nrs' && organization && (
+        <NRComplianceDashboard
+          organizationId={organization.id}
+        />
+      )}
+
+      {/* MODAL: Emitir Novo RDO */}
+      {showRdoModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#121826] border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2">
+                <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <HardHat className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-white">Novo Relatório Diário de Obra (RDO)</h3>
+                  <p className="text-xs text-slate-400">Emissão diária para controle de canteiro e medição contratual.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRdoModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRdo} className="mt-4 space-y-4 text-xs">
+              {/* Date, Contract, Weather */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Data do Diário *</label>
+                  <input
+                    type="date"
+                    required
+                    value={rdoDate}
+                    onChange={(e) => setRdoDate(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Contrato / Obra *</label>
+                  <select
+                    value={rdoContractId}
+                    onChange={(e) => setRdoContractId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    {contracts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name || c.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Condição Climática *</label>
+                  <select
+                    value={rdoWeather}
+                    onChange={(e) => setRdoWeather(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    {WEATHER_OPTIONS.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Mão de Obra Presente */}
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <h4 className="font-bold text-slate-200 flex items-center space-x-1.5">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  <span>Efetivo de Campo Presente na Obra (Quantidade de Profissionais)</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Caldeireiros</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rdoCaldeireiros}
+                      onChange={(e) => setRdoCaldeireiros(parseInt(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Soldadores TIG</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rdoSoldadores}
+                      onChange={(e) => setRdoSoldadores(parseInt(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Montadores</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rdoMontadores}
+                      onChange={(e) => setRdoMontadores(parseInt(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Ajudantes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rdoAjudantes}
+                      onChange={(e) => setRdoAjudantes(parseInt(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Supervisores</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rdoSupervisores}
+                      onChange={(e) => setRdoSupervisores(parseInt(e.target.value) || 0)}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Equipamentos Mobilizados */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Maquinário & Equipamentos em Operação</label>
+                <input
+                  type="text"
+                  value={rdoEquipamentos}
+                  onChange={(e) => setRdoEquipamentos(e.target.value)}
+                  placeholder="Ex: 2 Inversoras TIG Miller, 1 Andaime Tubular, 1 Caminhão Munck"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Atividades Executadas */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Atividades Executadas no Dia *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={rdoActivities}
+                  onChange={(e) => setRdoActivities(e.target.value)}
+                  placeholder="Descreva as tarefas de montagem, tubulações instaladas, juntas soldadas em inox, testes realizados..."
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Impedimentos / Ocorrências do Cliente */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Ocorrências / Paralisações / Impedimentos do Cliente (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={rdoImpediments}
+                  onChange={(e) => setRdoImpediments(e.target.value)}
+                  placeholder="Ex: Falta de liberação de Permissão de Trabalho (PTA) pela segurança do cliente até 10h; falta de energia no setor..."
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Fundamental para justificar eventuais prorrogações de prazo de entrega.
+                </span>
+              </div>
+
+              {/* Fotos do Dia da Obra */}
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200">Registro Fotográfico da Obra</span>
+                  <label className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium cursor-pointer border border-slate-700 text-xs flex items-center space-x-1.5 transition-colors">
+                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Adicionar Foto</span>
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                  </label>
+                </div>
+                {rdoPhotos.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {rdoPhotos.map((p, idx) => (
+                      <div key={idx} className="relative group w-16 h-16 rounded-lg overflow-hidden border border-slate-700">
+                        <img src={p} alt={`Foto ${idx}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setRdoPhotos(rdoPhotos.filter((_, i) => i !== idx))}
+                          className="absolute inset-0 bg-red-950/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-800 flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRdoModal(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold shadow-md disabled:opacity-50 flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSubmitting ? 'Gravando RDO...' : 'Emitir Relatório Diário de Obra'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Visualizar / Imprimir RDO */}
+      {showPrintModal && selectedReport && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#121826] border border-slate-700 rounded-2xl max-w-2xl w-full p-6 shadow-2xl my-8 text-xs text-slate-200">
+            {/* Action Bar */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <span className="font-bold text-amber-400 text-sm">Visualização do Diário de Obra</span>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold flex items-center space-x-1.5 cursor-pointer text-xs"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Imprimir Relatório</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPrintModal(false);
+                    setSelectedReport(null);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Timbrador Aguero Inox */}
+            <div className="mt-4 p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4 print:bg-white print:text-black">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center space-x-3">
+                  <GatLogo size="md" />
+                  <div>
+                    <h3 className="text-base font-extrabold text-white tracking-wide">
+                      {organization?.name || 'AGUERO INOX'}
+                    </h3>
+                    <p className="text-[11px] text-cyan-400">
+                      Caldeiraria & Soluções Industriais em Aço Inox
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono text-sm font-bold text-amber-400 block">
+                    {selectedReport.reportNumber}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Data: {new Date(selectedReport.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Informações da Obra */}
+              <div className="grid grid-cols-2 gap-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Obra / Contrato</span>
+                  <span className="font-bold text-white">
+                    {contracts.find((c) => c.id === selectedReport.contractId)?.name || 'Contrato de Montagem & Caldeiraria'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Condição Climática</span>
+                  <span className="font-bold text-amber-300 uppercase">
+                    {WEATHER_OPTIONS.find((w) => w.id === selectedReport.weather)?.label}
+                  </span>
+                </div>
+              </div>
+
+              {/* Efetivo Presente */}
+              <div>
+                <h4 className="font-bold text-slate-300 text-[11px] uppercase mb-1.5">
+                  Efetivo em Campo
+                </h4>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {selectedReport.workforce?.map((w, i) => (
+                    <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 text-center">
+                      <span className="text-[10px] text-slate-400 block truncate">{w.role}</span>
+                      <span className="font-mono font-bold text-sm text-cyan-400">{w.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Atividades Executadas */}
+              <div>
+                <h4 className="font-bold text-slate-300 text-[11px] uppercase mb-1">
+                  Atividades Executadas no Dia
+                </h4>
+                <p className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 leading-relaxed whitespace-pre-wrap">
+                  {selectedReport.activitiesCompleted}
+                </p>
+              </div>
+
+              {/* Impedimentos */}
+              {selectedReport.impedimentsOrStoppages && (
+                <div className="p-3 rounded-lg bg-red-950/30 border border-red-800/60 text-red-200">
+                  <strong className="block text-red-400 font-bold mb-1">
+                    Impedimentos / Paralisações Geradas pelo Cliente:
+                  </strong>
+                  <p>{selectedReport.impedimentsOrStoppages}</p>
+                </div>
+              )}
+
+              {/* Fotos */}
+              {selectedReport.photos && selectedReport.photos.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-slate-300 text-[11px] uppercase mb-2">
+                    Evidências Fotográficas do Dia
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {selectedReport.photos.map((p, idx) => (
+                      <img key={idx} src={p} alt="Foto" className="w-full h-24 object-cover rounded-lg border border-slate-700" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Assinatura */}
+              <div className="pt-4 border-t border-slate-800 grid grid-cols-2 gap-4 text-center">
+                <div className="p-3 border-t border-slate-700">
+                  <span className="font-bold text-slate-300 block">{selectedReport.preparedBy}</span>
+                  <span className="text-[10px] text-slate-500">Responsável Técnico Aguero Inox</span>
+                </div>
+                <div className="p-3 border-t border-slate-700">
+                  <span className="font-bold text-slate-300 block">Fiscal da Obra / Contratante</span>
+                  <span className="text-[10px] text-slate-500">Aceite da Frente de Trabalho</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Configurar Turnos de Trabalho & Regras de Cálculo */}
+      {showShiftConfigModal && organization && (
+        <WorkShiftConfigModal
+          organizationId={organization.id}
+          onClose={() => setShowShiftConfigModal(false)}
+        />
+      )}
+    </div>
+  );
+};

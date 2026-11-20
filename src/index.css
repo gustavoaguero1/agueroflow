@@ -1,0 +1,462 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* -------------------------------------------------------------
+   APPLE ENTERPRISE DESIGN SYSTEM (LIGHT DEFAULT / CLEAN DARK)
+   ------------------------------------------------------------- */
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html.light {
+  color-scheme: light;
+  background-color: #F5F5F7;
+  color: #1D1D1F;
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #0B0C10;
+  color: #F5F5F7;
+}
+
+body {
+  margin: 0;
+  background-color: inherit;
+  color: inherit;
+}
+
+/* Crisp tabular numerals for financial & operational metrics */
+.tabular-nums,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle macOS-style scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.light .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 9999px;
+}
+
+html.light .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.26);
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* =============================================================
+   APPLE LIGHT MODE COMPATIBILITY BRIDGE FOR LEGACY SUB-MODULES
+   Transforms dark-authored internal modules into crisp Apple
+   Light surfaces (#F5F5F7 canvas, #FFFFFF elevated cards,
+   hairline rgba(0,0,0,0.08) borders, #0071E3 primary accent).
+   ============================================================= */
+
+/* Root & Canvas Surfaces */
+html.light .bg-\[\#070B14\],
+html.light .bg-\[\#0F1420\],
+html.light .bg-\[\#070D1E\],
+html.light .bg-\[\#0A0F1D\],
+html.light .bg-\[\#090D1A\],
+html.light .bg-\[\#040711\],
+html.light .bg-\[\#0B1120\],
+html.light .bg-\[\#0c111d\] {
+  background-color: #F5F5F7 !important;
+  color: #1D1D1F !important;
+}
+
+/* Elevated Cards, Panels & Containers */
+html.light .bg-\[\#121826\],
+html.light .bg-\[\#0B132B\],
+html.light .bg-\[\#0E1424\],
+html.light .bg-\[\#111827\],
+html.light .bg-\[\#161e31\],
+html.light .bg-slate-900,
+html.light .bg-slate-900\/95,
+html.light .bg-slate-900\/90,
+html.light .bg-slate-900\/80,
+html.light .bg-slate-900\/70,
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/40,
+html.light .bg-slate-900\/30 {
+  background-color: #FFFFFF !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.025) !important;
+}
+
+/* Secondary Grouped Surfaces */
+html.light .bg-slate-950,
+html.light .bg-slate-950\/90,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/70,
+html.light .bg-slate-950\/60,
+html.light .bg-slate-950\/50,
+html.light .bg-slate-950\/40 {
+  background-color: #F5F5F7 !important;
+  border-color: rgba(0, 0, 0, 0.07) !important;
+}
+
+html.light .bg-slate-800,
+html.light .bg-slate-800\/90,
+html.light .bg-slate-800\/80,
+html.light .bg-slate-800\/70,
+html.light .bg-slate-800\/60,
+html.light .bg-slate-800\/50,
+html.light .bg-slate-800\/40 {
+  background-color: #F2F2F7 !important;
+  color: #1D1D1F !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-slate-800\/90:hover,
+html.light .hover\:bg-slate-800\/80:hover,
+html.light .hover\:bg-slate-800\/60:hover,
+html.light .hover\:bg-slate-800\/50:hover,
+html.light .hover\:bg-slate-800\/40:hover,
+html.light .hover\:bg-slate-800\/30:hover,
+html.light .hover\:bg-slate-700:hover,
+html.light .hover\:bg-slate-700\/90:hover,
+html.light .hover\:bg-slate-700\/80:hover {
+  background-color: #E8E8ED !important;
+}
+
+/* Hairline Apple Borders */
+html.light .border-slate-800,
+html.light .border-slate-800\/90,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/70,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/50,
+html.light .border-slate-800\/40,
+html.light .border-slate-700,
+html.light .border-slate-700\/80,
+html.light .border-slate-700\/60,
+html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* =============================================================
+   APPLE TYPOGRAPHY & HIGH-CONTRAST SEMANTIC INK IN LIGHT MODE
+   ============================================================= */
+
+/* Headings & Primary Ink (exclude solid-filled CTA buttons & Apple badges) */
+html.light .text-white:not(.apple-solid-btn):not(.apple-solid-btn *) {
+  color: #1D1D1F !important;
+}
+
+html.light .text-slate-100,
+html.light .text-slate-200 {
+  color: #1D1D1F !important;
+}
+
+html.light .text-slate-300 {
+  color: #424245 !important;
+}
+
+html.light .text-slate-400 {
+  color: #6E6E73 !important;
+}
+
+html.light .text-slate-500 {
+  color: #86868B !important;
+}
+
+/* Apple Blue Accent for Legacy Blue/Cyan Text */
+html.light .text-cyan-400,
+html.light .text-cyan-300,
+html.light .text-cyan-200,
+html.light .text-cyan-500,
+html.light .text-blue-400,
+html.light .text-blue-300 {
+  color: #0071E3 !important;
+}
+
+/* Apple Warm Amber */
+html.light .text-amber-400,
+html.light .text-amber-300,
+html.light .text-amber-200,
+html.light .text-amber-100,
+html.light .text-yellow-400,
+html.light .text-yellow-300 {
+  color: #9A4400 !important;
+}
+
+/* Apple Emerald Green */
+html.light .text-emerald-400,
+html.light .text-emerald-300,
+html.light .text-emerald-200,
+html.light .text-emerald-100,
+html.light .text-green-400,
+html.light .text-green-300 {
+  color: #166534 !important;
+}
+
+/* Apple System Red */
+html.light .text-rose-400,
+html.light .text-rose-300,
+html.light .text-rose-200,
+html.light .text-rose-100,
+html.light .text-red-400,
+html.light .text-red-300,
+html.light .text-red-200 {
+  color: #C41C28 !important;
+}
+
+/* Apple Indigo / Purple */
+html.light .text-indigo-400,
+html.light .text-indigo-300,
+html.light .text-indigo-200 {
+  color: #4338CA !important;
+}
+
+html.light .text-purple-400,
+html.light .text-purple-300 {
+  color: #7B2CBF !important;
+}
+
+/* =============================================================
+   SOLID BUTTONS: APPLE SYSTEM BLUE & CRISP WHITE TEXT
+   ============================================================= */
+
+html.light .bg-blue-600 {
+  background-color: #0071E3 !important;
+  color: #FFFFFF !important;
+}
+html.light .bg-blue-600:hover,
+html.light .hover\:bg-blue-500:hover {
+  background-color: #0077ED !important;
+}
+
+html.light .bg-blue-600,
+html.light .bg-blue-500,
+html.light .bg-cyan-600,
+html.light .bg-cyan-500,
+html.light .bg-emerald-600,
+html.light .bg-emerald-500,
+html.light .bg-indigo-600,
+html.light .bg-indigo-500,
+html.light .bg-rose-600,
+html.light .bg-rose-500,
+html.light .bg-red-600,
+html.light .bg-red-500,
+html.light .bg-amber-600,
+html.light .bg-purple-600,
+html.light .bg-\[\#0071E3\],
+html.light .bg-\[\#1D1D1F\],
+html.light [class*="bg-gradient-to-"] {
+  color: #FFFFFF !important;
+}
+
+html.light .bg-blue-600 *,
+html.light .bg-blue-500 *,
+html.light .bg-cyan-600 *,
+html.light .bg-cyan-500 *,
+html.light .bg-emerald-600 *,
+html.light .bg-emerald-500 *,
+html.light .bg-indigo-600 *,
+html.light .bg-indigo-500 *,
+html.light .bg-rose-600 *,
+html.light .bg-rose-500 *,
+html.light .bg-red-600 *,
+html.light .bg-red-500 *,
+html.light .bg-amber-600 *,
+html.light .bg-purple-600 *,
+html.light .bg-\[\#0071E3\] *,
+html.light .bg-\[\#1D1D1F\] *,
+html.light [class*="bg-gradient-to-"] * {
+  color: #FFFFFF !important;
+}
+
+/* =============================================================
+   SOFT SEMANTIC TINTS & CHIPS IN LIGHT MODE
+   ============================================================= */
+
+html.light .bg-cyan-500\/10,
+html.light .bg-cyan-500\/15,
+html.light .bg-cyan-500\/20,
+html.light .bg-cyan-950,
+html.light .bg-cyan-950\/30,
+html.light .bg-cyan-950\/40,
+html.light .bg-cyan-950\/50,
+html.light .bg-cyan-950\/60,
+html.light .bg-cyan-950\/70,
+html.light .bg-blue-500\/10,
+html.light .bg-blue-500\/15,
+html.light .bg-blue-500\/20,
+html.light .bg-blue-600\/20,
+html.light .bg-blue-950,
+html.light .bg-blue-950\/40,
+html.light .bg-blue-950\/50,
+html.light .bg-blue-950\/70,
+html.light .bg-blue-900\/60 {
+  background-color: #EBF5FF !important;
+  color: #005BB5 !important;
+  border-color: rgba(0, 113, 227, 0.22) !important;
+}
+
+html.light .bg-emerald-500\/10,
+html.light .bg-emerald-500\/15,
+html.light .bg-emerald-500\/20,
+html.light .bg-emerald-600\/20,
+html.light .bg-emerald-950,
+html.light .bg-emerald-950\/35,
+html.light .bg-emerald-950\/40,
+html.light .bg-emerald-950\/50,
+html.light .bg-emerald-950\/60,
+html.light .bg-emerald-950\/70,
+html.light .bg-emerald-950\/80,
+html.light .bg-emerald-900\/60,
+html.light .bg-emerald-900\/70 {
+  background-color: #E8F8EE !important;
+  color: #166534 !important;
+  border-color: rgba(22, 101, 52, 0.22) !important;
+}
+
+html.light .bg-amber-500\/10,
+html.light .bg-amber-500\/15,
+html.light .bg-amber-500\/20,
+html.light .bg-amber-950,
+html.light .bg-amber-950\/20,
+html.light .bg-amber-950\/30,
+html.light .bg-amber-950\/40,
+html.light .bg-amber-950\/70 {
+  background-color: #FFF4E5 !important;
+  color: #9A4400 !important;
+  border-color: rgba(154, 68, 0, 0.22) !important;
+}
+
+html.light .bg-rose-500\/10,
+html.light .bg-rose-500\/20,
+html.light .bg-rose-950,
+html.light .bg-rose-950\/30,
+html.light .bg-rose-950\/40,
+html.light .bg-rose-950\/60,
+html.light .bg-red-500\/10,
+html.light .bg-red-500\/20,
+html.light .bg-red-950,
+html.light .bg-red-950\/40,
+html.light .bg-red-950\/50,
+html.light .bg-red-950\/70 {
+  background-color: #FFECEF !important;
+  color: #C41C28 !important;
+  border-color: rgba(196, 28, 40, 0.22) !important;
+}
+
+html.light .bg-indigo-500\/10,
+html.light .bg-indigo-500\/20,
+html.light .bg-indigo-600\/25,
+html.light .bg-indigo-950,
+html.light .bg-indigo-950\/40,
+html.light .bg-indigo-950\/50,
+html.light .bg-indigo-950\/60,
+html.light .bg-indigo-900\/60,
+html.light .bg-purple-500\/10,
+html.light .bg-purple-500\/20,
+html.light .bg-purple-950 {
+  background-color: #EEF2FF !important;
+  color: #4338CA !important;
+  border-color: rgba(67, 56, 202, 0.22) !important;
+}
+
+/* =============================================================
+   FORM CONTROLS (APPLE CLEAN INPUTS & FOCUS RINGS)
+   ============================================================= */
+
+html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.light select,
+html.light textarea {
+  background-color: #FFFFFF !important;
+  color: #1D1D1F !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+html.light input:not([type="checkbox"]):not([type="radio"]):focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #0071E3 !important;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.16) !important;
+  outline: none !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #86868B !important;
+}
+
+/* Keep transparent selects inside composite header bars clean */
+html.light select.apple-inline-select {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* =============================================================
+   TABLES IN APPLE LIGHT MODE
+   ============================================================= */
+
+html.light table thead tr,
+html.light th {
+  background-color: #F5F5F7 !important;
+  color: #6E6E73 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  font-weight: 600 !important;
+}
+
+html.light table tbody tr {
+  background-color: #FFFFFF;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+html.light table tbody tr:hover {
+  background-color: #F9F9FB !important;
+}
+
+html.light td {
+  color: #1D1D1F !important;
+}
+
+/* =============================================================
+   MODALS & OVERLAYS
+   ============================================================= */
+
+html.light .fixed.inset-0.bg-black\/80,
+html.light .fixed.inset-0.bg-black\/60 {
+  background-color: rgba(29, 29, 31, 0.38) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+html.light .fixed.inset-0 .bg-slate-900,
+html.light .fixed.inset-0 .bg-\[\#0E1424\],
+html.light .fixed.inset-0 .bg-\[\#121826\] {
+  background-color: #FFFFFF !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.14), 0 4px 16px rgba(0, 0, 0, 0.06) !important;
+}

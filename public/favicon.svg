@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" fill="none">
+  <defs>
+    <linearGradient id="gat-fav-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D2FF" />
+      <stop offset="100%" stop-color="#0044EE" />
+    </linearGradient>
+    <linearGradient id="gat-fav-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#CBD5E1" />
+    </linearGradient>
+  </defs>
+  <path d="M 185 45 L 140 45 C 95 45 60 75 60 115 C 60 155 95 185 140 185 C 185 185 200 155 200 135 L 125 135 L 125 105 L 195 105 C 198 115 200 125 200 135 C 200 170 170 205 130 205 C 75 205 35 165 35 115 C 35 65 75 25 140 25 L 195 25 Z" fill="url(#gat-fav-blue)"/>
+  <path d="M 98 105 L 165 105 L 155 125 L 98 125 Z" fill="#00E5FF"/>
+  <path d="M 235 25 L 205 25 L 140 185 L 175 185 L 210 95 L 245 25 Z" fill="url(#gat-fav-silver)"/>
+  <path d="M 235 25 L 270 25 L 340 185 L 305 185 L 275 115 L 235 25 Z" fill="url(#gat-fav-silver)"/>
+  <path d="M 180 125 C 210 125 230 110 260 110 L 320 185 L 285 185 C 265 155 245 135 210 135 C 190 135 175 140 160 150 Z" fill="url(#gat-fav-blue)"/>
+  <path d="M 260 25 L 430 25 L 395 65 L 290 65 Z" fill="url(#gat-fav-blue)"/>
+  <path d="M 335 65 L 370 65 L 340 185 L 305 185 Z" fill="url(#gat-fav-silver)"/>
+</svg>

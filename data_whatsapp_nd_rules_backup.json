@@ -1,0 +1,30 @@
+[
+  {
+    "groupName": "Programações/IA",
+    "updatedByUid": "corporate_session",
+    "name": "Automação ND — Programações/IA",
+    "outlookBodyTemplate": "Olá,\n\nSegue em anexo a Nota de Débito Nº PROJ {projNumber}/{year} gerada automaticamente pelo AgueroFlow.\n\n• Natureza: {natureza}\n• Recebedor: {recebedor}\n• Valor: {valor}\n• Data de Pagamento: {dataPagamento}\n• Centro de Custos: {centroCusto}\n\nAtenciosamente,\nAgueroFlow | Assistente IA",
+    "createdAt": "2026-11-19T18:56:37.622Z",
+    "outlookSubjectTemplate": "ND Nº PROJ {projNumber}/{year} - {natureza} - {recebedor}",
+    "sendPdfToWhatsAppGroup": true,
+    "companyName": "Aguero Inox Montagens e Manutenção Industrial LTDA - CNPJ 18.634.407/0001-36",
+    "defaultDesignation": "Funcionário",
+    "projYear": 2026,
+    "outlookCc": [
+      "gustavo@agueroinox.com.br"
+    ],
+    "outlookTo": [
+      "gustavo@agueroinox.com.br"
+    ],
+    "active": true,
+    "footerText": "Www.agueroinox.com.br | Rua Oneda, 470 – Planalto – São Bernardo do Campo/SP – CEP: 09895-280",
+    "id": "wand_rule_1795114597622_h44o",
+    "groupJid": "120363430116550776@g.us",
+    "organizationId": "org_aguero_mvaz8vbj",
+    "updatedAt": "2026-11-20T13:38:45.291Z",
+    "emitterName": "AgueroFlow | Assistente IA",
+    "generatedCount": 5,
+    "nextProjNumber": 4930,
+    "autoEmailEnabled": true
+  }
+]

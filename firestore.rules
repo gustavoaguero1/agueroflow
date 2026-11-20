@@ -1,0 +1,310 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCurrentUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Formulário público para demonstração na landing page
+    match /lead_requests/{leadId} {
+      allow create: if request.resource.data.name is string 
+                    && request.resource.data.email is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 100
+                    && request.resource.data.email.size() > 0
+                    && request.resource.data.email.size() <= 150;
+      allow read, update, delete: if true;
+    }
+
+    // Autenticação e Perfis de Usuário
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Credenciais e Parâmetros de Segurança do Sistema (Master Auth)
+    match /system_security/{docId} {
+      allow read, write: if true;
+    }
+
+    // Organizações - Leitura aberta para busca de empresa no login, escrita permitida
+    match /organizations/{orgId} {
+      allow read, create, update: if true;
+      allow delete: if false; // Não permitir deleção física direta
+    }
+
+    // Membros das organizações - Leitura e escrita permitidas para validação de credenciais e primeiro acesso
+    match /org_members/{memberId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // Dispositivos confiáveis e MFA
+    match /trusted_devices/{deviceId} {
+      allow read, write: if true;
+    }
+
+    // Unidades e filiais
+    match /units/{unitId} {
+      allow read, write: if true;
+    }
+
+    // Centros de custo
+    match /cost_centers/{costCenterId} {
+      allow read, write: if true;
+    }
+
+    // Contratos
+    match /contracts/{contractId} {
+      allow read, write: if true;
+    }
+
+    // Ativos e equipamentos
+    match /assets/{assetId} {
+      allow read, write: if true;
+    }
+
+    // Equipes
+    match /teams/{teamId} {
+      allow read, write: if true;
+    }
+
+    // Ordens de Serviço
+    match /work_orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // Mensagens e Diálogo Interno da OS
+    match /order_messages/{msgId} {
+      allow read, write: if true;
+    }
+
+    // Estados configuráveis de Ordens de Serviço
+    match /work_order_statuses/{statusId} {
+      allow read, write: if true;
+    }
+
+    // Eventos e timeline da OS
+    match /order_events/{eventId} {
+      allow read, create: if true;
+      allow update, delete: if false; // Timeline imutável
+    }
+
+    // Aprovações LPU
+    match /lpu_approvals/{approvalId} {
+      allow read, write: if true;
+    }
+
+    // Recorrências
+    match /recurring_orders/{recId} {
+      allow read, write: if true;
+    }
+
+    // Templates de Checklist
+    match /checklist_templates/{templateId} {
+      allow read, write: if true;
+    }
+
+    // Execuções de Checklist
+    match /checklist_runs/{runId} {
+      allow read, write: if true;
+    }
+
+    // Inspeções
+    match /inspections/{inspectionId} {
+      allow read, write: if true;
+    }
+
+    // Catálogo de Peças, Serviços e Mão de Obra
+    match /items/{itemId} {
+      allow read, write: if true;
+    }
+
+    // Categorias de itens
+    match /item_categories/{catId} {
+      allow read, write: if true;
+    }
+
+    // Saldos de estoque
+    match /stock_balances/{balanceId} {
+      allow read, write: if true;
+    }
+
+    // Movimentações de estoque
+    match /stock_movements/{movId} {
+      allow read, create: if true;
+      allow update, delete: if false; // Movimentações são imutáveis para garantir auditoria
+    }
+
+    // Ocorrências e Não Conformidades
+    match /occurrences/{occId} {
+      allow read, write: if true;
+    }
+
+    // Suporte / Chamados
+    match /support_tickets/{ticketId} {
+      allow read, write: if true;
+    }
+
+    // Trilha de Auditoria
+    match /audit_logs/{logId} {
+      allow read, create: if true;
+      allow update, delete: if false; // Auditoria é estritamente append-only
+    }
+
+    // Histórico de conversas da IA por usuário
+    match /ai_conversations/{convId} {
+      allow read, write: if true;
+    }
+
+    // RDO - Relatórios Diários de Obra / Diário de Campo
+    match /construction_reports/{reportId} {
+      allow read, write: if true;
+    }
+
+    // Marcos de Avanço Físico de Obras & Montagens
+    match /construction_milestones/{milestoneId} {
+      allow read, write: if true;
+    }
+
+    // Colaboradores de Campo / Equipe de Obras
+    match /field_workers/{workerId} {
+      allow read, write: if true;
+    }
+
+    // Apontamentos Diários de Jornada e Horas Extras (Diário de Campo)
+    match /worker_time_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Configuração de Turnos de Trabalho
+    match /work_shifts/{shiftId} {
+      allow read, write: if true;
+    }
+
+    // Regras de Cálculo de Horas Extras e Adicionais por Empresa
+    match /overtime_rules/{orgId} {
+      allow read, write: if true;
+    }
+
+    // Obras e Construções Gerais
+    match /constructions/{constructionId} {
+      allow read, write: if true;
+    }
+
+    // Módulo Bens Coletivos / Almoxarifado
+    match /collective_asset_categories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    match /collective_assets/{assetId} {
+      allow read, write: if true;
+    }
+
+    match /collective_asset_workers/{workerId} {
+      allow read, write: if true;
+    }
+
+    match /collective_asset_movements/{movementId} {
+      allow read, write: if true;
+    }
+
+    match /collective_asset_services/{serviceId} {
+      allow read, write: if true;
+    }
+
+    match /collective_asset_policies/{policyId} {
+      allow read, write: if true;
+    }
+
+    // Módulo RH / Salários e Provisionamento do 13º
+    match /rh_employees/{employeeId} {
+      allow read, write: if true;
+    }
+
+    match /rh_calculations/{calculationId} {
+      allow read, write: if true;
+    }
+
+    match /rh_batches/{batchId} {
+      allow read, write: if true;
+    }
+
+    match /rh_imports/{importId} {
+      allow read, write: if true;
+    }
+
+    match /rh_policies/{policyId} {
+      allow read, write: if true;
+    }
+
+    // Comandos Programados do Assistente IA (WhatsApp)
+    match /whatsapp_scheduled_jobs/{jobId} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.name is string
+                            && request.resource.data.name.size() > 0
+                            && request.resource.data.name.size() <= 160
+                            && request.resource.data.scheduleTime is string
+                            && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+                            && request.resource.data.promptInstruction is string
+                            && request.resource.data.promptInstruction.size() > 0
+                            && request.resource.data.promptInstruction.size() <= 2000;
+    }
+
+    // Cofre em Nuvem de Comprovantes OCR & Notas de Débito
+    match /whatsapp_ocr_receipts/{receiptId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.establishmentName is string
+                            && request.resource.data.establishmentName.size() <= 200
+                            && request.resource.data.totalAmount is number;
+      allow delete: if false; // Histórico OCR protegido contra exclusão acidental
+    }
+
+    // Contatos, Respostas Rápidas e Regras do Assistente WhatsApp
+    match /whatsapp_contacts/{contactId} {
+      allow read, write: if true;
+    }
+
+    match /whatsapp_quick_replies/{replyId} {
+      allow read, write: if true;
+    }
+
+    match /whatsapp_ai_rules/{ruleId} {
+      allow read, write: if true;
+    }
+
+    match /whatsapp_ai_settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    // Regras e Histórico de Automação de Notas de Débito (ND + Outlook)
+    match /whatsapp_nd_rules/{ruleId} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.name is string
+                            && request.resource.data.name.size() > 0
+                            && request.resource.data.name.size() <= 160
+                            && request.resource.data.groupJid is string;
+    }
+
+    match /whatsapp_nd_records/{recordId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.receiverName is string
+                            && request.resource.data.receiverName.size() <= 180
+                            && request.resource.data.amount is number;
+      allow delete: if false; // Histórico de NDs protegido contra exclusão acidental
+    }
+
+    // Teste de conexão
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

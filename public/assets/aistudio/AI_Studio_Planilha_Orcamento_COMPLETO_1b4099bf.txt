@@ -1,0 +1,837 @@
+# Referência estruturada da planilha de orçamento
+
+**Arquivo de origem:** `Planilha XXXX-26 -MODELO.xlsx`
+**Quantidade de abas:** 18
+
+## Como interpretar este material
+- Cada célula está identificada pelo endereço Excel original (ex.: `H18`).
+- `valor` representa o conteúdo/resultado atualmente armazenado ou calculado na planilha.
+- `fórmula` representa a expressão original da célula, quando existe.
+- Uma fórmula entre abas mantém a referência original (ex.: `'Mão de obra'!N31`).
+- Células vazias foram omitidas, mas os endereços originais foram preservados.
+- Esta exportação é documental: não substitui o Excel original, macros, validações ou recursos de interface.
+
+## Índice das abas
+1. **Geral** — intervalo utilizado: `A1:Q44`
+2. **TETRAPAK** — intervalo utilizado: `A1:L120`
+3. **ANALISE** — intervalo utilizado: `A1:M31`
+4. **Custos** — intervalo utilizado: `A1:R46`
+5. **Mão de obra** — intervalo utilizado: `A1:AH34`
+6. **Equipe Comissionamento** — intervalo utilizado: `A1:N21`
+7. **Despesas com Pessoal** — intervalo utilizado: `A1:T21`
+8. **Contratação de terceiros** — intervalo utilizado: `A1:K21`
+9. **Materiais** — intervalo utilizado: `A1:M96`
+10. **Consumiveis** — intervalo utilizado: `A1:J26`
+11. **Maquinário** — intervalo utilizado: `A1:K26`
+12. **Canteiro de obra** — intervalo utilizado: `A1:K36`
+13. **Mob&Desmob** — intervalo utilizado: `A1:K29`
+14. **Custos administrativos** — intervalo utilizado: `A1:J13`
+15. **Impostos** — intervalo utilizado: `A1:T38`
+16. **Custo financeiro** — intervalo utilizado: `A1:N35`
+17. **Categoria** — intervalo utilizado: `A1:Q28`
+18. **Contingências** — intervalo utilizado: `A1:N31`
+
+---
+
+# Aba: Geral
+**Intervalo utilizado:** `A1:Q44` | **Linhas:** 44 | **Colunas:** 17
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `PLANILHA DE CUSTO`
+- **Linha 2:** `A2` valor `PLANILHA GERAL DE CUSTOS`
+- **Linha 3:** `A3` valor `CLIENTE:` | `C3` valor `MODELO TESTE` | `I3` valor `PROP. N°` | `J3` valor `XXXX` | `K3` valor `REV.` | `L3` valor `0`
+- **Linha 4:** `A4` valor `LOCAL:` | `C4` valor `GALPÃO AGUERO INOX - SBC/SP` | `I4` valor `PRAZO:` | `J4` valor `8 Semanas` | `K4` valor `DATA:` | `L4` valor `45799` | `N4` fórmula `=0+LEFT(J4,FIND(" ",J4,1))` → valor atual `8` | `O4` fórmula `=IF(N4<10,MID(J4,3,8),IF(N4>=100,MID(J4,5,8),MID(J4,4,8)))` → valor atual `Semanas`
+- **Linha 5:** `A5` valor `CATEGORIA:` | `C5` fórmula `=Categoria!$C$3` → valor atual `#REF!` | `D5` valor `Data Inicio:` | `E5` valor `45884` | `F5` valor `Data Final:` | `G5` fórmula `=IF(OR(O4="Dia",O4="Dias"),(E5+N4)-1,IF(OR(O4="Semana",O4="Semanas"),E5+(N4*7)-1,IF(OR(O4="Mes",O4="Meses",O4="Mês",O4="Mêses"),EDATE(E5,N4)-1)))` → valor atual `2025-10-09 00:00:00+00:00` | `J5` valor `FINALIDADE DO ORÇAMENTO:` | `L5` valor `Material / Serviço`
+- **Linha 6:** `A6` valor `DETALHAMENTO`
+- **Linha 7:** `A7` valor `ITEM` | `B7` valor `DESCRIÇÃO` | `H7` valor `CUSTOS TOTAIS` | `I7` valor `MARGEM` | `J7` valor `VENDA S/ IMP.` | `K7` valor `VENDA C/ IMP.` | `M7` valor `%`
+- **Linha 8:** `A8` valor `1` | `B8` valor `Mão de obra` | `H8` fórmula `='Mão de obra'!N31` → valor atual `179836.80000000002` | `I8` fórmula `=IF(H8=0,0,(J8-H8)/J8)` → valor atual `0.20226766902204607` | `J8` fórmula `=K8*Impostos!$N$38` → valor atual `225435.015` | `K8` fórmula `='Mão de obra'!J31` → valor atual `256906` | `M8` fórmula `=IF(K8=0,0,K8/$K$26)` → valor atual `0.187155034977831`
+- **Linha 9:** `A9` valor `2` | `B9` valor `Equipe Comissionamento` | `H9` fórmula `='Equipe Comissionamento'!N21` → valor atual `18974.559999999998` | `I9` fórmula `=IF(H9=0,0,(J9-H9)/J9)` → valor atual `0.20223110379274156` | `J9` fórmula `=K9*Impostos!$N$38` → valor atual `23784.5322` | `K9` fórmula `='Equipe Comissionamento'!J21` → valor atual `27104.88` | `M9` valor `0.019745801049683202`
+- **Linha 10:** `A10` valor `3` | `B10` valor `Despesas com pessoal` | `H10` fórmula `='Despesas com Pessoal'!J21` → valor atual `144704.72727272726` | `I10` valor `0` | `J10` fórmula `=H10/(1-I10)` → valor atual `144704.72727272726` | `K10` fórmula `=J10/Impostos!$N$38` → valor atual `164905.6721056721` | `M10` valor `0.12013314921013832`
+- **Linha 11:** `A11` valor `4` | `B11` valor `Contratação de terceiros` | `H11` fórmula `='Contratação de terceiros'!J21` → valor atual `15000` | `I11` valor `0` | `J11` valor `15000` | `K11` fórmula `=J11/Impostos!$N$38` → valor atual `17094.017094017094` | `M11` valor `0.012452925845026627`
+- **Linha 12:** `A12` valor `5` | `B12` valor `Materiais` | `H12` fórmula `=SUM(Materiais!C2,Materiais!J95,Materiais!I53,Materiais!I27,SUMPRODUCT(Materiais!F59:F80,Materiais!B59:B80))` → valor atual `250000` | `I12` fórmula `=IF(H12=0,0,(J12-H12)/J12)` → valor atual `0.08256880733944955` | `J12` fórmula `=Materiais!I2` → valor atual `272500` | `K12` fórmula `=J12/Impostos!$O$38` → valor atual `374570.4467353952` | `M12` valor `0.2728731328206608`
+- **Linha 13:** `A13` valor `6` | `B13` valor `Consumíveis` | `H13` fórmula `=Consumiveis!I26` → valor atual `64226.5` | `I13` valor `0` | `J13` valor `64226.5` | `K13` fórmula `=J13/Impostos!$N$38` → valor atual `73192.59259259258` | `M13` valor `0.053320522785706835`
+- **Linha 14:** `A14` valor `7` | `B14` valor `Maquinário, movimentação e ferramental` | `H14` fórmula `=Maquinário!I26` → valor atual `92400` | `I14` valor `0` | `J14` valor `92400` | `K14` fórmula `=J14/Impostos!$N$38` → valor atual `105299.1452991453` | `M14` valor `0.07671002320536402`
+- **Linha 15:** `A15` valor `8` | `B15` valor `Canteiro de óbra` | `H15` fórmula `='Canteiro de obra'!I36` → valor atual `39800` | `I15` valor `0` | `J15` valor `39800` | `K15` fórmula `=J15/Impostos!$N$38` → valor atual `45356.125356125354` | `M15` valor `0.03304176324213731`
+- **Linha 16:** `A16` valor `9` | `B16` valor `Mobilização / Desmobilização` | `H16` fórmula `='Mob&Desmob'!I29` → valor atual `12000` | `I16` valor `0` | `J16` valor `12000` | `K16` fórmula `=J16/Impostos!$N$38` → valor atual `13675.213675213674` | `M16` valor `0.0099623406760213`
+- **Linha 17:** `A17` valor `11` | `B17` valor `Custo administrativo` | `G17` valor ` ` | `H17` fórmula `='Custos administrativos'!I13` → valor atual `25266.265585754452` | `I17` valor `0` | `J17` fórmula `=H17/(1-I17)` → valor atual `25266.265585754452` | `K17` fórmula `=J17/Impostos!$N$38` → valor atual `28793.465054990826` | `M17` valor `0.020975928781343228`
+- **Linha 18:** `A18` valor `TOTAL` | `H18` fórmula `=SUM(H8:H17)` → valor atual `842208.8528584817` | `I18` fórmula `=IF(H18=0,0,(J18-H18)/J18)` → valor atual `0.07967088799410921` | `J18` fórmula `=SUM(J8:J17)` → valor atual `915117.0400584817` | `K18` fórmula `=SUM(K8:L17)` → valor atual `1106897.557913152` | `M18` valor `-`
+- **Linha 19:** `A19` valor `10` | `B19` valor `Contingencias` | `G19` valor `0.05` | `J19` fórmula `=J18/(1-G19)*G19` → valor atual `48164.0547399201` | `K19` fórmula `=J19/Impostos!$N$38` → valor atual `54887.81166942461` | `M19` fórmula `=IF(K19=0,0,K19/$K$26)` → valor atual `0.039985560138135215`
+- **Linha 20:** `A20` valor `12` | `B20` valor `Desconto` | `G20` valor `0.05` | `J20` fórmula `='Custo financeiro'!I30` → valor atual `50699.00498938958` | `K20` fórmula `='Custo financeiro'!J30` → valor atual `61146.59839908299` | `M20` valor `0.044545062249055155`
+- **Linha 21:** `A21` valor `13` | `B21` valor `Comissão` | `G21` valor `0.05` | `J21` fórmula `='Custo financeiro'!I35` → valor atual `53367.373673041664` | `K21` fórmula `='Custo financeiro'!J35` → valor atual `73357.21467084764` | `M21` valor `0.05344044933788525`
+- **Linha 22:** `A22` valor `14` | `B22` valor `Seguro Bancário / Carta fiança` | `G22` valor `0` | `H22` fórmula `=IF(D22="Valor segurado",0,D22*G22)` → valor atual `0` | `J22` fórmula `=SUM(J18,J20:J21)/(1-G22)*$G$22` → valor atual `0` | `K22` fórmula `=J22/Impostos!$N$38` → valor atual `0` | `M22` valor `0`
+- **Linha 23:** `A23` valor `15` | `B23` valor `Custo Financeiro` | `J23` fórmula `='Custo financeiro'!I5+'Custo financeiro'!I9` → valor atual `33010.74660188144` | `K23` fórmula `=J23/Impostos!$N$38` → valor atual `37619.08444658853` | `M23` valor `0.02740535863481295`
+- **Linha 24:** `A24` valor `16` | `B24` valor `Antecipação` | `J24` fórmula `='Custo financeiro'!I13+'Custo financeiro'!I15` → valor atual `34031.69752771282` | `K24` fórmula `=J24/Impostos!$N$38` → valor atual `38782.561285142816` | `M24` fórmula `=IF(K24=0,0,K24/$K$26)` → valor atual `0.028252947046198917`
+- **Linha 25:** `A25` valor `17` | `B25` valor `Impostos` | `K25` fórmula `=Impostos!I9+Impostos!J9` → valor atual `233764.83679552987` | `M25` fórmula `=IF(K25=0,0,K25/SUM($K$18:$L$24))` → valor atual `0.1702967864006849` | `N25` fórmula `=P25/J26` → valor atual `0.7424333025168529` | `O25` valor `Custo Obra` | `P25` fórmula `=H18` → valor atual `842208.8528584817`
+- **Linha 26:** `A26` valor `VALOR DE VENDA TOTAL  ` | `J26` fórmula `=SUM(J18:J25)` → valor atual `1134389.9175904274` | `K26` fórmula `=SUM(K18:L24)` → valor atual `1372690.8283842385` | `M26` fórmula `=SUM(M8:M24)` → valor atual `1.0000000000000002` | `N26` fórmula `=P26/J26` → valor atual `0.05909999999999999` | `O26` valor `Custos finan` | `P26` fórmula `=J23+J24` → valor atual `67042.44412959425`
+- **Linha 27:** `A27` valor `18` | `B27` valor `Desconto extra cedido para fechamento do projeto` | `G27` valor `0` | `H27` fórmula `=J26*G27` → valor atual `0` | `J27` fórmula `=IF(G27=0,0,J26-H27)` → valor atual `0` | `K27` fórmula `=IF(G27=0,0,K26-(K26*G27))` → valor atual `0` | `M27` valor `-` | `N27` valor `0.08` | `O27` valor `impostos` | `P27` fórmula `=J26*N27` → valor atual `90751.1934072342`
+- **Linha 28:** `N28` valor `0.12` | `O28` valor `Adm` | `P28` fórmula `=J26*N28` → valor atual `136126.7901108513`
+- **Linha 29:** `A29` valor `PRICE BREAKDOWN` | `N29` valor `0.05` | `O29` valor ` Investimento ` | `P29` fórmula `=N29*J26` → valor atual `56719.495879521375`
+- **Linha 30:** `A30` valor `18.1` | `B30` valor `Materiais` | `J30` fórmula `=(J12+'Custo financeiro'!I27+'Custo financeiro'!I32+'Custo financeiro'!I5+'Custo financeiro'!I13)-((J12+'Custo financeiro'!I27+'Custo financeiro'!I32+'Custo financeiro'!I5+'Custo financeiro'!I13)*G27)` → valor atual `320904.515008763` | `K30` fórmula `=J30/Impostos!$O$38` → valor atual `441105.8625550007` | `M30` fórmula `=IF(K30=0,0,K30/K26)` → valor atual `0.32134392787793` | `N30` fórmula `=SUM(100%-N25-N26-N27-N28-N29)` → valor atual `-0.0515333025168529` | `O30` valor `Margem líquida` | `P30` fórmula `=J26*N30` → valor atual `-58458.85879525533`
+- **Linha 31:** `A31` valor `18.2` | `B31` valor `Serviços` | `J31` fórmula `=(SUM(J8:J11,J13:J17,J19)+'Custo financeiro'!I29+'Custo financeiro'!I34+'Custo financeiro'!I9+'Custo financeiro'!I15)-(SUM(J8:J11,J13:J17,J19)+'Custo financeiro'!I29+'Custo financeiro'!I34+'Custo financeiro'!I9+'Custo financeiro'!I15)*G27` → valor atual `813485.4025816644` | `K31` fórmula `=J31/Impostos!$N$38` → valor atual `927048.8918309564` | `M31` fórmula `=IF(K31=0,0,K31/K26)` → valor atual `0.6753515596240731` | `N31` fórmula `=SUM(N25:N30)` → valor atual `1` | `O31` valor `Receita` | `P31` fórmula `=SUM(P27:P30)` → valor atual `225138.62060235153` | `Q31` fórmula `=P31/J26` → valor atual `0.1984666974831471`
+- **Linha 32:** `P32` fórmula `=SUM(P25:P30)` → valor atual `1134389.9175904274`
+- **Linha 33:** `A33` valor `REVISÃO ` | `D33` valor `EMISSOR ` | `H33` valor `MOTIVO` | `L33` valor `DATA`
+- **Linha 34:** `A34` valor `REVISÃO ` | `D34` valor `EMISSOR ` | `H34` valor `MOTIVO` | `L34` valor `DATA`
+- **Linha 35:** `A35` valor `REVISÃO ` | `D35` valor `EMISSOR ` | `H35` valor `MOTIVO` | `L35` valor `DATA`
+- **Linha 36:** `A36` valor `REVISÃO ` | `D36` valor `EMISSOR ` | `H36` valor `MOTIVO` | `L36` valor `DATA`
+- **Linha 37:** `A37` valor `REVISÃO ` | `D37` valor `EMISSOR ` | `H37` valor `MOTIVO` | `L37` valor `DATA`
+- **Linha 38:** `A38` valor `REVISÃO ` | `D38` valor `EMISSOR ` | `H38` valor `MOTIVO` | `L38` valor `DATA`
+- **Linha 39:** `A39` valor `REVISÃO ` | `D39` valor `EMISSOR ` | `H39` valor `MOTIVO` | `L39` valor `DATA`
+- **Linha 40:** `A40` valor `REVISÃO ` | `D40` valor `EMISSOR ` | `H40` valor `MOTIVO` | `L40` valor `DATA`
+- **Linha 41:** `A41` valor `REVISÃO ` | `D41` valor `EMISSOR ` | `H41` valor `MOTIVO` | `L41` valor `DATA`
+- **Linha 42:** `A42` valor `REVISÃO ` | `D42` valor `EMISSOR ` | `H42` valor `MOTIVO` | `L42` valor `DATA`
+- **Linha 43:** `A43` valor `REVISÃO ` | `D43` valor `EMISSOR ` | `H43` valor `MOTIVO` | `L43` valor `DATA`
+- **Linha 44:** `A44` valor `REVISÃO ` | `D44` valor `EMISSOR ` | `H44` valor `MOTIVO` | `L44` valor `DATA`
+
+**Células preenchidas:** 241 | **Células com fórmula:** 79
+
+---
+
+# Aba: TETRAPAK
+**Intervalo utilizado:** `A1:L120` | **Linhas:** 120 | **Colunas:** 12
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 2:** `B2` valor `Valor da Hora Extra (%) - tarifa 1` | `E2` valor `0.5`
+- **Linha 3:** `B3` valor `Valor da Hora Extra (%) - tarifa 2` | `E3` valor `1`
+- **Linha 5:** `A5` valor `Pipe Rack` | `B5` valor `Função` | `E5` valor `Qte pessoas por função` | `G5` valor `Quantidade de Horas por Pessoa` | `J5` valor `Valor HH (R$)` | `K5` valor `Valor  R$` | `L5` valor `Total Horas`
+- **Linha 6:** `G6` valor `Normais` | `H6` valor `Extras (T1)` | `I6` valor `Extras (T2)`
+- **Linha 7:** `B7` valor `Mecânico Montador` | `E7` valor `2` | `G7` fórmula `=IF(E7="","",'Mão de obra'!D6)` → valor atual `0` | `H7` fórmula `=IF(E7="","",'Mão de obra'!E6)` → valor atual `0` | `I7` fórmula `=IF(E7="","",'Mão de obra'!F6)` → valor atual `0` | `J7` fórmula `=IF(E7="","",'Mão de obra'!G6)` → valor atual `85.01` | `K7` fórmula `=IF(E7="","",'Mão de obra'!J6)` → valor atual `0` | `L7` fórmula `=SUM(G7:I7)` → valor atual `0`
+- **Linha 8:** `B8` valor `Encanador` | `E8` fórmula `=IF('Mão de obra'!B7=0,"",'Mão de obra'!B7)` → valor atual `1` | `G8` fórmula `=IF(E8="","",'Mão de obra'!D7)` → valor atual `352` | `H8` fórmula `=IF(E8="","",'Mão de obra'!E7)` → valor atual `112` | `I8` fórmula `=IF(E8="","",'Mão de obra'!F7)` → valor atual `0` | `J8` fórmula `=IF(E8="","",'Mão de obra'!G7)` → valor atual `85.01` | `K8` fórmula `=IF(E8="","",'Mão de obra'!J7)` → valor atual `44205.200000000004` | `L8` fórmula `=SUM(G8:I8)` → valor atual `464`
+- **Linha 9:** `B9` valor `Soldador` | `E9` fórmula `=IF('Mão de obra'!B8=0,"",'Mão de obra'!B8)` → valor atual `1` | `G9` fórmula `=IF(E9="","",'Mão de obra'!D8)` → valor atual `352` | `H9` fórmula `=IF(E9="","",'Mão de obra'!E8)` → valor atual `112` | `I9` fórmula `=IF(E9="","",'Mão de obra'!F8)` → valor atual `0` | `J9` fórmula `=IF(E9="","",'Mão de obra'!G8)` → valor atual `86.25` | `K9` fórmula `=IF(E9="","",'Mão de obra'!J8)` → valor atual `44850` | `L9` valor `464`
+- **Linha 10:** `B10` valor `Ajudante` | `E10` valor `3` | `G10` fórmula `=IF(E10="","",'Mão de obra'!D9)` → valor atual `352` | `H10` fórmula `=IF(E10="","",'Mão de obra'!E9)` → valor atual `112` | `I10` fórmula `=IF(E10="","",'Mão de obra'!F9)` → valor atual `0` | `J10` fórmula `=IF(E10="","",'Mão de obra'!G9)` → valor atual `50.51` | `K10` fórmula `=IF(E10="","",'Mão de obra'!J9)` → valor atual `26265.2` | `L10` valor `464`
+- **Linha 11:** `B11` valor `Eletricista` | `E11` valor `3` | `G11` fórmula `=IF(E11="","",'Mão de obra'!D10)` → valor atual `352` | `H11` fórmula `=IF(E11="","",'Mão de obra'!E10)` → valor atual `112` | `I11` fórmula `=IF(E11="","",'Mão de obra'!F10)` → valor atual `0` | `J11` fórmula `=IF(E11="","",'Mão de obra'!G10)` → valor atual `86.24` | `K11` fórmula `=IF(E11="","",'Mão de obra'!J10)` → valor atual `44844.799999999996` | `L11` valor `464`
+- **Linha 13:** `A13` valor `Tubos Pipe rack` | `B13` valor `Mecânico Montador` | `E13` fórmula `=IF('Mão de obra'!B12=0,"",'Mão de obra'!B12)` → valor atual `1` | `G13` fórmula `=IF(E13="","",'Mão de obra'!D12)` → valor atual `352` | `H13` fórmula `=IF(E13="","",'Mão de obra'!E12)` → valor atual `112` | `I13` fórmula `=IF(E13="","",'Mão de obra'!F12)` → valor atual `0` | `J13` fórmula `=IF(E13="","",'Mão de obra'!G12)` → valor atual `77.62` | `K13` fórmula `=IF(E13="","",'Mão de obra'!J12)` → valor atual `40362.4` | `L13` valor `464`
+- **Linha 14:** `B14` valor `Encanador` | `E14` valor `2` | `G14` fórmula `=IF(E14="","",'Mão de obra'!D13)` → valor atual `0` | `H14` fórmula `=IF(E14="","",'Mão de obra'!E13)` → valor atual `0` | `I14` fórmula `=IF(E14="","",'Mão de obra'!F13)` → valor atual `0` | `J14` fórmula `=IF(E14="","",'Mão de obra'!G13)` → valor atual `52.98` | `K14` fórmula `=IF(E14="","",'Mão de obra'!J13)` → valor atual `0` | `L14` valor `0`
+- **Linha 15:** `B15` valor `Soldador` | `E15` valor `3` | `G15` fórmula `=IF(E15="","",'Mão de obra'!D14)` → valor atual `0` | `H15` fórmula `=IF(E15="","",'Mão de obra'!E14)` → valor atual `0` | `I15` fórmula `=IF(E15="","",'Mão de obra'!F14)` → valor atual `0` | `J15` fórmula `=IF(E15="","",'Mão de obra'!G14)` → valor atual `53.1` | `K15` fórmula `=IF(E15="","",'Mão de obra'!J14)` → valor atual `0` | `L15` valor `0`
+- **Linha 16:** `B16` valor `Ajudante` | `E16` valor `2` | `G16` fórmula `=IF(E16="","",'Mão de obra'!D15)` → valor atual `0` | `H16` fórmula `=IF(E16="","",'Mão de obra'!E15)` → valor atual `0` | `I16` fórmula `=IF(E16="","",'Mão de obra'!F15)` → valor atual `0` | `J16` fórmula `=IF(E16="","",'Mão de obra'!G15)` → valor atual `176` | `K16` fórmula `=IF(E16="","",'Mão de obra'!J15)` → valor atual `0` | `L16` valor `0`
+- **Linha 17:** `B17` valor `Eletricista` | `E17` fórmula `=IF('Mão de obra'!B16=0,"",'Mão de obra'!B16)` → valor atual `` | `G17` fórmula `=IF(E17="","",'Mão de obra'!D16)` → valor atual `` | `H17` fórmula `=IF(E17="","",'Mão de obra'!E16)` → valor atual `` | `I17` fórmula `=IF(E17="","",'Mão de obra'!F16)` → valor atual `` | `J17` fórmula `=IF(E17="","",'Mão de obra'!G16)` → valor atual `` | `K17` fórmula `=IF(E17="","",'Mão de obra'!J16)` → valor atual `` | `L17` valor `0`
+- **Linha 18:** `L18` valor `0`
+- **Linha 19:** `B19` valor `Mecânico Montador` | `E19` fórmula `=IF('Mão de obra'!B18=0,"",'Mão de obra'!B18)` → valor atual `` | `G19` fórmula `=IF(E19="","",'Mão de obra'!D18)` → valor atual `` | `H19` fórmula `=IF(E19="","",'Mão de obra'!E18)` → valor atual `` | `I19` fórmula `=IF(E19="","",'Mão de obra'!F18)` → valor atual `` | `J19` fórmula `=IF(E19="","",'Mão de obra'!G18)` → valor atual `` | `K19` fórmula `=IF(E19="","",'Mão de obra'!J18)` → valor atual `` | `L19` valor `0`
+- **Linha 20:** `B20` valor `Encanador` | `E20` fórmula `=IF('Mão de obra'!B19=0,"",'Mão de obra'!B19)` → valor atual `` | `G20` fórmula `=IF(E20="","",'Mão de obra'!D19)` → valor atual `` | `H20` fórmula `=IF(E20="","",'Mão de obra'!E19)` → valor atual `` | `I20` fórmula `=IF(E20="","",'Mão de obra'!F19)` → valor atual `` | `J20` fórmula `=IF(E20="","",'Mão de obra'!G19)` → valor atual `` | `K20` fórmula `=IF(E20="","",'Mão de obra'!J19)` → valor atual `` | `L20` valor `0`
+- **Linha 21:** `B21` valor `Soldador` | `E21` valor `0` | `G21` fórmula `=IF(E21="","",'Mão de obra'!D20)` → valor atual `` | `H21` fórmula `=IF(E21="","",'Mão de obra'!E20)` → valor atual `` | `I21` fórmula `=IF(E21="","",'Mão de obra'!F20)` → valor atual `` | `J21` fórmula `=IF(E21="","",'Mão de obra'!G20)` → valor atual `` | `K21` fórmula `=IF(E21="","",'Mão de obra'!J20)` → valor atual `` | `L21` valor `0`
+- **Linha 22:** `B22` valor `Ajudante` | `E22` fórmula `=IF('Mão de obra'!B21=0,"",'Mão de obra'!B21)` → valor atual `` | `G22` fórmula `=IF(E22="","",'Mão de obra'!D21)` → valor atual `` | `H22` fórmula `=IF(E22="","",'Mão de obra'!E21)` → valor atual `` | `I22` fórmula `=IF(E22="","",'Mão de obra'!F21)` → valor atual `` | `J22` fórmula `=IF(E22="","",'Mão de obra'!G21)` → valor atual `` | `K22` fórmula `=IF(E22="","",'Mão de obra'!J21)` → valor atual `` | `L22` valor `0`
+- **Linha 23:** `B23` valor `Eletricista` | `E23` fórmula `=IF('Mão de obra'!B22=0,"",'Mão de obra'!B22)` → valor atual `` | `G23` fórmula `=IF(E23="","",'Mão de obra'!D22)` → valor atual `` | `H23` fórmula `=IF(E23="","",'Mão de obra'!E22)` → valor atual `` | `I23` fórmula `=IF(E23="","",'Mão de obra'!F22)` → valor atual `` | `J23` fórmula `=IF(E23="","",'Mão de obra'!G22)` → valor atual `` | `K23` fórmula `=IF(E23="","",'Mão de obra'!J22)` → valor atual `` | `L23` valor `0`
+- **Linha 24:** `G24` valor `SUBTOTAL - MÃO DE OBRA` | `K24` fórmula `=SUM(K7:K11)` → valor atual `160165.2`
+- **Linha 27:** `A27` valor `EQUIPE SUPORTE`
+- **Linha 30:** `B30` valor `Função` | `E30` valor `Qte pessoas por função` | `G30` valor `Quantidade de Horas por Pessoa` | `J30` valor `Valor HH (R$)` | `K30` valor `Valor  R$`
+- **Linha 31:** `G31` valor `Normais` | `H31` valor `Extras (T1)` | `I31` valor `Extras (T2)`
+- **Linha 32:** `B32` valor `Chefe/ Supervisor de Obra` | `E32` fórmula `=IF('Mão de obra'!B11=0,"",'Mão de obra'!B11)` → valor atual `1` | `G32` fórmula `=IF(E32="","",'Mão de obra'!D11)` → valor atual `352` | `H32` fórmula `=IF(E32="","",'Mão de obra'!E11)` → valor atual `112` | `I32` fórmula `=IF(E32="","",'Mão de obra'!F11)` → valor atual `0` | `J32` valor `88` | `K32` fórmula `=IF(E32="","",'Mão de obra'!J11)` → valor atual `56378.4`
+- **Linha 33:** `B33` valor `Técnico de Segurança` | `E33` fórmula `=IF('Mão de obra'!B12=0,"",'Mão de obra'!B12)` → valor atual `1` | `G33` fórmula `=IF(E33="","",'Mão de obra'!D12)` → valor atual `352` | `H33` fórmula `=IF(E33="","",'Mão de obra'!E12)` → valor atual `112` | `I33` fórmula `=IF(E33="","",'Mão de obra'!F12)` → valor atual `0` | `J33` valor `63` | `K33` fórmula `=IF(E33="","",'Mão de obra'!J12)` → valor atual `40362.4`
+- **Linha 34:** `B34` valor `Almoxarife` | `E34` fórmula `=IF('Mão de obra'!B19=0,"",'Mão de obra'!B19)` → valor atual `` | `G34` fórmula `=IF(E34="","",'Mão de obra'!D19)` → valor atual `` | `H34` fórmula `=IF(E34="","",'Mão de obra'!E19)` → valor atual `` | `I34` fórmula `=IF(E34="","",'Mão de obra'!F19)` → valor atual `` | `J34` valor `52` | `K34` fórmula `=IF(E34="","",'Mão de obra'!J19)` → valor atual ``
+- **Linha 35:** `B35` valor `Administrativo` | `E35` fórmula `=IF('Mão de obra'!B20=0,"",'Mão de obra'!B20)` → valor atual `` | `G35` fórmula `=IF(E35="","",'Mão de obra'!D20)` → valor atual `` | `H35` fórmula `=IF(E35="","",'Mão de obra'!E20)` → valor atual `` | `I35` fórmula `=IF(E35="","",'Mão de obra'!F20)` → valor atual `` | `J35` valor `52` | `K35` fórmula `=IF(E35="","",'Mão de obra'!J20)` → valor atual ``
+- **Linha 36:** `B36` valor `Outro (especificar)` | `I36` fórmula `=IF(E36="","",'Mão de obra'!F21)` → valor atual ``
+- **Linha 37:** `B37` valor `Outro (especificar)`
+- **Linha 38:** `B38` valor `Outro (especificar)`
+- **Linha 39:** `B39` valor `Outro (especificar)`
+- **Linha 40:** `B40` valor `Outro (especificar)`
+- **Linha 41:** `B41` valor `Outro (especificar)`
+- **Linha 43:** `B43` valor `TOTAL ` | `G43` valor `SUBTOTAL - EQUIPE DE SUPORTE` | `K43` valor `0`
+- **Linha 45:** `A45` valor `EQUIPE COMISSIONAMENTO`
+- **Linha 48:** `B48` valor `Função` | `E48` valor `Qte pessoas por função` | `G48` valor `Quantidade de Horas por Pessoa` | `J48` valor `Valor HH (R$)` | `K48` valor `Valor  R$`
+- **Linha 49:** `G49` valor `Normais` | `H49` valor `Extras (T1)` | `I49` valor `Extras (T2)`
+- **Linha 50:** `B50` valor `Mecânico Montador` | `E50` fórmula `=IF('Equipe Comissionamento'!B6=0,"",'Equipe Comissionamento'!B6)` → valor atual `` | `G50` fórmula `=IF('Equipe Comissionamento'!D6=0,"",'Equipe Comissionamento'!D6)` → valor atual `` | `H50` fórmula `=IF('Equipe Comissionamento'!E6=0,"",'Equipe Comissionamento'!E6)` → valor atual `` | `I50` fórmula `=IF('Equipe Comissionamento'!F6=0,"",'Equipe Comissionamento'!F6)` → valor atual `` | `K50` fórmula `=IF(E50="","",'Equipe Comissionamento'!J6)` → valor atual ``
+- **Linha 51:** `B51` valor `Encanador` | `E51` fórmula `=IF('Equipe Comissionamento'!B7=0,"",'Equipe Comissionamento'!B7)` → valor atual `1` | `G51` fórmula `=IF('Equipe Comissionamento'!D7=0,"",'Equipe Comissionamento'!D7)` → valor atual `88` | `H51` fórmula `=IF('Equipe Comissionamento'!E7=0,"",'Equipe Comissionamento'!E7)` → valor atual `` | `I51` fórmula `=IF('Equipe Comissionamento'!F7=0,"",'Equipe Comissionamento'!F7)` → valor atual `` | `J51` valor `69` | `K51` fórmula `=IF(E51="","",'Equipe Comissionamento'!J7)` → valor atual `7480.88`
+- **Linha 52:** `B52` valor `Soldador` | `E52` fórmula `=IF('Equipe Comissionamento'!B8=0,"",'Equipe Comissionamento'!B8)` → valor atual `1` | `G52` fórmula `=IF('Equipe Comissionamento'!D8=0,"",'Equipe Comissionamento'!D8)` → valor atual `88` | `H52` fórmula `=IF('Equipe Comissionamento'!E8=0,"",'Equipe Comissionamento'!E8)` → valor atual `` | `I52` fórmula `=IF('Equipe Comissionamento'!F8=0,"",'Equipe Comissionamento'!F8)` → valor atual `` | `J52` valor `70` | `K52` fórmula `=IF(E52="","",'Equipe Comissionamento'!J8)` → valor atual `7590`
+- **Linha 53:** `B53` valor `Ajudante` | `E53` fórmula `=IF('Equipe Comissionamento'!B9=0,"",'Equipe Comissionamento'!B9)` → valor atual `1` | `G53` fórmula `=IF('Equipe Comissionamento'!D9=0,"",'Equipe Comissionamento'!D9)` → valor atual `88` | `H53` fórmula `=IF('Equipe Comissionamento'!E9=0,"",'Equipe Comissionamento'!E9)` → valor atual `` | `I53` fórmula `=IF('Equipe Comissionamento'!F9=0,"",'Equipe Comissionamento'!F9)` → valor atual `` | `J53` valor `41` | `K53` fórmula `=IF(E53="","",'Equipe Comissionamento'!J9)` → valor atual `4444.88`
+- **Linha 54:** `B54` valor `Eletricista` | `E54` fórmula `=IF('Equipe Comissionamento'!B10=0,"",'Equipe Comissionamento'!B10)` → valor atual `1` | `G54` fórmula `=IF('Equipe Comissionamento'!D10=0,"",'Equipe Comissionamento'!D10)` → valor atual `88` | `H54` fórmula `=IF('Equipe Comissionamento'!E10=0,"",'Equipe Comissionamento'!E10)` → valor atual `` | `I54` fórmula `=IF('Equipe Comissionamento'!F10=0,"",'Equipe Comissionamento'!F10)` → valor atual `` | `J54` valor `70` | `K54` fórmula `=IF(E54="","",'Equipe Comissionamento'!J10)` → valor atual `7589.12`
+- **Linha 55:** `B55` valor `tec de seguranca` | `G55` fórmula `=IF('Equipe Comissionamento'!D11=0,"",'Equipe Comissionamento'!D11)` → valor atual `` | `H55` fórmula `=IF('Equipe Comissionamento'!E11=0,"",'Equipe Comissionamento'!E11)` → valor atual `` | `I55` fórmula `=IF('Equipe Comissionamento'!F11=0,"",'Equipe Comissionamento'!F11)` → valor atual `` | `K55` fórmula `=IF(E55="","",'Equipe Comissionamento'!J11)` → valor atual ``
+- **Linha 56:** `B56` valor `Outro (especificar)` | `G56` fórmula `=IF('Equipe Comissionamento'!D12=0,"",'Equipe Comissionamento'!D12)` → valor atual `` | `H56` fórmula `=IF('Equipe Comissionamento'!E12=0,"",'Equipe Comissionamento'!E12)` → valor atual `` | `I56` fórmula `=IF('Equipe Comissionamento'!F12=0,"",'Equipe Comissionamento'!F12)` → valor atual `` | `K56` fórmula `=IF(E56="","",'Equipe Comissionamento'!J12)` → valor atual ``
+- **Linha 57:** `B57` valor `Outro (especificar)` | `G57` fórmula `=IF('Equipe Comissionamento'!D13=0,"",'Equipe Comissionamento'!D13)` → valor atual `` | `H57` fórmula `=IF('Equipe Comissionamento'!E13=0,"",'Equipe Comissionamento'!E13)` → valor atual `` | `I57` fórmula `=IF('Equipe Comissionamento'!F13=0,"",'Equipe Comissionamento'!F13)` → valor atual `` | `K57` fórmula `=IF(E57="","",'Equipe Comissionamento'!J13)` → valor atual ``
+- **Linha 58:** `B58` valor `Outro (especificar)` | `G58` fórmula `=IF('Equipe Comissionamento'!D14=0,"",'Equipe Comissionamento'!D14)` → valor atual `` | `H58` fórmula `=IF('Equipe Comissionamento'!E14=0,"",'Equipe Comissionamento'!E14)` → valor atual `` | `I58` fórmula `=IF('Equipe Comissionamento'!F14=0,"",'Equipe Comissionamento'!F14)` → valor atual `` | `K58` fórmula `=IF(E58="","",'Equipe Comissionamento'!J14)` → valor atual ``
+- **Linha 60:** `G60` valor `SUBTOTAL - EQUIPE DE COMISSIONAMENTO` | `K60` valor `0`
+- **Linha 63:** `A63` valor `INFRAESTRUTURA`
+- **Linha 66:** `B66` valor `Descrição ` | `I66` valor `Quantidade` | `J66` valor `R$ / unidade` | `K66` valor `Valor  R$`
+- **Linha 67:** `B67` valor `Container - escritório (Tetra Pak)` | `K67` fórmula `=J67*I67` → valor atual `0`
+- **Linha 68:** `B68` valor `Container - vestiário` | `K68` fórmula `=J68*I68` → valor atual `0`
+- **Linha 69:** `B69` valor `Canteiro de obra + Almoxarifado` | `K69` valor `0`
+- **Linha 70:** `B70` valor `Movimentação: Munck/ Plataforma elevatória/ outros (especificar)` | `K70` valor `0`
+- **Linha 71:** `B71` valor `PTA` | `K71` valor `0`
+- **Linha 72:** `B72` valor `Talha` | `K72` valor `0`
+- **Linha 73:** `K73` valor `0`
+- **Linha 74:** `K74` valor `0`
+- **Linha 76:** `G76` valor `SUBTOTAL - INFRAESTRUTURA` | `K76` fórmula `=SUM(K67:K74)` → valor atual `0`
+- **Linha 78:** `A78` valor `MATERIAIS`
+- **Linha 81:** `B81` valor `Descrição ` | `I81` valor `Quantidade` | `J81` valor `R$ / unidade` | `K81` valor `Valor  R$`
+- **Linha 82:** `B82` valor `Consumíveis` | `I82` fórmula `=IF(J82=0,"",1)` → valor atual `1` | `J82` fórmula `=IF(Consumiveis!F4=0,0,Consumiveis!F4)` → valor atual `64226.5` | `K82` fórmula `=J82*I82` → valor atual `64226.5`
+- **Linha 83:** `B83` valor `Materiais Mecânicos (Favor anexar lista com detalhamento)` | `I83` fórmula `=IF(Materiais!I2=0,"",1)` → valor atual `1` | `J83` fórmula `=Materiais!I2` → valor atual `272500` | `K83` fórmula `=J83*I83` → valor atual `272500`
+- **Linha 84:** `B84` valor `Materiais Elétricos (Favor anexar lista com detalhamento)` | `K84` fórmula `=J84*I84` → valor atual `0`
+- **Linha 85:** `B85` valor `Outro (especificar)` | `K85` valor `0`
+- **Linha 86:** `B86` valor `Outro (especificar)` | `K86` valor `0`
+- **Linha 87:** `B87` valor `Outro (especificar)` | `K87` valor `0`
+- **Linha 88:** `B88` valor `Outro (especificar)` | `K88` valor `0`
+- **Linha 89:** `B89` valor `Outro (especificar)` | `K89` valor `0`
+- **Linha 91:** `I91` valor `SUBTOTAL - MATERIAIS` | `K91` fórmula `=SUM(K82:K89)` → valor atual `336726.5`
+- **Linha 93:** `A93` valor `DESPESAS`
+- **Linha 96:** `B96` valor `Descrição ` | `I96` valor `Quantity` | `J96` valor `Price/ unit` | `K96` valor `Sub Total`
+- **Linha 97:** `B97` valor `Hospedagem` | `I97` fórmula `='Despesas com Pessoal'!B6` → valor atual `392` | `J97` fórmula `='Despesas com Pessoal'!H6` → valor atual `200` | `K97` fórmula `=J97*I97` → valor atual `78400`
+- **Linha 98:** `B98` valor `Alimentação` | `I98` fórmula `='Despesas com Pessoal'!B7` → valor atual `392` | `J98` fórmula `='Despesas com Pessoal'!H7` → valor atual `80` | `K98` fórmula `=J98*I98` → valor atual `31360`
+- **Linha 99:** `B99` valor `Aluguel de veículo` | `I99` fórmula `='Despesas com Pessoal'!B16` → valor atual `2` | `J99` fórmula `='Despesas com Pessoal'!H16` → valor atual `8000` | `K99` valor `16000`
+- **Linha 100:** `B100` valor `Transporte` | `I100` valor `1` | `J100` fórmula `='Despesas com Pessoal'!J17+'Despesas com Pessoal'!J10+'Despesas com Pessoal'!J9` → valor atual `12944.727272727272` | `K100` valor `12944.727272727272`
+- **Linha 101:** `B101` valor `ART` | `I101` valor `1` | `J101` valor `3500` | `K101` valor `3500`
+- **Linha 102:** `B102` valor `Outro (especificar)` | `K102` valor `0`
+- **Linha 103:** `B103` valor `Outro (especificar)` | `K103` valor `0`
+- **Linha 105:** `I105` valor `SUBTOTAL - DESPESAS` | `K105` fórmula `=SUM(K97:K103)` → valor atual `142204.72727272726`
+- **Linha 108:** `A108` valor `TOTAL`
+- **Linha 111:** `B111` valor `Mão de Obra` | `K111` fórmula `=K24` → valor atual `160165.2`
+- **Linha 112:** `B112` valor `Equipe Suporte` | `K112` fórmula `=K43` → valor atual `0`
+- **Linha 113:** `B113` valor `Equipe Comissionamento` | `K113` fórmula `=K60` → valor atual `0`
+- **Linha 114:** `B114` valor `Infraestrutura` | `K114` fórmula `=K76` → valor atual `0`
+- **Linha 115:** `B115` valor `Materiais` | `K115` fórmula `=K91` → valor atual `336726.5`
+- **Linha 116:** `B116` valor `Despesas` | `K116` fórmula `=K105` → valor atual `142204.72727272726`
+- **Linha 120:** `B120` valor `TOTAL` | `J120` valor `293640`
+
+**Células preenchidas:** 344 | **Células com fórmula:** 175
+
+---
+
+# Aba: ANALISE
+**Intervalo utilizado:** `A1:M31` | **Linhas:** 31 | **Colunas:** 13
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CUSTOS DIRETOS` | `J1` valor `Custo fixo` | `K1` valor `0.23`
+- **Linha 2:** `A2` valor `DESCRIÇÂO` | `B2` valor `CUSTOS TOTAIS` | `C2` valor `%` | `D2` valor `VENDA S/ IMP.` | `E2` valor `VENDA C/ IMP.` | `F2` valor `%` | `J2` valor `ANALISE DE CUSTOS`
+- **Linha 3:** `A3` fórmula `=Geral!B8` → valor atual `Mão de obra` | `B3` fórmula `=Geral!H8` → valor atual `179836.80000000002` | `C3` fórmula `=Geral!I8` → valor atual `0.20226766902204607` | `D3` fórmula `=Geral!J8` → valor atual `225435.015` | `E3` fórmula `=Geral!K8` → valor atual `256906` | `F3` fórmula `=Geral!M8` → valor atual `0.187155034977831` | `J3` valor `Preço de venda` | `L3` fórmula `=IF(Geral!G27=0,Geral!K26,Geral!K27)` → valor atual `1372690.8283842385` | `M3` fórmula `=Geral!M26` → valor atual `1.0000000000000002`
+- **Linha 4:** `A4` fórmula `=Geral!B9` → valor atual `Equipe Comissionamento` | `B4` fórmula `=Geral!H9` → valor atual `18974.559999999998` | `C4` fórmula `=Geral!I9` → valor atual `0.20223110379274156` | `D4` fórmula `=Geral!J9` → valor atual `23784.5322` | `E4` fórmula `=Geral!K9` → valor atual `27104.88` | `F4` fórmula `=Geral!M9` → valor atual `0.019745801049683202` | `J4` valor `Custos Diretos` | `L4` fórmula `=SUM(B3:B11)` → valor atual `816942.5872727273` | `M4` fórmula `=IF(L4=0,0,L4/$L$3)` → valor atual `0.5951395393486608`
+- **Linha 5:** `A5` fórmula `=Geral!B10` → valor atual `Despesas com pessoal` | `B5` fórmula `=Geral!H10` → valor atual `144704.72727272726` | `C5` fórmula `=Geral!I10` → valor atual `0` | `D5` fórmula `=Geral!J10` → valor atual `144704.72727272726` | `E5` fórmula `=Geral!K10` → valor atual `164905.6721056721` | `F5` fórmula `=Geral!M10` → valor atual `0.12013314921013832` | `J5` valor `Custos Variaveis` | `L5` fórmula `=D16+D17+D18+(D21-(D21*Geral!G27))` → valor atual `186262.13093006416` | `M5` fórmula `=L5/L3` → valor atual `0.13569124749621067`
+- **Linha 6:** `A6` fórmula `=Geral!B11` → valor atual `Contratação de terceiros` | `B6` fórmula `=Geral!H11` → valor atual `15000` | `C6` fórmula `=Geral!I11` → valor atual `0` | `D6` fórmula `=Geral!J11` → valor atual `15000` | `E6` fórmula `=Geral!K11` → valor atual `17094.017094017094` | `F6` fórmula `=Geral!M11` → valor atual `0.012452925845026627` | `J6` valor `Impostos` | `L6` fórmula `=L3*M6` → valor atual `233764.8367955299` | `M6` fórmula `=Geral!M25` → valor atual `0.1702967864006849`
+- **Linha 7:** `A7` fórmula `=Geral!B12` → valor atual `Materiais` | `B7` fórmula `=Geral!H12` → valor atual `250000` | `C7` fórmula `=Geral!I12` → valor atual `0.08256880733944955` | `D7` fórmula `=Geral!J12` → valor atual `272500` | `E7` fórmula `=Geral!K12` → valor atual `374570.4467353952` | `F7` fórmula `=Geral!M12` → valor atual `0.2728731328206608` | `J7` valor `Despesas Fixas` | `L7` fórmula `=L3*M7` → valor atual `315718.8905283749` | `M7` fórmula `=K1` → valor atual `0.23`
+- **Linha 8:** `A8` fórmula `=Geral!B13` → valor atual `Consumíveis` | `B8` fórmula `=Geral!H13` → valor atual `64226.5` | `C8` fórmula `=Geral!I13` → valor atual `0` | `D8` fórmula `=Geral!J13` → valor atual `64226.5` | `E8` fórmula `=Geral!K13` → valor atual `73192.59259259258` | `F8` fórmula `=Geral!M13` → valor atual `0.053320522785706835` | `J8` fórmula `=IF(L8<0,"PREJUIZO","LUCRO")` → valor atual `PREJUIZO` | `L8` fórmula `=L3-SUM(L4:L7)` → valor atual `-179997.61714245752` | `M8` fórmula `=IF(L8=0,0,L8/$L$3)` → valor atual `-0.13112757324555624`
+- **Linha 9:** `A9` fórmula `=Geral!B14` → valor atual `Maquinário, movimentação e ferramental` | `B9` fórmula `=Geral!H14` → valor atual `92400` | `C9` fórmula `=Geral!I14` → valor atual `0` | `D9` fórmula `=Geral!J14` → valor atual `92400` | `E9` fórmula `=Geral!K14` → valor atual `105299.1452991453` | `F9` fórmula `=Geral!M14` → valor atual `0.07671002320536402`
+- **Linha 10:** `A10` fórmula `=Geral!B15` → valor atual `Canteiro de óbra` | `B10` fórmula `=Geral!H15` → valor atual `39800` | `C10` fórmula `=Geral!I15` → valor atual `0` | `D10` fórmula `=Geral!J15` → valor atual `39800` | `E10` fórmula `=Geral!K15` → valor atual `45356.125356125354` | `F10` fórmula `=Geral!M15` → valor atual `0.03304176324213731` | `J10` valor `CALCULO MARGEM TOTAL`
+- **Linha 11:** `A11` fórmula `=Geral!B16` → valor atual `Mobilização / Desmobilização` | `B11` fórmula `=Geral!H16` → valor atual `12000` | `C11` fórmula `=Geral!I16` → valor atual `0` | `D11` fórmula `=Geral!J16` → valor atual `12000` | `E11` fórmula `=Geral!K16` → valor atual `13675.213675213674` | `F11` fórmula `=Geral!M16` → valor atual `0.0099623406760213` | `J11` valor `Valor de venda:` | `L11` fórmula `=L3` → valor atual `1372690.8283842385` | `M11` fórmula `=L11/L11` → valor atual `1`
+- **Linha 12:** `A12` fórmula `=Geral!B17` → valor atual `Custo administrativo` | `B12` fórmula `=Geral!H17` → valor atual `25266.265585754452` | `C12` fórmula `=Geral!I17` → valor atual `0` | `D12` fórmula `=Geral!J17` → valor atual `25266.265585754452` | `E12` fórmula `=Geral!K17` → valor atual `28793.465054990826` | `F12` fórmula `=Geral!M17` → valor atual `0.020975928781343228` | `J12` valor `PIS / COFINS:` | `L12` fórmula `=SUM(Impostos!I5:J6)` → valor atual `126554.31478070105` | `M12` fórmula `=L12/$L$11` → valor atual `0.09219433259393531`
+- **Linha 13:** `A13` valor `TOTAL CUSTOS DIRETOS` | `B13` fórmula `=SUM(B3:B12)` → valor atual `842208.8528584817` | `D13` fórmula `=SUM(D3:D12)` → valor atual `915117.0400584817` | `E13` fórmula `=SUM(E3:E12)` → valor atual `1106897.557913152` | `J13` valor `ICMS (Crédito):` | `L13` fórmula `=Materiais!L2` → valor atual `45000` | `M13` fórmula `=L13/$L$11` → valor atual `0.03278232728703259`
+- **Linha 14:** `J14` valor `ICMS (Devido):` | `L14` fórmula `=Impostos!I8+Impostos!J8` → valor atual `79399.05525990012` | `M14` fórmula `=L14/$L$11` → valor atual `0.0578419070180274`
+- **Linha 15:** `A15` valor `CUSTOS VARIAVEIS` | `J15` valor `ISS:` | `L15` fórmula `=SUM(Impostos!I7:J7)` → valor atual `27811.4667549287` | `M15` fórmula `=L15/$L$11` → valor atual `0.0202605467887222`
+- **Linha 16:** `A16` fórmula `=Geral!B19` → valor atual `Contingencias` | `C16` fórmula `=Geral!G19` → valor atual `0.05` | `D16` fórmula `=Geral!J19` → valor atual `48164.0547399201` | `E16` fórmula `=Geral!K19` → valor atual `54887.81166942461` | `F16` fórmula `=Geral!M19` → valor atual `0.039985560138135215` | `J16` valor `Valor Liq. S/ Impostos` | `L16` fórmula `=L11-L12-(L14-L13)-L15` → valor atual `1183925.9915887087` | `M16` fórmula `=L16/L11` → valor atual `0.8624855408863478`
+- **Linha 17:** `A17` fórmula `=Geral!B20` → valor atual `Desconto` | `C17` fórmula `=Geral!G20` → valor atual `0.05` | `D17` fórmula `=Geral!J20` → valor atual `50699.00498938958` | `E17` fórmula `=Geral!K20` → valor atual `61146.59839908299` | `F17` fórmula `=Geral!M20` → valor atual `0.044545062249055155`
+- **Linha 18:** `A18` fórmula `=Geral!B21` → valor atual `Comissão` | `C18` fórmula `=Geral!G21` → valor atual `0.05` | `D18` fórmula `=Geral!J21` → valor atual `53367.373673041664` | `E18` fórmula `=Geral!K21` → valor atual `73357.21467084764` | `F18` fórmula `=Geral!M21` → valor atual `0.05344044933788525` | `J18` valor `Custo Total:` | `L18` fórmula `=SUM(B3:B11)` → valor atual `816942.5872727273` | `M18` fórmula `=L18/L16` → valor atual `0.6900284249832822`
+- **Linha 19:** `A19` fórmula `=Geral!B22` → valor atual `Seguro Bancário / Carta fiança` | `D19` fórmula `=Geral!J22` → valor atual `0` | `E19` fórmula `=Geral!K22` → valor atual `0` | `F19` fórmula `=Geral!M22` → valor atual `0` | `J19` valor `Contingencia:` | `L19` fórmula `=Geral!$J$19` → valor atual `48164.0547399201` | `M19` fórmula `=L19/L16` → valor atual `0.04068164317880108`
+- **Linha 20:** `A20` fórmula `=Geral!B23` → valor atual `Custo Financeiro` | `C20` fórmula `='Custo financeiro'!F4` → valor atual `0.03` | `D20` fórmula `=Geral!J23` → valor atual `33010.74660188144` | `E20` fórmula `=Geral!K23` → valor atual `37619.08444658853` | `F20` fórmula `=Geral!M23` → valor atual `0.02740535863481295` | `J20` valor `Comissão:` | `L20` fórmula `='Custo financeiro'!$I$35` → valor atual `53367.373673041664` | `M20` fórmula `=L20/L16` → valor atual `0.04507661294049982`
+- **Linha 21:** `A21` fórmula `=Geral!B24` → valor atual `Antecipação` | `C21` fórmula `='Custo financeiro'!E12` → valor atual `0.03` | `D21` fórmula `=Geral!J24` → valor atual `34031.69752771282` | `E21` fórmula `=Geral!K24` → valor atual `38782.561285142816` | `F21` fórmula `=Geral!M24` → valor atual `0.028252947046198917` | `J21` valor `Custo financeiro` | `L21` fórmula `=ANALISE!$D$20` → valor atual `33010.74660188144` | `M21` fórmula `=L21/L16` → valor atual `0.027882440994123594`
+- **Linha 22:** `A22` fórmula `=Geral!B25` → valor atual `Impostos` | `D22` fórmula `=Geral!J25` → valor atual `0` | `E22` fórmula `=Geral!K25` → valor atual `233764.83679552987` | `F22` fórmula `=Geral!M25` → valor atual `0.1702967864006849` | `J22` valor `Antecipação:` | `L22` fórmula `='Custo financeiro'!$I$13+'Custo financeiro'!$I$15` → valor atual `34031.69752771282` | `M22` fórmula `=L22/L16` → valor atual `0.028744784530024325`
+- **Linha 23:** `A23` valor `TOTAL CUSTOS VARIAVEIS` | `D23` fórmula `=SUM(D16:D22)` → valor atual `219272.8775319456` | `E23` fórmula `=SUM(E16:E22)` → valor atual `499558.1072666165` | `F23` fórmula `=SUM(F16:F22)` → valor atual `0.36392616380677234` | `J23` valor `Desconto` | `L23` fórmula `=ANALISE!$D$17` → valor atual `50699.00498938958` | `M23` fórmula `=L23/L16` → valor atual `0.042822782293474825`
+- **Linha 24:** `J24` valor `Contribuição Minima` | `L24` fórmula `=L16-L18-L19-L22-L20-L23` → valor atual `180721.2733859173` | `M24` fórmula `=L24/L16` → valor atual `0.15264575207391778`
+- **Linha 25:** `J25` valor `Contribuição Máxima` | `L25` fórmula `=L16-L18-L20` → valor atual `313616.0306429398` | `M25` fórmula `=L25/L16` → valor atual `0.264894962076218`
+- **Linha 27:** `J27` valor `MARKUP`
+- **Linha 28:** `J28` valor `Lucratividade` | `M28` valor `0.1`
+- **Linha 29:** `J29` valor `Lucro` | `M29` fórmula `=M31*M28` → valor atual `#VALUE!`
+- **Linha 30:** `J30` valor `Markup` | `M30` fórmula `=IFERROR(1/(1-(K1+M5+M28+M6)), )` → valor atual `#VALUE!`
+- **Linha 31:** `J31` valor `Preço de venda` | `M31` fórmula `=M30*L4` → valor atual `#VALUE!`
+
+**Células preenchidas:** 182 | **Células com fórmula:** 143
+
+---
+
+# Aba: Custos
+**Intervalo utilizado:** `A1:R46` | **Linhas:** 46 | **Colunas:** 18
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CALCULO HORA-HOMEM` | `I1` valor `DEPRECIAÇÃO` | `M1` valor `Tempo de depreciação = a vida útil estimada até atingir seu valor residual`
+- **Linha 2:** `A2` valor `Jornada de trabalho:
+(Horas)` | `B2` valor `8.8` | `E2` valor `Dias trabalho:` | `G2` valor `22` | `I2` valor `Descrição` | `J2` valor `Vida util (Anos)` | `K2` valor `Taxa anual` | `M2` valor `Valor Residual = valor que o ativo tem quando ele é vendido como sucata ao fim do seu tempo de vida.`
+- **Linha 3:** `A3` valor `Função` | `B3` valor `Salário` | `C3` valor `Beneficios` | `D3` valor `Encargos` | `E3` valor `EPIs / Unifor.` | `F3` valor `Margem` | `G3` valor `Custo H.H.` | `I3` valor `Ferramentas` | `J3` valor `5` | `K3` valor `0.2` | `M3` valor `Depreciação Linear (mais simples)`
+- **Linha 4:** `A4` valor `Montador` | `B4` valor `5840` | `C4` valor `500` | `D4` valor `1439` | `E4` valor `200` | `F4` valor `0.3` | `G4` fórmula `=(SUM(B4:E4)/($B$2*$G$2))` → valor atual `41.21384297520661` | `I4` valor `Máquinas e equipamentos` | `J4` valor `10` | `K4` valor `0.1` | `M4` valor `Desgaste constante ao longo do tempo = (Valor Original - Valor Residual) / Vida útil em anos)`
+- **Linha 5:** `A5` valor `Encanador` | `B5` valor `5840` | `C5` valor `500` | `D5` valor `1439` | `E5` valor `300` | `F5` valor `0.3` | `G5` fórmula `=(SUM(B5:E5)/($B$2*$G$2))` → valor atual `41.73037190082644` | `I5` valor `Edificios` | `J5` valor `25` | `K5` valor `0.04`
+- **Linha 6:** `A6` valor `Soldador` | `B6` valor `5365` | `C6` valor `500` | `D6` valor `1677` | `E6` valor `300` | `F6` valor `0.3` | `G6` valor `40.506198347107436` | `I6` valor `Computadores` | `J6` valor `5` | `K6` valor `0.2` | `M6` valor `Depreciação por soma de digitos (mais preciso)`
+- **Linha 7:** `A7` valor `Ajudante` | `B7` valor `1983` | `C7` valor `500` | `D7` valor `1278` | `E7` valor `200` | `F7` valor `0.3` | `G7` valor `20.45971074380165` | `I7` valor `Veiculos Leve` | `J7` valor `5` | `K7` valor `0.2` | `M7` valor `Vida útil somada. Ex 5 anos. 1+2+3+4+5 = 15`
+- **Linha 8:** `A8` valor `Eletricista` | `B8` valor `5380` | `C8` valor `500` | `D8` valor `1520` | `E8` valor `300` | `F8` valor `0.3` | `G8` valor `39.772727272727266` | `I8` valor `Veiculo Carga` | `J8` valor `4` | `K8` valor `0.25` | `M8` valor `A depreciação se dá pelo fração 5/15 do valor original, 4/15 no proximo ano e assim por diante.`
+- **Linha 9:** `A9` valor `Técnico de Segurança` | `B9` valor `6030` | `C9` valor `500` | `D9` valor `540` | `E9` valor `300` | `F9` valor `0.3` | `G9` valor `38.06818181818181` | `I9` valor `Instalações` | `J9` valor `10` | `K9` valor `0.1`
+- **Linha 10:** `A10` valor `Supervisor` | `B10` valor `7500` | `C10` valor `500` | `D10` valor `2177` | `E10` valor `300` | `F10` valor `0.3` | `G10` valor `54.116735537190074` | `I10` valor `Móveis e utensilios` | `J10` valor `10` | `K10` valor `0.1` | `M10` valor `Soma digitos` | `P10` valor `Linear`
+- **Linha 11:** `A11` valor `Almoxarifado` | `B11` valor `3414` | `C11` valor `500` | `D11` valor `821` | `E11` valor `200` | `F11` valor `0.3` | `G11` valor `25.49070247933884` | `I11` valor `Tabela de acordo com instrução normativa SRF Nº 162, DE 31 DE DEZEMBRO DE 1998 da receita federal` | `M11` valor `10000` | `N11` valor `5 anos` | `P11` valor `10000` | `Q11` valor `5 anos`
+- **Linha 12:** `A12` valor `Administrativo` | `B12` valor `3287` | `C12` valor `500` | `D12` valor `1432` | `E12` valor `200` | `F12` valor `0.3` | `G12` valor `27.99070247933884` | `M12` fórmula `=M11*(5/15)` → valor atual `3333.333333333333` | `N12` fórmula `=M12/$M$11` → valor atual `0.3333333333333333` | `P12` fórmula `=$P$11/5` → valor atual `2000` | `Q12` fórmula `=P12/P11` → valor atual `0.2`
+- **Linha 13:** `A13` valor `Motorista` | `B13` valor `3591` | `C13` valor `500` | `D13` valor `283` | `E13` valor `200` | `F13` valor `0.3` | `G13` valor `23.626033057851238` | `I13` valor `Taxas para fins tributários` | `M13` fórmula `=M11*(4/15)` → valor atual `2666.6666666666665` | `N13` fórmula `=M13/$M$11` → valor atual `0.26666666666666666` | `P13` fórmula `=$P$11/5` → valor atual `2000` | `Q13` fórmula `=P13/P11` → valor atual `0.2`
+- **Linha 14:** `G14` valor `0` | `M14` fórmula `=M11*(3/15)` → valor atual `2000` | `N14` fórmula `=M14/$M$11` → valor atual `0.2` | `P14` fórmula `=$P$11/5` → valor atual `2000` | `Q14` fórmula `=P14/P11` → valor atual `0.2`
+- **Linha 15:** `G15` valor `0` | `M15` fórmula `=M11*(2/15)` → valor atual `1333.3333333333333` | `N15` fórmula `=M15/$M$11` → valor atual `0.13333333333333333` | `P15` fórmula `=$P$11/5` → valor atual `2000` | `Q15` fórmula `=P15/P11` → valor atual `0.2`
+- **Linha 16:** `G16` valor `0` | `I16` valor `CALCULO DEPRECIAÇÂO` | `M16` fórmula `=M11*(1/15)` → valor atual `666.6666666666666` | `N16` fórmula `=M16/$M$11` → valor atual `0.06666666666666667` | `P16` fórmula `=$P$11/5` → valor atual `2000` | `Q16` fórmula `=P16/P11` → valor atual `0.2`
+- **Linha 17:** `I17` valor `DESCRIÇÂO` | `J17` valor `Custo` | `R17` valor `A cada 30 dias de folga - 3 dias de folga`
+- **Linha 18:** `A18` valor `CALCULO DE TINTA` | `I18` valor `Valor da máquina` | `J18` valor `145000`
+- **Linha 19:** `A19` valor `Preço do galão` | `B19` valor `N° Demãos` | `C19` valor `Rend. / Galão` | `D19` valor `Perda` | `E19` valor `Preço / m²` | `F19` valor `m²` | `G19` valor `Preço total tinta` | `I19` valor `Valor Residual Estimado` | `J19` fórmula `=J18*10%` → valor atual `14500`
+- **Linha 20:** `A20` fórmula `=Materiais!F86` → valor atual `0` | `B20` fórmula `=Materiais!B86` → valor atual `0` | `C20` fórmula `=Materiais!G86` → valor atual `1` | `D20` fórmula `=Materiais!J86` → valor atual `0.5` | `E20` fórmula `=((A20/C20)*B20)*(1+$D$20)` → valor atual `0` | `F20` fórmula `=Materiais!H86+Materiais!I86` → valor atual `0` | `G20` fórmula `=E20*F20` → valor atual `0` | `I20` valor `Vida Util` | `J20` valor `5`
+- **Linha 21:** `A21` fórmula `=Materiais!F87` → valor atual `0` | `B21` fórmula `=Materiais!B87` → valor atual `0` | `C21` fórmula `=Materiais!G87` → valor atual `1` | `E21` fórmula `=((A21/C21)*B21)*(1+$D$20)` → valor atual `0` | `G21` fórmula `=E21*F20` → valor atual `0` | `I21` valor `Depreciação` | `J21` fórmula `=(J18-J19)/J20` → valor atual `26100` | `K21` valor `/ ano`
+- **Linha 22:** `A22` fórmula `=Materiais!F88` → valor atual `0` | `B22` fórmula `=Materiais!B88` → valor atual `0` | `C22` fórmula `=Materiais!G88` → valor atual `1` | `E22` fórmula `=((A22/C22)*B22)*(1+$D$20)` → valor atual `0` | `G22` fórmula `=E22*F20` → valor atual `0` | `J22` fórmula `=J21/J33` → valor atual `11.447368421052632` | `K22` valor `/ h`
+- **Linha 24:** `A24` valor `QTD. Galões` | `I24` valor `CUSTO ENERGIA UTILIZADA / MÁQUINA`
+- **Linha 25:** `A25` valor `Demão` | `B25` valor `QTD. Galões + 10%` | `C25` valor `Preço / galão` | `D25` valor `Valor total` | `I25` valor `DESCRIÇÂO` | `J25` valor `CUSTO`
+- **Linha 26:** `A26` valor `Fundo` | `B26` fórmula `=IF(A20=0,0,ROUNDUP((B20*$F$20*(1+$D$20)/C20)*1.1,0))` → valor atual `0` | `C26` fórmula `=A20` → valor atual `0` | `D26` fórmula `=(C26*B26)` → valor atual `0` | `I26` valor `Valor do KW/h` | `J26` valor `0.83`
+- **Linha 27:** `A27` valor `Intermediario` | `B27` fórmula `=IF(A21=0,0,ROUNDUP((B21*$F$20*(1+$D$20)/C21)*1.1,0))` → valor atual `0` | `C27` fórmula `=A21` → valor atual `0` | `D27` fórmula `=(C27*B27)` → valor atual `0` | `I27` valor `Potencia da máquina (kW)` | `J27` valor `7.8`
+- **Linha 28:** `A28` valor `Acabamento` | `B28` fórmula `=IF(A22=0,0,ROUNDUP((B22*$F$20*(1+$D$20)/C22)*1.1,0))` → valor atual `0` | `C28` fórmula `=A22` → valor atual `0` | `D28` fórmula `=(C28*B28)` → valor atual `0` | `I28` valor `Custo Energia` | `J28` fórmula `=J26*J27` → valor atual `6.473999999999999` | `K28` valor `/ h`
+- **Linha 30:** `I30` valor `CUSTO MANUTENÇÃO`
+- **Linha 31:** `I31` valor `DESCRIÇÂO` | `J31` valor `CUSTO`
+- **Linha 32:** `I32` valor `Custo da manutenção / ano` | `J32` valor `12000`
+- **Linha 33:** `I33` valor `Hora Ano` | `J33` valor `2280`
+- **Linha 34:** `I34` valor `Custo Energia` | `J34` fórmula `=J32/J33` → valor atual `5.2631578947368425`
+- **Linha 36:** `I36` valor `CUSTO ÁREA DE OCUPAÇÃO DE MÁQUINARIO`
+- **Linha 37:** `I37` valor `DESCRIÇÂO` | `J37` valor `VALOR`
+- **Linha 38:** `I38` valor `Custo m² do prédio` | `J38` valor `40`
+- **Linha 39:** `I39` valor `Área aprox. da máquina` | `J39` valor `0.22`
+- **Linha 40:** `I40` valor `Custo área ocupada` | `J40` fórmula `=(J39*J38)/208` → valor atual `0.04230769230769231` | `K40` valor `/ h`
+- **Linha 42:** `I42` valor `CONSUMÍVEIS`
+- **Linha 43:** `I43` valor `DESCRIÇÂO` | `J43` valor `CUSTO`
+- **Linha 44:** `I44` valor `Custo de consumíveis / ano` | `J44` valor `6000`
+- **Linha 45:** `I45` valor `Hora Ano` | `J45` valor `2280`
+- **Linha 46:** `I46` valor `Custo Energia` | `J46` fórmula `=J44/J45` → valor atual `2.6315789473684212`
+
+**Células preenchidas:** 243 | **Células com fórmula:** 55
+
+---
+
+# Aba: Mão de obra
+**Intervalo utilizado:** `A1:AH34` | **Linhas:** 34 | **Colunas:** 34
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `MÃO DE OBRA` | `X1` fórmula `=Geral!E5` → valor atual `45884`
+- **Linha 2:** `A2` valor `PRAZO OBRA: ` | `B2` fórmula `=Geral!N4` → valor atual `8` | `I2` valor `QUANTIDADE DE HORAS:` | `K2` valor `44` | `N2` valor `SEMANAIS` | `X2` fórmula `=Geral!G5` → valor atual `45939`
+- **Linha 3:** `S3` valor `Cargo` | `T3` valor `Valor Venda` | `U3` valor `Custo` | `X3` fórmula `=YEAR(X1)` → valor atual `2025`
+- **Linha 4:** `A4` valor `ITEM` | `B4` valor `QTD.` | `C4` valor `FUNÇÃO` | `D4` valor `QUANTIDADE HORAS / MÊS / PESSOA` | `G4` valor `VALOR HH` | `J4` valor `VALOR TOTAL VENDA` | `K4` valor `VALOR HH CUSTO` | `N4` valor `VALOR TOTAL CUSTO` | `S4` valor `Montador` | `T4` valor `85.01` | `U4` valor `59.51` | `X4` fórmula `=IFERROR(TEXT(WEEKDAY(Z4,1),"ddd"),"")` → valor atual `Sat` | `Y4` fórmula `=DATE(X3,1,1)` → valor atual `2025-01-01 00:00:00+00:00` | `Z4` fórmula `=IF(AND(Y4>=$X$1,Y4<=X2),DATE(X3,1,1),"")` → valor atual `` | `AA4` valor `	Confraternização Universal`
+- **Linha 5:** `D5` valor `NORMAIS` | `E5` valor `0.5` | `F5` valor `1` | `L5` valor `0.5` | `M5` valor `1` | `O5` valor `aqui tem a opção de alterar para diario ou mensal, impactando na despesa com pessoal também, "puxa" de acordo com o colocado aqui` | `S5` valor `Encanador` | `T5` valor `85.01` | `U5` valor `59.51` | `X5` fórmula `=IFERROR(TEXT(WEEKDAY(Z5,1),"ddd"),"")` → valor atual `` | `Y5` fórmula `=Y15-47` → valor atual `#VALUE!` | `Z5` fórmula `=IF(AND(Y5>=$X$1,Y5<=X2),Z15-47,"")` → valor atual `#VALUE!` | `AA5` valor `Carvanaval`
+- **Linha 6:** `A6` valor `1` | `B6` valor `0` | `C6` valor `Montador` | `D6` fórmula `=IF(B6=0,0,$K$2*$B$2)` → valor atual `0` | `E6` valor `0` | `F6` valor `0` | `G6` fórmula `=IF(C6="",0,VLOOKUP(C6,$S$4:$T$30,2,FALSE))` → valor atual `85.01` | `H6` fórmula `=G6*(1+$E$5)` → valor atual `127.51500000000001` | `I6` fórmula `=G6*(1+$F$5)` → valor atual `170.02` | `J6` fórmula `=(D6*G6*B6)+(H6*E6*B6)+(I6*F6*B6)` → valor atual `0` | `K6` fórmula `=IF(C6="",0,VLOOKUP(C6,$S$4:$U$31,3,FALSE))` → valor atual `59.51` | `L6` fórmula `=K6*1.5` → valor atual `89.265` | `M6` fórmula `=K6*2` → valor atual `119.02` | `N6` fórmula `=(B6*D6*K6)+(B6*E6*L6)+(B6*F6*M6)` → valor atual `0` | `S6` valor `Soldador` | `T6` valor `86.25` | `U6` valor `60.38` | `Y6` fórmula `=DATE(X3,4,21)` → valor atual `2025-04-21 00:00:00+00:00` | `Z6` fórmula `=IF(AND(Y6>=$X$1,Y6<=X2),DATE(X3,4,21),"")` → valor atual `` | `AA6` valor `	Tiradentes`
+- **Linha 7:** `A7` valor `2` | `B7` valor `1` | `C7` valor `Encanador` | `D7` valor `352` | `E7` fórmula `=14*8` → valor atual `112` | `F7` valor `0` | `G7` fórmula `=IF(C7="",0,VLOOKUP(C7,$S$4:$T$30,2,FALSE))` → valor atual `85.01` | `H7` fórmula `=G7*(1+$E$5)` → valor atual `127.51500000000001` | `I7` fórmula `=G7*(1+$F$5)` → valor atual `170.02` | `J7` valor `44205.200000000004` | `K7` fórmula `=IF(C7="",0,VLOOKUP(C7,$S$4:$U$31,3,FALSE))` → valor atual `59.51` | `L7` fórmula `=K7*1.5` → valor atual `89.265` | `M7` fórmula `=K7*2` → valor atual `119.02` | `N7` valor `30945.2` | `S7` valor `Ajudante` | `T7` valor `50.51` | `U7` valor `35.36` | `Y7` fórmula `=DATE(X3,5,1)` → valor atual `2025-05-01 00:00:00+00:00` | `Z7` fórmula `=IF(AND(Y7>=$X$1,Y7<=X2),DATE(X3,5,1),"")` → valor atual `` | `AA7` valor `Dia do Trabalho`
+- **Linha 8:** `A8` valor `3` | `B8` valor `1` | `C8` valor `Soldador` | `D8` valor `352` | `E8` valor `112` | `F8` valor `0` | `G8` valor `86.25` | `H8` valor `129.375` | `I8` valor `172.5` | `J8` valor `44850` | `K8` valor `60.38` | `L8` valor `90.57000000000001` | `M8` valor `120.76` | `N8` valor `31397.600000000002` | `S8` valor `Eletricista` | `T8` valor `86.24` | `U8` valor `60.37` | `Y8` fórmula `=DATE(X3,7,9)` → valor atual `2025-07-09 00:00:00+00:00` | `Z8` fórmula `=IF(AND(Y8>=$X$1,Y8<=X2),DATE(X3,7,9),"")` → valor atual `` | `AA8` valor `Revolução Constitucionalista` | `AG8` valor `Feriados` | `AH8` fórmula `=COUNTIF(X4:X34,"seg")+COUNTIF(X4:X34,"ter")+COUNTIF(X4:X34,"qua")+COUNTIF(X4:X34,"qui")+COUNTIF(X4:X34,"sex")` → valor atual `0`
+- **Linha 9:** `A9` valor `4` | `B9` valor `1` | `C9` valor `Ajudante` | `D9` valor `352` | `E9` valor `112` | `F9` valor `0` | `G9` valor `50.51` | `H9` valor `75.765` | `I9` valor `101.02` | `J9` valor `26265.2` | `K9` valor `35.36` | `L9` valor `53.04` | `M9` valor `70.72` | `N9` valor `18387.199999999997` | `S9` valor `Técnico de Segurança` | `T9` valor `77.62` | `U9` valor `54.33` | `X9` valor `dom` | `Y9` fórmula `=DATE(X3,9,7)` → valor atual `2025-09-07 00:00:00+00:00` | `Z9` fórmula `=IF(AND(Y9>=$X$1,Y9<=X2),DATE(X3,9,7),"")` → valor atual `2025-09-07 00:00:00+00:00` | `AA9` valor `Independência do Brasil` | `AE9` valor `Dias Uteis` | `AF9` fórmula `=NETWORKDAYS.INTL(X1,X2,1)` → valor atual `1900-02-08 00:00:00+00:00` | `AG9` fórmula `=COUNTIF(X4:X34,"seg")+COUNTIF(X4:X34,"ter")+COUNTIF(X4:X34,"qua")+COUNTIF(X4:X34,"qui")+COUNTIF(X4:X34,"sex")` → valor atual `0` | `AH9` fórmula `=AF9-AG9` → valor atual `40`
+- **Linha 10:** `A10` valor `5` | `B10` valor `1` | `C10` valor `Eletricista` | `D10` valor `352` | `E10` valor `112` | `F10` valor `0` | `G10` valor `86.24` | `H10` valor `129.35999999999999` | `I10` valor `172.48` | `J10` valor `44844.799999999996` | `K10` valor `60.37` | `L10` valor `90.55499999999999` | `M10` valor `120.74` | `N10` valor `31392.399999999998` | `S10` valor `Supervisor` | `T10` valor `108.42` | `U10` valor `75.89` | `Y10` fórmula `=DATE(X3,10,12)` → valor atual `2025-10-12 00:00:00+00:00` | `Z10` fórmula `=IF(AND(Y10>=$X$1,Y10<=X2),DATE(X3,10,12),"")` → valor atual `` | `AA10` valor `	Nossa Sr.a Aparecida - Padroeira do Brasil` | `AE10` valor `Sabados` | `AF10` fórmula `=NETWORKDAYS.INTL(X1,X2,11)-NETWORKDAYS.INTL(X1,X2,1)` → valor atual `1900-01-07 00:00:00+00:00` | `AG10` fórmula `=COUNTIF(X4:X34,"Sáb")` → valor atual `0` | `AH10` fórmula `=AF10-AG10` → valor atual `8`
+- **Linha 11:** `A11` valor `6` | `B11` valor `1` | `C11` valor `Supervisor` | `D11` valor `352` | `E11` valor `112` | `F11` valor `0` | `G11` valor `108.42` | `H11` valor `162.63` | `I11` valor `216.84` | `J11` valor `56378.4` | `K11` valor `75.89` | `L11` valor `113.83500000000001` | `M11` valor `151.78` | `N11` valor `39462.8` | `S11` valor `Almoxarifado` | `T11` valor `52.98` | `U11` valor `37.08` | `Y11` fórmula `=DATE(X3,11,2)` → valor atual `2025-11-02 00:00:00+00:00` | `Z11` fórmula `=IF(AND(Y11>=$X$1,Y11<=X2),DATE(X3,11,2),"")` → valor atual `` | `AA11` valor `Finados` | `AE11` valor `Domingos e feriados` | `AF11` fórmula `=NETWORKDAYS.INTL(X1,X2,17)-NETWORKDAYS.INTL(X1,X2,1)` → valor atual `1900-01-07 00:00:00+00:00` | `AH11` fórmula `=AF11+SUM(AG9:AG10)` → valor atual `8`
+- **Linha 12:** `A12` valor `7` | `B12` valor `1` | `C12` valor `Técnico de Segurança` | `D12` valor `352` | `E12` valor `112` | `F12` valor `0` | `G12` valor `77.62` | `H12` valor `116.43` | `I12` valor `155.24` | `J12` valor `40362.4` | `K12` valor `54.33` | `L12` valor `81.495` | `M12` valor `108.66` | `N12` valor `28251.6` | `S12` valor `Administrativo` | `T12` valor `53.1` | `U12` valor `37.17` | `Y12` fórmula `=DATE(X3,11,15)` → valor atual `2025-11-15 00:00:00+00:00` | `Z12` fórmula `=IF(AND(Y12>=$X$1,Y12<=X2),DATE(X3,11,15),"")` → valor atual `` | `AA12` valor `	Proclamação da República`
+- **Linha 13:** `A13` valor `8` | `B13` valor `0` | `C13` valor `Almoxarifado` | `D13` valor `0` | `E13` valor `0` | `F13` valor `0` | `G13` valor `52.98` | `H13` fórmula `=G13*(1+$E$5)` → valor atual `79.47` | `I13` fórmula `=G13*(1+$F$5)` → valor atual `105.96` | `J13` valor `0` | `K13` valor `37.08` | `L13` valor `55.62` | `M13` valor `74.16` | `N13` valor `0` | `S13` valor `Projetista` | `T13` valor `176` | `U13` valor `123.2` | `Y13` fórmula `=DATE(X3,11,20)` → valor atual `2025-11-20 00:00:00+00:00` | `Z13` fórmula `=IF(AND(Y13>=$X$1,Y13<=X2),DATE(X3,11,20),"")` → valor atual `` | `AA13` valor `Dia Nacional de Zumbi e da Consciência Negra`
+- **Linha 14:** `A14` valor `9` | `B14` valor `0` | `C14` valor `Administrativo` | `D14` valor `0` | `E14` valor `0` | `F14` valor `0` | `G14` valor `53.1` | `H14` valor `79.65` | `I14` valor `106.2` | `J14` valor `0` | `K14` valor `37.17` | `L14` valor `55.755` | `M14` valor `74.34` | `N14` valor `0` | `Y14` fórmula `=DATE(X3,12,25)` → valor atual `2025-12-25 00:00:00+00:00` | `Z14` fórmula `=IF(AND(Y14>=$X$1,Y14<=X2),DATE(X3,12,25),"")` → valor atual `` | `AA14` valor `Natal` | `AH14` fórmula `=AH9*K2` → valor atual `1760`
+- **Linha 15:** `A15` valor `10` | `B15` valor `0` | `C15` valor `Projetista` | `D15` fórmula `=IF(B15=0,0,$K$2*$B$2)` → valor atual `0` | `E15` valor `0` | `F15` valor `0` | `G15` valor `176` | `H15` valor `264` | `I15` valor `352` | `J15` valor `0` | `K15` valor `123.2` | `L15` valor `184.8` | `M15` valor `246.4` | `N15` valor `0` | `T15` valor `Dias` | `U15` valor `Horas` | `Y15` fórmula `=FLOOR(DAY(MINUTE(YEAR(X1)/38)/2+56)&"/5"&"/"&YEAR(X1),7)-34` → valor atual `#VALUE!` | `Z15` fórmula `=IF(AND(Y15>=$X$1,Y15<=X2),FLOOR(DAY(MINUTE(YEAR(X1)/38)/2+56)&"/5"&"/"&YEAR(X1),7)-34,"")` → valor atual `#VALUE!` | `AA15` valor `Páscoa` | `AH15` fórmula `=AH10*8` → valor atual `64`
+- **Linha 16:** `A16` valor `11` | `B16` valor `0` | `D16` valor `0` | `E16` valor `0` | `F16` valor `0` | `G16` valor `0` | `H16` valor `0` | `I16` valor `0` | `J16` valor `0` | `K16` valor `0` | `L16` valor `0` | `M16` valor `0` | `N16` valor `0` | `S16` valor `Dias Uteis` | `T16` fórmula `=AH9` → valor atual `40` | `U16` fórmula `=T16*8.8` → valor atual `352` | `Y16` fórmula `=Y15-2` → valor atual `#VALUE!` | `Z16` fórmula `=IF(AND(Y16>=$X$1,Y16<=X2),Z15-2,"")` → valor atual `#VALUE!` | `AA16` valor `Sexta-feira Santa` | `AH16` fórmula `=AH11*8` → valor atual `64`
+- **Linha 17:** `A17` valor `12` | `B17` valor `0` | `D17` valor `0` | `E17` valor `0` | `F17` valor `0` | `G17` valor `0` | `H17` valor `0` | `I17` valor `0` | `J17` valor `0` | `K17` valor `0` | `L17` valor `0` | `M17` valor `0` | `N17` valor `0` | `S17` valor `Sábados` | `T17` fórmula `=AH10` → valor atual `8` | `U17` fórmula `=T17*8` → valor atual `64` | `Y17` fórmula `=Y15+60` → valor atual `#VALUE!` | `Z17` fórmula `=IF(AND(Y17>=$X$1,Y17<=X2),Z15+60,"")` → valor atual `#VALUE!` | `AA17` valor `Corpus Christi`
+- **Linha 18:** `A18` valor `13` | `B18` valor `0` | `D18` valor `0` | `E18` valor `0` | `F18` valor `0` | `G18` valor `0` | `H18` valor `0` | `I18` valor `0` | `J18` valor `0` | `K18` valor `0` | `L18` valor `0` | `M18` valor `0` | `N18` valor `0` | `S18` valor `Feriados` | `T18` fórmula `=SUM(AG9:AG10)` → valor atual `0` | `U18` fórmula `=T18*8` → valor atual `0` | `Y18` fórmula `=DATE(X3,4,8)` → valor atual `2025-04-08 00:00:00+00:00` | `Z18` fórmula `=IF(AND(Y18>=$X$1,Y18<=X2),DATE(X3,4,8),"")` → valor atual `` | `AA18` valor `Aniversário Santo André`
+- **Linha 19:** `A19` valor `15` | `B19` valor `0` | `D19` valor `0` | `E19` valor `0` | `F19` valor `0` | `G19` valor `0` | `H19` valor `0` | `I19` valor `0` | `J19` valor `0` | `K19` valor `0` | `L19` valor `0` | `M19` valor `0` | `N19` valor `0` | `X19` fórmula `=YEAR(X2)` → valor atual `2025`
+- **Linha 20:** `A20` valor `16` | `B20` valor `0` | `D20` valor `0` | `E20` valor `0` | `F20` valor `0` | `G20` valor `0` | `H20` valor `0` | `I20` valor `0` | `J20` valor `0` | `K20` valor `0` | `L20` valor `0` | `M20` valor `0` | `N20` valor `0` | `X20` fórmula `=IFERROR(TEXT(WEEKDAY(Z20,1),"ddd"),"")` → valor atual `Wed` | `Y20` fórmula `=IF(X3=X19,"",DATE(X19,1,1))` → valor atual `` | `Z20` fórmula `=IF(Y20<=$X$2,DATE(YEAR(X2),1,1),"")` → valor atual `45658` | `AA20` valor `	Confraternização Universal`
+- **Linha 21:** `A21` valor `17` | `B21` valor `0` | `D21` valor `0` | `E21` valor `0` | `F21` valor `0` | `G21` valor `0` | `H21` valor `0` | `I21` valor `0` | `J21` valor `0` | `K21` valor `0` | `L21` valor `0` | `M21` valor `0` | `N21` valor `0` | `X21` fórmula `=IFERROR(TEXT(WEEKDAY(Z21,1),"ddd"),"")` → valor atual `` | `Y21` fórmula `=IF($X$3=$X$19,"",Y31-47)` → valor atual `` | `Z21` fórmula `=IF(Y21<=$X$2,Z31-47,"")` → valor atual `#VALUE!` | `AA21` valor `Carvanaval`
+- **Linha 22:** `A22` valor `18` | `B22` valor `0` | `D22` valor `0` | `E22` valor `0` | `F22` valor `0` | `G22` valor `0` | `H22` valor `0` | `I22` valor `0` | `J22` valor `0` | `K22` valor `0` | `L22` valor `0` | `M22` valor `0` | `N22` valor `0` | `Y22` fórmula `=IF($X$3=$X$19,"",DATE(X19,4,21))` → valor atual `` | `Z22` fórmula `=IF(Y22<=$X$2,DATE(YEAR(X2),4,21),"")` → valor atual `45768` | `AA22` valor `	Tiradentes`
+- **Linha 23:** `A23` valor `19` | `B23` valor `0` | `D23` valor `0` | `E23` valor `0` | `F23` valor `0` | `G23` valor `0` | `H23` valor `0` | `I23` valor `0` | `J23` valor `0` | `K23` valor `0` | `L23` valor `0` | `M23` valor `0` | `N23` valor `0` | `Y23` fórmula `=IF($X$3=$X$19,"",DATE(X19,5,1))` → valor atual `` | `Z23` fórmula `=IF(Y23<=$X$2,DATE(X19,5,1),"")` → valor atual `45778` | `AA23` valor `Dia do Trabalho`
+- **Linha 24:** `A24` valor `20` | `B24` valor `0` | `D24` valor `0` | `E24` valor `0` | `F24` valor `0` | `G24` valor `0` | `H24` valor `0` | `I24` valor `0` | `J24` valor `0` | `K24` valor `0` | `L24` valor `0` | `M24` valor `0` | `N24` valor `0` | `Y24` fórmula `=IF($X$3=$X$19,"",DATE(X19,7,9))` → valor atual `` | `Z24` fórmula `=IF(Y24<=$X$2,DATE(X19,7,9),"")` → valor atual `45847` | `AA24` valor `Revolução Constitucionalista`
+- **Linha 25:** `A25` valor `21` | `B25` valor `0` | `D25` valor `0` | `E25` valor `0` | `F25` valor `0` | `G25` valor `0` | `H25` fórmula `=G25*(1+$E$5)` → valor atual `0` | `I25` fórmula `=G25*(1+$F$5)` → valor atual `0` | `J25` fórmula `=(D25*G25*B25)+(H25*E25*B25)+(I25*F25*B25)` → valor atual `0` | `K25` valor `0` | `L25` fórmula `=K25*1.5` → valor atual `0` | `M25` fórmula `=K25*2` → valor atual `0` | `N25` valor `0` | `Y25` fórmula `=IF($X$3=$X$19,"",DATE(X19,9,7))` → valor atual `` | `Z25` fórmula `=IF(Y25<=$X$2,DATE(X19,9,7),"")` → valor atual `45907` | `AA25` valor `Independência do Brasil`
+- **Linha 26:** `A26` valor `22` | `B26` valor `0` | `D26` valor `0` | `E26` valor `0` | `F26` valor `0` | `G26` valor `0` | `H26` fórmula `=G26*(1+$E$5)` → valor atual `0` | `I26` fórmula `=G26*(1+$F$5)` → valor atual `0` | `J26` fórmula `=(D26*G26*B26)+(H26*E26*B26)+(I26*F26*B26)` → valor atual `0` | `K26` valor `0` | `L26` fórmula `=K26*1.5` → valor atual `0` | `M26` fórmula `=K26*2` → valor atual `0` | `N26` valor `0` | `Y26` fórmula `=IF($X$3=$X$19,"",DATE(X19,10,12))` → valor atual `` | `Z26` fórmula `=IF(Y26<=$X$2,DATE(X19,10,12),"")` → valor atual `45942` | `AA26` valor `	Nossa Sr.a Aparecida - Padroeira do Brasil`
+- **Linha 27:** `A27` valor `23` | `B27` valor `0` | `D27` valor `0` | `E27` valor `0` | `F27` valor `0` | `G27` valor `0` | `H27` fórmula `=G27*(1+$E$5)` → valor atual `0` | `I27` fórmula `=G27*(1+$F$5)` → valor atual `0` | `J27` fórmula `=(D27*G27*B27)+(H27*E27*B27)+(I27*F27*B27)` → valor atual `0` | `K27` valor `0` | `L27` fórmula `=K27*1.5` → valor atual `0` | `M27` fórmula `=K27*2` → valor atual `0` | `N27` valor `0` | `Y27` fórmula `=IF($X$3=$X$19,"",DATE(X19,11,2))` → valor atual `` | `Z27` fórmula `=IF(Y27<=$X$2,DATE(X19,11,2),"")` → valor atual `45963` | `AA27` valor `Finados`
+- **Linha 28:** `A28` valor `24` | `B28` valor `0` | `D28` valor `0` | `E28` valor `0` | `F28` valor `0` | `G28` valor `0` | `H28` valor `0` | `I28` valor `0` | `J28` valor `0` | `K28` valor `0` | `L28` valor `0` | `M28` valor `0` | `N28` valor `0` | `Y28` fórmula `=IF($X$3=$X$19,"",DATE(X19,11,15))` → valor atual `` | `Z28` fórmula `=IF(Y28<=$X$2,DATE(X19,11,15),"")` → valor atual `45976` | `AA28` valor `	Proclamação da República`
+- **Linha 29:** `A29` valor `25` | `B29` valor `0` | `D29` valor `0` | `E29` valor `0` | `F29` valor `0` | `G29` valor `0` | `H29` fórmula `=G29*(1+$E$5)` → valor atual `0` | `I29` fórmula `=G29*(1+$F$5)` → valor atual `0` | `J29` fórmula `=(D29*G29*B29)+(H29*E29*B29)+(I29*F29*B29)` → valor atual `0` | `K29` valor `0` | `L29` fórmula `=K29*1.5` → valor atual `0` | `M29` fórmula `=K29*2` → valor atual `0` | `N29` valor `0` | `Y29` fórmula `=IF($X$3=$X$19,"",DATE(X19,11,20))` → valor atual `` | `Z29` fórmula `=IF(Y29<=$X$2,DATE(X19,11,20),"")` → valor atual `45981` | `AA29` valor `Dia Nacional de Zumbi e da Consciência Negra`
+- **Linha 30:** `A30` valor `26` | `B30` valor `0` | `D30` valor `0` | `E30` valor `0` | `F30` valor `0` | `G30` valor `0` | `H30` fórmula `=G30*(1+$E$5)` → valor atual `0` | `I30` fórmula `=G30*(1+$F$5)` → valor atual `0` | `J30` fórmula `=(D30*G30*B30)+(H30*E30*B30)+(I30*F30*B30)` → valor atual `0` | `K30` valor `0` | `L30` fórmula `=K30*1.5` → valor atual `0` | `M30` fórmula `=K30*2` → valor atual `0` | `N30` valor `0` | `Y30` fórmula `=IF($X$3=$X$19,"",DATE(X19,12,25))` → valor atual `` | `Z30` fórmula `=IF(Y30<=$X$2,DATE(X19,12,25),"")` → valor atual `46016` | `AA30` valor `Natal`
+- **Linha 31:** `B31` fórmula `=SUM(B6:B30)` → valor atual `6` | `C31` valor `TOTAL MÃO DE OBRA` | `D31` fórmula `=SUMPRODUCT(D6:D30,$B$6:$B$30)` → valor atual `2112` | `E31` fórmula `=SUMPRODUCT(E6:E30,$B$6:$B$30)` → valor atual `672` | `F31` fórmula `=SUMPRODUCT(F6:F30,$B$6:$B$30)` → valor atual `0` | `G31` valor `VENDA` | `J31` fórmula `=SUM(J6:J28)` → valor atual `256906` | `K31` valor `CUSTO` | `N31` fórmula `=SUM(N6:N28)` → valor atual `179836.80000000002` | `Y31` fórmula `=IF($X$3=$X$19,"",FLOOR(DAY(MINUTE(YEAR(X2)/38)/2+56)&"/5"&"/"&YEAR(X2),7)-34)` → valor atual `` | `Z31` fórmula `=IF(Y31<=$X$2,FLOOR(DAY(MINUTE(YEAR(X2)/38)/2+56)&"/5"&"/"&YEAR(X2),7)-34,"")` → valor atual `#VALUE!` | `AA31` valor `Páscoa`
+- **Linha 32:** `Y32` fórmula `=IF($X$3=$X$19,"",Y31-2)` → valor atual `` | `Z32` fórmula `=IF(Y32<=$X$1,Z31-2,"")` → valor atual `#VALUE!` | `AA32` valor `Sexta-feira Santa`
+- **Linha 33:** `Y33` fórmula `=IF($X$3=$X$19,"",Y31+60)` → valor atual `` | `Z33` fórmula `=IF(Y33<=$X$1,Z31+60,"")` → valor atual `#VALUE!` | `AA33` valor `Corpus Christi`
+- **Linha 34:** `Y34` fórmula `=IF($X$3=$X$19,"",DATE(X19,4,8))` → valor atual `` | `Z34` fórmula `=IF(Y34<=$X$1,DATE(X19,4,8),"")` → valor atual `45755` | `AA34` valor `Aniversário Santo André`
+
+**Células preenchidas:** 523 | **Células com fórmula:** 137
+
+---
+
+# Aba: Equipe Comissionamento
+**Intervalo utilizado:** `A1:N21` | **Linhas:** 21 | **Colunas:** 14
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `COMISSIONAMENTO`
+- **Linha 2:** `A2` valor `PRAZO OBRA: ` | `B2` valor `2` | `J2` valor `QUANTIDADE DE HORAS SEMANAIS:` | `N2` valor `44`
+- **Linha 4:** `A4` valor `ITEM` | `B4` valor `QTD.` | `C4` valor `FUNÇÃO` | `D4` valor `QUANTIDADE HORAS / MÊS / PESSOA` | `G4` valor `VALOR HH` | `J4` valor `VALOR TOTAL` | `K4` valor `VALOR HH CUSTO` | `N4` valor `VALOR TOTAL CUSTO`
+- **Linha 5:** `D5` valor `NORMAIS` | `E5` valor `0.5` | `F5` valor `1` | `L5` valor `0.5` | `M5` valor `1`
+- **Linha 6:** `B6` valor `0` | `C6` valor `Montador` | `D6` fórmula `=IF(B6=0,0,$B$2*$N$2)` → valor atual `0` | `E6` valor `0` | `F6` valor `0` | `G6` fórmula `=IF(C6="",0,VLOOKUP(C6,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `85.01` | `H6` fórmula `=G6*(1+$E$5)` → valor atual `127.51500000000001` | `I6` fórmula `=G6*(1+$F$5)` → valor atual `170.02` | `J6` fórmula `=(D6*G6*B6)+(H6*E6*B6)+(I6*F6*B6)` → valor atual `0` | `K6` fórmula `=IF(C6="",0,VLOOKUP(C6,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `59.51` | `L6` fórmula `=K6*1.5` → valor atual `89.265` | `M6` fórmula `=K6*2` → valor atual `119.02` | `N6` fórmula `=(B6*D6*K6)+(B6*E6*L6)+(B6*F6*M6)` → valor atual `0`
+- **Linha 7:** `B7` valor `1` | `C7` valor `Encanador` | `D7` fórmula `=IF(B7=0,0,$B$2*$N$2)` → valor atual `88` | `E7` valor `0` | `F7` valor `0` | `G7` fórmula `=IF(C7="",0,VLOOKUP(C7,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `85.01` | `H7` fórmula `=G7*(1+$E$5)` → valor atual `127.51500000000001` | `I7` fórmula `=G7*(1+$F$5)` → valor atual `170.02` | `J7` valor `7480.88` | `K7` fórmula `=IF(C7="",0,VLOOKUP(C7,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `59.51` | `L7` fórmula `=K7*1.5` → valor atual `89.265` | `M7` fórmula `=K7*2` → valor atual `119.02` | `N7` fórmula `=(B7*D7*K7)+(B7*E7*L7)+(B7*F7*M7)` → valor atual `5236.88`
+- **Linha 8:** `B8` valor `1` | `C8` valor `Soldador` | `D8` valor `88` | `E8` valor `0` | `F8` valor `0` | `G8` fórmula `=IF(C8="",0,VLOOKUP(C8,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `86.25` | `H8` valor `129.375` | `I8` valor `172.5` | `J8` valor `7590` | `K8` fórmula `=IF(C8="",0,VLOOKUP(C8,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `60.38` | `L8` valor `90.57000000000001` | `M8` valor `120.76` | `N8` fórmula `=(B8*D8*K8)+(B8*E8*L8)+(B8*F8*M8)` → valor atual `5313.4400000000005`
+- **Linha 9:** `B9` valor `1` | `C9` valor `Ajudante` | `D9` valor `88` | `E9` valor `0` | `F9` valor `0` | `G9` fórmula `=IF(C9="",0,VLOOKUP(C9,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `50.51` | `H9` valor `75.765` | `I9` valor `101.02` | `J9` valor `4444.88` | `K9` fórmula `=IF(C9="",0,VLOOKUP(C9,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `35.36` | `L9` valor `53.04` | `M9` valor `70.72` | `N9` fórmula `=(B9*D9*K9)+(B9*E9*L9)+(B9*F9*M9)` → valor atual `3111.68`
+- **Linha 10:** `B10` valor `1` | `C10` valor `Eletricista` | `D10` valor `88` | `E10` valor `0` | `F10` valor `0` | `G10` fórmula `=IF(C10="",0,VLOOKUP(C10,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `86.24` | `H10` valor `129.35999999999999` | `I10` valor `172.48` | `J10` valor `7589.12` | `K10` fórmula `=IF(C10="",0,VLOOKUP(C10,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `60.37` | `L10` valor `90.55499999999999` | `M10` valor `120.74` | `N10` fórmula `=(B10*D10*K10)+(B10*E10*L10)+(B10*F10*M10)` → valor atual `5312.5599999999995`
+- **Linha 11:** `B11` valor `0` | `C11` valor `Supervisor` | `D11` valor `0` | `E11` valor `0` | `F11` valor `0` | `G11` fórmula `=IF(C11="",0,VLOOKUP(C11,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `108.42` | `H11` valor `162.63` | `I11` valor `216.84` | `J11` valor `0` | `K11` fórmula `=IF(C11="",0,VLOOKUP(C11,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `75.89` | `L11` valor `113.83500000000001` | `M11` valor `151.78` | `N11` fórmula `=(B11*D11*K11)+(B11*E11*L11)+(B11*F73)` → valor atual `0`
+- **Linha 12:** `B12` valor `0` | `C12` valor `Técnico de Segurança` | `D12` valor `0` | `E12` valor `0` | `F12` valor `0` | `G12` fórmula `=IF(C12="",0,VLOOKUP(C12,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `77.62` | `H12` valor `116.43` | `I12` valor `155.24` | `J12` valor `0` | `K12` fórmula `=IF(C12="",0,VLOOKUP(C12,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `54.33` | `L12` valor `81.495` | `M12` valor `108.66` | `N12` valor `0`
+- **Linha 13:** `B13` valor `0` | `C13` valor `Almoxarifado` | `D13` valor `0` | `E13` valor `0` | `F13` valor `0` | `G13` fórmula `=IF(C13="",0,VLOOKUP(C13,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `52.98` | `H13` valor `79.47` | `I13` valor `105.96` | `J13` valor `0` | `K13` fórmula `=IF(C13="",0,VLOOKUP(C13,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `37.08` | `L13` valor `55.62` | `M13` valor `74.16` | `N13` valor `0`
+- **Linha 14:** `B14` valor `0` | `C14` valor `Administrativo` | `D14` valor `0` | `E14` valor `0` | `F14` valor `0` | `G14` fórmula `=IF(C14="",0,VLOOKUP(C14,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `53.1` | `H14` valor `79.65` | `I14` valor `106.2` | `J14` valor `0` | `K14` fórmula `=IF(C14="",0,VLOOKUP(C14,'Mão de obra'!$S$4:$U$31,3,FALSE))` → valor atual `37.17` | `L14` valor `55.755` | `M14` valor `74.34` | `N14` valor `0`
+- **Linha 15:** `B15` valor `0` | `D15` valor `0` | `E15` valor `0` | `F15` valor `0` | `G15` fórmula `=IF(C15="",0,VLOOKUP(C15,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H15` valor `0` | `I15` valor `0` | `J15` valor `0` | `L15` valor `0` | `M15` valor `0` | `N15` valor `0`
+- **Linha 16:** `B16` valor `0` | `D16` valor `0` | `E16` valor `0` | `F16` valor `0` | `G16` fórmula `=IF(C16="",0,VLOOKUP(C16,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H16` valor `0` | `I16` valor `0` | `J16` valor `0` | `L16` valor `0` | `M16` valor `0` | `N16` valor `0`
+- **Linha 17:** `B17` valor `0` | `D17` valor `0` | `E17` valor `0` | `F17` valor `0` | `G17` fórmula `=IF(C17="",0,VLOOKUP(C17,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H17` valor `0` | `I17` valor `0` | `J17` valor `0` | `L17` valor `0` | `M17` valor `0` | `N17` valor `0`
+- **Linha 18:** `B18` valor `0` | `D18` valor `0` | `E18` valor `0` | `F18` valor `0` | `G18` fórmula `=IF(C18="",0,VLOOKUP(C18,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H18` valor `0` | `I18` valor `0` | `J18` valor `0` | `L18` valor `0` | `M18` valor `0` | `N18` valor `0`
+- **Linha 19:** `B19` valor `0` | `D19` valor `0` | `E19` valor `0` | `F19` valor `0` | `G19` fórmula `=IF(C19="",0,VLOOKUP(C19,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H19` valor `0` | `I19` valor `0` | `J19` valor `0` | `L19` valor `0` | `M19` valor `0` | `N19` valor `0`
+- **Linha 20:** `B20` valor `0` | `D20` valor `0` | `E20` valor `0` | `F20` valor `0` | `G20` fórmula `=IF(C20="",0,VLOOKUP(C20,'Mão de obra'!$S$4:$U$31,2,FALSE))` → valor atual `0` | `H20` valor `0` | `I20` valor `0` | `J20` valor `0` | `L20` valor `0` | `M20` valor `0` | `N20` valor `0`
+- **Linha 21:** `A21` valor `TOTAL MÃO DE OBRA` | `D21` fórmula `=SUMPRODUCT(D6:D20,$B$6:$B$20)` → valor atual `352` | `E21` fórmula `=SUMPRODUCT(E6:E20,$B$6:$B$20)` → valor atual `0` | `F21` fórmula `=SUMPRODUCT(F6:F20,$B$6:$B$20)` → valor atual `0` | `J21` fórmula `=SUM(J6:J20)` → valor atual `27104.88` | `N21` fórmula `=SUM(N6:N20)` → valor atual `18974.559999999998`
+
+**Células preenchidas:** 207 | **Células com fórmula:** 46
+
+---
+
+# Aba: Despesas com Pessoal
+**Intervalo utilizado:** `A1:T21` | **Linhas:** 21 | **Colunas:** 20
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `DESPESAS COM PESSOAL` | `L1` valor `Funcionarios` | `N1` valor `Tempo` | `Q1` valor `Folga de campo` | `R1` valor `Equipe` | `S1` valor `Dias`
+- **Linha 2:** `A2` valor `PRAZO OBRA: ` | `B2` fórmula `='Mão de obra'!B2` → valor atual `8` | `C2` fórmula `=IF('Mão de obra'!N2="DIARIA","DIAS",IF('Mão de obra'!N2="SEMANAIS","SEMANAS",IF('Mão de obra'!N2="MENSAIS","MÊS")))` → valor atual `SEMANAS` | `L2` valor `Equipe` | `M2` fórmula `=SUM('Mão de obra'!B6:B28)` → valor atual `6` | `N2` fórmula `='Mão de obra'!B2` → valor atual `8` | `O2` fórmula `=IF('Mão de obra'!N2="SEMANAIS",M2*N2*7,IF('Mão de obra'!N2="DIARIA",M2*N2,IF('Mão de obra'!N2="MENSAIS",M2*N2*31)))` → valor atual `336` | `R2` fórmula `=M2` → valor atual `6` | `S2` fórmula `=DATEDIF(Geral!E5,Geral!G5,"D")` → valor atual `55`
+- **Linha 3:** `L3` valor `Comissionamento` | `M3` fórmula `=SUM('Equipe Comissionamento'!B6:B20)` → valor atual `4` | `N3` fórmula `='Equipe Comissionamento'!B2` → valor atual `2` | `O3` fórmula `=IF('Mão de obra'!N2="SEMANAIS",M3*N3*7,IF('Mão de obra'!N2="DIARIA",M3*N3,IF('Mão de obra'!N2="MENSAIS",M3*N3*31)))` → valor atual `56` | `Q3` valor `QTD. Folgas` | `R3` fórmula `=IF(S2>=45,ROUND(S2/45,0))` → valor atual `1` | `S3` fórmula `=R2*R3` → valor atual `6`
+- **Linha 4:** `A4` valor `ITEM` | `B4` valor `QTD.` | `C4` valor `DESCRIÇÃO` | `H4` valor `VALOR UNITÁRIO / DIA` | `J4` valor `VALOR TOTAL`
+- **Linha 5:** `K5` valor `Voltar para     Geral`
+- **Linha 6:** `B6` fórmula `=SUM(O2:O3)` → valor atual `392` | `C6` valor `Hospedagem` | `H6` valor `200` | `J6` fórmula `=H6*B6` → valor atual `78400` | `L6` valor `Caculo KM` | `P6` valor `Lista de veiculos`
+- **Linha 7:** `B7` fórmula `=SUM(O2:O3)` → valor atual `392` | `C7` valor `Alimentação` | `H7` valor `80` | `J7` valor `31360` | `L7` valor `Tipo de Veículo:` | `N7` valor `Passeio` | `P7` valor `TIPO` | `Q7` valor `Km/L` | `R7` valor `VALOR MENSAL` | `T7` valor `QTD Passageiros`
+- **Linha 8:** `B8` valor `0` | `C8` valor `Passagens (Ida e volta)` | `H8` valor `0` | `J8` valor `0` | `L8` valor `Local Estadia: ` | `P8` valor `Passeio` | `Q8` valor `11` | `R8` valor `4000` | `T8` valor `5`
+- **Linha 9:** `B9` fórmula `=M2` → valor atual `6` | `C9` valor `EPI's` | `H9` valor `100` | `J9` valor `600` | `L9` valor `Valor do combustivel:` | `N9` valor `6.2` | `P9` valor `Van` | `Q9` valor `10` | `R9` valor `5000` | `T9` valor `12`
+- **Linha 10:** `B10` fórmula `=IF(B6=0,0,IF('Mão de obra'!N2="DIARIA",'Mão de obra'!B2,IF('Mão de obra'!N2="SEMANAIS",'Mão de obra'!B2*7,IF('Mão de obra'!N2="MENSAIS",'Mão de obra'!B2*30))))` → valor atual `56` | `C10` valor `Manutenção Alojamento / dia` | `H10` valor `30` | `J10` valor `1680` | `L10` valor `Ida / volta` | `M10` valor `200` | `N10` fórmula `=M10*2` → valor atual `400` | `P10` valor `Micro-onibus` | `Q10` valor `9` | `R10` valor `16000` | `T10` valor `35`
+- **Linha 11:** `B11` fórmula `=S3` → valor atual `6` | `C11` valor `Folga de campo` | `H11` valor `1000` | `J11` valor `6000` | `L11` valor `Média` | `M11` valor `30` | `N11` fórmula `=IF('Mão de obra'!N2="SEMANAIS",M11*B2*7,IF('Mão de obra'!N2="MENSAIS",M11*B2*31,IF('Mão de obra'!N2="DIARIA",M11*B2)))` → valor atual `1680`
+- **Linha 12:** `B12` valor `0` | `C12` valor `Treinamento` | `J12` valor `0` | `L12` valor `R$ / médio` | `M12` valor `2` | `N12` fórmula `=((N10+N11)*M12)+((N9/VLOOKUP(N7,P8:Q10,2,FALSE))*(N10+N11))` → valor atual `5332.363636363636`
+- **Linha 13:** `B13` valor `0` | `C13` valor `Integração` | `J13` valor `0`
+- **Linha 14:** `B14` valor `0` | `C14` valor `Transporte` | `J14` fórmula `=H14*B14` → valor atual `0` | `L14` valor `Aluguel do veiculo` | `N14` fórmula `=IF('Mão de obra'!N2="SEMANAIS",(VLOOKUP(N7:N7,P8:S10,3,FALSE)/4)*B2,IF('Mão de obra'!N2="DIARIA",(VLOOKUP(N7:N7,P8:S10,3,FALSE)/30)*B2,IF('Mão de obra'!N2="MENSAIS",VLOOKUP(N7:N7,P8:S10,3,FALSE)*B2)))` → valor atual `8000`
+- **Linha 15:** `B15` valor `0` | `C15` valor `Documento de Saúde e Segurança` | `J15` fórmula `=H15*B15` → valor atual `0` | `Q15` valor ` `
+- **Linha 16:** `B16` fórmula `=ROUNDUP(M2/5,0)` → valor atual `2` | `C16` valor `Aluguel Veiculo` | `H16` fórmula `=N14` → valor atual `8000` | `J16` fórmula `=H16*B16` → valor atual `16000`
+- **Linha 17:** `B17` fórmula `=B16` → valor atual `2` | `C17` valor `Manutenção Veículo` | `H17` fórmula `=N12` → valor atual `5332.363636363636` | `J17` valor `10664.727272727272`
+- **Linha 18:** `B18` valor `0` | `C18` valor `ART` | `H18` valor `0` | `J18` fórmula `=H18*B18` → valor atual `0`
+- **Linha 19:** `B19` valor `0` | `J19` valor `0`
+- **Linha 20:** `B20` valor `0` | `J20` fórmula `=H20*B20` → valor atual `0`
+- **Linha 21:** `A21` valor `TOTAL DESPESAS` | `J21` fórmula `=SUM(J6:J20)` → valor atual `144704.72727272726`
+
+**Células preenchidas:** 117 | **Células com fórmula:** 32
+
+---
+
+# Aba: Contratação de terceiros
+**Intervalo utilizado:** `A1:K21` | **Linhas:** 21 | **Colunas:** 11
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `TERCEIROS`
+- **Linha 2:** `A2` valor `PRAZO OBRA: ` | `B2` fórmula `='Mão de obra'!B2:B3` → valor atual `8`
+- **Linha 3:** `B3` valor `0`
+- **Linha 4:** `A4` valor `ITEM` | `B4` valor `QTD.` | `C4` valor `FUNÇÃO` | `D4` valor `QUANTIDADE HORAS / MÊS` | `G4` valor `VALORES / H` | `J4` valor `VALOR TOTAL`
+- **Linha 5:** `D5` valor `NORMAIS` | `E5` valor `0.5` | `F5` valor `1` | `G5` valor `NORMAL` | `H5` valor `0.5` | `I5` valor `1` | `K5` valor `Voltar para Geral`
+- **Linha 6:** `B6` valor `1` | `C6` valor `Endoscopia` | `H6` valor `15000` | `I6` fórmula `=G6*2` → valor atual `0` | `J6` fórmula `=H6*B6` → valor atual `15000`
+- **Linha 7:** `B7` valor `0` | `C7` valor `Alvenaria e pintura` | `H7` valor `3000` | `I7` valor `0` | `J7` fórmula `=H7*B7` → valor atual `0`
+- **Linha 8:** `B8` valor `0` | `C8` valor `Retirada e instalação vidro camada dupla` | `H8` valor `3000` | `I8` valor `0` | `J8` valor `0`
+- **Linha 9:** `B9` valor `0` | `C9` valor `ART` | `H9` valor `0` | `I9` valor `0` | `J9` valor `0`
+- **Linha 10:** `B10` valor `0` | `H10` valor `0` | `J10` valor `0`
+- **Linha 11:** `B11` valor `0` | `H11` valor `0` | `I11` valor `0` | `J11` valor `0`
+- **Linha 12:** `B12` valor `0` | `H12` valor `0` | `I12` valor `0` | `J12` valor `0`
+- **Linha 13:** `B13` valor `0` | `H13` valor `0` | `I13` valor `0` | `J13` valor `0`
+- **Linha 14:** `B14` valor `0` | `D14` fórmula `=$F$2*B14` → valor atual `0` | `E14` valor `0` | `F14` valor `0` | `G14` valor `0` | `H14` valor `0` | `I14` valor `0` | `J14` valor `0`
+- **Linha 15:** `B15` valor `0` | `D15` valor `0` | `E15` valor `0` | `F15` valor `0` | `G15` valor `0` | `H15` valor `0` | `I15` valor `0` | `J15` valor `0`
+- **Linha 16:** `B16` valor `0` | `D16` valor `0` | `E16` valor `0` | `F16` valor `0` | `G16` valor `0` | `H16` valor `0` | `I16` valor `0` | `J16` valor `0`
+- **Linha 17:** `B17` valor `0` | `D17` valor `0` | `E17` valor `0` | `F17` valor `0` | `G17` valor `0` | `H17` fórmula `=G17*1.5` → valor atual `0` | `I17` valor `0` | `J17` valor `0`
+- **Linha 18:** `B18` valor `0` | `D18` valor `0` | `E18` valor `0` | `F18` valor `0` | `G18` valor `0` | `H18` fórmula `=G18*1.5` → valor atual `0` | `I18` valor `0` | `J18` valor `0`
+- **Linha 19:** `B19` valor `0` | `D19` valor `0` | `E19` valor `0` | `F19` valor `0` | `G19` valor `0` | `H19` fórmula `=G19*1.5` → valor atual `0` | `I19` valor `0` | `J19` valor `0`
+- **Linha 20:** `B20` valor `0` | `D20` valor `0` | `E20` valor `0` | `F20` valor `0` | `G20` valor `0` | `H20` fórmula `=G20*1.5` → valor atual `0` | `I20` valor `0` | `J20` valor `0`
+- **Linha 21:** `A21` valor `TOTAL TERCEIROS` | `J21` fórmula `=SUM(I6:J20)` → valor atual `15000`
+
+**Células preenchidas:** 110 | **Células com fórmula:** 10
+
+---
+
+# Aba: Materiais
+**Intervalo utilizado:** `A1:M96` | **Linhas:** 96 | **Colunas:** 13
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CHAPAS`
+- **Linha 2:** `A2` valor `VALOR FRETE:` | `C2` valor `0` | `D2` valor `VALOR TOTAL DE MATERIAIS + FRETE` | `I2` fórmula `=(J28+J54+J81+J96-L2)+(C2*1.2)` → valor atual `272500` | `L2` fórmula `=IF(OR(Geral!L5="Venda",Geral!L5="Material / Serviço"),SUM(L27,L53,L81),IF(Geral!L5="Serviço",0,0))` → valor atual `45000`
+- **Linha 3:** `A3` valor `ITEM` | `B3` valor `QTD.` | `C3` valor `DESCRIÇÃO` | `D3` valor `DIMENSÔES` | `G3` valor `PESOS` | `I3` valor `VALOR`
+- **Linha 4:** `D4` valor `ESP. (MM)` | `E4` valor `LARG. (M)` | `F4` valor `COMP. (M)` | `G4` valor `UNIT.` | `H4` valor `TOTAL` | `I4` valor `R$ / KG` | `J4` valor `TOTAL` | `K4` valor `M²` | `L4` valor `CREDITO ICMS`
+- **Linha 5:** `B5` valor `0` | `D5` valor `0` | `E5` valor `0` | `F5` valor `0` | `G5` fórmula `=D5*E5*F5*8` → valor atual `0` | `H5` fórmula `=G5*B5` → valor atual `0` | `I5` valor `0` | `J5` fórmula `=I5*H5` → valor atual `0` | `K5` fórmula `=F5*E5*B5` → valor atual `0` | `L5` fórmula `=J5*18%` → valor atual `0`
+- **Linha 6:** `B6` valor `0` | `D6` valor `0` | `E6` valor `0` | `F6` valor `0` | `G6` fórmula `=D6*E6*F6*8` → valor atual `0` | `H6` fórmula `=G6*B6` → valor atual `0` | `I6` valor `0` | `J6` fórmula `=I6*H6` → valor atual `0` | `K6` fórmula `=F6*E6*B6` → valor atual `0` | `L6` fórmula `=J6*18%` → valor atual `0` | `M6` valor `Voltar para Geral`
+- **Linha 7:** `B7` valor `0` | `D7` valor `0` | `E7` valor `0` | `F7` valor `0` | `G7` valor `0` | `H7` valor `0` | `I7` valor `0` | `J7` fórmula `=I7*H7` → valor atual `0` | `K7` valor `0` | `L7` fórmula `=J7*18%` → valor atual `0`
+- **Linha 8:** `B8` valor `0` | `D8` valor `0` | `E8` valor `0` | `F8` valor `0` | `G8` valor `0` | `H8` valor `0` | `I8` valor `0` | `J8` fórmula `=I8*H8` → valor atual `0` | `K8` valor `0` | `L8` valor `0`
+- **Linha 9:** `B9` valor `0` | `D9` valor `0` | `E9` valor `0` | `F9` valor `0` | `G9` valor `0` | `H9` valor `0` | `I9` valor `0` | `J9` valor `0` | `K9` valor `0` | `L9` valor `0`
+- **Linha 10:** `B10` valor `0` | `D10` valor `0` | `E10` valor `0` | `F10` valor `0` | `G10` valor `0` | `H10` valor `0` | `I10` valor `0` | `J10` valor `0` | `K10` valor `0` | `L10` valor `0`
+- **Linha 11:** `B11` valor `0` | `D11` valor `0` | `E11` valor `0` | `F11` valor `0` | `G11` valor `0` | `H11` valor `0` | `I11` valor `0` | `J11` valor `0` | `K11` valor `0` | `L11` valor `0`
+- **Linha 12:** `B12` valor `0` | `D12` valor `0` | `E12` valor `0` | `F12` valor `0` | `G12` valor `0` | `H12` valor `0` | `I12` valor `0` | `J12` valor `0` | `K12` valor `0` | `L12` valor `0`
+- **Linha 13:** `B13` valor `0` | `D13` valor `0` | `E13` valor `0` | `F13` valor `0` | `G13` valor `0` | `H13` valor `0` | `I13` valor `0` | `J13` valor `0` | `K13` valor `0` | `L13` valor `0`
+- **Linha 14:** `B14` valor `0` | `D14` valor `0` | `E14` valor `0` | `F14` valor `0` | `G14` valor `0` | `H14` valor `0` | `I14` valor `0` | `J14` valor `0` | `K14` valor `0` | `L14` valor `0`
+- **Linha 15:** `B15` valor `0` | `D15` valor `0` | `E15` valor `0` | `F15` valor `0` | `G15` valor `0` | `H15` valor `0` | `I15` valor `0` | `J15` valor `0` | `K15` valor `0` | `L15` valor `0`
+- **Linha 16:** `B16` valor `0` | `D16` valor `0` | `E16` valor `0` | `F16` valor `0` | `G16` valor `0` | `H16` valor `0` | `I16` valor `0` | `J16` valor `0` | `K16` valor `0` | `L16` valor `0`
+- **Linha 17:** `B17` valor `0` | `D17` valor `0` | `E17` valor `0` | `F17` valor `0` | `G17` valor `0` | `H17` valor `0` | `I17` valor `0` | `J17` valor `0` | `K17` valor `0` | `L17` valor `0`
+- **Linha 18:** `B18` valor `0` | `D18` valor `0` | `E18` valor `0` | `F18` valor `0` | `G18` valor `0` | `H18` valor `0` | `I18` valor `0` | `J18` valor `0` | `K18` valor `0` | `L18` valor `0`
+- **Linha 19:** `B19` valor `0` | `D19` valor `0` | `E19` valor `0` | `F19` valor `0` | `G19` valor `0` | `H19` valor `0` | `I19` valor `0` | `J19` valor `0` | `K19` valor `0` | `L19` valor `0`
+- **Linha 20:** `B20` valor `0` | `D20` valor `0` | `E20` valor `0` | `F20` valor `0` | `G20` valor `0` | `H20` valor `0` | `I20` valor `0` | `J20` valor `0` | `K20` valor `0` | `L20` valor `0`
+- **Linha 21:** `B21` valor `0` | `D21` valor `0` | `E21` valor `0` | `F21` valor `0` | `G21` valor `0` | `H21` valor `0` | `I21` valor `0` | `J21` valor `0` | `K21` valor `0` | `L21` valor `0`
+- **Linha 22:** `B22` valor `0` | `D22` valor `0` | `E22` valor `0` | `F22` valor `0` | `G22` valor `0` | `H22` valor `0` | `I22` valor `0` | `J22` valor `0` | `K22` valor `0` | `L22` valor `0`
+- **Linha 23:** `B23` valor `0` | `D23` valor `0` | `E23` valor `0` | `F23` valor `0` | `G23` valor `0` | `H23` valor `0` | `I23` valor `0` | `J23` valor `0` | `K23` valor `0` | `L23` valor `0`
+- **Linha 24:** `B24` valor `0` | `D24` valor `0` | `E24` valor `0` | `F24` valor `0` | `G24` valor `0` | `H24` valor `0` | `I24` valor `0` | `J24` valor `0` | `K24` valor `0` | `L24` valor `0`
+- **Linha 25:** `B25` valor `0` | `D25` valor `0` | `E25` valor `0` | `F25` valor `0` | `G25` valor `0` | `H25` valor `0` | `I25` valor `0` | `J25` valor `0` | `K25` valor `0` | `L25` valor `0`
+- **Linha 26:** `B26` valor `0` | `D26` valor `0` | `E26` valor `0` | `F26` valor `0` | `G26` valor `0` | `H26` valor `0` | `I26` valor `0` | `J26` valor `0` | `K26` valor `0` | `L26` valor `0`
+- **Linha 27:** `A27` valor `TOTAL CHAPAS` | `I27` fórmula `=SUM(J5:J26)` → valor atual `0` | `L27` fórmula `=SUM(L5:L26)` → valor atual `0`
+- **Linha 28:** `A28` valor `REFATURAMENTO` | `I28` valor `0.3` | `J28` fórmula `=I27*(1+I28)` → valor atual `0`
+- **Linha 30:** `A30` valor `BARRAS E TUBOS`
+- **Linha 31:** `A31` valor `ITEM` | `B31` valor `QTD.` | `C31` valor `DESCRIÇÃO` | `D31` valor `DIMENSÔES` | `G31` valor `PESOS` | `I31` valor `VALOR`
+- **Linha 32:** `D32` valor `BITOLA` | `F32` valor `COMP. (M)` | `G32` valor `KG / M` | `H32` valor `TOTAL` | `I32` valor `UNITÁRIO` | `J32` valor `TOTAL` | `L32` valor `ICMS`
+- **Linha 33:** `B33` valor `0` | `F33` valor `0` | `G33` valor `0` | `H33` fórmula `=G33*F33*B33` → valor atual `0` | `I33` valor `0` | `J33` fórmula `=I33*H33` → valor atual `0` | `L33` fórmula `=J33*18%` → valor atual `0`
+- **Linha 34:** `B34` valor `0` | `F34` valor `0` | `G34` valor `0` | `H34` valor `0` | `I34` valor `0` | `J34` fórmula `=I34*H34` → valor atual `0` | `L34` fórmula `=J34*18%` → valor atual `0`
+- **Linha 35:** `B35` valor `0` | `F35` valor `0` | `G35` valor `0` | `H35` valor `0` | `I35` valor `0` | `J35` valor `0` | `L35` valor `0`
+- **Linha 36:** `B36` valor `0` | `F36` valor `0` | `G36` valor `0` | `H36` valor `0` | `I36` valor `0` | `J36` valor `0` | `L36` valor `0`
+- **Linha 37:** `B37` valor `0` | `F37` valor `0` | `G37` valor `0` | `H37` valor `0` | `I37` valor `0` | `J37` valor `0` | `L37` valor `0`
+- **Linha 38:** `B38` valor `0` | `F38` valor `0` | `G38` valor `0` | `H38` valor `0` | `I38` valor `0` | `J38` valor `0` | `L38` valor `0`
+- **Linha 39:** `B39` valor `0` | `F39` valor `0` | `G39` valor `0` | `H39` valor `0` | `I39` valor `0` | `J39` valor `0` | `L39` valor `0`
+- **Linha 40:** `B40` valor `0` | `F40` valor `0` | `G40` valor `0` | `H40` valor `0` | `I40` valor `0` | `J40` valor `0` | `L40` valor `0`
+- **Linha 41:** `B41` valor `0` | `F41` valor `0` | `G41` valor `0` | `H41` valor `0` | `I41` valor `0` | `J41` valor `0` | `L41` valor `0`
+- **Linha 42:** `B42` valor `0` | `F42` valor `0` | `G42` valor `0` | `H42` valor `0` | `I42` valor `0` | `J42` valor `0` | `L42` valor `0`
+- **Linha 43:** `B43` valor `0` | `F43` valor `0` | `G43` valor `0` | `H43` valor `0` | `I43` valor `0` | `J43` valor `0` | `L43` valor `0`
+- **Linha 44:** `B44` valor `0` | `F44` valor `0` | `G44` valor `0` | `H44` valor `0` | `I44` valor `0` | `J44` valor `0` | `L44` valor `0`
+- **Linha 45:** `B45` valor `0` | `F45` valor `0` | `G45` valor `0` | `H45` valor `0` | `I45` valor `0` | `J45` valor `0` | `L45` valor `0`
+- **Linha 46:** `B46` valor `0` | `F46` valor `0` | `G46` valor `0` | `H46` valor `0` | `I46` valor `0` | `J46` valor `0` | `L46` valor `0`
+- **Linha 47:** `B47` valor `0` | `F47` valor `0` | `G47` valor `0` | `H47` valor `0` | `I47` valor `0` | `J47` valor `0` | `L47` valor `0`
+- **Linha 48:** `B48` valor `0` | `F48` valor `0` | `G48` valor `0` | `H48` valor `0` | `I48` valor `0` | `J48` valor `0` | `L48` valor `0`
+- **Linha 49:** `B49` valor `0` | `F49` valor `0` | `G49` valor `0` | `H49` valor `0` | `I49` valor `0` | `J49` valor `0` | `L49` valor `0`
+- **Linha 50:** `B50` valor `0` | `F50` valor `0` | `G50` valor `0` | `H50` valor `0` | `I50` valor `0` | `J50` valor `0` | `L50` valor `0`
+- **Linha 51:** `B51` valor `0` | `F51` valor `0` | `G51` valor `0` | `H51` valor `0` | `I51` valor `0` | `J51` valor `0` | `L51` valor `0`
+- **Linha 52:** `B52` valor `0` | `F52` valor `0` | `G52` valor `0` | `H52` valor `0` | `I52` valor `0` | `J52` valor `0` | `L52` valor `0`
+- **Linha 53:** `A53` valor `TOTAL BARRAS E CONEXÕES` | `H53` fórmula `=SUM(H5:H26,H33:H52)` → valor atual `0` | `I53` fórmula `=SUM(J33:J52)` → valor atual `0` | `L53` fórmula `=SUM(L33:L52)` → valor atual `0`
+- **Linha 54:** `A54` valor `REFATURAMENTO` | `I54` valor `0.3` | `J54` fórmula `=I53*(1+I54)` → valor atual `0`
+- **Linha 56:** `A56` valor `CONEXÕES E OUTROS`
+- **Linha 57:** `A57` valor `ITEM` | `B57` valor `QTD.` | `C57` valor `DESCRIÇÃO` | `F57` valor `PREÇO UNIT.` | `H57` valor `REFATU.` | `I57` valor `VALOR UNIT. C/ MARGEM` | `J57` valor `VALOR TOTAL` | `L57` valor `ICMS`
+- **Linha 58:** `L58` valor `ICMS`
+- **Linha 59:** `B59` valor `1` | `C59` valor `materiais mecanicos` | `F59` valor `200000` | `G59` valor `0` | `H59` valor `1.3` | `I59` fórmula `=H59*F59` → valor atual `260000` | `J59` fórmula `=I59*B59` → valor atual `260000` | `L59` fórmula `=F59*B59*18%` → valor atual `36000`
+- **Linha 60:** `B60` valor `1` | `C60` valor `materiais eletricos` | `F60` valor `50000` | `G60` valor `0` | `H60` valor `1.15` | `I60` fórmula `=H60*F60` → valor atual `57499.99999999999` | `J60` fórmula `=I60*B60` → valor atual `57499.99999999999` | `L60` fórmula `=F60*B60*18%` → valor atual `9000`
+- **Linha 61:** `B61` valor `0` | `F61` valor `0` | `G61` valor `0` | `H61` valor `1.3` | `I61` valor `0` | `J61` valor `0` | `L61` valor `0`
+- **Linha 62:** `B62` valor `0` | `F62` valor `0` | `G62` valor `0` | `H62` valor `1.3` | `I62` valor `0` | `J62` valor `0` | `L62` valor `0`
+- **Linha 63:** `B63` valor `0` | `F63` valor `0` | `G63` valor `0` | `H63` valor `1.3` | `I63` valor `0` | `J63` valor `0` | `L63` valor `0`
+- **Linha 64:** `B64` valor `0` | `F64` valor `0` | `G64` valor `0` | `H64` valor `1.3` | `I64` valor `0` | `J64` valor `0` | `L64` valor `0`
+- **Linha 65:** `B65` valor `0` | `F65` valor `0` | `G65` valor `0` | `H65` valor `1.3` | `I65` valor `0` | `J65` valor `0` | `L65` valor `0`
+- **Linha 66:** `B66` valor `0` | `F66` valor `0` | `G66` valor `0` | `H66` valor `1.3` | `I66` valor `0` | `J66` valor `0` | `L66` valor `0`
+- **Linha 67:** `B67` valor `0` | `F67` valor `0` | `G67` valor `0` | `H67` valor `1.3` | `I67` valor `0` | `J67` valor `0` | `L67` valor `0`
+- **Linha 68:** `B68` valor `0` | `F68` valor `0` | `G68` valor `0` | `H68` valor `1.3` | `I68` valor `0` | `J68` valor `0` | `L68` valor `0`
+- **Linha 69:** `B69` valor `0` | `F69` valor `0` | `G69` valor `0` | `H69` valor `1.6` | `I69` valor `0` | `J69` valor `0` | `L69` valor `0`
+- **Linha 70:** `B70` valor `0` | `F70` valor `0` | `G70` valor `0` | `H70` valor `1.3` | `I70` valor `0` | `J70` valor `0` | `L70` valor `0`
+- **Linha 71:** `B71` valor `0` | `F71` valor `0` | `G71` valor `0` | `H71` valor `1.3` | `I71` valor `0` | `J71` valor `0` | `L71` valor `0`
+- **Linha 72:** `B72` valor `0` | `F72` valor `0` | `G72` valor `0` | `H72` valor `1.3` | `I72` valor `0` | `J72` valor `0` | `L72` valor `0`
+- **Linha 73:** `B73` valor `0` | `F73` valor `0` | `G73` valor `0` | `H73` valor `1.3` | `I73` valor `0` | `J73` valor `0` | `L73` valor `0`
+- **Linha 74:** `B74` valor `0` | `F74` valor `0` | `G74` valor `0` | `H74` valor `1.3` | `I74` valor `0` | `J74` valor `0` | `L74` valor `0`
+- **Linha 75:** `B75` valor `0` | `F75` valor `0` | `G75` valor `0` | `H75` valor `1.3` | `I75` valor `0` | `J75` valor `0` | `L75` valor `0`
+- **Linha 76:** `B76` valor `0` | `F76` valor `0` | `G76` valor `0` | `H76` valor `1.3` | `I76` valor `0` | `J76` valor `0` | `L76` valor `0`
+- **Linha 77:** `B77` valor `0` | `F77` valor `0` | `G77` valor `0` | `H77` valor `1.3` | `I77` valor `0` | `J77` valor `0` | `L77` valor `0`
+- **Linha 78:** `B78` valor `0` | `F78` valor `0` | `G78` valor `0` | `H78` valor `1.3` | `I78` valor `0` | `J78` valor `0` | `L78` valor `0`
+- **Linha 79:** `B79` valor `0` | `F79` valor `0` | `G79` valor `0` | `H79` valor `1.3` | `I79` valor `0` | `J79` valor `0` | `L79` valor `0`
+- **Linha 80:** `B80` valor `0` | `F80` valor `0` | `G80` valor `0` | `H80` valor `1.3` | `I80` valor `0` | `J80` valor `0` | `L80` valor `0`
+- **Linha 81:** `A81` valor `TOTAL OUTROS` | `J81` fórmula `=SUM(J59:J80)` → valor atual `317500` | `L81` fórmula `=SUM(L59:L80)` → valor atual `45000`
+- **Linha 83:** `A83` valor `PINTURA`
+- **Linha 84:** `A84` valor `Demão` | `B84` valor `QTD. DEMÃOS` | `C84` valor `DESCRIÇÃO` | `F84` valor `CUSTO DO GALÃO` | `G84` valor `REND. / GALÃO` | `H84` valor `M² CHAPA` | `I84` valor `M² BARRAS` | `J84` valor `FATOR DE PERDA` | `L84` valor `PREÇO / M²`
+- **Linha 85:** `A85` valor `Fundo`
+- **Linha 86:** `A86` valor `Fundo` | `B86` valor `0` | `F86` valor `0` | `G86` valor `1` | `H86` fórmula `=SUM(K5:K26)*2*0` → valor atual `0` | `I86` valor `0` | `J86` valor `0.5` | `L86` fórmula `=SUM(Custos!E20:E22)` → valor atual `0`
+- **Linha 87:** `A87` valor `Intermediaria` | `B87` valor `0` | `F87` valor `0` | `G87` valor `1`
+- **Linha 88:** `A88` valor `Acabamento` | `B88` valor `0` | `F88` valor `0` | `G88` valor `1`
+- **Linha 90:** `E90` valor `QTD. Galões`
+- **Linha 91:** `E91` valor `Demão` | `F91` valor `QTD. Galões + 10%` | `H91` valor `Preço / galão` | `J91` valor `Valor total`
+- **Linha 92:** `E92` valor `Fundo` | `F92` fórmula `=Custos!B26` → valor atual `0` | `H92` fórmula `=Custos!C26` → valor atual `0` | `J92` fórmula `=(H92*F92)` → valor atual `0`
+- **Linha 93:** `E93` valor `Intermediario` | `F93` fórmula `=Custos!B27` → valor atual `0` | `H93` fórmula `=Custos!C27` → valor atual `0` | `J93` fórmula `=(H93*F93)` → valor atual `0`
+- **Linha 94:** `E94` valor `Acabamento` | `F94` fórmula `=Custos!B28` → valor atual `0` | `H94` fórmula `=Custos!C28` → valor atual `0` | `J94` fórmula `=(H94*F94)` → valor atual `0`
+- **Linha 95:** `E95` valor `TOTAL DE TINTAS` | `J95` fórmula `=SUM(J92:J94)` → valor atual `0`
+- **Linha 96:** `E96` valor `REFATURAMENTO` | `I96` valor `0.6` | `J96` fórmula `=J95*(1+I96)` → valor atual `0`
+
+**Células preenchidas:** 627 | **Células com fórmula:** 48
+
+---
+
+# Aba: Consumiveis
+**Intervalo utilizado:** `A1:J26` | **Linhas:** 26 | **Colunas:** 10
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CONSUMIVEIS`
+- **Linha 2:** `A2` valor `ITEM` | `B2` valor `QTD.` | `C2` valor `DESCRIÇÃO` | `F2` valor `PREÇO UNIT.` | `H2` valor `REFATU.` | `I2` valor `VALOR TOTAL`
+- **Linha 4:** `B4` valor `1` | `C4` valor `Consumíveis Mecânicos(25%) ` | `F4` fórmula `='Mão de obra'!$J$31*25%` → valor atual `64226.5` | `H4` valor `1` | `I4` fórmula `=H4*F4*B4` → valor atual `64226.5`
+- **Linha 5:** `B5` valor `0` | `C5` valor `Consumíveis Elétricos` | `F5` valor `0` | `G5` valor `0` | `H5` valor `1` | `I5` fórmula `=H5*F5*B5` → valor atual `0` | `J5` valor `Voltar para Geral`
+- **Linha 6:** `B6` valor `0` | `F6` valor `0` | `H6` valor `1` | `I6` fórmula `=H6*F6*B6` → valor atual `0`
+- **Linha 7:** `B7` valor `0` | `F7` valor `0` | `G7` valor `0` | `H7` valor `1` | `I7` valor `0`
+- **Linha 8:** `B8` valor `0` | `F8` valor `0` | `G8` valor `0` | `H8` valor `1` | `I8` valor `0`
+- **Linha 9:** `B9` valor `0` | `F9` valor `0` | `G9` valor `0` | `H9` valor `1` | `I9` valor `0`
+- **Linha 10:** `B10` valor `0` | `F10` valor `0` | `G10` valor `0` | `H10` valor `1` | `I10` valor `0`
+- **Linha 11:** `B11` valor `0` | `F11` valor `0` | `G11` valor `0` | `H11` valor `1` | `I11` valor `0`
+- **Linha 12:** `B12` valor `0` | `F12` valor `0` | `G12` valor `0` | `H12` valor `1` | `I12` valor `0`
+- **Linha 13:** `B13` valor `0` | `F13` valor `0` | `G13` valor `0` | `H13` valor `1` | `I13` valor `0`
+- **Linha 14:** `B14` valor `0` | `F14` valor `0` | `G14` valor `0` | `H14` valor `1` | `I14` valor `0`
+- **Linha 15:** `B15` valor `0` | `F15` valor `0` | `G15` valor `0` | `H15` valor `1` | `I15` valor `0`
+- **Linha 16:** `B16` valor `0` | `F16` valor `0` | `G16` valor `0` | `H16` valor `1` | `I16` valor `0`
+- **Linha 17:** `B17` valor `0` | `F17` valor `0` | `G17` valor `0` | `H17` valor `1` | `I17` valor `0`
+- **Linha 18:** `B18` valor `0` | `F18` valor `0` | `G18` valor `0` | `H18` valor `1` | `I18` valor `0`
+- **Linha 19:** `B19` valor `0` | `F19` valor `0` | `G19` valor `0` | `H19` valor `1` | `I19` valor `0`
+- **Linha 20:** `B20` valor `0` | `F20` valor `0` | `G20` valor `0` | `H20` valor `1` | `I20` valor `0`
+- **Linha 21:** `B21` valor `0` | `F21` valor `0` | `G21` valor `0` | `H21` valor `1` | `I21` valor `0`
+- **Linha 22:** `B22` valor `0` | `F22` valor `0` | `G22` valor `0` | `H22` valor `1` | `I22` valor `0`
+- **Linha 23:** `B23` valor `0` | `F23` valor `0` | `G23` valor `0` | `H23` valor `1` | `I23` valor `0`
+- **Linha 24:** `B24` valor `0` | `F24` valor `0` | `G24` valor `0` | `H24` valor `1` | `I24` valor `0`
+- **Linha 25:** `B25` valor `0` | `F25` valor `0` | `G25` valor `0` | `H25` valor `1` | `I25` valor `0`
+- **Linha 26:** `A26` valor `TOTAL CONSUMÍVEIS` | `I26` fórmula `=SUM(I4:I25)` → valor atual `64226.5`
+
+**Células preenchidas:** 120 | **Células com fórmula:** 5
+
+---
+
+# Aba: Maquinário
+**Intervalo utilizado:** `A1:K26` | **Linhas:** 26 | **Colunas:** 11
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `MAQUINÁRIO E FERRAMENTAL`
+- **Linha 2:** `A2` valor `QTD.` | `B2` valor `QTD. MESES` | `C2` valor `DESCRIÇÃO` | `F2` valor `PREÇO UNIT.` | `H2` valor `REFATU.` | `I2` valor `VALOR TOTAL`
+- **Linha 4:** `A4` valor `1` | `B4` valor `7` | `C4` valor `Caminhão Munk ` | `F4` valor `3200` | `H4` valor `1` | `I4` fórmula `=A4*B4*F4*H4` → valor atual `22400`
+- **Linha 5:** `A5` valor `0` | `B5` valor `0` | `C5` valor `Guindaste 50T mensal` | `F5` valor `200000` | `G5` valor `0` | `H5` valor `1` | `I5` fórmula `=A5*B5*F5*H5` → valor atual `0` | `K5` valor `Voltar para Geral`
+- **Linha 6:** `A6` valor `0` | `B6` valor `0` | `C6` valor `Macaco Hidraulico` | `F6` valor `0` | `G6` valor `0` | `H6` valor `1` | `I6` valor `0`
+- **Linha 7:** `A7` valor `0` | `B7` valor `0` | `C7` valor `Tartaruga` | `F7` valor `3000` | `G7` valor `0` | `H7` valor `1` | `I7` valor `0`
+- **Linha 8:** `A8` valor `0` | `B8` valor `0` | `C8` valor `Plataforma elevatória articulada` | `F8` valor `22000` | `G8` valor `0` | `H8` valor `1` | `I8` valor `0`
+- **Linha 9:** `A9` valor `0` | `B9` valor `0` | `C9` valor `Plataforma elevatória pantográfica` | `F9` valor `15000` | `G9` valor `0` | `H9` valor `1` | `I9` valor `0`
+- **Linha 10:** `A10` valor `2` | `B10` valor `2` | `C10` valor `Plataforma elevatória tesoura` | `F10` valor `17500` | `G10` valor `0` | `H10` valor `1` | `I10` valor `70000`
+- **Linha 11:** `A11` valor `0` | `B11` valor `0` | `C11` valor `Compressor de ar` | `F11` valor `8200` | `G11` valor `0` | `H11` valor `1` | `I11` valor `0`
+- **Linha 12:** `A12` valor `0` | `B12` valor `0` | `C12` valor `Gerador de energia` | `F12` valor `0` | `G12` valor `0` | `H12` valor `1` | `I12` valor `0`
+- **Linha 13:** `A13` valor `0` | `B13` valor `0` | `C13` valor `Transformador de tensão` | `F13` valor `0` | `G13` valor `0` | `H13` valor `1` | `I13` valor `0`
+- **Linha 14:** `A14` valor `0` | `B14` valor `6` | `C14` valor `Andaimes` | `F14` valor `5000` | `G14` valor `0` | `H14` valor `1` | `I14` valor `0`
+- **Linha 15:** `A15` valor `0` | `B15` valor `6` | `C15` valor `Talha` | `F15` valor `3000` | `G15` valor `0` | `H15` valor `1` | `I15` valor `0`
+- **Linha 16:** `A16` valor `0` | `B16` valor `0` | `C16` valor `Empilhadeira elétrica 1000kg com frete` | `F16` valor `5000` | `G16` valor `0` | `H16` valor `1` | `I16` valor `0`
+- **Linha 17:** `A17` valor `0` | `B17` valor `0` | `C17` valor `Paleteiros` | `F17` valor `2400` | `G17` valor `0` | `H17` valor `1` | `I17` valor `0`
+- **Linha 18:** `A18` valor `0` | `B18` valor `0` | `C18` valor `Endereçador rede AS-i` | `F18` valor `3300` | `G18` valor `0` | `H18` valor `1` | `I18` fórmula `=A18*B18*F18*H18` → valor atual `0`
+- **Linha 19:** `A19` valor `0` | `B19` valor `0` | `F19` valor `0` | `H19` valor `1` | `I19` valor `0`
+- **Linha 20:** `A20` valor `0` | `B20` valor `0` | `F20` valor `0` | `H20` valor `1` | `I20` valor `0`
+- **Linha 21:** `A21` valor `0` | `B21` valor `0` | `F21` valor `0` | `H21` valor `1` | `I21` valor `0`
+- **Linha 22:** `A22` valor `0` | `B22` valor `0` | `F22` valor `0` | `G22` valor `0` | `H22` valor `1` | `I22` valor `0`
+- **Linha 23:** `A23` valor `0` | `B23` valor `0` | `F23` valor `0` | `G23` valor `0` | `H23` valor `1` | `I23` valor `0`
+- **Linha 24:** `A24` valor `0` | `B24` valor `0` | `F24` valor `0` | `G24` valor `0` | `H24` valor `1` | `I24` valor `0`
+- **Linha 25:** `A25` valor `0` | `B25` valor `0` | `F25` valor `0` | `G25` valor `0` | `H25` valor `1` | `I25` valor `0`
+- **Linha 26:** `A26` valor `TOTAL OUTROS` | `I26` fórmula `=SUM(I4:J25)` → valor atual `92400`
+
+**Células preenchidas:** 153 | **Células com fórmula:** 4
+
+---
+
+# Aba: Canteiro de obra
+**Intervalo utilizado:** `A1:K36` | **Linhas:** 36 | **Colunas:** 11
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CANTEIRO DE OBRA`
+- **Linha 2:** `A2` valor `QTD.` | `B2` valor `QTD. MESES` | `C2` valor `DESCRIÇÃO` | `F2` valor `PREÇO UNIT.` | `H2` valor `REFATU.` | `I2` valor `VALOR TOTAL`
+- **Linha 4:** `A4` valor `1` | `B4` valor `2` | `C4` valor `Container - Escritório` | `F4` valor `2000` | `H4` valor `1` | `I4` fórmula `=A4*B4*F4*H4` → valor atual `4000`
+- **Linha 5:** `A5` fórmula `=A4*2` → valor atual `2` | `B5` fórmula `=IF(A5=0,0,1)` → valor atual `1` | `C5` valor `Frete Container - Escritório` | `F5` valor `3000` | `G5` valor `0` | `H5` valor `1` | `I5` fórmula `=A5*B5*F5*H5` → valor atual `6000` | `K5` valor `Voltar para Geral`
+- **Linha 6:** `A6` valor `1` | `B6` valor `2` | `C6` valor `Container - Sanitário` | `F6` valor `3000` | `G6` valor `0` | `H6` valor `1` | `I6` valor `6000`
+- **Linha 7:** `A7` fórmula `=A6*2` → valor atual `2` | `B7` fórmula `=IF(A7=0,0,1)` → valor atual `1` | `C7` valor `Frete Container - Sanitário` | `F7` valor `3000` | `G7` valor `0` | `H7` valor `1` | `I7` valor `6000`
+- **Linha 8:** `A8` valor `0` | `B8` valor `0` | `C8` valor `Container - Almoxarifado` | `F8` valor `1000` | `G8` valor `0` | `H8` valor `1` | `I8` valor `0`
+- **Linha 9:** `A9` fórmula `=A8*2` → valor atual `0` | `B9` fórmula `=IF(A9=0,0,1)` → valor atual `0` | `C9` valor `Frete Container - Almoxarifado` | `F9` valor `3000` | `G9` valor `0` | `H9` valor `1` | `I9` valor `0`
+- **Linha 10:** `A10` valor `0` | `B10` valor `0` | `C10` valor `Tenda` | `F10` valor `12000` | `G10` valor `0` | `H10` valor `1` | `I10` valor `0`
+- **Linha 11:** `A11` valor `1` | `B11` valor `1` | `C11` valor `Preparação` | `F11` valor `6000` | `G11` valor `0` | `H11` valor `1` | `I11` valor `6000`
+- **Linha 12:** `A12` fórmula `=IF(B12=0,0,1)` → valor atual `1` | `B12` fórmula `=B4` → valor atual `2` | `C12` valor `Despesas com contas (Água, Luz, telefone, internet e etc)` | `F12` valor `600` | `H12` valor `1` | `I12` valor `1200`
+- **Linha 13:** `A13` valor `0` | `B13` valor `0` | `C13` valor `Telhas para cercamento 15x10` | `F13` valor `55` | `H13` valor `1` | `I13` valor `0`
+- **Linha 14:** `A14` valor `30` | `B14` valor `0` | `C14` valor `Metalon 50x50 postes` | `F14` valor `100` | `H14` valor `1` | `I14` valor `0`
+- **Linha 15:** `A15` valor `1` | `B15` valor `1` | `C15` valor `ART e Laudos` | `F15` valor `10000` | `H15` valor `1` | `I15` valor `10000`
+- **Linha 16:** `A16` valor `0` | `B16` valor `0` | `C16` valor `Estaiamento de tenda` | `F16` valor `1000` | `H16` valor `1` | `I16` valor `0`
+- **Linha 17:** `A17` valor `0` | `B17` valor `0` | `C17` valor `Refeitorio 10x10` | `F17` valor `17000` | `G17` valor `0` | `H17` valor `1` | `I17` valor `0`
+- **Linha 18:** `A18` fórmula `=IF(B18=0,0,1)` → valor atual `1` | `B18` fórmula `=B4` → valor atual `2` | `C18` valor `Despesa manutenção do canteiro` | `F18` valor `300` | `G18` valor `0` | `H18` valor `1` | `I18` valor `600`
+- **Linha 19:** `A19` valor `0` | `B19` valor `6` | `C19` valor `Coleta e descarte de lixo / sucata` | `F19` valor `3000` | `G19` valor `0` | `H19` valor `1` | `I19` valor `0`
+- **Linha 20:** `A20` valor `0` | `B20` valor `0` | `C20` valor `Instalação elétrica / telefone / sanitária` | `F20` valor `0` | `G20` valor `0` | `H20` valor `1` | `I20` valor `0`
+- **Linha 21:** `A21` valor `0` | `B21` valor `0` | `C21` valor `Outras despesas` | `F21` valor `0` | `G21` valor `0` | `H21` valor `1` | `I21` valor `0`
+- **Linha 22:** `A22` valor `0` | `B22` valor `0` | `C22` valor `Tubo PVS agua` | `F22` valor `60` | `G22` valor `0` | `H22` valor `1` | `I22` valor `0`
+- **Linha 23:** `A23` valor `0` | `B23` valor `0` | `C23` valor `Tubo PVC esgoto` | `F23` valor `80` | `G23` valor `0` | `H23` valor `1` | `I23` fórmula `=A23*B23*F23*H23` → valor atual `0`
+- **Linha 24:** `A24` valor `0` | `B24` valor `0` | `C24` valor `Mesas e cadeiras` | `F24` valor `1200` | `G24` valor `0` | `H24` valor `1` | `I24` valor `0`
+- **Linha 25:** `A25` valor `0` | `B25` valor `0` | `C25` valor `Frigobar` | `F25` valor `1000` | `H25` valor `1` | `I25` valor `0`
+- **Linha 26:** `A26` valor `0` | `B26` valor `0` | `C26` valor `Internet` | `F26` valor `150` | `H26` valor `1` | `I26` fórmula `=A26*B26*F26*H26` → valor atual `0`
+- **Linha 27:** `A27` valor `0` | `B27` valor `0` | `C27` valor `Plotter` | `F27` valor `6000` | `H27` valor `1` | `I27` fórmula `=A27*B27*F27*H27` → valor atual `0`
+- **Linha 28:** `A28` valor `0` | `B28` valor `0` | `C28` valor `Refletores e fotocelula` | `F28` valor `600` | `H28` valor `1` | `I28` fórmula `=A28*B28*F28*H28` → valor atual `0`
+- **Linha 29:** `A29` valor `0` | `B29` valor `0` | `C29` valor `Brita` | `F29` valor `4500` | `H29` valor `1` | `I29` valor `0`
+- **Linha 30:** `A30` valor `0` | `B30` valor `0` | `C30` valor `Remoção brita` | `F30` valor `4500` | `H30` valor `1` | `I30` valor `0`
+- **Linha 31:** `A31` valor `0` | `B31` valor `0` | `C31` valor `Extintores` | `F31` valor `250` | `H31` valor `1` | `I31` valor `0`
+- **Linha 32:** `A32` valor `0` | `B32` valor `0` | `C32` valor `Lixos coleta seletiva` | `F32` valor `360` | `H32` valor `1` | `I32` valor `0`
+- **Linha 33:** `A33` valor `0` | `B33` valor `0` | `C33` valor `Armarios em aço` | `F33` valor `700` | `H33` valor `1` | `I33` valor `0`
+- **Linha 34:** `A34` valor `0` | `B34` valor `0` | `C34` valor `Estantes em aço` | `F34` valor `350` | `H34` valor `1` | `I34` fórmula `=A34*B34*F34*H34` → valor atual `0`
+- **Linha 35:** `C35` valor `Gaveteiro` | `H35` valor `1` | `I35` valor `0`
+- **Linha 36:** `A36` valor `TOTAL OUTROS` | `I36` fórmula `=SUM(I4:J35)` → valor atual `39800`
+
+**Células preenchidas:** 214 | **Células com fórmula:** 18
+
+---
+
+# Aba: Mob&Desmob
+**Intervalo utilizado:** `A1:K29` | **Linhas:** 29 | **Colunas:** 11
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `MOBILIZAÇÃO / DESMOBILIZAÇÃO`
+- **Linha 2:** `A2` valor `MOBILIZAÇÃO`
+- **Linha 3:** `A3` valor `ITEM` | `B3` valor `QTD.` | `C3` valor `DESCRIÇÃO` | `F3` valor `PREÇO UNIT.` | `I3` valor `VALOR TOTAL`
+- **Linha 5:** `B5` valor `1` | `C5` valor `Frete` | `F5` valor `6000` | `I5` fórmula `=F5*B5` → valor atual `6000` | `K5` valor `Voltar para Geral`
+- **Linha 6:** `B6` valor `0` | `C6` valor `Instalação Pipeshop` | `F6` valor `0` | `G6` valor `0` | `H6` valor `1.1` | `I6` fórmula `=F6*B6` → valor atual `0`
+- **Linha 7:** `B7` valor `0` | `F7` valor `0` | `G7` valor `0` | `H7` valor `1.1` | `I7` valor `0`
+- **Linha 8:** `B8` valor `0` | `F8` valor `0` | `G8` valor `0` | `H8` valor `1.1` | `I8` valor `0`
+- **Linha 9:** `B9` valor `0` | `F9` valor `0` | `G9` valor `0` | `H9` valor `1.1` | `I9` valor `0`
+- **Linha 10:** `B10` valor `0` | `F10` valor `0` | `G10` valor `0` | `H10` valor `1.1` | `I10` valor `0`
+- **Linha 11:** `B11` valor `0` | `F11` valor `0` | `G11` valor `0` | `H11` valor `1.1` | `I11` valor `0`
+- **Linha 12:** `A12` valor `TOTAL MOBILIZAÇÂO` | `I12` fórmula `=SUM(I5:J11)` → valor atual `6000` | `J12` fórmula `=I12*A12` → valor atual `#VALUE!`
+- **Linha 14:** `A14` valor `DESMOBILIZAÇÃO`
+- **Linha 15:** `A15` valor `ITEM` | `B15` valor `QTD.` | `C15` valor `DESCRIÇÃO` | `F15` valor `PREÇO UNIT.` | `I15` valor `VALOR TOTAL`
+- **Linha 17:** `B17` valor `1` | `C17` valor `Frete` | `F17` valor `6000` | `I17` fórmula `=F17*B17` → valor atual `6000`
+- **Linha 18:** `B18` valor `0` | `C18` valor `Remoção Pipeshop` | `F18` valor `0` | `I18` fórmula `=F18*B18` → valor atual `0`
+- **Linha 19:** `B19` valor `0` | `C19` valor `Limpeza de Obra` | `F19` valor `0` | `I19` valor `0`
+- **Linha 20:** `B20` valor `0` | `F20` valor `0` | `I20` valor `0`
+- **Linha 21:** `B21` valor `0` | `F21` valor `0` | `I21` valor `0`
+- **Linha 22:** `B22` valor `0` | `F22` valor `0` | `I22` valor `0`
+- **Linha 23:** `B23` valor `0` | `F23` valor `0` | `I23` valor `0`
+- **Linha 24:** `B24` valor `0` | `F24` valor `0` | `I24` fórmula `=F24*B24` → valor atual `0`
+- **Linha 25:** `B25` valor `0` | `F25` valor `0` | `I25` fórmula `=F25*B25` → valor atual `0`
+- **Linha 26:** `B26` valor `0` | `F26` valor `0` | `I26` fórmula `=F26*B26` → valor atual `0`
+- **Linha 27:** `A27` valor `TOTAL DEMOBILIZAÇÂO` | `I27` fórmula `=SUM(I17:J26)` → valor atual `6000` | `J27` fórmula `=I27*A27` → valor atual `#VALUE!`
+- **Linha 29:** `A29` valor `TOTAL MOB./DESMOB.` | `I29` fórmula `=I27+I12` → valor atual `12000`
+
+**Células preenchidas:** 90 | **Células com fórmula:** 12
+
+---
+
+# Aba: Custos administrativos
+**Intervalo utilizado:** `A1:J13` | **Linhas:** 13 | **Colunas:** 10
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CUSTOS ADMINISTRATIVOS`
+- **Linha 2:** `A2` valor `ITEM` | `B2` valor `DESCRIÇÃO` | `F2` valor `ALIQUOTA` | `G2` valor `BASE DE CALCULO` | `I2` valor `VALOR TOTAL`
+- **Linha 4:** `A4` valor `1` | `B4` valor `Administração Central / Planejamento` | `F4` valor `0.01` | `G4` fórmula `=SUM(Geral!H8:H16)/(1-(SUM(F4:F12)))` → valor atual `842208.8528584818` | `I4` fórmula `=G4*F4` → valor atual `8422.088528584818`
+- **Linha 5:** `A5` valor `2` | `B5` valor `Gerenciamento de projeto` | `F5` valor `0.02` | `G5` fórmula `=G4` → valor atual `842208.8528584818` | `I5` fórmula `=G5*F5` → valor atual `16844.177057169636` | `J5` valor `Voltar para Geral`
+- **Linha 6:** `A6` valor `3` | `B6` valor `OHS e gestão geral` | `F6` valor `0` | `G6` fórmula `=G5` → valor atual `842208.8528584818` | `I6` valor `0`
+- **Linha 7:** `A7` fórmula `=IF(B7="","",A6+1)` → valor atual `4` | `B7` valor `Comissão` | `F7` valor `0` | `G7` fórmula `=IF(B7="",0,$G$4)` → valor atual `842208.8528584818` | `I7` valor `0`
+- **Linha 8:** `G8` valor `0` | `I8` valor `0`
+- **Linha 9:** `G9` valor `0` | `I9` valor `0`
+- **Linha 10:** `G10` valor `0` | `I10` valor `0`
+- **Linha 11:** `G11` valor `0` | `I11` valor `0`
+- **Linha 12:** `G12` valor `0` | `I12` valor `0`
+- **Linha 13:** `A13` valor `TOTAL CUSTOS ADMINISTRATIVOS` | `I13` fórmula `=SUM(I4:I12)` → valor atual `25266.265585754452`
+
+**Células preenchidas:** 39 | **Células com fórmula:** 8
+
+---
+
+# Aba: Impostos
+**Intervalo utilizado:** `A1:T38` | **Linhas:** 38 | **Colunas:** 20
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `IMPOSTOS` | `M1` valor `Imposto` | `N1` valor `Lucro Real (Aguero Inox)` | `O1` valor `Aguero ABC` | `P1` valor `Aguero Projetos.` | `R1` valor `Mão de obra` | `S1` fórmula `=Geral!J8` → valor atual `225435.015` | `T1` fórmula `=S1/$N$38` → valor atual `256906`
+- **Linha 2:** `A2` valor `Finalidade:` | `B2` fórmula `=Geral!L5` → valor atual `Material / Serviço` | `G2` valor `Faturado pela:` | `I2` valor `Aguero Inox (Lucro Real)` | `M2` valor `PIS` | `N2` valor `0.0165` | `O2` valor `0.0065` | `P2` valor `0.0065` | `R2` valor `Equipe Comissionamento` | `S2` fórmula `=Geral!J9` → valor atual `23784.5322` | `T2` fórmula `=S2/$N$38` → valor atual `27104.88`
+- **Linha 3:** `A3` valor `ITEM` | `B3` valor `DESCRIÇÃO` | `F3` valor `ALIQUOTA` | `G3` valor `BASE DE CALCULO` | `I3` valor `VALOR TOTAL` | `M3` valor `COFINS` | `N3` valor `0.076` | `O3` valor `0.03` | `P3` valor `0.03` | `R3` valor `Despesas com pessoal` | `S3` fórmula `=Geral!J10` → valor atual `144704.72727272726` | `T3` valor `164905.6721056721`
+- **Linha 4:** `G4` valor `Material` | `H4` valor `Mão de obra` | `I4` valor `Material` | `J4` valor `Mão de obra` | `M4` valor `CSLL` | `N4` valor `0.09` | `O4` valor `0.0288` | `P4` valor `0.0288` | `R4` valor `Contratação de terceiros` | `S4` fórmula `=Geral!J11` → valor atual `15000` | `T4` valor `17094.017094017094`
+- **Linha 5:** `A5` valor `1` | `B5` valor `PIS` | `F5` fórmula `=IF($I$2="Aguero Inox (Lucro Real)",VLOOKUP(B5,$M$2:$P$6,2,FALSE),IF(I2="Aguero ABC",VLOOKUP(B5,$M$2:$P$6,3,FALSE),VLOOKUP(B5,$M$2:$P$6,4,FALSE)))` → valor atual `0.0165` | `G5` fórmula `=(SUM($S$5)+'Custo financeiro'!$I$27+'Custo financeiro'!$I$32+'Custo financeiro'!$I$5+'Custo financeiro'!$I$13)/$O$38` → valor atual `441105.8625550007` | `H5` fórmula `=(SUM($S$1:$S$4,$S$6:$S$11)+'Custo financeiro'!$I$29+'Custo financeiro'!$I$34+'Custo financeiro'!$I$9+'Custo financeiro'!$I$15)/$N$38` → valor atual `927048.8918309567` | `I5` fórmula `=G5*F5` → valor atual `7278.246732157512` | `J5` fórmula `=H5*F5` → valor atual `15296.306715210785` | `M5` valor `IRPJ` | `N5` valor `0.15` | `O5` valor `0.0543` | `P5` valor `0.0543` | `R5` valor `Materiais` | `S5` fórmula `=Geral!J12` → valor atual `272500` | `T5` fórmula `=S5/$O$38` → valor atual `374570.4467353952`
+- **Linha 6:** `A6` valor `2` | `B6` valor `COFINS` | `F6` fórmula `=IF($I$2="Aguero Inox (Lucro Real)",VLOOKUP(B6,$M$2:$P$6,2,FALSE),IF(I3="Aguero ABC",VLOOKUP(B6,$M$2:$P$6,3,FALSE),VLOOKUP(B6,$M$2:$P$6,4,FALSE)))` → valor atual `0.076` | `G6` fórmula `=G5` → valor atual `441105.8625550007` | `H6` fórmula `=H5` → valor atual `927048.8918309567` | `I6` fórmula `=G6*F6` → valor atual `33524.045554180055` | `J6` fórmula `=H6*F6` → valor atual `70455.7157791527` | `K6` valor `Voltar para Geral` | `M6` valor `ISS` | `N6` valor `0.05` | `O6` valor `0.05` | `P6` valor `0.05` | `R6` valor `Consumíveis` | `S6` fórmula `=Geral!J13` → valor atual `64226.5` | `T6` valor `73192.59259259258`
+- **Linha 7:** `A7` valor `3` | `B7` valor `ISS` | `F7` valor `0.03` | `G7` fórmula `=G5` → valor atual `441105.8625550007` | `H7` fórmula `=H5` → valor atual `927048.8918309567` | `I7` fórmula `=IF($B$2="Serviço",G7*F7,0)` → valor atual `0` | `J7` fórmula `=IF(OR($B$2="Material / Serviço",$B$2="Serviço"),H7*F7,0)` → valor atual `27811.4667549287` | `R7` valor `Maquinário e ferramental` | `S7` fórmula `=Geral!J14` → valor atual `92400` | `T7` valor `105299.1452991453`
+- **Linha 8:** `A8` valor `4` | `B8` valor `ICMS` | `F8` valor `0.18` | `G8` fórmula `=G5` → valor atual `441105.8625550007` | `H8` fórmula `=H5` → valor atual `927048.8918309567` | `I8` fórmula `=IF(OR($B$2="Material / Serviço",B2="Venda"),G8*F8,0)` → valor atual `79399.05525990012` | `J8` fórmula `=IF(B2="Venda",H8*F8,0)` → valor atual `0` | `M8` valor `Calculo IRPJ e CSLL` | `R8` valor `Canteiro de óbra` | `S8` fórmula `=Geral!J15` → valor atual `39800` | `T8` valor `45356.125356125354`
+- **Linha 9:** `A9` valor `TOTAL CUSTOS ADMINISTRATIVOS` | `I9` fórmula `=SUM(I5:I8)` → valor atual `120201.3475462377` | `J9` fórmula `=SUM(J5:J8)` → valor atual `113563.48924929218` | `M9` valor `Valor Venda` | `N9` fórmula `=N10+I9+J9` → valor atual `1301112.310256363` | `R9` valor `Mobilização / Desmobilização` | `S9` fórmula `=Geral!J16` → valor atual `12000` | `T9` valor `13675.213675213674`
+- **Linha 10:** `M10` valor `Valor Despesas` | `N10` fórmula `=SUM(S1:S14)` → valor atual `1067347.473460833` | `R10` valor `Custo administrativo` | `S10` fórmula `=Geral!J17` → valor atual `25266.265585754452` | `T10` valor `28793.465054990826`
+- **Linha 11:** `M11` valor `Lucro` | `N11` fórmula `=N9-N10` → valor atual `233764.83679552982` | `R11` valor `Contingencias` | `S11` fórmula `=Geral!J19` → valor atual `48164.0547399201` | `T11` valor `54887.81166942461`
+- **Linha 12:** `A12` valor `NOTAS:` | `B12` valor `ICMS = (Somatória das compras efetuadas de mercadorias x 18%) - (somatória das vendas de mercadoria x 18%)` | `M12` valor `CSLL` | `N12` fórmula `=N11*9%` → valor atual `21038.835311597682` | `R12` valor `Desconto` | `S12` fórmula `=Geral!J20` → valor atual `50699.00498938958` | `T12` fórmula `=Geral!K20` → valor atual `61146.59839908299`
+- **Linha 13:** `B13` valor `Lucro Real = Receita(Valor de venda) - Despesas (Material, M.O., Maquinário, Despesas gerais, canteiro e etc)` | `M13` valor `IRPJ` | `N13` fórmula `=N11*15%` → valor atual `35064.72551932947` | `R13` valor `Comissão` | `S13` fórmula `=Geral!J21` → valor atual `53367.373673041664` | `T13` fórmula `=Geral!K21` → valor atual `73357.21467084764`
+- **Linha 14:** `B14` valor `IRPJ - Ascréscimo de 10% sobre a parcela do lucro que exceder 20 mil ao mês` | `M14` valor `Diferença IRPJ` | `N14` fórmula `=IF(N11>=20000,N11-20000,0)` → valor atual `213764.83679552982` | `R14` valor `Seguro Bancário` | `S14` fórmula `=Geral!J22` → valor atual `0` | `T14` fórmula `=Geral!K22` → valor atual `0`
+- **Linha 15:** `M15` valor `Adicional IRPJ` | `N15` fórmula `=N14*10%` → valor atual `21376.483679552985` | `R15` valor `Custo Financeiro` | `S15` fórmula `=Geral!J23` → valor atual `33010.74660188144` | `T15` fórmula `=Geral!K23` → valor atual `37619.08444658853`
+- **Linha 16:** `R16` valor `Antecipação` | `S16` fórmula `=Geral!J24` → valor atual `34031.69752771282` | `T16` fórmula `=Geral!K24` → valor atual `38782.561285142816`
+- **Linha 17:** `A17` valor `CALCULO MARGEM TOTAL` | `M17` valor `Calculo ICMS` | `R17` valor `Impostos` | `S17` fórmula `=I9+J9` → valor atual `233764.83679552987` | `T17` fórmula `=S17/$N$38` → valor atual `266398.6744108602`
+- **Linha 18:** `A18` valor `Valor de venda:` | `C18` fórmula `=N24` → valor atual `1368154.7543859573` | `D18` fórmula `=C18/$C$18` → valor atual `1` | `M18` valor `COMPRA` | `O18` valor `VENDA` | `R18` valor `No cálculo, a empresa soma todos os créditos do ICMS a que tem direito, o saldo credor de períodos anteriores, créditos de transferências, entre outros. Dessa soma, subtrai-se o ICMS devido nas vendas. Se o resultado for um saldo com mais créditos do que débitos, esse saldo pode ser usado no próximo período. Caso contrário, se houver mais débitos que créditos, a empresa precisa pagar a diferença.`
+- **Linha 19:** `A19` valor `PIS / COFINS:` | `C19` fórmula `=SUM(I5:J6)` → valor atual `126554.31478070105` | `D19` fórmula `=C19/$C$18` → valor atual `0.0925` | `M19` valor `Valor de compra:` | `N19` fórmula `=Geral!H12` → valor atual `250000` | `O19` valor `Valor Venda` | `P19` fórmula `=SUM(S1:S16,S17)` → valor atual `1368154.7543859573`
+- **Linha 20:** `A20` valor `ICMS (Crédito):` | `C20` fórmula `=N20` → valor atual `45000` | `D20` fórmula `=C20/$C$18` → valor atual `0.03289101606067692` | `M20` valor `Crédito ICMS:` | `N20` fórmula `=Materiais!L2` → valor atual `45000` | `O20` valor `Débito ICMS` | `P20` fórmula `=I8` → valor atual `79399.05525990012`
+- **Linha 21:** `A21` valor `ICMS (Devido):` | `C21` fórmula `=P20` → valor atual `79399.05525990012` | `D21` fórmula `=C21/$C$18` → valor atual `0.05803368003902108` | `M21` valor `Custo` | `N21` fórmula `=N19-N20` → valor atual `205000` | `O21` valor `Diferença` | `P21` fórmula `=P20-N20` → valor atual `34399.055259900124`
+- **Linha 22:** `A22` valor `ISS:` | `C22` fórmula `=SUM(I7:J7)` → valor atual `27811.4667549287` | `D22` fórmula `=C22/$C$18` → valor atual `0.020327719993496488`
+- **Linha 23:** `A23` valor `Valor Liq. S/ Impostos` | `C23` fórmula `=C18-C19-(C21-C20)-C22` → valor atual `1179389.9175904274` | `D23` fórmula `=C23/C18` → valor atual `0.8620296160281594` | `M23` valor `DRE`
+- **Linha 24:** `M24` valor `Fat. Bruto:` | `N24` fórmula `=P19` → valor atual `1368154.7543859573`
+- **Linha 25:** `A25` valor `Custo Total:` | `C25` fórmula `=Geral!$H$18` → valor atual `842208.8528584817` | `D25` fórmula `=C25/C23` → valor atual `0.7141055220983835` | `M25` valor `ICMS venda:` | `N25` fórmula `=P20` → valor atual `79399.05525990012`
+- **Linha 26:** `A26` valor `Contingencia:` | `C26` fórmula `=Geral!$J$19` → valor atual `48164.0547399201` | `D26` fórmula `=C26/C23` → valor atual `0.0408381096205422` | `M26` valor `Fat. Liquido:` | `N26` fórmula `=N24-N25` → valor atual `1288755.699126057`
+- **Linha 27:** `A27` valor `Comissão:` | `C27` fórmula `='Custo financeiro'!$I$35` → valor atual `53367.373673041664` | `D27` fórmula `=C27/C23` → valor atual `0.04524998295904952` | `M27` valor `Custo Mercadoria Vendida` | `N27` fórmula `=IF(P20=0,N19,N21)` → valor atual `205000`
+- **Linha 28:** `A28` valor `Custo financeiro` | `C28` fórmula `=ANALISE!$D$20` → valor atual `33010.74660188144` | `D28` fórmula `=C28/C23` → valor atual `0.027989680180855372`
+- **Linha 29:** `A29` valor `Antecipação:` | `C29` fórmula `='Custo financeiro'!$I$13+'Custo financeiro'!$I$15` → valor atual `34031.69752771282` | `D29` fórmula `=C29/C23` → valor atual `0.028855340392634404` | `M29` valor `Lucro Bruto` | `N29` fórmula `=N26-N27` → valor atual `1083755.699126057`
+- **Linha 30:** `A30` valor `Desconto` | `C30` fórmula `=ANALISE!$D$17` → valor atual `50699.00498938958` | `D30` fórmula `=C30/C23` → valor atual `0.042987483811097044` | `M30` valor `Margem Fat. Liquido` | `N30` fórmula `=N29/N24` → valor atual `0.7921294690178952`
+- **Linha 31:** `A31` valor `Contribuição Minima` | `C31` fórmula `=C23-C25-C26-C29-C27-C28-C30` → valor atual `117908.18720000017` | `D31` fórmula `=C31/C23` → valor atual `0.09997388093743798` | `R31` valor `Material`
+- **Linha 32:** `A32` valor `Contribuição Máxima` | `C32` fórmula `=C23-C25-C27-C28` → valor atual `250802.94445702268` | `D32` fórmula `=C32/C23` → valor atual `0.2126548147617116` | `M32` valor `Alicotas` | `R32` fórmula `=S5+'Custo financeiro'!I27+'Custo financeiro'!I32+'Custo financeiro'!I5+'Custo financeiro'!I13` → valor atual `320904.515008763` | `S32` fórmula `=R32/O38` → valor atual `441105.8625550007` | `T32` fórmula `=S32-R32` → valor atual `120201.3475462377`
+- **Linha 33:** `M33` valor `Serviço` | `N33` fórmula `=1-F5-F6-F7` → valor atual `0.8775000000000001` | `R33` valor `Mão de obra`
+- **Linha 34:** `M34` valor `Venda` | `N34` fórmula `=1-F5-F6-F8` → valor atual `0.7275` | `R34` fórmula `=SUM(S1:S4,S6:S11)+'Custo financeiro'!I29+'Custo financeiro'!I34+'Custo financeiro'!I9+'Custo financeiro'!I15` → valor atual `813485.4025816645` | `S34` fórmula `=R34/N38` → valor atual `927048.8918309567` | `T34` fórmula `=S34-R34` → valor atual `113563.48924929218`
+- **Linha 35:** `M35` valor `Industrialização` | `N35` fórmula `=1-F5-F6` → valor atual `0.9075000000000001`
+- **Linha 37:** `M37` valor `Alicota Efetiva` | `N37` valor `Serviço` | `O37` valor `Material`
+- **Linha 38:** `N38` fórmula `=IF(B2="Venda",N34,IF(B2="Serviço",N33,IF(B2="Industrialização",N35,N33)))` → valor atual `0.8775000000000001` | `O38` fórmula `=IF(B2="Material / Serviço",N34,IF(B2="Venda",N34,IF(B2="Industrialização",N35,N33)))` → valor atual `0.7275`
+
+**Células preenchidas:** 232 | **Células com fórmula:** 105
+
+---
+
+# Aba: Custo financeiro
+**Intervalo utilizado:** `A1:N35` | **Linhas:** 35 | **Colunas:** 14
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CUSTO FINANCEIRO`
+- **Linha 2:** `A2` valor `ITEM` | `B2` valor `DESCRIÇÃO` | `E2` valor `PRAZO DE PAG.` | `F2` valor `ALIQUOTA` | `G2` valor `BASE DE CALCULO S/ IMPOSTOS` | `I2` valor `VALOR TOTAL S/ IMPOTOS` | `J2` valor `VALOR TOTAL C/ IMPOTOS`
+- **Linha 3:** `M3` valor `07-28 DDL` | `N3` valor `0`
+- **Linha 4:** `A4` valor `1` | `B4` valor `Custo Financeiro (Selecionar uma das opções ao lado):
+07-28 DDL - 0%
+30 DDL - 3%
+45 DDL - 4,5%
+60 DDL - 6%
+75 DDL - 7,5%
+90 DDL - 9%
+120 DDL - 12%` | `E4` valor `30 DDL` | `F4` fórmula `=VLOOKUP(E4,M3:N9,2,FALSE)` → valor atual `0.03` | `G4` valor `Material` | `M4` valor `30 DDL` | `N4` valor `0.03`
+- **Linha 5:** `G5` fórmula `=(Geral!J12+I27+I32)/(1-F4)` → valor atual `311277.3795585002` | `I5` fórmula `=G5*F4` → valor atual `9338.321386755006` | `J5` fórmula `=I5/Impostos!$O$38` → valor atual `12836.180600350523` | `K5` valor `Voltar para Geral` | `M5` valor `45 DDL` | `N5` valor `0.045`
+- **Linha 6:** `M6` valor `60 DDL` | `N6` valor `0.06`
+- **Linha 7:** `M7` valor `75 DDL` | `N7` valor `0.075`
+- **Linha 8:** `G8` valor `Serviço` | `M8` valor `90 DDL` | `N8` valor `0.09`
+- **Linha 9:** `G9` fórmula `=SUM(Geral!J8:J11,Geral!J13:J17,Geral!J19,I29,I34)/(1-F4)` → valor atual `789080.8405042144` | `I9` fórmula `=G9*F4` → valor atual `23672.42521512643` | `J9` fórmula `=I9/Impostos!$N$38` → valor atual `26977.12275228083` | `M9` valor `120 DDL` | `N9` valor `0.12`
+- **Linha 12:** `A12` valor `2` | `B12` valor `Antecipação de recebimento` | `E12` valor `0.03` | `G12` valor `Material`
+- **Linha 13:** `G13` fórmula `=G5/(1-E12)` → valor atual `320904.5150087631` | `I13` fórmula `=G13*E12` → valor atual `9627.135450262893` | `J13` fórmula `=I13/Impostos!$O$38` → valor atual `13233.175876650024`
+- **Linha 14:** `G14` valor `Serviço`
+- **Linha 15:** `G15` fórmula `=G9/(1-E12)` → valor atual `813485.4025816644` | `I15` fórmula `=G15*E12` → valor atual `24404.56207744993` | `J15` fórmula `=I15/Impostos!$N$38` → valor atual `27811.466754928693`
+- **Linha 16:** `A16` valor `TOTAL CUSTOS ADMINISTRATIVOS` | `I16` fórmula `=SUM(I5,I9,I13,I15)` → valor atual `67042.44412959425` | `J16` fórmula `=SUM(J5,J9,J13,J15)` → valor atual `80857.94598421008`
+- **Linha 18:** `A18` valor `NOTAS:`
+- **Linha 23:** `A23` valor `DESCONTO / COMISSÃO`
+- **Linha 24:** `A24` valor `ITEM` | `B24` valor `DESCRIÇÃO` | `E24` valor `ALIQUOTA` | `G24` valor `BASE DE CALCULO S/ IMPOSTOS` | `I24` valor `VALOR TOTAL S/ IMPOTOS` | `J24` valor `VALOR TOTAL C/ IMPOTOS`
+- **Linha 26:** `A26` valor `1` | `B26` valor `Desconto` | `E26` fórmula `=Geral!G20` → valor atual `0.05` | `G26` valor `Material`
+- **Linha 27:** `G27` fórmula `=Geral!J12/(1-'Custo financeiro'!E26)` → valor atual `286842.1052631579` | `I27` fórmula `=G27*E26` → valor atual `14342.105263157897` | `J27` fórmula `=I27/Impostos!$O$38` → valor atual `19714.234038705014`
+- **Linha 28:** `G28` valor `Serviço`
+- **Linha 29:** `G29` fórmula `=SUM(Geral!J8:J11,Geral!J13:J17,Geral!J19)/(1-'Custo financeiro'!E26)` → valor atual `727137.9945246335` | `I29` fórmula `=G29*E26` → valor atual `36356.89972623168` | `J29` fórmula `=I29/Impostos!$N$38` → valor atual `41432.36436037798`
+- **Linha 30:** `A30` valor `TOTAL DESCONTO` | `I30` fórmula `=I27+I29` → valor atual `50699.00498938958` | `J30` fórmula `=J27+J29` → valor atual `61146.59839908299`
+- **Linha 31:** `A31` valor `2` | `B31` valor `Comissão` | `E31` fórmula `=Geral!G21` → valor atual `0.05` | `G31` valor `Material`
+- **Linha 32:** `B32` valor `Comissão` | `G32` fórmula `=G27/(1-E31)` → valor atual `301939.0581717452` | `I32` fórmula `=G32*$E$31` → valor atual `15096.952908587262` | `J32` fórmula `=I32/Impostos!$O$38` → valor atual `20751.825303900016`
+- **Linha 33:** `G33` valor `Serviço`
+- **Linha 34:** `G34` fórmula `=G29/(1-E31)` → valor atual `765408.4152890879` | `I34` fórmula `=G34*$E$31` → valor atual `38270.4207644544` | `J34` fórmula `=I34/Impostos!$O$38` → valor atual `52605.389366947624`
+- **Linha 35:** `A35` valor `TOTAL COMISSÂO` | `I35` fórmula `=I32+I34` → valor atual `53367.373673041664` | `J35` fórmula `=J32+J34` → valor atual `73357.21467084764`
+
+**Células preenchidas:** 86 | **Células com fórmula:** 33
+
+---
+
+# Aba: Categoria
+**Intervalo utilizado:** `A1:Q28` | **Linhas:** 28 | **Colunas:** 17
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CATEGORIA DO PROJETO`
+- **Linha 3:** `A3` valor `Categoria final do projeto:` | `C3` fórmula `=VLOOKUP(MAX($Q$16:$Q$20),CHOOSE({1,2},$Q$16:$Q$20,$N$16:$N$20),2,FALSE)` → valor atual `#REF!`
+- **Linha 5:** `A5` valor `1` | `B5` valor `Cliente:` | `C5` valor `1` | `K5` valor `Voltar para Geral`
+- **Linha 6:** `B6` valor `1` | `C6` valor `Acesso fácil, sem requisitos documentais, liberdade de trabalho.`
+- **Linha 7:** `B7` valor `2` | `C7` valor `Acesso fácil, requisita documentação padrão, liberdade de trabalho`
+- **Linha 8:** `B8` valor `3` | `C8` valor `Requisita documentos e faz avaliação, OHS operativo, exige PTs mas sem burocracia`
+- **Linha 9:** `B9` valor `4` | `C9` valor `Clientes com alto grau de exigências internas mas colaborativos`
+- **Linha 10:** `B10` valor `5` | `C10` valor `Clientes com alto grau de exigências internas e não colaborativos` | `O10` valor `Valor` | `Q10` fórmula `=C23` → valor atual `1`
+- **Linha 11:** `A11` valor `2` | `B11` valor `Localidade:` | `C11` valor `2` | `O11` valor `Cliente` | `Q11` fórmula `=C5` → valor atual `1`
+- **Linha 12:** `B12` valor `1` | `C12` valor `Galpão Aguero Inox` | `O12` valor `Localidade` | `Q12` fórmula `=C11` → valor atual `2`
+- **Linha 13:** `B13` valor `2` | `C13` valor `Capitais, regiões metropolitanas S, SE, CO outras avaliar` | `O13` valor `Complexidade` | `Q13` fórmula `=C17` → valor atual `1`
+- **Linha 14:** `B14` valor `3` | `C14` valor `Capitais NE e NO. Grandes cidades interior S e SE`
+- **Linha 15:** `B15` valor `4` | `C15` valor `Cidades do interior de S, SE, CO distantes de centros urbanos` | `N15` valor `Cat` | `O15` valor `QTD.` | `P15` valor `Peso`
+- **Linha 16:** `B16` valor `5` | `C16` valor `Cidades do interior NO e NE` | `N16` valor `1` | `O16` fórmula `=COUNTIF($Q$10:$Q$13,N16)` → valor atual `3` | `P16` valor `10` | `Q16` fórmula `=IF(O16=0,"",P16*O16)` → valor atual `30`
+- **Linha 17:** `A17` valor `3` | `B17` valor `Complexidade:` | `C17` valor `1` | `N17` valor `2` | `O17` fórmula `=COUNTIF($Q$10:$Q$13,N17)` → valor atual `1` | `P17` valor `20` | `Q17` fórmula `=IF(O17=0,"",P17*O17)` → valor atual `20`
+- **Linha 18:** `B18` valor `1` | `C18` valor `Produto` | `N18` valor `3` | `O18` fórmula `=COUNTIF($Q$10:$Q$13,N18)` → valor atual `0` | `P18` valor `30` | `Q18` fórmula `=IF(O18=0,"",P18*O18)` → valor atual ``
+- **Linha 19:** `B19` valor `2` | `C19` valor `Segmento` | `N19` valor `4` | `O19` fórmula `=COUNTIF($Q$10:$Q$13,N19)` → valor atual `0` | `P19` valor `40` | `Q19` fórmula `=IF(O19=0,"",P19*O19)` → valor atual ``
+- **Linha 20:** `B20` valor `3` | `C20` valor `Tipo de equipamento` | `N20` valor `5` | `O20` fórmula `=COUNTIF($Q$10:$Q$13,N20)` → valor atual `0` | `P20` valor `200` | `Q20` fórmula `=IF(O20=0,"",P20*O20)` → valor atual ``
+- **Linha 21:** `B21` valor `4` | `C21` valor `Tempo de execução` | `P21` fórmula `=SUM(P16:P20)` → valor atual `300` | `Q21` fórmula `=AVERAGE(Q16:Q20)` → valor atual `25`
+- **Linha 22:** `B22` valor `5` | `C22` valor `Restrições (planta sempre em operação, horário diferenciado, acesso complicado)` | `N22` fórmula `=VLOOKUP(MAX($Q$16:$Q$20),CHOOSE({1,2},$Q$16:$Q$20,$N$16:$N$20),2,FALSE)` → valor atual `#REF!`
+- **Linha 23:** `A23` valor `4` | `B23` valor `Valor:` | `C23` valor `1` | `N23` fórmula `=VLOOKUP(Q21,CHOOSE({1,2},$Q$16:$Q$20,$N$16:$N$20),2,TRUE)+1` → valor atual `#N/A`
+- **Linha 24:** `B24` valor `1` | `C24` valor `200000`
+- **Linha 25:** `B25` valor `2` | `C25` valor `500000`
+- **Linha 26:** `B26` valor `3` | `C26` valor `1000000`
+- **Linha 27:** `B27` valor `4` | `C27` valor `4000000`
+- **Linha 28:** `B28` valor `5` | `C28` valor `> R$ 4.000.000,00`
+
+**Células preenchidas:** 91 | **Células com fórmula:** 19
+
+---
+
+# Aba: Contingências
+**Intervalo utilizado:** `A1:N31` | **Linhas:** 31 | **Colunas:** 14
+
+### Conteúdo por linha (células preenchidas)
+- **Linha 1:** `A1` valor `CONTINGÊNCIAS`
+- **Linha 2:** `J2` fórmula `=SUM(J4:J31)` → valor atual `0` | `N2` fórmula `=SUM(N4:N31)` → valor atual `0`
+- **Linha 3:** `A3` valor `Num` | `B3` valor `Causa Raiz` | `C3` valor `Efeito` | `D3` valor `Custo envolvido` | `E3` valor `Probabilidade` | `F3` valor `Impacto` | `G3` valor `Score` | `H3` valor `Estratégia` | `I3` valor `Ação` | `J3` valor `Custo da ação` | `K3` valor `Probabilidade` | `L3` valor `Impacto` | `M3` valor `Score` | `N3` valor `Contingência`
+- **Linha 4:** `A4` valor `1` | `B4` valor `ABC` | `C4` valor `DEF` | `D4` valor `0` | `E4` valor `6` | `F4` valor `8` | `G4` fórmula `=E4*F4` → valor atual `48` | `H4` valor `Aceitar` | `I4` valor `hgsd` | `J4` valor `0` | `K4` valor `2.5` | `L4` valor `8` | `M4` fórmula `=K4*L4` → valor atual `20` | `N4` fórmula `=_xlfn.IFS(H4="aceitar",D4*G4/100,H4="mitigar",D4*M4/100,H4="transfer",0,H4="evitar",0,H4="",0)` → valor atual `0`
+- **Linha 5:** `D5` valor `0` | `E5` valor `6` | `F5` valor `7` | `G5` fórmula `=E5*F5` → valor atual `42` | `H5` valor `Aceitar` | `J5` valor `0` | `M5` fórmula `=K5*L5` → valor atual `0` | `N5` fórmula `=_xlfn.IFS(H5="aceitar",D5*G5/100,H5="mitigar",D5*M5/100,H5="transfer",0,H5="evitar",0,H5="",0)` → valor atual `0`
+- **Linha 6:** `D6` valor `0` | `E6` valor `4` | `F6` valor `6` | `G6` valor `24` | `H6` valor `Transfer` | `J6` valor `0` | `K6` valor `1` | `L6` valor `6` | `M6` valor `6` | `N6` valor `0`
+- **Linha 7:** `D7` valor `0` | `E7` valor `5` | `F7` valor `9` | `G7` valor `45` | `H7` valor `Evitar` | `J7` valor `0` | `M7` valor `0` | `N7` valor `0`
+- **Linha 8:** `G8` valor `0` | `M8` valor `0` | `N8` valor `0`
+- **Linha 9:** `G9` valor `0` | `M9` valor `0` | `N9` valor `0`
+- **Linha 10:** `G10` valor `0` | `M10` valor `0` | `N10` valor `0`
+- **Linha 11:** `G11` valor `0` | `M11` valor `0` | `N11` valor `0`
+- **Linha 12:** `G12` valor `0` | `M12` valor `0` | `N12` valor `0`
+- **Linha 13:** `G13` valor `0` | `M13` valor `0` | `N13` valor `0`
+- **Linha 14:** `G14` valor `0` | `M14` valor `0` | `N14` valor `0`
+- **Linha 15:** `G15` valor `0` | `M15` valor `0` | `N15` valor `0`
+- **Linha 16:** `G16` valor `0` | `M16` valor `0` | `N16` valor `0`
+- **Linha 17:** `G17` valor `0` | `M17` valor `0` | `N17` valor `0`
+- **Linha 18:** `G18` valor `0` | `M18` valor `0` | `N18` valor `0`
+- **Linha 19:** `G19` valor `0` | `M19` valor `0` | `N19` valor `0`
+- **Linha 20:** `G20` valor `0` | `M20` valor `0` | `N20` valor `0`
+- **Linha 21:** `G21` valor `0` | `M21` valor `0` | `N21` valor `0`
+- **Linha 22:** `G22` valor `0` | `M22` valor `0` | `N22` valor `0`
+- **Linha 23:** `G23` valor `0` | `M23` valor `0` | `N23` valor `0`
+- **Linha 24:** `G24` valor `0` | `M24` valor `0` | `N24` valor `0`
+- **Linha 25:** `G25` valor `0` | `M25` valor `0` | `N25` valor `0`
+- **Linha 26:** `G26` valor `0` | `M26` valor `0` | `N26` valor `0`
+- **Linha 27:** `G27` valor `0` | `M27` valor `0` | `N27` valor `0`
+- **Linha 28:** `G28` valor `0` | `M28` valor `0` | `N28` valor `0`
+- **Linha 29:** `G29` valor `0` | `M29` valor `0` | `N29` valor `0`
+- **Linha 30:** `G30` valor `0` | `M30` valor `0` | `N30` valor `0`
+- **Linha 31:** `G31` valor `0` | `M31` valor `0` | `N31` valor `0`
+
+**Células preenchidas:** 129 | **Células com fórmula:** 8

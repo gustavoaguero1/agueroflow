@@ -1,0 +1,43 @@
+[
+  {
+    "id": "wabot_welcome",
+    "role": "assistant",
+    "text": "Olá! Sou o Assistente IA conectado ao seu WhatsApp no AgueroFlow.\nVocê pode me pedir regras em português natural, por exemplo:\n• \"Sempre que o número +55 11 99999-9999 me mandar mensagem, responda por mim e só pare em decisões críticas\"\n• \"Responda as próximas 5 mensagens privadas por mim\"\n• \"Pausar todas as respostas automáticas\"",
+    "createdAt": "2026-11-18T18:00:09.011Z"
+  },
+  {
+    "id": "wabot_1795120817755_ivco",
+    "createdAt": "2026-11-19T20:40:17.755Z",
+    "role": "assistant",
+    "text": "💬 Menção @aguero em \"Gustavo\"\nPergunta: \"traga um resumo dos custos de NDs do grupo NDs Aguero Inox\"\n\nResposta:\nAqui está o resumo dos custos de NDs registrados no grupo *NDs AGUERO INOX 🌞* (histórico até 19/11/2026):\n\n*1. Mão de Obra (ND MDO - Venda de Folga)*\n• *19/11* — Lucas Soares da Silva (Ref. 2004/26 | Parc: 25/11 e 02/12): *R$ 1.700,00*\n• *19/11* — João Marcos da Conceição (Ref. 1926/26 | Parc: 25/11 e 02/12): *R$ 2.800,00*\n• *19/11* — Ivanildo Santos (Ref. 1926/26 | Parc: 25/11 e 02/12): *R$ 2.800,00*\n*Subtotal Mão de Obra:* R$ 7.300,00\n\n*2. Frete / Transporte*\n• *19/11* — Roberto Gonsalez Bertasso - Frete de materiais (Ref. 2237/26 | 23/11): *R$ 2.200,00*\n*Subtotal Frete / Transporte:* R$ 2.200,00\n\n---\n*TOTAL GERAL:* *R$ 9.500,00*\n_(Nenhum comprovante OCR registrado no período)_",
+    "relatedContactPhone": "+55 11 94459-3892",
+    "relatedContactJid": "+55 11 94459-3892",
+    "relatedContactName": "Gustavo"
+  },
+  {
+    "id": "wabot_1795120966692_ar9h",
+    "createdAt": "2026-11-19T20:42:46.692Z",
+    "role": "assistant",
+    "text": "💬 Menção @aguero em \"Gustavo\"\nPergunta: \"faça um resumo de custo do grupo de NDs Aguero Inox todo do dia 19/11\"\n\nResposta:\nNão encontrei mensagens nem comprovantes OCR registrados para *[G4 OS] Aguero Inox & G4* no período (histórico registrado até 2026-11-19).\n\nVerifique se o nome do grupo/contato está correto ou se já houve movimentação salva nesta janela de datas.",
+    "relatedContactPhone": "+55 11 94459-3892",
+    "relatedContactJid": "+55 11 94459-3892",
+    "relatedContactName": "Gustavo"
+  },
+  {
+    "id": "wabot_1795121662448_2c5l",
+    "createdAt": "2026-11-19T20:54:22.448Z",
+    "role": "assistant",
+    "text": "💬 Menção @aguero em \"Teste Sync\"\nPergunta: \"me mande o resumo de custos diarios do grupo de NDs\"\n\nResposta:\n✅ *Rotina Agendada Criada!*\n• *Nome:* Resumo diário de custos do grupo NDs\n• *Horário:* 17:54 (todos os dias, horário de Brasília)\n• *Destino:* Meu WhatsApp (Privado)\n• *Grupo/Chat analisado:* NDs AGUERO INOX 🌞\n• *Ação:* me mande o resumo de custos diarios do grupo de NDs\n\n_Você pode gerenciar, testar (\"Executar Agora\") ou pausar esta rotina em 12. Automação WhatsApp & NDs → Comandos Programados._",
+    "relatedContactPhone": "+55 11 91789-7747",
+    "relatedContactJid": "+55 11 91789-7747",
+    "relatedContactName": "Teste Sync"
+  },
+  {
+    "id": "wabot_1795121670246_3kue",
+    "createdAt": "2026-11-19T20:54:30.246Z",
+    "role": "assistant",
+    "text": "⏰ Rotina \"Resumo diário de custos do grupo NDs\" executada às 17:54 para Meu WhatsApp (Privado):\n\n📅 *Rotina Diária @aguero — Resumo diário de custos do grupo NDs*\nOlá! Sou o @aguero. Analisei o histórico de mensagens do grupo **NDs AGUERO INOX 🌞** referente ao dia **19/11/2026**.\n\nAbaixo, apresento o resumo dos custos identificados nas mensagens, categorizados e consolidados:\n\n### 📊 Resumo de Custos - 19/11/2026\n\n**1. Mão de Obra (Venda de F",
+    "relatedContactJid": "5511917897747",
+    "relatedContactName": "Meu WhatsApp (Privado)"
+  }
+]

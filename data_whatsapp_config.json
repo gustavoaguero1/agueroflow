@@ -1,0 +1,38 @@
+{
+  "provider": "baileys_web_bridge",
+  "messagingMode": "hybrid_groups_and_private",
+  "connectedPhoneNumber": "+55 11 91789-7747",
+  "targetGroupName": "",
+  "targetGroupJid": "",
+  "webhookUrl": "https://ais-dev-kzcltgdgvpyofef2yzk45l-143571443840.us-east1.run.app/api/webhooks/whatsapp-receipts",
+  "verifyToken": "aguero_reembolsos_token_2025",
+  "autoReplyConfirmation": true,
+  "filterOnlyAuthorizedEmployees": true,
+  "authorizedPhones": [
+    "+55 11 91789-7747",
+    "+55 19 98123-4567",
+    "+55 19 98234-5678",
+    "+55 19 98345-6789",
+    "+55 19 98456-7890"
+  ],
+  "status": "conectado",
+  "lastPingAt": "2026-11-19T21:20:49.127Z",
+  "instanceUrl": "http://localhost:8080",
+  "instanceName": "meuteste",
+  "apiKey": "mude-me",
+  "lastSyncAt": "",
+  "composioConnectedAccountId": "",
+  "composioPhoneNumberId": "",
+  "composioWabaId": "",
+  "composioEntityId": "aguero_inox_comercial",
+  "composioAuthConfigId": "",
+  "composioRealtimeEnabled": true,
+  "mentionTrigger": {
+    "enabled": true,
+    "keyword": "@aguero",
+    "allowedSenders": "owner_only",
+    "replyMode": "same_chat",
+    "includeConversationContext": true,
+    "contextMessagesCount": 15
+  }
+}

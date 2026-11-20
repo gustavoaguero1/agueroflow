@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GAT — Soluções & Gestão Operacional</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content="GAT — Plataforma integrada para resolução de problemas, gestão de serviços, atendimento ágil e controle operacional de ponta a ponta." />
+    <meta property="og:title" content="GAT — Soluções & Gestão Operacional" />
+    <meta property="og:description" content="Você tem uma demanda ou problema para resolver. A GAT entrega a solução completa com total controle e agilidade." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('gat_theme_preference_v2') || 'light';
+          if (t !== 'light' && t !== 'dark') t = 'light';
+          document.documentElement.classList.remove('light', 'dark');
+          document.documentElement.classList.add(t);
+          document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+          document.documentElement.classList.add('light');
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

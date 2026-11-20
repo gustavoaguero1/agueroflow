@@ -1,0 +1,6 @@
+{
+  "name": "GAT — Soluções & Gestão Operacional",
+  "description": "Plataforma integrada para resolução de problemas, gestão de serviços, atendimento ágil e controle operacional de ponta a ponta.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

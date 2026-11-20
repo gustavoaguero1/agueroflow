@@ -1,0 +1,52 @@
+LEIA OS ARQUIVOS ANEXADOS ANTES DE PROPOR OU IMPLEMENTAR QUALQUER ALTERACAO.
+
+Arquivos de referencia:
+- AI_Studio_Planilha_Orcamento_VISUAL.pdf: representacao visual das 18 abas originais.
+- AI_Studio_Planilha_Orcamento_COMPLETO.txt: conteudo por celula, enderecos Excel, valores atuais e formulas.
+- AI_Studio_Planilha_Orcamento_ESTRUTURA.json: estrutura em formato legivel por maquina.
+- O arquivo XLSX original, caso tambem esteja anexado, e a fonte de origem.
+
+CONTEXTO E OBJETIVO
+Quero transformar esta planilha em uma funcionalidade completa dentro do modulo Comercial existente do AgueroFlow. Nao quero um modulo generico de composicao de custos, uma calculadora simplificada ou um formulario que apenas imite a aparencia da planilha. Quero reproduzir a funcionalidade real da planilha, inclusive suas varias areas de trabalho, formulas, dependencias, parametros, subtotais, totais, classificacoes e fluxos, podendo evoluir a experiencia para ser mais produtiva.
+
+REGRAS OBRIGATORIAS
+1. Analise as 18 abas individualmente. Nao ignore, una ou simplifique abas sem demonstrar que toda a funcionalidade foi preservada.
+2. Use os enderecos de celula e as formulas do arquivo textual para rastrear a logica. Referencias entre abas devem ser compreendidas e mapeadas.
+3. O PDF serve para entender a organizacao visual e o layout. O TXT/JSON servem para entender valores, celulas, formulas e referencias. Nao dependa exclusivamente da leitura do XLSX, pois a interpretacao de planilhas pode ignorar abas adicionais, formulas e formatacao.
+4. Nao trate valores atuais como regras fixas. Diferencie dados de exemplo, parametros configuraveis, entradas manuais e resultados calculados.
+5. Nao corrija ou substitua uma formula silenciosamente. Identifique divergencias, explique o efeito e proponha a regra correta para validacao.
+6. Nao invente formulas, impostos, percentuais, dados ou regras contabeis. Pontos incertos devem ser marcados para validacao.
+7. Preserve a aplicacao AgueroFlow existente. Antes de alterar codigo, inspecione a estrutura real do projeto, o modulo Comercial atual, banco de dados, componentes, rotas, autenticacao, permissoes, multiempresa e padroes visuais. Nao reconstrua o sistema do zero.
+8. O modelo TETRAPAK deve ser tratado como um modelo/template reutilizavel, nao como uma regra exclusiva para todos os orcamentos.
+
+PRIMEIRA ETAPA - AUDITORIA, SEM CODIFICAR AINDA
+Entregue:
+A. Inventario das 18 abas, explicando a finalidade e a funcionalidade de cada uma.
+B. Mapa de dependencias: quais abas alimentam quais outras abas, incluindo as referencias e formulas mais importantes.
+C. Separacao dos campos em: entrada manual, parametro configuravel, lista/selecao, formula/subtotal e resultado final.
+D. Mapa de equivalencia: para cada aba original, qual tela, secao, tabela ou componente do AgueroFlow devera reproduzi-la.
+E. Fluxo operacional real: como o usuario do Comercial inicia, preenche, revisa, simula, salva, revisa versoes e gera a proposta.
+F. Lista de divergencias, formulas com erro aparente, totais que nao fecham e pontos que exigem validacao. Nao assuma que um resultado incorreto da planilha seja uma regra desejada.
+G. Proposta de interface: deve ser uma area de trabalho profissional, preferencialmente com navegacao por abas/secoes, tabelas editaveis, subtotais visiveis, indicadores financeiros e alternancia rapida entre areas. Evite transformar tudo em cards genericos ou em um wizard longo.
+H. Criterios de teste para provar que o AgueroFlow calcula os mesmos resultados que a planilha quando recebe os mesmos dados.
+
+SEGUNDA ETAPA - IMPLEMENTACAO APOS A AUDITORIA
+Somente depois de apresentar o mapa completo, implemente a evolucao dentro do AgueroFlow existente. Reproduza todas as funcoes necessarias e mantenha uma camada central de calculos documentada e testavel. O usuario deve conseguir trabalhar diariamente com centenas de linhas, editar em lote, copiar/colar do Excel, importar listas, duplicar composicoes, reaproveitar orcamentos anteriores, salvar templates e acompanhar os totais sem perder dados ao alternar entre abas.
+
+REQUISITOS FUNCIONAIS MINIMOS
+- Manter todas as areas e calculos da planilha original ou oferecer equivalencia comprovada.
+- Calcular e atualizar automaticamente subtotais, totais, custos, impostos, despesas financeiras, preco de venda, markup, margem e rentabilidade.
+- Diferenciar claramente custo, preco de venda, markup e margem.
+- Permitir cenarios e simulacoes sem alterar o orcamento oficial ate que o usuario confirme.
+- Integrar a busca de materiais do OrçaÁgil: codigo, descricao padronizada, especificacao, fornecedor e historico de precos. Precos estimados por IA devem estar identificados como estimativas e exigir aprovacao humana.
+- Guardar snapshots de precos, parametros e calculos por revisao para que alteracoes futuras no cadastro nao modifiquem orcamentos antigos.
+- Manter visao interna e proposta para o cliente separadas. Nunca expor custos internos, fornecedores, markup ou margem na proposta externa sem autorizacao.
+- Ter salvamento confiavel, historico de revisoes, trilha de auditoria, permissoes e isolamento por empresa, conforme os padroes ja existentes no AgueroFlow.
+
+TESTE DE ACEITACAO
+Antes de considerar pronto, use um conjunto de dados identico na planilha original e no AgueroFlow. Compare por aba os itens, quantidades, custos unitarios, subtotais, totais, dependencias, impostos, custos financeiros, contingencias, classificacao, preco de venda, markup, margem e rentabilidade. Registre diferencas, explique arredondamentos e corrija divergencias. Nao declare equivalencia sem demonstrar os testes.
+
+CRITERIO FINAL
+O setor Comercial precisa conseguir abandonar a planilha e executar no AgueroFlow o mesmo processo de orcamentacao com mais velocidade, clareza e confiabilidade. O resultado nao pode ser uma versao simplificada que perdeu funcionalidades.
+
+PRINCIPIO: NAO SIMPLIFIQUE A PLANILHA. ENTENDA-A, REPRODUZA-A E EVOLUA-A.
