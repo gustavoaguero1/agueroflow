@@ -94,11 +94,30 @@ test('list query without org filter denied', async () => {
   await assertFails(getDocs(collection(db, 'work_orders')));
   await assertFails(getDocs(collection(db, 'purchasing_orders')));
   await assertFails(getDocs(collection(db, 'org_members')));
+  // denied as a query, not per returned doc: every support_tickets doc here is org_a
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'support_tickets/t_a'), { orgId: 'org_a' }));
+  await assertFails(getDocs(collection(db, 'support_tickets')));
+  await assertSucceeds(getDocs(query(collection(db, 'support_tickets'), where('orgId', '==', 'org_a'))));
 });
 
 test('proposal items listed by proposalId via parent org', async () => {
   await assertSucceeds(getDocs(query(collection(member(), 'commercial_proposal_items'), where('proposalId', '==', 'p_a'))));
   await assertFails(getDocs(query(collection(as('u', { org_b: 'Admin' }), 'commercial_proposal_items'), where('proposalId', '==', 'p_a'))));
+});
+
+test('proposal item for other org\'s proposal denied', async () => {
+  const db = as('u', { org_b: 'Admin' });
+  await assertFails(setDoc(doc(db, 'commercial_proposal_items/x'), { organizationId: 'org_b', proposalId: 'p_a' }));
+  await assertFails(setDoc(doc(db, 'commercial_proposal_items/y'), { organizationId: 'org_b', proposalId: 'missing' }));
+  await assertSucceeds(setDoc(doc(member(), 'commercial_proposal_items/z'), { organizationId: 'org_a', proposalId: 'p_a' }));
+  await assertFails(updateDoc(doc(member(), 'commercial_proposal_items/i_a'), { proposalId: 'p_b' }));
+});
+
+test('mixed-owner doc not readable by member of only one org', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'work_orders/mixed'), { orgId: 'org_a', organizationId: 'org_b' }));
+  await assertFails(getDoc(doc(member(), 'work_orders/mixed')));
+  await assertFails(getDoc(doc(as('u', { org_b: 'Admin' }), 'work_orders/mixed')));
+  await assertSucceeds(getDoc(doc(as('u', { org_a: 'Admin', org_b: 'Admin' }), 'work_orders/mixed')));
 });
 
 test('master allowed', async () => {
@@ -134,6 +153,19 @@ test('org_members: member reads own org', async () => {
   await assertFails(getDoc(doc(db, 'org_members/m_b')));
   // userId lookup before claims exist
   await assertSucceeds(getDocs(query(collection(as('member_m_op'), 'org_members'), where('userId', '==', 'member_m_op'))));
+  // own doc by id (uid member_<docId>), even when userId is unbound
+  await env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'org_members/m_op'), { userId: '' }));
+  await assertSucceeds(getDoc(doc(as('member_m_op'), 'org_members/m_op')));
+  await assertFails(getDoc(doc(as('member_m_adm'), 'org_members/m_op')));
+});
+
+test('org_members: verified email reads own doc, case-insensitive', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'org_members/m_g'), { orgId: 'org_b', userId: '', userEmail: 'g@x.com', role: 'Operacional', active: true }));
+  const ok = env.authenticatedContext('google_g', { email: 'G@X.com', email_verified: true }).firestore();
+  await assertSucceeds(getDocs(query(collection(ok, 'org_members'), where('userEmail', '==', 'g@x.com'), where('active', '==', true))));
+  const unverified = env.authenticatedContext('google_h', { email: 'g@x.com', email_verified: false }).firestore();
+  await assertFails(getDoc(doc(unverified, 'org_members/m_g')));
+  await assertFails(getDoc(doc(as('no_email'), 'org_members/m_g')));
 });
 
 test('org_members: self update limited to userId/userName/updatedAt/lastLoginAt', async () => {

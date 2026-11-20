@@ -5,8 +5,8 @@ Claims (set by the server): `{ master: boolean, orgs: { [orgId]: Role } }`. Mast
 Anything not listed here, and not in `firestore.rules`, is denied. The server (Admin SDK) bypasses rules.
 
 Owner kinds:
-- **orgId** / **organizationId**: field on the doc. Read if the caller is a member of either field's org.
-  Writes need every owner field present to be one of the caller's orgs; updates may not change either field.
+- **orgId** / **organizationId**: field on the doc. Reads and writes need at least one owner field, and every owner
+  field present must be one of the caller's orgs (a mixed-owner doc needs both). Updates may not change either field.
 - **doc id**: the doc id is the orgId.
 - **immutable**: create by a member of the doc's org, read like orgId, never updated or deleted.
 
@@ -17,7 +17,7 @@ Owner kinds:
 | checklist_runs | orgId | `orgId ==` | |
 | checklist_templates | orgId | `orgId ==` | |
 | collective_asset_categories | orgId | `orgId ==` | |
-| collective_asset_movements | orgId | `orgId ==` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
+| collective_asset_movements | orgId | `orgId ==`, `orgId ==` + `status in` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
 | collective_asset_policies | doc id | getDoc | written in transactions |
 | collective_asset_services | orgId | `orgId ==` | |
 | collective_asset_workers | orgId | `orgId ==` | |
@@ -27,7 +27,7 @@ Owner kinds:
 | commercial_imports | organizationId | `organizationId ==` | |
 | commercial_materials | organizationId | `organizationId ==` | |
 | commercial_policies | doc id | getDoc | doc id = organizationId |
-| commercial_proposal_items | organizationId, parent `commercial_proposals/{proposalId}` | `proposalId ==` only | read/delete also allowed via the parent proposal's org (`get()`), so the proposalId-only query works |
+| commercial_proposal_items | organizationId, parent `commercial_proposals/{proposalId}` | `proposalId ==` only | read/delete also allowed via the parent proposal's org (`get()`), so the proposalId-only query works; create/update need the parent to exist and share the item's organizationId |
 | commercial_proposals | organizationId | `organizationId ==`, getDoc | |
 | construction_milestones | orgId | `orgId ==` | |
 | construction_reports | orgId | `orgId ==` | |
@@ -43,7 +43,7 @@ Owner kinds:
 | occurrences | orgId | `orgId ==` | |
 | order_events | orgId (immutable) | `orgId ==` + `orderId ==` | timeline |
 | order_messages | orgId | `orgId ==` + `orderId ==` | |
-| org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email == `userEmail`. create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
+| org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
 | purchasing_orders | organizationId | `organizationId ==` | |
@@ -95,8 +95,11 @@ server to tag bridge data with an org first.
   is never written; now `orgId`.
 - `src/modules/StructureModule.tsx` (new member): the "1 company per email" duplicate check listed all `org_members`;
   it now lists the current org only. Cross-org duplicates are no longer caught on the client.
-- `src/contexts/AuthContext.tsx` `findSingleActiveMember`: the email and full-scan fallbacks (used only when the uid
-  lookup misses, e.g. server down) treat a rules denial as "not found" instead of failing the whole load.
+- `src/contexts/AuthContext.tsx` `findSingleActiveMember`: the email fallback (used only when the uid lookup misses,
+  e.g. server down) treats `permission-denied` as "not found"; other errors still throw. The unfiltered
+  case-insensitive full scan was removed (rules deny it).
+
+Composite index for `collective_asset_movements` (`orgId` + `status`) is in `firestore.indexes.json`.
 
 Unfiltered reads that stay: `organizations` (any signed-in user may list), `org_members` in
 `MasterCompanySelectorPage` (master only), `whatsapp_*` (see above).

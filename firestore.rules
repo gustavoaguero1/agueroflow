@@ -14,12 +14,9 @@ service cloud.firestore {
     // Owner field is orgId, else organizationId.
     function orgOf(d) { return d.get('orgId', d.get('organizationId', '')); }
 
-    // Reads: each owner field is tested on its own so list queries filtered on either field are provable.
+    // Reads need the same owner check as writes (a mixed-owner doc is readable only by members of both orgs).
     // A missing doc reveals nothing, so getDoc on it stays allowed (callers check exists()).
-    function canRead(res) {
-      return isMaster() || (res == null && signedIn())
-        || isMemberOf(res.data.get('orgId', '')) || isMemberOf(res.data.get('organizationId', ''));
-    }
+    function canRead(res) { return isMaster() || (res == null && signedIn()) || ownerOk(res.data); }
     // Writes: at least one owner field, and every owner field present must be one of the caller's orgs.
     function ownerOk(d) {
       let o = d.get('orgId', null);
@@ -61,9 +58,10 @@ service cloud.firestore {
 
       allow read: if isMaster() || (resource == null && signedIn())
         || isMemberOf(resource.data.get('orgId', ''))
-        || (signedIn() && resource.data.get('userId', '') == request.auth.uid)
+        || (signedIn() && (resource.data.get('userId', '') == request.auth.uid || request.auth.uid == 'member_' + memberId))
         || (signedIn() && request.auth.token.get('email_verified', false) == true
-            && resource.data.get('userEmail', '') == request.auth.token.email);
+            && request.auth.token.get('email', null) is string
+            && resource.data.get('userEmail', '') == request.auth.token.email.lower());
       allow create: if !('passwordHash' in request.resource.data)
         && request.resource.data.get('userId', '') in ['', request.auth.uid]
         && manages(request.resource.data.get('orgId', ''))
@@ -127,9 +125,14 @@ service cloud.firestore {
       function parentOrg(d) {
         return get(/databases/$(database)/documents/commercial_proposals/$(d.proposalId)).data.get('organizationId', '');
       }
+      // A new/updated item must belong to its parent proposal's org (no attaching items to another org's proposal).
+      function matchesParent() {
+        return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
+          && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
+      }
       allow read: if canRead(resource) || isMemberOf(parentOrg(resource.data));
-      allow create: if canCreate();
-      allow update: if canUpdate();
+      allow create: if canCreate() && matchesParent();
+      allow update: if canUpdate() && matchesParent();
       allow delete: if canDelete() || isMemberOf(parentOrg(resource.data));
     }
 

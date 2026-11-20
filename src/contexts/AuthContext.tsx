@@ -357,26 +357,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Email fallbacks only run if the uid lookup missed; rules may deny them (no matching claims), which means "not found".
+      // Email fallback only runs if the uid lookup missed; a rules denial (no matching claims) means "not found".
       if (!matchedDoc && norm) {
-        const emailSnap = await getDocs(query(membersRef, where('userEmail', '==', norm), where('active', '==', true))).catch(() => null);
+        const emailSnap = await getDocs(query(membersRef, where('userEmail', '==', norm), where('active', '==', true))).catch((err) => {
+          if (err?.code === 'permission-denied') return null;
+          throw err;
+        });
         if (emailSnap && !emailSnap.empty) {
           matchedDoc = { id: emailSnap.docs[0].id, data: emailSnap.docs[0].data() as OrgMember };
-        }
-      }
-
-      // Case-insensitive fallback scan by userEmail or userName
-      if (!matchedDoc && norm) {
-        const allActiveSnap = await getDocs(query(membersRef, where('active', '==', true))).catch(() => null);
-        const found = allActiveSnap?.docs.find((d) => {
-          const m = d.data() as OrgMember;
-          return (
-            (m.userEmail && m.userEmail.toLowerCase().trim() === norm) ||
-            (m.userName && m.userName.toLowerCase().trim() === norm)
-          );
-        });
-        if (found) {
-          matchedDoc = { id: found.id, data: found.data() as OrgMember };
         }
       }
 
