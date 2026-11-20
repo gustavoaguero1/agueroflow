@@ -1,18 +1,34 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, connectAuthEmulator, initializeAuth, inMemoryPersistence, type Auth } from 'firebase/auth';
+import { getFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase App
-export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Local dev/E2E only: same project id and (default) database as the server's emulator setup.
+const useEmulators = import.meta.env.VITE_USE_EMULATORS === '1';
+export const app = getApps().length === 0 ? initializeApp(useEmulators ? { ...firebaseConfig, projectId: 'demo-agueroflow' } : firebaseConfig) : getApp();
 
 // CRITICAL: Initialize Firestore with the exact database ID from config
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = useEmulators ? getFirestore(app) : getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 // Initialize Firebase Auth & Providers
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+if (useEmulators) {
+  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, 'localhost', 8085);
+}
+
+let isolated: Auth | undefined;
+/** In-memory Auth on a separate app: one-off sign-ins (e.g. password change on the login screen) that must not touch the main session. */
+export function isolatedAuth(): Auth {
+  if (!isolated) {
+    isolated = initializeAuth(initializeApp(app.options, 'isolated'), { persistence: inMemoryPersistence });
+    if (useEmulators) connectAuthEmulator(isolated, 'http://localhost:9099', { disableWarnings: true });
+  }
+  return isolated;
+}
 
 // Firestore Error Handler adhering strictly to FirestoreErrorInfo
 export enum OperationType {

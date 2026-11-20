@@ -36,6 +36,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { testConnection } from './firebase';
 import { GatLogo } from './components/common/GatLogo';
 import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
+import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
 
 function MainRouter() {
@@ -46,6 +47,7 @@ function MainRouter() {
   const [currentNavSection, setCurrentNavSection] = useState<NavSection>('painel');
   const [navPayload, setNavPayload] = useState<{ targetId?: string; searchQuery?: string } | undefined>(undefined);
   const [onboardingToken, setOnboardingToken] = useState<string>('');
+  const firstAccessToken = new URLSearchParams(window.location.search).get('primeiro-acesso');
 
   // Sync route cleanly with URL and auth state
   useEffect(() => {
@@ -128,6 +130,10 @@ function MainRouter() {
         </div>
       </div>
     );
+  }
+
+  if (firstAccessToken) {
+    return <FirstAccessPage token={firstAccessToken} />;
   }
 
   // 0. Public Employee Onboarding Page (Token de Uso Único)

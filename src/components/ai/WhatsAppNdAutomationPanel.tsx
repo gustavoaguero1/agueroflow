@@ -1587,6 +1587,17 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
             <a
               href="/api/whatsapp/nd/records/export-xlsx"
               download
+              onClick={async (e) => {
+                // A plain link would not carry the Authorization header: download through fetch instead.
+                e.preventDefault();
+                const r = await fetch('/api/whatsapp/nd/records/export-xlsx');
+                if (!r.ok) return alert('Não foi possível exportar a planilha.');
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(await r.blob());
+                a.download = /filename="?([^";]+)"?/.exec(r.headers.get('Content-Disposition') || '')?.[1] || 'notas-de-debito.xlsx';
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+              }}
               className="px-3 py-1.5 rounded-lg bg-[#E8F8EE] hover:bg-[#D7F2E2] dark:bg-emerald-950/70 dark:hover:bg-emerald-900/70 border border-[#166534]/25 dark:border-emerald-700/60 text-xs font-semibold text-[#166534] dark:text-emerald-300 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />

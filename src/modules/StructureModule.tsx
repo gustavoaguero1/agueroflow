@@ -11,6 +11,8 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { refreshClaims } from '../apiAuthFetch';
+import { FirstAccessLinkButton } from '../components/common/FirstAccessLinkButton';
 import {
   Unit,
   CostCenter,
@@ -366,19 +368,22 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
       const newMember: OrgMember = {
         id: memId,
         orgId: organization.id,
-        userId: `uid_manual_${Date.now()}`,
+        userId: '', // bound by the server on the member's first Google session
         userEmail: normEmail,
         userName: memberName.trim(),
         role: memberRole,
         active: true,
-        passwordHash: cleanPass || undefined,
-        passwordSet: Boolean(cleanPass),
-        passwordSetAt: cleanPass ? new Date().toISOString() : undefined,
+        passwordSet: false,
         initialPasswordSetByAdmin: Boolean(cleanPass),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'org_members', memId), newMember);
+      refreshClaims(memId);
+      if (cleanPass) {
+        const pw = await adminSetUserPassword(memId, cleanPass);
+        if (!pw.success) alert(`Colaborador criado, mas a senha inicial não foi salva: ${pw.error || ''}`);
+      }
       await logAudit(
         'Estrutura',
         'Vincular Usuário',
@@ -795,6 +800,15 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                         <KeyRound className="w-3 h-3 text-amber-400" />
                         <span>Alterar Senha</span>
                       </button>
+                      {!m.passwordSet && (
+                        <span className="ml-1.5">
+                          <FirstAccessLinkButton
+                            memberId={m.id}
+                            memberName={m.userName}
+                            className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium transition-colors cursor-pointer border border-slate-700/80 shadow-sm"
+                          />
+                        </span>
+                      )}
                     </td>
                   )}
                 </tr>

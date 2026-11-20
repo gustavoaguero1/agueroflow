@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import {
   collection,
   query,
@@ -11,7 +11,8 @@ import {
   addDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
+import { postJson } from '../apiAuthFetch';
 import {
   Organization,
   OrgMember,
@@ -105,6 +106,22 @@ interface AuthContextType {
 }
 
 export const MASTER_EMAIL = 'gustavo@agueroinox.com.br';
+const FIRST_ACCESS_LINK_MSG = 'Peça ao administrador o seu link de primeiro acesso.';
+
+type ServerSession = { claims?: { master?: boolean }; member?: OrgMember | null; org?: Organization | null };
+
+// Binds the uid on the server and refreshes claims. Non-fatal: without the server (e.g. local dev) we keep the Firestore lookups.
+async function syncServerSession(currentUser: User): Promise<ServerSession | null> {
+  try {
+    const r = await postJson<ServerSession>('/api/auth/session');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    await currentUser.getIdToken(true);
+    return r.data;
+  } catch (err) {
+    console.warn('Sessão do servidor indisponível; seguindo com dados locais:', err);
+    return null;
+  }
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -258,11 +275,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!snap.empty) {
         const existing = snap.docs[0];
         const data = existing.data() as OrgMember;
-        if (data.role !== 'Admin' || !data.active || (uid && data.userId !== uid)) {
+        if (data.role !== 'Admin' || !data.active) {
           await updateDoc(doc(db, 'org_members', existing.id), {
             role: 'Admin',
             active: true,
-            userId: uid || data.userId || 'usr_master_gustavo',
             userName: 'Gustavo Aguero (Master)',
             updatedAt: new Date().toISOString(),
           });
@@ -374,9 +390,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  const loadUserData = useCallback(async (currentUser: User) => {
+  const loadUserData = useCallback(async (currentUser: User, session?: ServerSession | null) => {
     try {
-      const isMaster = currentUser.email?.toLowerCase().trim() === MASTER_EMAIL;
+      const isMaster = currentUser.email?.toLowerCase().trim() === MASTER_EMAIL || session?.claims?.master === true;
 
       if (isMaster) {
         // Master user has access to ALL organizations via selective panel
@@ -411,18 +427,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Non-master user: strictly 1 company per email -> direct routing to assigned company
-      const resolved = await findSingleActiveMember(currentUser.email || '', currentUser.uid);
+      // Password users (uid member_<id>) have no email: their member/org come only from the server session.
+      const resolved = currentUser.uid.startsWith('member_')
+        ? (session?.member && session.org ? { member: session.member, org: session.org } : null)
+        : await findSingleActiveMember(currentUser.email || '', currentUser.uid);
 
       if (resolved) {
         const { member: mData, org: singleOrg } = resolved;
-        if (currentUser.uid && mData.userId !== currentUser.uid) {
-          await updateDoc(doc(db, 'org_members', mData.id), {
-            userId: currentUser.uid,
-            userName: currentUser.displayName || mData.userName || (currentUser.email || '').split('@')[0],
-            updatedAt: new Date().toISOString(),
-          });
-          mData.userId = currentUser.uid;
-        }
         setOrganizations([singleOrg]);
         setMember(mData);
         setOrganization(singleOrg);
@@ -444,7 +455,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       setAuthError(null);
       if (currentUser) {
-        await loadUserData(currentUser);
+        await loadUserData(currentUser, await syncServerSession(currentUser));
       } else {
         setMember(null);
         setOrganization(null);
@@ -561,16 +572,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!memEmailSnap.empty) {
             matchedDocSnap = memEmailSnap.docs[0];
             memberDoc = { id: matchedDocSnap.id, ...matchedDocSnap.data() } as OrgMember;
-
-            // If user has a Firebase UID, bind it
-            if (uidToCheck) {
-              await updateDoc(doc(db, 'org_members', matchedDocSnap.id), {
-                userId: uidToCheck,
-                userName: currentUser?.displayName || memberDoc.userName || normEmail.split('@')[0],
-                updatedAt: new Date().toISOString(),
-              });
-              memberDoc.userId = uidToCheck;
-            }
           }
         }
       }
@@ -665,14 +666,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const { member: mData, org: singleOrg } = resolved;
-      if (mData.userId !== googleUser.uid) {
-        await updateDoc(doc(db, 'org_members', mData.id), {
-          userId: googleUser.uid,
-          userName: googleUser.displayName || mData.userName || normEmail.split('@')[0],
-          updatedAt: new Date().toISOString(),
-        });
-        mData.userId = googleUser.uid;
-      }
 
       setOrganizations([singleOrg]);
       setOrganization(singleOrg);
@@ -692,79 +685,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setupFirstAccessPassword = async (
-    memberId: string,
-    orgId: string,
-    newPassword: string
+    _memberId: string,
+    _orgId: string,
+    _newPassword: string
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!newPassword || newPassword.trim().length < 6) {
-      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
-    }
-
-    try {
-      const memberRef = doc(db, 'org_members', memberId);
-      const memberSnap = await getDoc(memberRef);
-
-      if (!memberSnap.exists()) {
-        return { success: false, error: 'Cadastro do colaborador não localizado no sistema.' };
-      }
-
-      const mData = { id: memberSnap.id, ...memberSnap.data() } as OrgMember;
-      if (mData.orgId !== orgId) {
-        return { success: false, error: 'O colaborador não pertence à empresa indicada.' };
-      }
-
-      const now = new Date().toISOString();
-      await updateDoc(memberRef, {
-        passwordHash: newPassword,
-        passwordSet: true,
-        passwordSetAt: now,
-        updatedAt: now,
-      });
-
-      const updatedMember: OrgMember = {
-        ...mData,
-        passwordHash: newPassword,
-        passwordSet: true,
-        passwordSetAt: now,
-        updatedAt: now,
-      };
-
-      const orgDoc = await getDoc(doc(db, 'organizations', orgId));
-      if (!orgDoc.exists()) {
-        return { success: false, error: 'Empresa não encontrada.' };
-      }
-      const targetOrg = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-
-      setOrganization(targetOrg);
-      setMember(updatedMember);
-      setOrganizations([targetOrg]);
-      await loadOrgHierarchy(targetOrg.id);
-
-      if (!user) {
-        const syntheticUser = {
-          uid: updatedMember.userId || `usr_${updatedMember.id}`,
-          email: updatedMember.userEmail,
-          displayName: updatedMember.userName,
-          photoURL: null,
-          emailVerified: true,
-        } as unknown as User;
-        setUser(syntheticUser);
-      }
-
-      await logAuditDirect(
-        targetOrg.id,
-        updatedMember.userId,
-        updatedMember.userEmail,
-        'Autenticação',
-        'Primeiro Acesso - Definição de Senha',
-        `Senha pessoal cadastrada com sucesso pelo colaborador ${updatedMember.userName} (${updatedMember.userEmail}) no primeiro acesso à empresa ${targetOrg.name}.`
-      );
-
-      return { success: true };
-    } catch (err: any) {
-      console.error('Erro ao cadastrar senha de primeiro acesso:', err);
-      return { success: false, error: err.message || 'Falha ao salvar senha pessoal de primeiro acesso.' };
-    }
+    // Passwords are only set through the admin's first-access link (FirstAccessPage) or by the admin.
+    return { success: false, error: FIRST_ACCESS_LINK_MSG };
   };
 
   const changeUserPassword = async (
@@ -788,32 +714,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const resolved = await findSingleActiveMember(cleanUser);
-      if (!resolved) {
-        return {
-          success: false,
-          error: `Usuário '${cleanUser}' não encontrado em nenhuma empresa cadastrada. Solicite o cadastro ao administrador.`,
-        };
-      }
-
-      const { member: memberData, org: targetOrg } = resolved;
-
-      if (memberData.passwordHash && memberData.passwordHash !== cleanCurrent) {
-        return { success: false, error: 'A senha atual / provisória informada não confere.' };
-      }
-
-      const now = new Date().toISOString();
-      await updateDoc(doc(db, 'org_members', memberData.id), {
-        passwordHash: cleanNew,
-        passwordSet: true,
-        passwordSetAt: now,
-        initialPasswordSetByAdmin: false,
-        updatedAt: now,
+      // Called from the login screen: authenticate on an isolated Auth instance so the app session is untouched.
+      const login = await postJson('/api/auth/credential-login', {
+        nameOrEmail: cleanUser,
+        password: cleanCurrent,
+        company: companyInput.trim() || undefined,
       });
+      if (!login.ok) {
+        return { success: false, error: login.data?.isFirstAccess ? FIRST_ACCESS_LINK_MSG : login.error || 'A senha atual / provisória informada não confere.' };
+      }
+      if (login.data.isMaster) {
+        return { success: false, error: 'A senha Master não pode ser alterada por esta tela.' };
+      }
+      const tmp = await signInWithCustomToken(isolatedAuth(), login.data.token);
+      const res = await postJson(
+        '/api/auth/set-password',
+        { currentPassword: cleanCurrent, newPassword: cleanNew },
+        { Authorization: `Bearer ${await tmp.user.getIdToken()}` },
+      );
+      await fbSignOut(isolatedAuth());
+      if (!res.ok) {
+        return { success: false, error: res.error || 'Falha ao alterar senha.' };
+      }
 
+      const memberData = login.data.member as OrgMember;
       await logAuditDirect(
-        targetOrg.id,
-        memberData.userId || `usr_${memberData.id}`,
+        memberData.orgId,
+        `member_${memberData.id}`,
         memberData.userEmail,
         'Segurança',
         'Alteração de Senha',
@@ -836,21 +763,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const memberRef = doc(db, 'org_members', memberId);
-      const memberSnap = await getDoc(memberRef);
-      if (!memberSnap.exists()) {
-        return { success: false, error: 'Colaborador não encontrado.' };
+      const res = await postJson('/api/auth/set-password', { memberId, newPassword: newPassword.trim() });
+      if (!res.ok) {
+        return { success: false, error: res.error || 'Falha ao salvar senha.' };
       }
-
-      const mData = memberSnap.data() as OrgMember;
-      const now = new Date().toISOString();
-      await updateDoc(memberRef, {
-        passwordHash: newPassword.trim(),
-        passwordSet: true,
-        passwordSetAt: now,
-        initialPasswordSetByAdmin: true,
-        updatedAt: now,
-      });
 
       if (organization) {
         await logAuditDirect(
@@ -859,7 +775,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           user?.email || 'admin',
           'Segurança',
           'Redefinição de Senha por Admin',
-          `Senha do colaborador ${mData.userName} (${mData.userEmail}) definida/redefinida pelo administrador.`,
+          `Senha do colaborador ${memberId} definida/redefinida pelo administrador.`,
           memberId
         );
       }
@@ -888,93 +804,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }> => {
     setAuthError(null);
     const cleanUser = nameOrEmail.trim();
-    const isMaster = cleanUser.toLowerCase() === MASTER_EMAIL;
 
     if (!cleanUser) {
       return { success: false, error: 'Por favor, informe seu E-mail ou Nome cadastrado.' };
     }
 
     try {
-      if (isMaster) {
-        if (!password || password.trim().length < 6) {
-          return { success: false, error: 'Por favor, informe sua Senha de acesso Master (mínimo 6 caracteres).' };
+      const res = await postJson('/api/auth/credential-login', {
+        nameOrEmail: cleanUser,
+        password,
+        company: companyInput?.trim() || undefined,
+      });
+      if (!res.ok) {
+        if (res.data?.isFirstAccess) {
+          return { success: false, isFirstAccess: true, memberName: res.data.memberName, error: FIRST_ACCESS_LINK_MSG };
         }
+        return { success: false, error: res.error || 'Falha ao autenticar com as credenciais informadas.' };
+      }
 
-        const ACCEPTED_MASTER_PASSWORDS = [
-          'admin123',
-          'aguero2026',
-          'aguero@2026',
-          'master123',
-          '123456',
-          'agueroinox',
-          'aguero',
-        ];
-        const masterCredRef = doc(db, 'system_security', 'master_auth');
-        const masterCredSnap = await getDoc(masterCredRef);
-
-        let passwordValid = false;
-        if (masterCredSnap.exists()) {
-          const storedHash = masterCredSnap.data()?.passwordHash;
-          if (storedHash === password || ACCEPTED_MASTER_PASSWORDS.includes(password.toLowerCase())) {
-            passwordValid = true;
-            if (storedHash !== password) {
-              try {
-                await setDoc(
-                  masterCredRef,
-                  {
-                    masterEmail: MASTER_EMAIL,
-                    passwordHash: password,
-                    updatedAt: new Date().toISOString(),
-                  },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn('Erro ao atualizar hash master:', e);
-              }
-            }
-          }
-        } else {
-          passwordValid = true;
-          try {
-            await setDoc(masterCredRef, {
-              masterEmail: MASTER_EMAIL,
-              passwordHash: password,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-          } catch (e) {
-            console.warn('Não foi possível persistir senha master em system_security:', e);
-          }
-        }
-
-        if (!passwordValid) {
-          return {
-            success: false,
-            error: 'Senha do Usuário Master incorreta. Utilize sua senha cadastrada ou clique em "Continuar com Google".',
-          };
-        }
-
+      if (res.data.isMaster) {
         // Load all companies and route Master to the Selective Company Panel
-        await fetchAllOrganizations();
         sessionStorage.removeItem('gat_master_active_org');
+        const cred = await signInWithCustomToken(auth, res.data.token);
+        await fetchAllOrganizations();
         setOrganization(null);
         setUnits([]);
         setContracts([]);
-
-        const syntheticMasterUser =
-          user ||
-          ({
-            uid: 'usr_master_gustavo',
-            email: MASTER_EMAIL,
-            displayName: 'Gustavo Aguero (Master)',
-            photoURL: null,
-            emailVerified: true,
-          } as unknown as User);
-
         setMember({
           id: 'mem_master_global',
           orgId: '',
-          userId: syntheticMasterUser.uid,
+          userId: cred.user.uid,
           userEmail: MASTER_EMAIL,
           userName: 'Gustavo Aguero (Master)',
           role: 'Admin',
@@ -982,82 +841,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-        setUser(syntheticMasterUser);
+        setUser(cred.user);
 
         return { success: true, isMaster: true };
       }
 
-      // Non-master user: 1 company per email — auto-resolve assigned organization
-      const resolved = await findSingleActiveMember(cleanUser);
-      if (!resolved) {
-        return {
-          success: false,
-          error: `O e-mail ou usuário '${cleanUser}' não possui cadastro ativo em nenhuma empresa. Solicite seu acesso ao administrador.`,
-        };
-      }
-
-      const { member: memberData, org: targetOrg } = resolved;
-
-      // Optional check if caller explicitly supplied a company filter
-      if (companyInput && companyInput.trim()) {
-        const cleanCo = companyInput.trim().toLowerCase();
-        if (
-          targetOrg.slug?.toLowerCase() !== cleanCo &&
-          targetOrg.name?.toLowerCase() !== cleanCo
-        ) {
-          return {
-            success: false,
-            error: `Este e-mail está vinculado exclusivamente à empresa '${targetOrg.name}'.`,
-          };
-        }
-      }
-
-      // Check Primeiro Acesso
-      const isFirstAccess = !memberData.passwordSet && !memberData.passwordHash;
-      if (isFirstAccess) {
-        return {
-          success: false,
-          isFirstAccess: true,
-          memberId: memberData.id,
-          memberName: memberData.userName,
-          memberEmail: memberData.userEmail,
-          orgId: targetOrg.id,
-          orgName: targetOrg.name,
-          error: 'Primeiro acesso detectado: Cadastre sua senha pessoal para continuar.',
-        };
-      }
-
-      if (!password || password.trim().length < 6) {
-        return { success: false, error: 'Por favor, informe sua senha de acesso (mínimo 6 caracteres).' };
-      }
-
-      if (memberData.passwordHash && memberData.passwordHash !== password) {
-        return {
-          success: false,
-          error: 'Senha incorreta. Verifique os dados digitados ou utilize "Continuar com Google".',
-        };
-      }
+      const memberData = res.data.member as OrgMember;
+      const targetOrg = res.data.org as Organization;
+      const cred = await signInWithCustomToken(auth, res.data.token);
 
       // Establish direct single-company session
       setOrganization(targetOrg);
       setMember(memberData);
       setOrganizations([targetOrg]);
+      setUser(cred.user);
       await loadOrgHierarchy(targetOrg.id);
-
-      if (!user) {
-        const syntheticUser = {
-          uid: memberData.userId || `usr_${memberData.id}`,
-          email: memberData.userEmail,
-          displayName: memberData.userName,
-          photoURL: null,
-          emailVerified: true,
-        } as unknown as User;
-        setUser(syntheticUser);
-      }
 
       await logAuditDirect(
         targetOrg.id,
-        memberData.userId,
+        cred.user.uid,
         memberData.userEmail,
         'Autenticação',
         'Login por Credenciais',
@@ -1106,7 +908,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, 'organizations', orgId), newOrg);
 
       const newMember =
-        user.email?.toLowerCase().trim() === MASTER_EMAIL
+        isMasterUser
           ? await ensureMasterMembership(newOrg, user.uid)
           : await (async () => {
               const memberId = `mem_${user.uid}_${orgId}`;
@@ -1134,7 +936,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setOrganization(newOrg);
       setMember(newMember);
-      if (user.email?.toLowerCase().trim() === MASTER_EMAIL) {
+      if (isMasterUser) {
         sessionStorage.setItem('gat_master_active_org', newOrg.id);
       }
       await loadOrgHierarchy(newOrg.id);
@@ -1147,7 +949,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectOrganization = async (orgId: string) => {
     if (!user) return;
-    const isMaster = user.email?.toLowerCase().trim() === MASTER_EMAIL;
+    const isMaster = isMasterUser;
     // Strictly restrict multi-company switching to Master user only
     if (!isMaster) return;
 
@@ -1174,7 +976,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const clearActiveOrganization = () => {
-    const isMaster = user?.email?.toLowerCase().trim() === MASTER_EMAIL;
+    const isMaster = isMasterUser;
     if (!isMaster) return;
     sessionStorage.removeItem('gat_master_active_org');
     setOrganization(null);
