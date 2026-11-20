@@ -80,6 +80,32 @@ test('role denied 403', async () => {
   assert.equal((await run(mw, {})).status, 401);
 });
 
+test('non-string orgId 403', async () => {
+  const mw = requireRole('Admin');
+  const u = user({ o1: 'Admin' });
+  for (const req of [{ query: { orgId: ['o1'] } }, { body: { orgId: 5 } }, { body: { organizationId: '' } }, { params: { orgId: '' } }]) {
+    assert.equal((await run(mw, { user: u, ...req } as Partial<Request>)).status, 403, JSON.stringify(req));
+  }
+  assert.equal((await run(mw, { user: user({}, true), body: { orgId: { $ne: 1 } } })).status, 403);
+});
+
+test('conflicting orgIds 403', async () => {
+  const u = user({ o1: 'Admin', o2: 'Operacional' });
+  const out = await run(requireRole('Admin'), { user: u, query: { orgId: 'o1' }, body: { orgId: 'o2' } } as Partial<Request>);
+  assert.equal(out.status, 403);
+  const same = await run(requireRole('Admin'), { user: u, query: { orgId: 'o1' }, body: { organizationId: 'o1' } } as Partial<Request>);
+  assert.equal(same.nexted, true);
+});
+
+test('req.orgId set', async () => {
+  const r1 = { user: user({ o1: 'Gerente' }) } as Request;
+  await requireRole('Gerente')(Object.assign(r1, { params: {}, query: {}, body: {} }), {} as Response, () => {});
+  assert.equal(r1.orgId, 'o1');
+  const r2 = { user: user({}, true), params: {}, query: { orgId: 'o9' }, body: {} } as unknown as Request;
+  await requireRole('Admin')(r2, {} as Response, () => {});
+  assert.equal(r2.orgId, 'o9');
+});
+
 test('master passes any role', async () => {
   assert.equal((await run(requireRole('Admin'), { user: user({}, true) })).nexted, true);
 });

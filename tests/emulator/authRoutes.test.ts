@@ -1,4 +1,4 @@
-import test, { before, after, beforeEach } from 'node:test';
+import test, { after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -23,10 +23,10 @@ async function serve(router = createAuthRouter()): Promise<string> {
   return `http://127.0.0.1:${(s.address() as AddressInfo).port}/api/auth`;
 }
 let base: string;
-before(async () => { base = await serve(); });
 after(() => { for (const s of servers) s.close(); });
 
 beforeEach(async () => {
+  base = await serve(); // fresh rate-limit buckets per test
   await fetch(`http://127.0.0.1:8085/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://127.0.0.1:9099/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
   await h.db.doc('organizations/org_a').set({ id: 'org_a', name: 'Aguero Inox', slug: 'aguero-inox' });
@@ -95,6 +95,21 @@ test('set-password by Gerente of same org and by master', async () => {
   assert.equal((await post('credential-login', { nameOrEmail: 'm1@x.com', password: 'newpass1' })).body.ok, true);
   const m = await post('set-password', { memberId: 'm1', newPassword: 'newpass2' }, await idToken('mst', { master: true, orgs: {} }));
   assert.equal(m.status, 200);
+});
+
+test('gerente cannot set admin password', async () => {
+  await member('a1', { role: 'Admin' });
+  const g = await post('set-password', { memberId: 'a1', newPassword: 'newpass1' }, await asGerente('org_a'));
+  assert.equal(g.status, 403);
+  assert.equal((await h.db.doc('member_credentials/a1').get()).exists, false);
+  const admin = await idToken('adm', { master: false, orgs: { org_a: 'Admin' } });
+  assert.equal((await post('set-password', { memberId: 'a1', newPassword: 'newpass1' }, admin)).status, 200);
+});
+
+test('gerente cannot issue first-access link for admin', async () => {
+  await member('a1', { role: 'Admin' });
+  assert.equal((await post('first-access/link', { memberId: 'a1' }, await asGerente('org_a'))).status, 403);
+  assert.equal((await h.db.collection('first_access_tokens').get()).size, 0);
 });
 
 test('set-password self requires current password', async () => {
@@ -193,6 +208,17 @@ test('refresh-claims never touches a master bound uid', async () => {
   const u = await h.auth.getUser('mst');
   assert.deepEqual(u.customClaims, { master: true, orgs: {} });
   assert.equal(u.tokensValidAfterTime, validAfter);
+});
+
+test('set-password for missing member by master returns business error', async () => {
+  const r = await post('set-password', { memberId: 'ghost', newPassword: 'newpass1' }, await idToken('mst', { master: true, orgs: {} }));
+  assert.deepEqual(r, { status: 400, body: { ok: false, error: 'Cadastro do colaborador não localizado no sistema.' } });
+});
+
+test('set-password rate limited per IP', async () => {
+  const url = await serve(createAuthRouter());
+  for (let i = 0; i < 10; i++) assert.equal((await post('set-password', {}, undefined, url)).status, 401);
+  assert.equal((await post('set-password', {}, undefined, url)).status, 429);
 });
 
 test('credential-login rate limited per IP', async () => {

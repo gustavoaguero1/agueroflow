@@ -17,8 +17,8 @@ const FIRST_ACCESS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const MASTER_CRED_ID = '_master_';
 const MASTER_CRED = `member_credentials/${MASTER_CRED_ID}`;
 const MASTER_LEGACY = 'system_security/master_auth';
-const ERR_SHORT_NEW = 'A nova senha deve ter no mínimo 6 caracteres.';
-const ERR_NO_MEMBER = 'Cadastro do colaborador não localizado no sistema.';
+export const ERR_SHORT_NEW = 'A nova senha deve ter no mínimo 6 caracteres.';
+export const ERR_NO_MEMBER = 'Cadastro do colaborador não localizado no sistema.';
 const ERR_TOKEN_INVALID = 'Link de primeiro acesso inválido ou já utilizado. Solicite um novo ao administrador.';
 const ERR_TOKEN_EXPIRED = 'Link de primeiro acesso expirado. Solicite um novo ao administrador.';
 

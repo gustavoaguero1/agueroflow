@@ -3,11 +3,9 @@ import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { verifyToken } from './authMiddleware.ts';
 import {
   credentialLogin, syncSession, setPassword, verifyMemberPassword, issueFirstAccessToken,
-  checkFirstAccessToken, completeFirstAccess, refreshMemberClaims, type Role,
+  checkFirstAccessToken, completeFirstAccess, refreshMemberClaims, ERR_SHORT_NEW, ERR_NO_MEMBER,
 } from './authService.ts';
 
-const MANAGERS: Role[] = ['Admin', 'Gerente'];
-const ERR_SHORT_NEW = 'A nova senha deve ter no mínimo 6 caracteres.';
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const validId = (id: string) => !!id && !id.includes('/');
 
@@ -27,13 +25,25 @@ function rateLimit(max = 10, windowMs = 60_000): RequestHandler {
   };
 }
 
-/** True if the caller is master or Admin/Gerente of the member's org. Missing member: only master. */
+/** Master, Admin of the member's org, or Gerente of it for a non-Admin member. Missing member: only master. */
 async function canManage(h: AdminHandles, req: Request, memberId: string): Promise<boolean> {
   const u = req.user!;
   if (u.master) return true;
   const snap = await h.db.doc(`org_members/${memberId}`).get();
   const org = snap.get('orgId') || snap.get('organizationId');
-  return typeof org === 'string' && MANAGERS.includes(u.orgs[org]);
+  const role = typeof org === 'string' ? u.orgs[org] : undefined;
+  // A Gerente must not take over an Admin account (password or first-access link).
+  return role === 'Admin' || (role === 'Gerente' && snap.get('role') !== 'Admin');
+}
+
+const BUSINESS_ERRORS = new Set([ERR_SHORT_NEW, ERR_NO_MEMBER]);
+
+/** Known business errors go to the client as 400; anything else is logged and hidden. */
+function sendError(res: Response, e: unknown) {
+  const msg = e instanceof Error ? e.message : '';
+  if (BUSINESS_ERRORS.has(msg)) return res.status(400).json({ ok: false, error: msg });
+  console.error('auth route error:', e);
+  res.status(500).json({ error: 'internal' });
 }
 
 export function createAuthRouter(getH: () => AdminHandles | null = getAdmin): Router {
@@ -69,7 +79,7 @@ export function createAuthRouter(getH: () => AdminHandles | null = getAdmin): Ro
     res.json({ claims, member, org: orgSnap?.exists ? { ...orgSnap.data(), id: orgSnap.id } : null });
   }));
 
-  r.post('/set-password', auth, wrap(async (req, res) => {
+  r.post('/set-password', rateLimit(), auth, wrap(async (req, res) => {
     const b = req.body ?? {};
     const newPassword = str(b.newPassword);
     if (newPassword.trim().length < 6) return fail(res, 400, ERR_SHORT_NEW);
@@ -86,7 +96,7 @@ export function createAuthRouter(getH: () => AdminHandles | null = getAdmin): Ro
     try {
       await setPassword(h(req), memberId, newPassword);
     } catch (e) {
-      return fail(res, 400, (e as Error).message);
+      return sendError(res, e);
     }
     res.json({ ok: true });
   }));
@@ -98,7 +108,7 @@ export function createAuthRouter(getH: () => AdminHandles | null = getAdmin): Ro
     try {
       res.json(await issueFirstAccessToken(h(req), memberId, req.user!.uid));
     } catch (e) {
-      fail(res, 400, (e as Error).message);
+      sendError(res, e);
     }
   }));
 

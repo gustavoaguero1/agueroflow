@@ -8,7 +8,7 @@ export type AuthUser = { uid: string; email?: string; emailVerified?: boolean; m
 
 declare global {
   namespace Express {
-    interface Request { user?: AuthUser }
+    interface Request { user?: AuthUser; orgId?: string }
   }
 }
 
@@ -58,22 +58,26 @@ export const requireAuth: RequestHandler = createRequireAuth();
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
 
-export function orgIdOf(req: Request): string | undefined {
-  const explicit = str(req.params?.orgId) ?? str(req.query?.orgId) ?? str(req.body?.orgId) ?? str(req.body?.organizationId);
-  if (explicit) return explicit;
+/** The org a request targets; null when the request names it ambiguously or with a non-string value. */
+export function orgIdOf(req: Request): string | undefined | null {
+  const named = [req.params?.orgId, req.query?.orgId, req.body?.orgId, req.body?.organizationId].filter((v) => v !== undefined);
+  if (named.some((v) => typeof v !== 'string' || !v) || new Set(named).size > 1) return null;
+  if (named.length) return named[0] as string;
   const orgs = Object.keys(req.user?.orgs ?? {});
   return orgs.length === 1 ? orgs[0] : undefined;
 }
 
+/** Passes master or a member whose role in the target org is allowed; sets req.orgId to the authorized org. */
 export function requireRole(...roles: Role[]): RequestHandler {
   return (req, res, next) => {
     const u = req.user;
     if (!u) return res.status(401).json({ error: 'unauthenticated' });
-    if (u.master) return next();
     const org = orgIdOf(req);
-    const role = org ? u.orgs[org] : undefined;
-    if (role && roles.includes(role)) return next();
-    res.status(403).json({ error: 'forbidden' });
+    if (org === null || (!u.master && !(org && roles.includes(u.orgs[org])))) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    req.orgId = org;
+    next();
   };
 }
 
