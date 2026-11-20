@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import {
   collection,
@@ -155,6 +155,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isDeviceTrusted, setIsDeviceTrusted] = useState<boolean>(true);
   const [requireMfaVerification, setRequireMfaVerification] = useState<boolean>(false);
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
+  // Bumped on every explicit org selection, so a slower loadUserData started earlier cannot override it.
+  const orgSelectionSeq = useRef(0);
 
   // Load units and contracts when active organization changes
   const loadOrgHierarchy = useCallback(async (orgId: string) => {
@@ -390,7 +392,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  const loadUserData = useCallback(async (currentUser: User, session?: ServerSession | null) => {
+  const loadUserData = useCallback(async (currentUser: User, session?: ServerSession | null, seq = orgSelectionSeq.current) => {
+    const stale = () => orgSelectionSeq.current !== seq;
     try {
       const isMaster = currentUser.email?.toLowerCase().trim() === MASTER_EMAIL || session?.claims?.master === true;
 
@@ -399,9 +402,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const allOrgs = await fetchAllOrganizations();
         const savedOrgId = sessionStorage.getItem('gat_master_active_org');
         const restoredOrg = savedOrgId ? allOrgs.find((o) => o.id === savedOrgId) : null;
+        if (stale()) return;
 
         if (restoredOrg) {
           const masterMember = await ensureMasterMembership(restoredOrg, currentUser.uid);
+          if (stale()) return;
           setMember(masterMember);
           setOrganization(restoredOrg);
           await loadOrgHierarchy(restoredOrg.id);
@@ -455,7 +460,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       setAuthError(null);
       if (currentUser) {
-        await loadUserData(currentUser, await syncServerSession(currentUser));
+        const seq = orgSelectionSeq.current;
+        await loadUserData(currentUser, await syncServerSession(currentUser), seq);
       } else {
         setMember(null);
         setOrganization(null);
@@ -726,13 +732,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (login.data.isMaster) {
         return { success: false, error: 'A senha Master não pode ser alterada por esta tela.' };
       }
-      const tmp = await signInWithCustomToken(isolatedAuth(), login.data.token);
-      const res = await postJson(
-        '/api/auth/set-password',
-        { currentPassword: cleanCurrent, newPassword: cleanNew },
-        { Authorization: `Bearer ${await tmp.user.getIdToken()}` },
-      );
-      await fbSignOut(isolatedAuth());
+      let res;
+      try {
+        const tmp = await signInWithCustomToken(isolatedAuth(), login.data.token);
+        res = await postJson(
+          '/api/auth/set-password',
+          { currentPassword: cleanCurrent, newPassword: cleanNew },
+          { Authorization: `Bearer ${await tmp.user.getIdToken()}` },
+        );
+      } finally {
+        await fbSignOut(isolatedAuth()).catch(() => {});
+      }
       if (!res.ok) {
         return { success: false, error: res.error || 'Falha ao alterar senha.' };
       }
@@ -934,6 +944,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
         return merged;
       });
+      orgSelectionSeq.current++;
       setOrganization(newOrg);
       setMember(newMember);
       if (isMasterUser) {
@@ -963,6 +974,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!targetOrg) return;
 
     try {
+      orgSelectionSeq.current++;
       const masterMember = await ensureMasterMembership(targetOrg, user.uid);
       sessionStorage.setItem('gat_master_active_org', targetOrg.id);
       setSelectedUnitId('todas');
@@ -978,6 +990,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearActiveOrganization = () => {
     const isMaster = isMasterUser;
     if (!isMaster) return;
+    orgSelectionSeq.current++;
     sessionStorage.removeItem('gat_master_active_org');
     setOrganization(null);
     setUnits([]);

@@ -14,8 +14,12 @@ export const FirstAccessPage: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     fetch(`/api/auth/first-access/check/${encodeURIComponent(token)}`)
-      .then((r) => r.json())
-      .then((d) => (d.error ? setError(d.error) : setInfo(d)))
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && !d.error) return setInfo(d);
+        // Same rule as postJson: only sentences are user-facing; codes like 'auth_unavailable' get a generic message.
+        setError(typeof d.error === 'string' && d.error.includes(' ') ? d.error : 'Não foi possível validar o link. Tente novamente.');
+      })
       .catch(() => setError('Não foi possível validar o link. Tente novamente.'))
       .finally(() => setChecking(false));
   }, [token]);

@@ -33,3 +33,14 @@ export function refreshClaims(memberId: string): void {
     .then((r) => { if (!r.ok) console.warn('Falha ao atualizar permissões do colaborador:', r.status, r.error); })
     .catch((err) => console.warn('Falha ao atualizar permissões do colaborador:', err));
 }
+
+/** Downloads an /api/ file through fetch (so it carries the token); a plain link or window.open would not. */
+export async function downloadApi(url: string, fileName: string): Promise<void> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = fileName;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
