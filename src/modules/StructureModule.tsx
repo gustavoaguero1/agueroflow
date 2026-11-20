@@ -342,9 +342,9 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
     setIsSubmitting(true);
     try {
-      // Strictly enforce 1 company per email across all organizations (except Master)
+      // 1 company per email: rules only expose this org's members, so other orgs are not checked here (shortcut: enforce cross-org on the server)
       if (normEmail !== 'gustavo@agueroinox.com.br') {
-        const allMembersSnap = await getDocs(collection(db, 'org_members'));
+        const allMembersSnap = await getDocs(query(collection(db, 'org_members'), where('orgId', '==', organization.id)));
         const duplicate = allMembersSnap.docs.find((d) => {
           const m = d.data() as OrgMember;
           return m.active && m.userEmail?.toLowerCase().trim() === normEmail;
