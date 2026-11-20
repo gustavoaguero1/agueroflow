@@ -33,7 +33,7 @@ function init(): { handles: AdminHandles | null; reason?: string } {
   }
   try {
     const projectId = emulator ? process.env.GCLOUD_PROJECT : cfg.projectId;
-    const opts = { credential, projectId, storageBucket: cfg.storageBucket };
+    const opts = { ...(credential && { credential }), projectId, storageBucket: cfg.storageBucket };
     const app: App = getApps()[0] ?? initializeApp(opts);
     const db = emulator ? getFirestore(app) : getFirestore(app, cfg.firestoreDatabaseId);
     return { handles: { auth: getAuth(app), db, bucket: getStorage(app).bucket() } };
