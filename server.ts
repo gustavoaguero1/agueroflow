@@ -57,6 +57,9 @@ import {
   saveNdPdfToDisk,
   sendNdEmailViaOutlook,
 } from './src/services/ndGeneratorServer';
+import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { authRouter } from './server/authRoutes';
+import { getAdmin, adminStatus } from './server/firebaseAdmin';
 import type {
   WhatsAppNdRecord,
   WhatsAppNdRule,
@@ -450,11 +453,41 @@ async function main() {
     next();
   });
 
-  app.use(express.json({ limit: '50mb' }));
+  app.set('trust proxy', 1); // Cloud Run: one front proxy, so req.ip is the client IP
+  // rawBody: Composio signatures are computed over the exact bytes received
+  app.use(express.json({ limit: '50mb', verify: (req, _res, buf) => { (req as any).rawBody = buf; } }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.use('/api/auth', authRouter);
+  app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
 
   // Health and Database Status endpoint
-  app.get('/api/health', (req: Request, res: Response) => {
+  const firestoreDatabaseId = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8')).firestoreDatabaseId;
+  // Live admin checks, only for a caller holding a valid master ID token.
+  const healthDiagnostics = async (req: Request) => {
+    const h = getAdmin();
+    const token = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1];
+    if (!h || !token) return undefined;
+    try {
+      if ((await h.auth.verifyIdToken(token, true)).master !== true) return undefined;
+    } catch {
+      return undefined;
+    }
+    const check = async (fn: () => Promise<unknown>) => {
+      try { await fn(); return true; } catch (e) { return e instanceof Error ? e.message : String(e); }
+    };
+    return {
+      admin: adminStatus(),
+      firestoreRead: await check(() => h.db.collection('organizations').limit(1).get()),
+      bucketWrite: await check(async () => {
+        const f = h.bucket.file('server-state/_healthcheck');
+        await f.save('ok');
+        await f.delete();
+      }),
+      customToken: await check(() => h.auth.createCustomToken('healthcheck')),
+    };
+  };
+  app.get('/api/health', async (req: Request, res: Response) => {
+    const diagnostics = await healthDiagnostics(req);
     res.json({
       status: 'ok',
       service: 'AgueroFlow — Gestão Operacional',
@@ -463,10 +496,11 @@ async function main() {
       databases: {
         firestore: {
           configured: true,
-          databaseId: 'ai-studio-agueroflowgestoo-fd1a8235-af5f-4faa-8f53-85d81fa6ae61',
+          databaseId: firestoreDatabaseId,
           type: 'NoSQL Cloud Document Database (Firebase Firestore)',
         },
       },
+      ...(diagnostics && { diagnostics }),
     });
   });
 
@@ -497,11 +531,14 @@ async function main() {
   };
 
   // 1. Generate one-time registration link
-  app.post('/api/hr/onboarding/generate-link', async (req: Request, res: Response) => {
+  app.post('/api/hr/onboarding/generate-link', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
+      const organizationId = req.orgId;
+      const createdBy = req.user!.email || req.user!.uid;
+      if (!organizationId) {
+        return res.status(400).json({ success: false, error: 'Organização não informada.' });
+      }
       const {
-        organizationId = 'org_aguero_default',
-        createdBy = 'rh@agueroinox.com.br',
         createdByName = 'Recursos Humanos',
         targetRole,
         targetDepartment,
@@ -628,7 +665,7 @@ async function main() {
   // 3. Public submit of candidate data and document uploads
   app.post('/api/hr/onboarding/submit', async (req: Request, res: Response) => {
     try {
-      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+      const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
       if (!checkRateLimit(`onb_submit_${clientIp}`, 15, 60 * 1000)) {
         return res.status(429).json({ error: 'Muitas tentativas de envio. Aguarde alguns instantes.' });
       }
@@ -691,9 +728,9 @@ async function main() {
   });
 
   // 4. List all onboarding invitations for HR
-  app.get('/api/hr/onboarding/list', async (req: Request, res: Response) => {
+  app.get('/api/hr/onboarding/list', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
-      const orgId = (req.query.orgId as string) || 'org_aguero_default';
+      const orgId = req.orgId; // undefined only for master without orgId: lists all
       const list = readOnboardingsStore()
         .filter((o) => !orgId || o.organizationId === orgId)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -704,7 +741,7 @@ async function main() {
   });
 
   // 5. Update status (Approve / Reject / Efetivar)
-  app.post('/api/hr/onboarding/:id/status', async (req: Request, res: Response) => {
+  app.post('/api/hr/onboarding/:id/status', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, reviewNotes, reviewedBy, resultingEmployeeId } = req.body;
@@ -715,6 +752,9 @@ async function main() {
 
       const items = readOnboardingsStore();
       const idx = items.findIndex((o) => o.id === id);
+      if (idx >= 0 && !req.user!.master && items[idx].organizationId !== req.orgId) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
       if (idx >= 0) {
         const updated = {
           ...items[idx],
@@ -734,10 +774,14 @@ async function main() {
   });
 
   // 6. Delete onboarding link record
-  app.delete('/api/hr/onboarding/:id', async (req: Request, res: Response) => {
+  app.delete('/api/hr/onboarding/:id', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const items = readOnboardingsStore().filter((o) => o.id !== id);
+      const all = readOnboardingsStore();
+      if (!req.user!.master && all.some((o) => o.id === id && o.organizationId !== req.orgId)) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
+      const items = all.filter((o) => o.id !== id);
       writeOnboardingsStore(items);
       res.json({ success: true, message: 'Registro de admissão excluído com sucesso.' });
     } catch (err: any) {
@@ -747,7 +791,7 @@ async function main() {
 
   // Public demonstration lead form
   app.post('/api/leads/demo', (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`lead_${clientIp}`, 8, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas tentativas. Por favor, aguarde um minuto.' });
     }
@@ -770,7 +814,7 @@ async function main() {
 
   // AgueroFlow IA Server Endpoint
   app.post('/api/ai/chat', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`ai_${clientIp}`, 20, 60 * 1000)) {
       return res.status(429).json({ error: 'Limite de mensagens atingido. Aguarde alguns instantes.' });
     }
@@ -852,7 +896,7 @@ ${JSON.stringify(context || {}, null, 2)}
 
   // Intelligent Document Parser with Gemini Multimodal Vision / OCR for NR
   app.post('/api/ai/parse-nr-document', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`doc_parse_${clientIp}`, 40, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de análise de documento. Aguarde um minuto.' });
     }
@@ -970,7 +1014,7 @@ Sua missão é identificar:
 
   // Intelligent Supplier Quote PDF & Image Parser (OrçaÁgil)
   const handleSupplierQuoteParse = async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`quote_parse_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de análise de cotação. Aguarde um minuto.' });
     }
@@ -1591,7 +1635,7 @@ REGRAS DE EXTRAÇÃO PARA CADA ITEM:
 
   // AI Market Price Benchmark & Savings Indicator (Purchasing Intelligence)
   app.post('/api/ai/market-benchmark', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`benchmark_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas consultas de benchmark. Aguarde alguns instantes.' });
     }
@@ -1852,7 +1896,7 @@ Sua tarefa:
 
   // Secure travel search proxy
   app.post('/api/travel/search', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`travel_search_${clientIp}`, 25, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas consultas de viagens em curto intervalo. Aguarde alguns instantes.' });
     }
@@ -1898,25 +1942,19 @@ Sua tarefa:
   let whatsAppReceiptsConfig: any = {
     provider: 'composio_whatsapp',
     messagingMode: '1_to_1_private',
-    connectedPhoneNumber: '+55 11 91789-7747',
+    connectedPhoneNumber: process.env.OWNER_PHONE || '',
     targetGroupName: '',
     targetGroupJid: '',
     webhookUrl: 'https://ais-dev-kzcltgdgvpyofef2yzk45l-143571443840.us-east1.run.app/api/webhooks/whatsapp-receipts',
-    verifyToken: 'aguero_reembolsos_token_2025',
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
     autoReplyConfirmation: false,
     filterOnlyAuthorizedEmployees: true,
-    authorizedPhones: [
-      '+55 11 91789-7747', // Gustavo Aguero (Administrador / Gestor)
-      '+55 19 98123-4567', // Carlos Eduardo Silva
-      '+55 19 98234-5678', // Marcos Roberto Santos
-      '+55 19 98345-6789', // Rafael Henrique Lima
-      '+55 19 98456-7890', // André Luiz Souza
-    ],
+    authorizedPhones: (process.env.AUTHORIZED_PHONES || '').split(',').map((p) => p.trim()).filter(Boolean),
     status: 'conectado',
     lastPingAt: new Date().toISOString(),
     instanceUrl: 'http://localhost:8080',
     instanceName: 'meuteste',
-    apiKey: 'mude-me',
+    apiKey: process.env.WHATSAPP_API_KEY || '',
     lastSyncAt: '' as string,
     // Composio WhatsApp Business non-secret identifiers
     composioConnectedAccountId: '',
@@ -3725,25 +3763,36 @@ Sua missão é extrair rigorosamente os seguintes campos:
     }
   }
 
+  const WA_SECRET_FIELDS = ['apiKey', 'verifyToken', 'composioWebhookSecret'];
+  const maskWaConfig = (cfg: any) => {
+    const out = { ...cfg };
+    for (const k of WA_SECRET_FIELDS) if (typeof out[k] === 'string' && out[k]) out[k] = '••••' + out[k].slice(-4);
+    return out;
+  };
+
   // Get WhatsApp receipts config
   app.get('/api/whatsapp/config', (req: Request, res: Response) => {
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
     });
   });
 
   // Update WhatsApp receipts config
-  app.post('/api/whatsapp/config', (req: Request, res: Response) => {
+  app.post('/api/whatsapp/config', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
+    // Masked values echoed back by the UI are not new secrets.
+    const incoming = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([, v]) => !(typeof v === 'string' && v.startsWith('••••')))
+    );
     whatsAppReceiptsConfig = {
       ...whatsAppReceiptsConfig,
-      ...req.body,
+      ...incoming,
       lastPingAt: new Date().toISOString(),
     };
     persistWaConfig();
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       message: 'Configuração do WhatsApp atualizada com sucesso!',
     });
   });
@@ -3822,7 +3871,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Update status (approve, reject, reimburse, deduct)
-  app.post('/api/reimbursements/update-status', (req: Request, res: Response) => {
+  app.post('/api/reimbursements/update-status', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const { id, status, approvedBy, notes } = req.body;
     if (!id || !status) {
       return res.status(400).json({ error: 'ID e status são obrigatórios.' });
@@ -3850,7 +3899,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Clear demo / mock receipts
-  app.post('/api/reimbursements/clear-mock', (req: Request, res: Response) => {
+  app.post('/api/reimbursements/clear-mock', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const initialCount = reimbursementReceipts.length;
     reimbursementReceipts = reimbursementReceipts.filter((r) => r.source === 'whatsapp_real' || r.source === 'manual_upload');
     persistReceipts();
@@ -3863,7 +3912,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Delete single receipt
-  app.delete('/api/reimbursements/:id', (req: Request, res: Response) => {
+  app.delete('/api/reimbursements/:id', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const { id } = req.params;
     const prevLen = reimbursementReceipts.length;
     reimbursementReceipts = reimbursementReceipts.filter((r) => r.id !== id);
@@ -3882,7 +3931,8 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
     // 1. Handshake verification (Meta Cloud API, Evolution API, Z-API)
     if (token) {
-      if (token === whatsAppReceiptsConfig.verifyToken) {
+      const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN;
+      if (expectedToken && token === expectedToken) {
         console.log('✅ [WhatsApp Webhook] Handshake GET verificado com sucesso! Token válido.');
         addWebhookLog({
           method: 'GET',
@@ -3897,7 +3947,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
           method: 'GET',
           event: 'handshake_verificacao',
           status: 'erro',
-          summary: `Handshake rejeitado: Token fornecido (${token}) é diferente do configurado (${whatsAppReceiptsConfig.verifyToken}).`,
+          summary: 'Handshake rejeitado: token fornecido difere de WHATSAPP_VERIFY_TOKEN (ou variável não definida).',
         });
         return res.status(403).json({ error: 'Token de verificação inválido.' });
       }
@@ -3908,7 +3958,6 @@ Sua missão é extrair rigorosamente os seguintes campos:
       success: true,
       status: whatsAppReceiptsConfig.status,
       message: 'Endpoint de Webhook WhatsApp do AgueroFlow ativo.',
-      connectedPhone: whatsAppReceiptsConfig.connectedPhoneNumber,
       targetGroup: whatsAppReceiptsConfig.targetGroupName || 'Qualquer grupo autorizado',
       targetGroupJid: whatsAppReceiptsConfig.targetGroupJid || 'Auto-detectar ao receber',
       provider: whatsAppReceiptsConfig.provider,
@@ -3917,30 +3966,9 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Webhook POST: Incoming message handler (Meta, Evolution API, Z-API, Direct Simulator)
-  app.post('/api/webhooks/whatsapp-receipts', async (req: Request, res: Response) => {
+  app.post('/api/webhooks/whatsapp-receipts', requireWebhookSecret, async (req: Request, res: Response) => {
     console.log('📩 [WhatsApp Webhook] Payload recebido:', JSON.stringify(req.body).slice(0, 300));
     const payload = req.body;
-
-    // 1. Verify token if provided in query, headers, or body
-    const incomingToken =
-      (req.query['hub.verify_token'] as string) ||
-      (req.query['token'] as string) ||
-      (req.query['verify_token'] as string) ||
-      (req.headers['x-verify-token'] as string) ||
-      (req.headers['x-webhook-token'] as string) ||
-      (req.headers['authorization'] as string)?.replace(/^Bearer\s+/i, '') ||
-      req.body?.verifyToken;
-
-    if (incomingToken && whatsAppReceiptsConfig.verifyToken && incomingToken !== whatsAppReceiptsConfig.verifyToken) {
-      console.warn('⚠️ [WhatsApp Webhook] Token de verificação incorreto:', incomingToken);
-      addWebhookLog({
-        method: 'POST',
-        event: 'mensagem_rejeitada',
-        status: 'erro',
-        summary: `Webhook POST bloqueado: Token incorreto (${incomingToken}).`,
-      });
-      return res.status(403).json({ error: 'Token de verificação incorreto.' });
-    }
 
     try {
       const result = await processSingleMessagePayload(payload, {
@@ -4607,7 +4635,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Simplified Quick-Setup endpoint for Phone and Group
-  app.post('/api/whatsapp/quick-setup', (req: Request, res: Response) => {
+  app.post('/api/whatsapp/quick-setup', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const { phoneNumber, groupName, targetGroupJid, verifyToken, provider } = req.body;
 
     if (phoneNumber) {
@@ -4641,7 +4669,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       message: `WhatsApp conectado com sucesso ao grupo "${whatsAppReceiptsConfig.targetGroupName}"!`,
     });
   });
@@ -4676,7 +4704,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         organizationId: 'org_aguero_default',
         whatsappMessageId: `test_wa_${Date.now()}`,
         employeeName: 'Gustavo Aguero (Administrador)',
-        employeePhone: whatsAppReceiptsConfig.connectedPhoneNumber || '+55 11 91789-7747',
+        employeePhone: whatsAppReceiptsConfig.connectedPhoneNumber || process.env.OWNER_PHONE || '',
         receiptDate: sample.receiptDate,
         establishmentName: sample.establishmentName,
         cnpj: sample.cnpj,
@@ -4712,7 +4740,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
       res.json({
         success: true,
         receipt: newRec,
-        config: whatsAppReceiptsConfig,
+        config: maskWaConfig(whatsAppReceiptsConfig),
         message: `Comprovante de teste do grupo "${whatsAppReceiptsConfig.targetGroupName || 'REEMBOLSOS AGUERO INOX'}" processado e gravado com sucesso!`,
       });
     } catch (err: any) {
@@ -4727,7 +4755,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
       logs: webhookLogs,
       totalLogs: webhookLogs.length,
       lastPingAt: whatsAppReceiptsConfig.lastPingAt,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       stats: {
         total: reimbursementReceipts.length,
         realWhatsapp: reimbursementReceipts.filter((r) => r.source === 'whatsapp_real').length,
@@ -4741,7 +4769,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   app.get('/api/whatsapp/diagnostics', (req: Request, res: Response) => {
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       receiptsCount: reimbursementReceipts.length,
       pendingCount: reimbursementReceipts.filter((r) => r.status === 'pendente').length,
       recentReceipts: reimbursementReceipts.slice(0, 5),
@@ -4852,7 +4880,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // 3. Validate & Save Composio Connected Account ID + Phone Number ID
-  app.post('/api/composio/whatsapp/connect', async (req: Request, res: Response) => {
+  app.post('/api/composio/whatsapp/connect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     const {
       connectedAccountId,
       phoneNumberId,
@@ -4932,7 +4960,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       validatedAccount,
       warning: validationWarning,
       message: validatedAccount
@@ -4942,7 +4970,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // 4. Generate Hosted Composio Link URL for connecting a new WhatsApp Business account
-  app.post('/api/composio/whatsapp/link', async (req: Request, res: Response) => {
+  app.post('/api/composio/whatsapp/link', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     const { userId, authConfigId, callbackUrl } = req.body;
     const effectiveUserId = userId?.trim() || whatsAppReceiptsConfig.composioEntityId || 'aguero_inox_comercial';
 
@@ -4995,7 +5023,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // 6. Send 1-to-1 Commercial / Operational WhatsApp Message via Composio SDK
-  app.post('/api/composio/whatsapp/send', async (req: Request, res: Response) => {
+  app.post('/api/composio/whatsapp/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     const {
       organizationId = 'org_aguero_default',
       toNumber,
@@ -5162,11 +5190,20 @@ Sua missão é extrair rigorosamente os seguintes campos:
       const composio = getComposioClient();
       const webhookSecret = process.env.COMPOSIO_WEBHOOK_SECRET?.trim();
 
-      if (composio && webhookSecret && req.headers['webhook-signature']) {
+      if (!webhookSecret) {
+        return res.status(403).json({ success: false, error: 'COMPOSIO_WEBHOOK_SECRET não configurado.' });
+      }
+      if (!req.headers['webhook-signature']) {
+        return res.status(401).json({ success: false, error: 'Assinatura de webhook ausente.' });
+      }
+      if (!composio) {
+        return res.status(503).json({ success: false, error: 'Composio não configurado.' });
+      }
+      {
         try {
           const verified = await composio.triggers.parse(
             {
-              body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body),
+              body: (req as any).rawBody?.toString('utf-8') ?? JSON.stringify(req.body),
               headers: req.headers as Record<string, string>,
             },
             { verifySecret: webhookSecret }
@@ -7625,7 +7662,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Connect (QR Code or 8-digit Pairing Code)
-  app.post('/api/whatsapp/bridge/connect', async (req: Request, res: Response) => {
+  app.post('/api/whatsapp/bridge/connect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
       const { phoneNumberForPairing, forceFreshQr } = req.body || {};
       const status = await startWhatsAppBridgeSession({
@@ -7651,7 +7688,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Disconnect / Logout
-  app.post('/api/whatsapp/bridge/disconnect', async (req: Request, res: Response) => {
+  app.post('/api/whatsapp/bridge/disconnect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     try {
       const logout = Boolean(req.body?.logout);
       const status = await stopWhatsAppBridgeSession(logout);
@@ -7704,7 +7741,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Pin Target Group for Receipt OCR (explicitly enables & locks OCR on this group)
-  app.post('/api/whatsapp/bridge/select-group', (req: Request, res: Response) => {
+  app.post('/api/whatsapp/bridge/select-group', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const { groupJid, groupName, ocrAutoReply } = req.body || {};
     if (!groupJid || !groupName) {
       return res.status(400).json({ success: false, error: 'Informe groupJid e groupName.' });
@@ -7743,7 +7780,7 @@ DIRETRIZES ESSENCIAIS:
 
     res.json({
       success: true,
-      config: whatsAppReceiptsConfig,
+      config: maskWaConfig(whatsAppReceiptsConfig),
       contact: updated,
       message: resolvedAutoReply
         ? `OCR ativado e blindado para "${cleanName}" (com resposta no grupo).`
@@ -7752,7 +7789,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Send Message (Supports BOTH Groups @g.us and Private 1-to-1)
-  app.post('/api/whatsapp/bridge/send', async (req: Request, res: Response) => {
+  app.post('/api/whatsapp/bridge/send', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
     const {
       organizationId = 'org_aguero_default',
       toJidOrPhone,
@@ -8151,7 +8188,7 @@ DIRETRIZES ESSENCIAIS:
     const rawTarget = String(body.targetJidOrPhone || '').trim();
     const resolvedTarget =
       !rawTarget || rawTarget.toUpperCase() === 'OWNER'
-        ? { jidOrPhone: ownerDigits || '+5511917897747', label: 'Meu WhatsApp (Privado)' }
+        ? { jidOrPhone: ownerDigits || process.env.OWNER_PHONE || '', label: 'Meu WhatsApp (Privado)' }
         : resolveChannelByQuery(rawTarget) || { jidOrPhone: rawTarget, label: String(body.targetLabel || rawTarget) };
 
     const rawSource = String(body.sourceChatJid || '').trim();
@@ -8210,7 +8247,7 @@ DIRETRIZES ESSENCIAIS:
       const rawTarget = String(body.targetJidOrPhone || '').trim();
       const resolvedTarget =
         !rawTarget || rawTarget.toUpperCase() === 'OWNER'
-          ? { jidOrPhone: ownerDigits || '+5511917897747', label: 'Meu WhatsApp (Privado)' }
+          ? { jidOrPhone: ownerDigits || process.env.OWNER_PHONE || '', label: 'Meu WhatsApp (Privado)' }
           : resolveChannelByQuery(rawTarget) || { jidOrPhone: rawTarget, label: String(body.targetLabel || rawTarget) };
       nextTargetJid = resolvedTarget.jidOrPhone;
       nextTargetLabel = String(body.targetLabel || resolvedTarget.label);
@@ -8964,7 +9001,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Microsoft 365 OAuth 2.0 Interactive Sign-In (Delegated Graph Mail.Send — bypasses disabled SMTP AUTH)
-  app.get('/api/outlook/oauth/url', (req: Request, res: Response) => {
+  app.get('/api/outlook/oauth/url', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
     const originOverride = req.query.redirectUri ? String(req.query.redirectUri).trim() : undefined;
     const auth = buildOutlookOAuthAuthorizationUrl(originOverride);
     if (!auth.success) {
@@ -9011,7 +9048,7 @@ DIRETRIZES ESSENCIAIS:
   };
   app.get(['/api/outlook/oauth/callback', '/api/outlook/oauth/callback/'], handleOutlookOAuthCallback);
 
-  app.post('/api/outlook/oauth/disconnect', (_req: Request, res: Response) => {
+  app.post('/api/outlook/oauth/disconnect', requireRole('Admin', 'Gerente'), (_req: Request, res: Response) => {
     disconnectOutlookOAuth();
     res.json({
       success: true,
@@ -9219,7 +9256,7 @@ DIRETRIZES ESSENCIAIS:
     pushAiChatEntry({ role: 'user', text: effectiveText });
 
     const brStatus = getWhatsAppBridgeStatus();
-    const ownerPhone = brStatus.connectedNumber || whatsAppReceiptsConfig.connectedPhoneNumber || '+5511917897747';
+    const ownerPhone = brStatus.connectedNumber || whatsAppReceiptsConfig.connectedPhoneNumber || process.env.OWNER_PHONE || '';
     const ownerDigits = normalizeWhatsAppPhone(ownerPhone);
     const brNow = getBrazilNowParts();
     const todayBr = brNow.dateBr;
@@ -10067,7 +10104,7 @@ Retorne JSON estrito.`;
 
   // 1. Generate Creative Campaign / Event Ideas & Copy with Gemini
   app.post('/api/marketing/generate-ideas', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`mkt_ideas_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas solicitações ao assistente de marketing. Aguarde alguns instantes.' });
     }
@@ -10253,7 +10290,7 @@ Retorne um JSON com os campos:
 
   // 2. Transform Project / Work Order into External Marketing Showcase
   app.post('/api/marketing/project-to-content', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`mkt_proj_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de transformação de obras. Aguarde um instante.' });
     }
@@ -10454,7 +10491,7 @@ Gere um JSON com:
 
   // 2.5 Generate Corporate Presentation Slides with Gemini
   app.post('/api/marketing/generate-presentation', async (req: Request, res: Response) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`mkt_pres_${clientIp}`, 25, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de apresentação. Aguarde um instante.' });
     }
@@ -10729,8 +10766,10 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
   // Custom error handler to guarantee all /api errors return JSON, never HTML
   app.use('/api', (err: any, req: Request, res: Response, next: any) => {
     console.error('API Error handler caught:', err);
-    res.status(err.status || err.statusCode || 500).json({
-      error: err.message || 'Erro interno no processamento da requisição.',
+    const status = err.status || err.statusCode || 500;
+    // 4xx from body parsers (malformed JSON, payload too large) keep their status; never leak messages/stacks.
+    res.status(status >= 400 && status < 500 ? status : 500).json({
+      error: status >= 400 && status < 500 ? 'bad_request' : 'internal',
       success: false,
     });
   });
