@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "migrate:passwords": "tsx server/scripts/migratePasswords.ts",
     "test": "tsx --test tests/*.test.ts",
     "test:emulator": "firebase emulators:exec --only firestore,auth --project demo-agueroflow \"tsx --test --test-concurrency=1 tests/emulator/*.test.ts\""
   },
