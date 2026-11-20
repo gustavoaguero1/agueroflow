@@ -295,33 +295,6 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
     }
   };
 
-  // Quick simulate WhatsApp message
-  const handleSimulateWhatsAppMessage = async () => {
-    setIsProcessingOcr(true);
-    showToast('Simulando envio de foto de cupom pelo WhatsApp do técnico...');
-
-    try {
-      // Mock base64 tiny placeholder or synthetic receipt
-      const res = await fetch('/api/webhooks/whatsapp-receipts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderPhone: '+55 19 98123-4567',
-          senderName: 'Carlos Eduardo Silva (Soldador Inox)',
-          fileBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP...',
-        }),
-      });
-
-      await res.json();
-      await loadData();
-      showToast('Simulação concluída! Novo cupom recebido via WhatsApp.');
-    } catch (err) {
-      showToast('Erro na simulação do webhook.');
-    } finally {
-      setIsProcessingOcr(false);
-    }
-  };
-
   // Export CSV
   const handleExportCsv = () => {
     if (receipts.length === 0) return;
@@ -935,8 +908,8 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
             <div className="pt-2 flex items-center justify-between">
               <button
                 type="button"
-                onClick={handleSimulateWhatsAppMessage}
-                disabled={isProcessingOcr}
+                onClick={handleQuickTestWhatsApp}
+                disabled={isProcessingOcr || testingWhatsApp}
                 className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold"
               >
                 Simular Envio WhatsApp

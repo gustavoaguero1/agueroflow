@@ -485,6 +485,11 @@ async function main() {
         await f.delete();
       }),
       customToken: await check(() => h.auth.createCustomToken('healthcheck')),
+      defaultOrg: await check(async () => {
+        const id = process.env.DEFAULT_ORG_ID;
+        if (!id) throw new Error('DEFAULT_ORG_ID não definido');
+        if (!(await h.db.doc(`organizations/${id}`).get()).exists) throw new Error(`organizations/${id} não existe`);
+      }),
     };
   };
   app.get('/api/health', async (req: Request, res: Response) => {

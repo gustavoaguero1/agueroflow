@@ -128,7 +128,10 @@ export function watchState(store: StateStore | null, root: string, paths: string
             watchDir(rel);
             for (const r of walk(root, rel)) schedule(r);
           }
-        } catch (e: any) { console.warn(`☁️ Falha ao observar ${rel}: ${e?.message ?? e}`); }
+        } catch (e: any) {
+          // ENOENT: dir vanished between the event and the watch; the next event re-watches it.
+          if (e?.code !== 'ENOENT') console.warn(`☁️ Falha ao observar ${rel}: ${e?.message ?? e}`);
+        }
         schedule(rel);
       });
       w.on('error', (e) => { console.warn(`☁️ Erro no watcher de ${d || '.'}: ${e.message}`); unwatch(d); });

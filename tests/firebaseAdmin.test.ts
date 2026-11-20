@@ -26,3 +26,22 @@ test('malformed FIREBASE_SERVICE_ACCOUNT is disabled', () => {
   assert.equal(getAdmin(), null);
   assert.equal(adminStatus().enabled, false);
 });
+
+test('FIREBASE_SERVICE_ACCOUNT wins over ADC on Cloud Run', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify({
+    project_id: 'demo', client_email: 'sa@demo.iam.gserviceaccount.com',
+    private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+  });
+  process.env.K_SERVICE = 'svc';
+  delete process.env.FIREBASE_ADMIN_DISABLE_ADC;
+  assert.deepEqual(adminStatus(), { enabled: true, reason: undefined, credential: 'service-account' });
+});
+
+test('malformed FIREBASE_SERVICE_ACCOUNT falls back to ADC', () => {
+  process.env.FIREBASE_SERVICE_ACCOUNT = '{not json';
+  process.env.K_SERVICE = 'svc';
+  delete process.env.FIREBASE_ADMIN_DISABLE_ADC;
+  assert.equal(adminStatus().credential, 'adc');
+});

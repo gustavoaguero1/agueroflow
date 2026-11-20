@@ -203,16 +203,26 @@ export async function credentialLogin(
   return { ok: true, token, uid, isMaster: false, member, org };
 }
 
-// `email` must already be verified by the caller; email matches bound to another uid are skipped.
+// Old clients wrote placeholder userIds (uid_manual_<ts>, usr_...) that never named a real Auth user.
+const PLACEHOLDER_UID = /^(uid_manual_|usr_)/;
+
+/** A userId binds an email doc only if it names an existing Auth user other than a placeholder. */
+async function unboundOrMine(h: AdminHandles, uid: string, bound: unknown): Promise<boolean> {
+  if (!bound || bound === uid) return true;
+  if (typeof bound !== 'string' || PLACEHOLDER_UID.test(bound)) return true;
+  return h.auth.getUser(bound).then(() => false, (e) => { if (isNotFound(e)) return true; throw e; });
+}
+
+// `email` must already be verified by the caller; email matches bound to another existing uid are skipped.
 async function activeMemberDocs(h: AdminHandles, uid: string, email: string | null) {
   const members = h.db.collection('org_members');
   const byUid = (await members.where('userId', '==', uid).where('active', '==', true).get()).docs;
-  const byEmail = email
+  const emailDocs = email
     ? (await members.where('userEmail', '==', norm(email)).where('active', '==', true).get()).docs
-      .filter((d) => !d.get('userId') || d.get('userId') === uid)
     : [];
+  const ok = await Promise.all(emailDocs.map((d) => unboundOrMine(h, uid, d.get('userId'))));
   const seen = new Set(byUid.map((d) => d.id));
-  return [...byUid, ...byEmail.filter((d) => !seen.has(d.id))];
+  return [...byUid, ...emailDocs.filter((d, i) => ok[i] && !seen.has(d.id))];
 }
 
 function claimsFor(uid: string, email: string | null, docs: DocumentSnapshot[]): Claims {
@@ -260,10 +270,10 @@ export async function syncSession(
   }
   const email = emailVerified ? rawEmail ?? null : null;
   const docs = await activeMemberDocs(h, uid, email);
-  await Promise.all(docs.filter((d) => !d.get('userId')).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
+  await Promise.all(docs.filter((d) => d.get('userId') !== uid).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
   const claims = claimsFor(uid, email, docs);
   await h.auth.setCustomUserClaims(uid, claims);
-  return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: docs[0].get('userId') || uid } : null };
+  return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: uid } : null };
 }
 
 // userId on org_members is admin-writable: never let it reach a master identity (forced logout / claim overwrite).

@@ -111,7 +111,18 @@ const FIRST_ACCESS_LINK_MSG = 'Peça ao administrador o seu link de primeiro ace
 type ServerSession = { claims?: { master?: boolean }; member?: OrgMember | null; org?: Organization | null };
 
 // Binds the uid on the server and refreshes claims. Non-fatal: without the server (e.g. local dev) we keep the Firestore lookups.
-async function syncServerSession(currentUser: User): Promise<ServerSession | null> {
+// Google sign-in and onAuthStateChanged both sync right after the popup: share one in-flight call per uid.
+const inflightSessions = new Map<string, Promise<ServerSession | null>>();
+function syncServerSession(currentUser: User): Promise<ServerSession | null> {
+  let p = inflightSessions.get(currentUser.uid);
+  if (!p) {
+    p = doSyncServerSession(currentUser).finally(() => inflightSessions.delete(currentUser.uid));
+    inflightSessions.set(currentUser.uid, p);
+  }
+  return p;
+}
+
+async function doSyncServerSession(currentUser: User): Promise<ServerSession | null> {
   try {
     const r = await postJson<ServerSession>('/api/auth/session');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -598,7 +609,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
-        await loadUserData(result.user);
+        await loadUserData(result.user, await syncServerSession(result.user));
         return result.user;
       }
       return null;
@@ -623,6 +634,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!googleUser || !googleUser.email) {
         return { authorized: false, isMaster: false, error: 'Não foi possível obter o e-mail da conta Google.' };
       }
+      // Bind uid + fresh claims before any org-scoped read (rules check claims). Non-fatal, like onAuthStateChanged.
+      await syncServerSession(googleUser);
 
       const normEmail = googleUser.email.toLowerCase().trim();
       const isMaster = normEmail === MASTER_EMAIL;

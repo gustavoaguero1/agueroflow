@@ -227,13 +227,25 @@ test('unverified email grants nothing', async () => {
   assert.equal((await syncSession(h, 'g2', MASTER, false)).claims.master, false);
 });
 
-test('email-matched doc bound to other uid ignored', async () => {
+test('still refuses email doc bound to another existing uid', async () => {
   await member('m1', { userId: 'other' });
+  await h.auth.createUser({ uid: 'other' });
   await h.auth.createUser({ uid: 'g1', email: 'm1@x.com' });
   const r = await syncSession(h, 'g1', 'm1@x.com', true);
   assert.deepEqual(r, { claims: { master: false, orgs: {} }, member: null });
   assert.equal((await h.db.doc('org_members/m1').get()).get('userId'), 'other');
 });
+
+for (const [name, legacy] of [['placeholder userId', 'uid_manual_1700000000000'], ['userId of deleted auth user', 'g_deleted']]) {
+  test(`google login binds over ${name}`, async () => {
+    await member('m1', { userId: legacy, role: 'Gerente' });
+    await h.auth.createUser({ uid: 'g1', email: 'm1@x.com' });
+    const r = await syncSession(h, 'g1', 'm1@x.com', true);
+    assert.deepEqual(r.claims, { master: false, orgs: { org_a: 'Gerente' } });
+    assert.equal(r.member?.userId, 'g1');
+    assert.equal((await h.db.doc('org_members/m1').get()).get('userId'), 'g1');
+  });
+}
 
 test('first access failure does not consume token', async () => {
   await member('m1');
