@@ -48,7 +48,6 @@ interface PurchasingDashboardProps {
   onNavigateSub: (tab: PurchasingSubSection) => void;
   onNewRequisition: () => void;
   onNewOrder: () => void;
-  onSeedDemo: () => Promise<void>;
   userName: string;
 }
 
@@ -60,7 +59,6 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
   onNavigateSub,
   onNewRequisition,
   onNewOrder,
-  onSeedDemo,
   userName,
 }) => {
   // 1. Pending Requisitions

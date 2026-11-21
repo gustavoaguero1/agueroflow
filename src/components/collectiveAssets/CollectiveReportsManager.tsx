@@ -9,7 +9,6 @@ import {
 } from '../../types/collectiveAssets';
 import {
   createCollectiveAsset,
-  seedCollectiveAssetsDemo,
 } from '../../services/collectiveAssetsService';
 import {
   FileSpreadsheet,
@@ -280,21 +279,6 @@ export const CollectiveReportsManager: React.FC<CollectiveReportsManagerProps> =
     }
   };
 
-  const handleSeedDemoData = async () => {
-    try {
-      setIsSeedingDemo(true);
-      setDemoMessage('');
-      await seedCollectiveAssetsDemo(organizationId, 'Relatórios');
-      setDemoMessage('Dados de demonstração inseridos com sucesso! Todos os registros foram marcados como [Dados de demonstração].');
-      onRefresh?.();
-    } catch (err: unknown) {
-      console.error('Erro ao inserir dados de demonstração:', err);
-      setDemoMessage(err instanceof Error ? err.message : 'Falha ao gerar demonstração.');
-    } finally {
-      setIsSeedingDemo(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -528,23 +512,6 @@ export const CollectiveReportsManager: React.FC<CollectiveReportsManagerProps> =
                 Conforme as diretrizes, nenhum dado fictício deve ser misturado com dados reais de clientes sem identificação. Ao clicar abaixo, o sistema injetará 5 categorias padrão, 7 bens com diferentes cenários (em dia, a vencer, vencido, sem data registrada e em manutenção), 4 colaboradores e históricos de movimentação marcados expressamente com o rótulo &ldquo;Dados de demonstração&rdquo;.
               </p>
             </div>
-          </div>
-
-          {demoMessage && (
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 font-medium">
-              {demoMessage}
-            </div>
-          )}
-
-          <div className="pt-2">
-            <button
-              onClick={handleSeedDemoData}
-              disabled={isSeedingDemo || !canManage}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition flex items-center gap-2 shadow-lg shadow-amber-500/20"
-            >
-              <Sparkles className="w-4 h-4" />
-              {isSeedingDemo ? 'Gerando dados de demonstração...' : 'Inserir Dados de Demonstração'}
-            </button>
           </div>
         </div>
       )}

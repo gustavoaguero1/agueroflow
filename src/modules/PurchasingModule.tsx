@@ -262,7 +262,6 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               onNavigateSub={handleTabChange}
               onNewRequisition={() => handleTabChange('compras-requisicoes')}
               onNewOrder={() => setIsNewOrderModalOpen(true)}
-              onSeedDemo={loadAllData}
               userName={currentUserName}
             />
           )}

@@ -158,7 +158,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     units,
     contracts,
     signOut,
-    seedDemoData,
   } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -210,15 +209,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       targetId: result.targetId,
       searchQuery: result.code || result.title,
     });
-  };
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    try {
-      await seedDemoData();
-    } finally {
-      setSeeding(false);
-    }
   };
 
   const navItems = [

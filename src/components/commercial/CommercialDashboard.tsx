@@ -23,7 +23,6 @@ interface CommercialDashboardProps {
   onReviewBom: (proposal: CommercialProposal) => void;
   onOpenProposalDetail: (proposal: CommercialProposal) => void;
   onDeleteProposal: (proposalId: string) => Promise<void>;
-  onSeedDemo: () => Promise<void>;
   userRole?: string;
   loading?: boolean;
 }
@@ -34,7 +33,6 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
   onReviewBom,
   onOpenProposalDetail,
   onDeleteProposal,
-  onSeedDemo,
   userRole,
   loading = false,
 }) => {
@@ -69,15 +67,6 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
   const approvedCount = proposals.filter((p) => p.status === 'aprovada' || p.status === 'finalizada').length;
   const partialCount = proposals.filter((p) => p.status === 'parcial').length;
 
-  const handleSeed = async () => {
-    setSeeding(true);
-    try {
-      await onSeedDemo();
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const formatBrl = (val: number) => {
     return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
@@ -99,17 +88,6 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
-          {proposals.length === 0 && (
-            <button
-              onClick={handleSeed}
-              disabled={seeding}
-              className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold rounded-lg border border-cyan-800 transition disabled:opacity-50"
-            >
-              <Database className="w-4 h-4" />
-              <span>{seeding ? 'Carregando Demonstração...' : 'Carregar Dados de Demonstração'}</span>
-            </button>
-          )}
-
           <button
             onClick={onNewProposal}
             className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs rounded-lg transition shadow-lg"

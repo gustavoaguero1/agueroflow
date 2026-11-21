@@ -163,12 +163,6 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     await loadData();
   };
 
-  // Handle Seed Demo Data
-  const handleSeedDemo = async () => {
-    await seedCommercialDemoData(organizationId, userId, userName);
-    await loadData();
-  };
-
   // Handle Wizard Success
   const handleWizardSuccess = async (newProposalId: string) => {
     await loadData();
@@ -234,7 +228,6 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
               onReviewBom={handleReviewBom}
               onOpenProposalDetail={handleOpenDetail}
               onDeleteProposal={handleDeleteProposal}
-              onSeedDemo={handleSeedDemo}
               userRole={role}
             />
           )}
