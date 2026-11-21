@@ -25,6 +25,7 @@ export const PendingCenter: React.FC<Props> = ({ onNavigate, workOrders, complet
   const { organization } = useAuth();
   const [data, setData] = useState<Omit<PendingData, 'workOrders' | 'completedStatusIds'> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [partialPrefixes, setPartialPrefixes] = useState<string[]>([]);
   const [all, setAll] = useState(false);
 
   const orgRef = useRef<string | undefined>(undefined);
@@ -34,10 +35,12 @@ export const PendingCenter: React.FC<Props> = ({ onNavigate, workOrders, complet
     if (!organization) return;
     setLoading(true);
     const org = organization.id;
+    const partial = new Set<string>();
     // One source failing (e.g. role without access) must not hide the others.
-    const rows = async (coll: string, field = 'orgId', extra: QueryConstraint[] = [], max = 2000) => {
+    const rows = async (coll: string, field = 'orgId', extra: QueryConstraint[] = [], max?: number) => {
       try {
-        const s = await getDocs(query(collection(db, coll), where(field, '==', org), ...extra, limit(max)));
+        const s = await getDocs(query(collection(db, coll), where(field, '==', org), ...extra, ...(max ? [limit(max)] : [])));
+        if (max && s.size >= max) partial.add(coll);
         return s.docs.map((d) => ({ id: d.id, ...d.data() } as any));
       } catch (e) {
         console.warn(`Central de pendências: ${coll} indisponível`, e);
@@ -47,13 +50,15 @@ export const PendingCenter: React.FC<Props> = ({ onNavigate, workOrders, complet
     const [payables, nfes, balances, items, workers, assets, cats, movs, svcs, props] = await Promise.all([
       rows('finance_payables', 'orgId', [where('status', '==', 'aberto')]),
       rows('nfe_documents', 'orgId', [where('status', 'in', ['aguardando_classificacao', 'erro_classificacao'])]),
-      rows('stock_balances'), rows('items'), rows('field_workers', 'orgId', [], 500),
+      rows('stock_balances', 'orgId', [], 5000), rows('items', 'orgId', [], 5000), rows('field_workers', 'orgId', [], 500),
       rows('collective_assets', 'orgId', [], 1000), rows('collective_asset_categories', 'orgId', [], 200),
       rows('collective_asset_movements', 'orgId', [where('status', 'in', ['EM_USO', 'em_uso', 'ATRASADO', 'atrasado'])], 1000),
       rows('collective_asset_services', 'orgId', [], 3000),
       rows('commercial_proposals', 'organizationId', [where('status', 'in', ['enviada', 'negociacao'])], 500),
     ]);
     if (orgRef.current !== org) return; // org switched while loading: drop stale response
+    const byColl: Record<string, string> = { stock_balances: 'stk', items: 'stk', field_workers: 'cert', collective_assets: 'asset', collective_asset_categories: 'asset', collective_asset_movements: 'asset', collective_asset_services: 'asset', commercial_proposals: 'prop' };
+    setPartialPrefixes([...new Set([...partial].map((c) => byColl[c]))]);
     const itemMap = new Map<string, any>(items.map((i) => [i.id, i]));
     const catMap = new Map<string, any>(cats.map((c) => [c.id, c]));
     const active = new Map<string, any>();
@@ -82,8 +87,9 @@ export const PendingCenter: React.FC<Props> = ({ onNavigate, workOrders, complet
   useEffect(() => { load(); }, [load]);
 
   const items = useMemo(
-    () => (data ? buildPendingItems({ ...data, workOrders: workOrders as PendingData['workOrders'], completedStatusIds }) : []),
-    [data, workOrders, completedStatusIds]
+    () => (data ? buildPendingItems({ ...data, workOrders: workOrders as PendingData['workOrders'], completedStatusIds }).map((i) =>
+      partialPrefixes.includes(i.id.split(':')[0]) ? { ...i, detalhe: `${i.detalhe} (lista parcial)` } : i) : []),
+    [data, workOrders, completedStatusIds, partialPrefixes]
   );
   const counts = (s: PendingSeverity) => items.filter((i) => i.severity === s).length;
   const shown = all ? items : items.slice(0, MAX_VISIBLE);

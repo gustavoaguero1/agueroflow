@@ -339,3 +339,19 @@ test('nfe_sync: members read, writes denied', async () => {
   await assertFails(setDoc(doc(admin(), 'nfe_sync/org_a'), { ultNSU: '9' }));
   await assertFails(setDoc(doc(master(), 'nfe_sync/org_a'), { ultNSU: '9' }));
 });
+
+test('pending center queries (orgId/organizationId == + status in) pass rules for a member', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'nfe_documents/n1'), { orgId: 'org_a', status: 'aguardando_classificacao' });
+    await setDoc(doc(db, 'nfe_documents/n2'), { orgId: 'org_a', status: 'classificada' });
+    await setDoc(doc(db, 'commercial_proposals/p_env'), { organizationId: 'org_a', status: 'enviada' });
+    await setDoc(doc(db, 'finance_payables/f1'), { orgId: 'org_a', status: 'aberto' });
+  });
+  const db = member();
+  const nfe = await assertSucceeds(getDocs(query(collection(db, 'nfe_documents'), where('orgId', '==', 'org_a'), where('status', 'in', ['aguardando_classificacao', 'erro_classificacao']))));
+  if (nfe.size !== 1) throw new Error(`nfe size ${nfe.size}`);
+  const props = await assertSucceeds(getDocs(query(collection(db, 'commercial_proposals'), where('organizationId', '==', 'org_a'), where('status', 'in', ['enviada', 'negociacao']))));
+  if (props.size !== 1) throw new Error(`proposals size ${props.size}`);
+  await assertSucceeds(getDocs(query(collection(db, 'finance_payables'), where('orgId', '==', 'org_a'), where('status', '==', 'aberto'))));
+});
