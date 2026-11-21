@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { TrustedDevice } from '../types';
 import { WhatsAppReceiptsConfig } from '../types/travel';
@@ -60,6 +60,24 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   const [notifyCriticalStock, setNotifyCriticalStock] = useState(true);
   const [enableReworkTracking, setEnableReworkTracking] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Load persisted operation parameters (organizations/{orgId}.settings)
+  useEffect(() => {
+    if (!organization) return;
+    let cancelled = false;
+    getDoc(doc(db, 'organizations', organization.id))
+      .then((snap) => {
+        const st = snap.data()?.settings;
+        if (cancelled || !st) return;
+        if (st.slaHours != null) setSlaHours(String(st.slaHours));
+        if (st.lpuLimit != null) setLpuLimit(String(st.lpuLimit));
+        if (st.notifyCriticalStock != null) setNotifyCriticalStock(!!st.notifyCriticalStock);
+        if (st.enableReworkTracking != null) setEnableReworkTracking(!!st.enableReworkTracking);
+      })
+      .catch((err) => console.error('Erro ao carregar parâmetros:', err));
+    return () => { cancelled = true; };
+  }, [organization?.id]);
 
   // WhatsApp Webhook & OCR State
   const [waConfig, setWaConfig] = useState<WhatsAppReceiptsConfig>({
@@ -273,6 +291,27 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
 
   const handleSavePreferences = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!organization) return;
+    setSaveError(null);
+    try {
+      await setDoc(
+        doc(db, 'organizations', organization.id),
+        {
+          settings: {
+            slaHours: Number(slaHours) || 24,
+            lpuLimit: Number(lpuLimit) || 0,
+            notifyCriticalStock,
+            enableReworkTracking,
+          },
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error('Erro ao salvar parâmetros:', err);
+      setSaveError('Não foi possível salvar (apenas Administradores podem alterar os parâmetros).');
+      return;
+    }
     setSavedSuccess(true);
     await logAudit(
       'Configurações',
@@ -319,6 +358,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>Parâmetros operacionais salvos com sucesso!</span>
         </div>
+      )}
+
+      {saveError && (
+        <div className="p-3.5 rounded-xl bg-red-950/70 border border-red-800 text-red-300 text-xs">{saveError}</div>
       )}
 
       {actionMessage && (

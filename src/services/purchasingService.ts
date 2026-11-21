@@ -651,13 +651,14 @@ export async function fetchAiMarketBenchmark(
     return json.data;
   } catch (err) {
     console.warn('Erro ao consultar benchmark de mercado via IA, usando valores calculados:', err);
-    const spend = totalSpend && totalSpend > 0 ? totalSpend : 384500;
+    const spend = totalSpend && totalSpend > 0 ? totalSpend : 0;
     return {
       month: new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date()),
       totalMonthlySpend: spend,
-      estimatedMarketSpend: spend * 1.108,
-      totalSavingsAmount: spend * 0.108,
-      savingsPercentage: 9.8,
+      estimatedMarketSpend: spend,
+      totalSavingsAmount: 0, // sem dado real não há economia apurada
+      savingsPercentage: 0,
+      isEstimate: true,
       topSavedItems: [
         {
           id: 'bm_1',
@@ -669,7 +670,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.81,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Aperam Tubos / Marcegaglia Brasil',
+          sourceNotes: 'Estimativa — Aperam Tubos / Marcegaglia Brasil',
         },
         {
           id: 'bm_2',
@@ -681,7 +682,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -10.59,
           trend: 'alta',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Bray Controls / MGA Válvulas',
+          sourceNotes: 'Estimativa — Bray Controls / MGA Válvulas',
         },
         {
           id: 'bm_3',
@@ -693,7 +694,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -11.66,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Conforja / Tenaris Brasil',
+          sourceNotes: 'Estimativa — Conforja / Tenaris Brasil',
         },
         {
           id: 'bm_4',
@@ -705,7 +706,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -8.88,
           trend: 'alta',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Aperam / ArcelorMittal Inox Brasil',
+          sourceNotes: 'Estimativa — Aperam / ArcelorMittal Inox Brasil',
         },
         {
           id: 'bm_5',
@@ -717,7 +718,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.09,
           trend: 'queda',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Conexões forjadas nacionais com MTR rastreável',
+          sourceNotes: 'Estimativa — Conexões forjadas nacionais com MTR rastreável',
         },
         {
           id: 'bm_6',
@@ -729,10 +730,10 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.57,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'ESAB / Lincoln Electric Brasil',
+          sourceNotes: 'Estimativa — ESAB / Lincoln Electric Brasil',
         },
       ],
-      aiMarketAnalysisSummary: 'Cotação do Níquel na London Metal Exchange (LME) em US$ 16.420/t com mercado estável. O processo de equalização técnica de propostas permitiu negociar economia média de 9,8% com fornecedores homologados.',
+      aiMarketAnalysisSummary: 'Valores de referência estimados (serviço de benchmark indisponível); não representam cotação nem economia real.',
       commodityIndices: {
         nickelLmeUsdTon: 16420,
         dollarPtaxBrl: 5.72,
