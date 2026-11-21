@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { collection, getDocs, limit, query, where, type QueryConstraint } from 'firebase/firestore';
 import { AlertTriangle, ChevronRight, CircleCheck, Info, RefreshCw, TriangleAlert } from 'lucide-react';
 import { db } from '../../firebase';
+import type { WorkOrder } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import type { NavSection } from '../layout/AppLayout';
 import { getCertificationAlertStatus } from '../construction/FieldPersonnelManager';
 import { computeCollectiveAssetCalculations } from '../../types/collectiveAssets';
-import { buildPendingItems, type PendingData, type PendingSeverity } from '../../services/pendingService';
+import { buildPendingItems, todaySaoPaulo, type PendingData, type PendingSeverity } from '../../services/pendingService';
 
 const MAX_VISIBLE = 8;
 const STYLE: Record<PendingSeverity, { label: string; dot: string; Icon: typeof Info }> = {
@@ -14,45 +15,51 @@ const STYLE: Record<PendingSeverity, { label: string; dot: string; Icon: typeof 
   atencao: { label: 'Atenção', dot: 'text-amber-600 dark:text-amber-400', Icon: TriangleAlert },
   info: { label: 'Acompanhar', dot: 'text-[#0071E3] dark:text-[#0A84FF]', Icon: Info },
 };
-// Used until the org has configured work_order_statuses.
-const FALLBACK_COMPLETED = ['concluido', 'validado', 'concluida', 'encerrada'];
-
-export function mergeCompletedStatusIds(configs: { id: string; isCompleted?: boolean }[]): string[] {
-  const ids = configs.filter((c) => c.isCompleted).map((c) => c.id);
-  return configs.length ? ids : FALLBACK_COMPLETED;
+interface Props {
+  onNavigate: (section: NavSection) => void;
+  workOrders: WorkOrder[];
+  completedStatusIds: string[];
 }
 
-export const PendingCenter: React.FC<{ onNavigate: (section: NavSection) => void }> = ({ onNavigate }) => {
+export const PendingCenter: React.FC<Props> = ({ onNavigate, workOrders, completedStatusIds }) => {
   const { organization } = useAuth();
-  const [data, setData] = useState<PendingData | null>(null);
+  const [data, setData] = useState<Omit<PendingData, 'workOrders' | 'completedStatusIds'> | null>(null);
   const [loading, setLoading] = useState(true);
   const [all, setAll] = useState(false);
+
+  const orgRef = useRef<string | undefined>(undefined);
+  orgRef.current = organization?.id;
 
   const load = useCallback(async () => {
     if (!organization) return;
     setLoading(true);
     const org = organization.id;
     // One source failing (e.g. role without access) must not hide the others.
-    const rows = async (coll: string, field = 'orgId') => {
+    const rows = async (coll: string, field = 'orgId', extra: QueryConstraint[] = [], max = 2000) => {
       try {
-        const s = await getDocs(query(collection(db, coll), where(field, '==', org)));
+        const s = await getDocs(query(collection(db, coll), where(field, '==', org), ...extra, limit(max)));
         return s.docs.map((d) => ({ id: d.id, ...d.data() } as any));
       } catch (e) {
         console.warn(`Central de pendências: ${coll} indisponível`, e);
         return [] as any[];
       }
     };
-    const [payables, nfes, balances, items, workers, assets, cats, movs, svcs, wos, statuses, props] = await Promise.all([
-      rows('finance_payables'), rows('nfe_documents'), rows('stock_balances'), rows('items'), rows('field_workers'),
-      rows('collective_assets'), rows('collective_asset_categories'), rows('collective_asset_movements'), rows('collective_asset_services'),
-      rows('work_orders'), rows('work_order_statuses'), rows('commercial_proposals', 'organizationId'),
+    const [payables, nfes, balances, items, workers, assets, cats, movs, svcs, props] = await Promise.all([
+      rows('finance_payables', 'orgId', [where('status', '==', 'aberto')]),
+      rows('nfe_documents', 'orgId', [where('status', 'in', ['aguardando_classificacao', 'erro_classificacao'])]),
+      rows('stock_balances'), rows('items'), rows('field_workers', 'orgId', [], 500),
+      rows('collective_assets', 'orgId', [], 1000), rows('collective_asset_categories', 'orgId', [], 200),
+      rows('collective_asset_movements', 'orgId', [where('status', 'in', ['EM_USO', 'em_uso', 'ATRASADO', 'atrasado'])], 1000),
+      rows('collective_asset_services', 'orgId', [], 3000),
+      rows('commercial_proposals', 'organizationId', [where('status', 'in', ['enviada', 'negociacao'])], 500),
     ]);
+    if (orgRef.current !== org) return; // org switched while loading: drop stale response
     const itemMap = new Map<string, any>(items.map((i) => [i.id, i]));
     const catMap = new Map<string, any>(cats.map((c) => [c.id, c]));
     const active = new Map<string, any>();
     movs.forEach((m) => { if (['EM_USO', 'em_uso', 'ATRASADO', 'atrasado'].includes(m.status)) active.set(m.assetId, m); });
     setData({
-      hoje: new Date().toISOString().slice(0, 10),
+      hoje: todaySaoPaulo(),
       payables,
       nfes,
       stock: balances.map((b) => {
@@ -67,8 +74,6 @@ export const PendingCenter: React.FC<{ onNavigate: (section: NavSection) => void
         const calc = computeCollectiveAssetCalculations(a, catMap.get(a.categoryId), svcs.filter((s) => s.assetId === a.id), active.get(a.id), undefined as any);
         return { id: a.id, code: a.code, description: a.description, alert: calc.alert };
       }),
-      workOrders: wos,
-      completedStatusIds: mergeCompletedStatusIds(statuses),
       proposals: props,
     });
     setLoading(false);
@@ -76,7 +81,10 @@ export const PendingCenter: React.FC<{ onNavigate: (section: NavSection) => void
 
   useEffect(() => { load(); }, [load]);
 
-  const items = useMemo(() => (data ? buildPendingItems(data) : []), [data]);
+  const items = useMemo(
+    () => (data ? buildPendingItems({ ...data, workOrders: workOrders as PendingData['workOrders'], completedStatusIds }) : []),
+    [data, workOrders, completedStatusIds]
+  );
   const counts = (s: PendingSeverity) => items.filter((i) => i.severity === s).length;
   const shown = all ? items : items.slice(0, MAX_VISIBLE);
 
@@ -92,7 +100,7 @@ export const PendingCenter: React.FC<{ onNavigate: (section: NavSection) => void
           </p>
         </div>
         <button type="button" onClick={load} disabled={loading} aria-label="Atualizar pendências"
-          className="p-2 rounded-xl text-[#6E6E73] hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer">
+          className="min-w-10 min-h-10 inline-flex items-center justify-center rounded-xl text-[#6E6E73] hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

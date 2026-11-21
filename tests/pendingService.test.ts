@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPendingItems, type PendingData } from '../src/services/pendingService';
+import { buildPendingItems, todaySaoPaulo, type PendingData } from '../src/services/pendingService';
 
 const base: PendingData = {
   hoje: '2026-11-21', payables: [], nfes: [], stock: [], certAlerts: [], assets: [], workOrders: [], completedStatusIds: ['concluida'], proposals: [],
@@ -70,4 +70,9 @@ test('orders by severity then oldest date', () => {
     { id: 'soon', status: 'aberto', vencimento: '2026-11-22', valor: 1, fornecedor: { nome: 'A' } },
   ] });
   assert.deepEqual(r.map((i) => i.id), ['pay:late1', 'pay:late2', 'pay:soon']);
+});
+
+test('todaySaoPaulo uses BRT, not UTC', () => {
+  // 23:30 BRT on 21/11 is already 22/11 in UTC
+  assert.equal(todaySaoPaulo(new Date('2026-11-22T02:30:00Z')), '2026-11-21');
 });

@@ -25,6 +25,10 @@ export interface PendingData {
   proposals: { id: string; code: string; clientName: string; status: string; updatedAt?: string }[];
 }
 
+/** Today's date (YYYY-MM-DD) in São Paulo, not UTC (UTC flips the day at 21h BRT). */
+export const todaySaoPaulo = (now = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now);
+
 const RANK: Record<PendingSeverity, number> = { critico: 0, atencao: 1, info: 2 };
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const addDays = (iso: string, d: number) => {
