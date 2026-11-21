@@ -71,110 +71,9 @@ export const PredictiveAnalysisView: React.FC<PredictiveAnalysisViewProps> = ({
   const [selectedAssetPrediction, setSelectedAssetPrediction] = useState<AssetPrediction | null>(null);
   const [generatingOrder, setGeneratingOrder] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
-  const [seedingAssets, setSeedingAssets] = useState(false);
 
-  // Compute realistic fallback assets if organization doesn't have many assets registered
-  const displayAssets = useMemo<Asset[]>(() => {
-    if (assets.length >= 2) return assets;
+  const displayAssets = assets;
 
-    // Default industrial equipment portfolio for Aguero Inox operations
-    const defaultList: Asset[] = [
-      {
-        id: 'ast_calandra_01',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'CAL-01',
-        name: 'Calandra Hidráulica 4 Rolos para Chapas Inox',
-        category: 'Conformação & Caldeiraria',
-        model: 'Faccin 4HEL-2030',
-        serialNumber: 'FC-9941-INX',
-        status: 'operacional',
-        location: 'Galpão 1 - Setor de Caldeiraria',
-        lastMaintenanceDate: '2026-08-15',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-09-01T00:00:00Z',
-      },
-      {
-        id: 'ast_solda_tig_04',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'TIG-04',
-        name: 'Fonte de Soldagem TIG AC/DC Miller Synchrowave 350',
-        category: 'Soldagem Sanitária',
-        model: 'Miller Synchrowave 350 LX',
-        serialNumber: 'ML-77210',
-        status: 'operacional',
-        location: 'Cabine de Solda 4 - Tubulações',
-        lastMaintenanceDate: '2026-09-02',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-09-05T00:00:00Z',
-      },
-      {
-        id: 'ast_dobradeira_cnc',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'DOB-02',
-        name: 'Prensa Dobradeira CNC Sincronizada 150T',
-        category: 'Corte e Dobra',
-        model: 'Newton Prática 150-3000',
-        serialNumber: 'NW-2023-11',
-        status: 'em_manutencao',
-        location: 'Galpão 1 - Linha de Dobra',
-        lastMaintenanceDate: '2026-07-28',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-10-01T00:00:00Z',
-      },
-      {
-        id: 'ast_bomba_sanitaria',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'BMB-102',
-        name: 'Bomba Centrífuga Sanitária Aço Inox 316L',
-        category: 'Utilidades & Fluidos',
-        model: 'Alfa Laval LKH-20',
-        serialNumber: 'AL-5510-SN',
-        status: 'operacional',
-        location: 'Skid de Teste Hidrostático',
-        lastMaintenanceDate: '2026-09-18',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-09-20T00:00:00Z',
-      },
-      {
-        id: 'ast_compressor_parafuso',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'CMP-01',
-        name: 'Compressor Rotativo de Parafuso Atlas Copco GA37',
-        category: 'Energia & Utilidades',
-        model: 'Atlas Copco GA37 VSD+',
-        serialNumber: 'AC-90812-BR',
-        status: 'operacional',
-        location: 'Casa de Força e Ar Comprimido',
-        lastMaintenanceDate: '2026-08-30',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-09-10T00:00:00Z',
-      },
-      {
-        id: 'ast_torno_universal',
-        orgId: organization?.id || '',
-        unitId: units[0]?.id || 'unit_1',
-        tag: 'TRN-03',
-        name: 'Torno Mecânico Universal Nardini Mascote',
-        category: 'Usinagem de Peças',
-        model: 'Nardini MS-205',
-        serialNumber: 'ND-33410',
-        status: 'operacional',
-        location: 'Oficina de Manutenção e Matrizes',
-        lastMaintenanceDate: '2026-09-10',
-        createdAt: '2026-01-10T00:00:00Z',
-        updatedAt: '2026-09-12T00:00:00Z',
-      },
-    ];
-
-    return [...assets, ...defaultList.filter((d) => !assets.some((a) => a.tag === d.tag))];
-  }, [assets, organization?.id, units]);
-
-  // Run Weibull & Exponential Reliability Calculations across all equipment
   const predictions = useMemo<AssetPrediction[]>(() => {
     const today = new Date();
 
@@ -450,34 +349,6 @@ ${pred.commonFailureModes.map((m) => `• ${m}`).join('\n')}`,
     }
   };
 
-  // Seed demo assets into Firestore if user desires real database records
-  const handleSeedAssetsToDatabase = async () => {
-    if (!organization) return;
-    setSeedingAssets(true);
-    try {
-      for (const ast of displayAssets) {
-        await setDoc(doc(db, 'assets', `${organization.id}_${ast.tag}`), {
-          ...ast,
-          id: `${organization.id}_${ast.tag}`,
-          orgId: organization.id,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      await logAudit(
-        'Manutenção Preditiva',
-        'Gravação de Ativos Preditivos',
-        'Ativos industriais da caldeiraria e tubulação salvos no Firestore'
-      );
-      setSuccessToast('Ativos industriais gravados com sucesso no banco de dados!');
-      setTimeout(() => setSuccessToast(null), 4000);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      console.error('Erro ao salvar ativos:', err);
-    } finally {
-      setSeedingAssets(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -513,17 +384,6 @@ ${pred.commonFailureModes.map((m) => `• ${m}`).join('\n')}`,
             </p>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
-            <button
-              onClick={handleSeedAssetsToDatabase}
-              disabled={seedingAssets}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-              title="Sincroniza os equipamentos e calibrações no Firestore"
-            >
-              <RotateCw className={`w-3.5 h-3.5 text-blue-400 ${seedingAssets ? 'animate-spin' : ''}`} />
-              <span>{seedingAssets ? 'Sincronizando...' : 'Calibrar Base no BD'}</span>
-            </button>
-          </div>
         </div>
 
         {/* Global Reliability KPI Strip */}

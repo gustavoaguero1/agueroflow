@@ -14,7 +14,7 @@ export type TravelSeatClass =
 
 export type TravelTimeOfDay = 'todos' | 'madrugada' | 'manha' | 'tarde' | 'noite';
 
-export type TravelPriceStatus = 'confirmado_fonte' | 'estimado_tabela' | 'a_confirmar';
+export type TravelPriceStatus = 'confirmado_fonte' | 'estimado' | 'estimado_tabela' | 'a_confirmar';
 
 export type TravelRequestStatus =
   | 'rascunho'

@@ -881,7 +881,7 @@ export class QueroPassagemConnector implements ITravelConnector {
       'QueroPassagem',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -949,7 +949,7 @@ export class ClickBusConnector implements ITravelConnector {
       'ClickBus',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1020,7 +1020,7 @@ export class BuserConnector implements ITravelConnector {
       'Buser',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1088,7 +1088,7 @@ export class DeOnibusConnector implements ITravelConnector {
       'DeÔnibus',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1165,7 +1165,7 @@ export class AnttDadosAbertosConnector implements ITravelConnector {
       'ANTT Dados Abertos',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1241,7 +1241,7 @@ export class EmbarcaAiConnector implements ITravelConnector {
       'Embarca.ai',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1313,7 +1313,7 @@ export class GuicheVirtualConnector implements ITravelConnector {
       'Guichê Virtual',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1383,7 +1383,7 @@ export class MobiFacilConnector implements ITravelConnector {
       'Mobifácil',
       criteria,
       searchUrl,
-      'confirmado_fonte',
+      'estimado',
       schedules
     );
 
@@ -1411,7 +1411,7 @@ function generatePartnerBenchmarkOffers(
   sourceName: string,
   criteria: TravelSearchCriteria,
   searchUrl: string,
-  priceStatus: 'confirmado_fonte' | 'estimado_tabela' | 'a_confirmar',
+  priceStatus: TravelPriceStatus | 'a_confirmar',
   schedules: Array<{
     carrier: string;
     service: 'Convencional' | 'Executivo' | 'Semi-Leito' | 'Leito' | 'Cama / Leito Cama';
@@ -1739,7 +1739,7 @@ export function generateFlightConnectorOffers(
   criteria: TravelSearchCriteria,
   searchUrl: string,
   multiplier: number = 1.0,
-  priceStatus: TravelPriceStatus = 'confirmado_fonte'
+  priceStatus: TravelPriceStatus = 'estimado'
 ): TravelOffer[] {
   const corridor = resolveFlightCorridorDetails(
     criteria.originAirportCode || criteria.originTerminal || criteria.originCity,
@@ -1903,7 +1903,7 @@ export class LatamAirlinesConnector implements ITravelConnector {
         criteria,
         searchUrl,
         1.0,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -1966,7 +1966,7 @@ export class GolLinhasAereasConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.97,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -2028,7 +2028,7 @@ export class AzulLinhasAereasConnector implements ITravelConnector {
         criteria,
         searchUrl,
         1.02,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -2088,7 +2088,7 @@ export class VoepassConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.94,
-        'confirmado_fonte'
+        'estimado'
       ).slice(0, 2);
 
       return {
@@ -2176,7 +2176,7 @@ export class AnacDadosAbertosConnector implements ITravelConnector {
         changeAndCancelPolicy: 'Diretrizes governamentais de cancelamento e no-show',
         deepLink: searchUrl,
         queriedAt,
-        priceStatus: 'confirmado_fonte',
+        priceStatus: 'estimado',
         flightNumber: 'ANAC AUDIT',
         aircraftModel: 'Média de Frota Comercial Homologada',
         anacTariffBenchmark: corridor.anacBenchmarkFare,
@@ -2244,7 +2244,7 @@ export class GoogleFlightsConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.98,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -3073,7 +3073,7 @@ export function generateLodgingConnectorOffers(
   criteria: TravelSearchCriteria,
   searchUrl: string,
   rateMultiplier: number = 1.0,
-  priceStatus: TravelPriceStatus = 'confirmado_fonte'
+  priceStatus: TravelPriceStatus = 'estimado'
 ): TravelOffer[] {
   const targetCity = criteria.destinationCity || criteria.originCity || 'Campinas';
   const hub = resolveLodgingCityHub(targetCity);
@@ -3245,7 +3245,7 @@ export class BookingLodgingConnector implements ITravelConnector {
         criteria,
         searchUrl,
         1.0,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -3309,7 +3309,7 @@ export class AccorDirectConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.95,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -3367,7 +3367,7 @@ export class AtlanticaHotelsConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.96,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -3430,7 +3430,7 @@ export class HoteisComConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.98,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,
@@ -3526,7 +3526,7 @@ export class FohbBenchmarkConnector implements ITravelConnector {
         changeAndCancelPolicy: 'Tarifa média oficial FOHB para auditoria de orçamentos',
         deepLink: searchUrl,
         queriedAt,
-        priceStatus: 'confirmado_fonte',
+        priceStatus: 'estimado',
         isCombinedTrip: false,
         isLodging: true,
         hotelName: `Média de Mercado FOHB (${hub.city})`,
@@ -3612,7 +3612,7 @@ export class AirbnbWorkConnector implements ITravelConnector {
         criteria,
         searchUrl,
         0.92,
-        'confirmado_fonte'
+        'estimado'
       );
       return {
         sourceId: this.config.id,

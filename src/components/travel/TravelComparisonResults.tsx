@@ -422,6 +422,9 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
               <strong className="text-2xl font-mono font-bold text-emerald-400">
                 R$ {bestOffer.totalAmount.toFixed(2).replace('.', ',')}
               </strong>
+              {bestOffer.priceStatus === 'estimado' && (
+                <span className="text-[10px] text-amber-400 block font-semibold">Estimativa (não é cotação)</span>
+              )}
               <span className="text-[10px] text-slate-400 block">
                 {bestOffer.isLodging
                   ? `(R$ ${(bestOffer.dailyRate || (bestOffer.totalAmount / (bestOffer.nightsCount || 1))).toFixed(2).replace('.', ',')} / diária)`
@@ -1281,6 +1284,9 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
                         <strong className="text-xl font-mono font-bold text-white">
                           R$ {offer.totalAmount.toFixed(2).replace('.', ',')}
                         </strong>
+                        {offer.priceStatus === 'estimado' && (
+                          <span className="text-[10px] text-amber-400 block font-semibold">Estimativa (não é cotação)</span>
+                        )}
                         {offer.isLodging && (
                           <span className="text-[10px] text-slate-400 block">
                             (R$ {(offer.dailyRate || (offer.totalAmount / (offer.nightsCount || 1))).toFixed(2).replace('.', ',')} / diária)
