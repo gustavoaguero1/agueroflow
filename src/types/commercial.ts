@@ -19,7 +19,12 @@ export type CommercialProposalStatus =
   | 'aguardando_revisao'
   | 'aprovada'
   | 'finalizada'
-  | 'rejeitada';
+  | 'rejeitada'
+  // Estágio comercial junto ao cliente (funil de vendas)
+  | 'enviada'
+  | 'negociacao'
+  | 'ganha'
+  | 'perdida';
 
 export interface CommercialClient {
   id: string;
@@ -184,6 +189,13 @@ export interface CommercialProposal {
   approvedBy?: string;
   rejectionReason?: string;
   approvalDate?: string;
+
+  // Funil de vendas
+  probabilidade?: number; // 0-100
+  previsaoFechamento?: string;
+  motivoPerda?: string;
+  workOrderId?: string;
+  statusHistory?: Array<{ status: CommercialProposalStatus; at: string; by: string }>;
 
   history: Array<{
     date: string;

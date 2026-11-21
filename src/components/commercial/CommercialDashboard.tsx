@@ -194,6 +194,10 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
               <option value="aguardando_revisao">Aguardando Revisão</option>
               <option value="aprovada">Aprovada</option>
               <option value="finalizada">Finalizada</option>
+              <option value="enviada">Enviada</option>
+              <option value="negociacao">Em Negociação</option>
+              <option value="ganha">Ganha</option>
+              <option value="perdida">Perdida</option>
             </select>
           </div>
 
@@ -283,12 +287,16 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
                     <td className="py-3 px-4 text-center font-sans">
                       <span
                         className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold ${
-                          prop.status === 'aprovada'
+                          prop.status === 'aprovada' || prop.status === 'ganha'
                             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                             : prop.status === 'parcial'
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                             : prop.status === 'finalizada'
                             ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            : prop.status === 'perdida'
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            : prop.status === 'enviada' || prop.status === 'negociacao'
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
                             : 'bg-slate-800 text-slate-300 border border-slate-700'
                         }`}
                       >

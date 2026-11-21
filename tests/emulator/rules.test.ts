@@ -355,3 +355,9 @@ test('pending center queries (orgId/organizationId == + status in) pass rules fo
   if (props.size !== 1) throw new Error(`proposals size ${props.size}`);
   await assertSucceeds(getDocs(query(collection(db, 'finance_payables'), where('orgId', '==', 'org_a'), where('status', '==', 'aberto'))));
 });
+
+test('counters: member writes own org only', async () => {
+  const db = member();
+  await assertSucceeds(setDoc(doc(db, 'counters/org_a_work_orders'), { orgId: 'org_a', seq: 1 }));
+  await assertFails(setDoc(doc(db, 'counters/org_b_work_orders'), { orgId: 'org_b', seq: 1 }));
+});

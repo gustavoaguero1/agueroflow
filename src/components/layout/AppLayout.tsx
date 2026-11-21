@@ -82,6 +82,7 @@ export type NavSection =
   | 'rh-holerites'
   | 'comercial'
   | 'comercial-painel'
+  | 'comercial-funil'
   | 'comercial-nova'
   | 'comercial-composicao'
   | 'comercial-revisao'
@@ -360,6 +361,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       hasSubmenu: true,
       subItems: [
         { id: 'comercial-painel' as NavSection, label: 'Painel de Propostas' },
+        { id: 'comercial-funil' as NavSection, label: 'Funil de Vendas' },
         { id: 'comercial-nova' as NavSection, label: 'Nova Proposta' },
         { id: 'comercial-composicao' as NavSection, label: 'Composição de Custos' },
         { id: 'comercial-revisao' as NavSection, label: 'Revisão de BOM' },
@@ -517,6 +519,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       case 'comercial':
       case 'comercial-painel':
         return 'Comercial (OrçaÁgil)';
+      case 'comercial-funil':
+        return 'Funil de Vendas';
       case 'comercial-nova':
         return 'Nova Proposta';
       case 'comercial-composicao':

@@ -34,6 +34,7 @@ Owner kinds:
 | constructions | orgId | `orgId ==` | |
 | contracts | orgId | `orgId ==` | |
 | cost_centers | orgId | `orgId ==` | |
+| counters | orgId | getDoc | `{orgId}_work_orders` sequence for OS numbers (written in a transaction by `markProposalWon`) |
 | field_workers | orgId | `orgId ==` | |
 | finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
 | finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller; Admin/Gerente update; Supervisor only aberto→pago (`status`/`pagoEm`/`pagoPor`/`updatedAt`); NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent) |
