@@ -125,14 +125,14 @@ test('duplicatas above vNF block classification; short ones get a saldo parcela'
   assert.deepEqual(ps.map((p) => [p.parcela, p.valor]).sort(), [['001', 500], ['saldo', 85]]);
 });
 
-test('estoque line without catalog item: item created inside the run, reused on retry', async () => {
+test('estoque line without catalog item: item created inside the run, reused on retry without itemId', async () => {
   const noItem = { ...input, lines: [{ ...input.lines[0], itemId: undefined }, input.lines[1]] };
   await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'finance_payables/pay_org_a_K1_001'), { orgId: 'org_b' }));
   await assert.rejects(classifyNfe(db(), noItem)); // fails after stock: item + movement exist
   const id = 'item_nfe_org_a_K1_1';
   assert.equal((await getDoc(doc(db(), `items/${id}`))).data()?.name, 'Chapa');
   await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'finance_payables/pay_org_a_K1_001'), { orgId: 'org_a', status: 'pago' }));
-  await classifyNfe(db(), { ...noItem, lines: [{ ...noItem.lines[0], itemId: id }, noItem.lines[1]] });
+  await classifyNfe(db(), noItem); // UI retry path: still no itemId for the auto-created line
   const items = await getDocs(query(collection(db(), 'items'), where('orgId', '==', 'org_a')));
   assert.equal(items.size, 2); // seeded it1 + one created
   assert.equal((await getDoc(doc(db(), `stock_balances/bal_u_a_${id}`))).data()?.currentBalance, 10);

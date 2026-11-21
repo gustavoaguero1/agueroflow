@@ -275,6 +275,7 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
   const ref = doc(db, 'nfe_documents', input.nfeId);
   const lines = clean(input.lines);
   const runId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const autoItem = new Set<number>(); // stock lines without a catalog item: created in the run under a per-line id
   const nfe = await runTransaction(db, async (tx) => {
     const s = await tx.get(ref);
     const d = s.data() as NfeDocument | undefined;
@@ -286,6 +287,11 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
       const l = lines.find((x) => x.n === it.n);
       if (!l?.categoriaId) throw new Error(`Item ${it.n}: informe a categoria.`);
       if (l.destino === 'estoque' && !l.unitId) throw new Error(`Item ${it.n}: estoque exige unidade (almoxarifado).`);
+      // Resolve the auto-created item id now, so a retry compares against what an earlier attempt registered.
+      if (l.destino === 'estoque' && (!l.itemId || autoItem.has(l.n))) {
+        l.itemId = `item_nfe_${input.orgId}_${d.chave}_${l.n}`;
+        autoItem.add(l.n);
+      }
       // A previous attempt may already have put this line in stock: it must stay there, same item and unit.
       const m = (await tx.get(doc(db, 'stock_movements', movementIdFor(input.orgId, `nfe:${d.chave}:${it.n}`)))).data();
       if (m && (l.destino !== 'estoque' || l.itemId !== m.itemId || l.unitId !== m.unitId)) {
@@ -302,9 +308,9 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
     const byN = new Map((nfe.itens ?? []).map((i) => [i.n, i]));
     for (const l of lines.filter((x) => x.destino === 'estoque')) {
       const it = byN.get(l.n)!;
-      // No catalog match: create the item now (inside the run), with an id per NF-e line so a retry reuses it.
-      if (!l.itemId) l.itemId = (await createCatalogItem(db, input.orgId, it, `item_nfe_${input.orgId}_${nfe.chave}_${l.n}`)).id;
-      const cat = (await getDoc(doc(db, 'items', l.itemId))).data() as Item | undefined;
+      // No catalog match: create the item now (inside the run); create-if-absent, so a retry reuses it.
+      if (autoItem.has(l.n)) await createCatalogItem(db, input.orgId, it, l.itemId);
+      const cat = (await getDoc(doc(db, 'items', l.itemId!))).data() as Item | undefined;
       if (!cat) throw new Error(`Item ${l.n}: item do catálogo não encontrado.`);
       try {
         await applyStockMovement(db, {
