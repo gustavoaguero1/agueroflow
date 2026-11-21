@@ -481,6 +481,7 @@ export interface StockBalance {
   unitId: string;
   itemId: string;
   currentBalance: number;
+  averageCost?: number;
   updatedAt: string;
 }
 
