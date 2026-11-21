@@ -59,6 +59,7 @@ import {
 } from './src/services/ndGeneratorServer';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
+import { nfeRouter } from './server/nfe/nfeStore';
 import { getAdmin, adminStatus } from './server/firebaseAdmin';
 import { effectiveOrg } from './server/orgDefaults';
 import type {
@@ -460,6 +461,7 @@ async function main() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
+  app.use('/api/nfe', nfeRouter);
 
   // Health and Database Status endpoint
   const firestoreDatabaseId = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8')).firestoreDatabaseId;
