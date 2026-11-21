@@ -26,6 +26,7 @@ import {
   Calculator,
   Receipt,
   ShoppingCart,
+  Wallet,
   Sun,
   Moon,
   Bus,
@@ -98,6 +99,10 @@ export type NavSection =
   | 'compras-inteligencia'
   | 'compras-fornecedores'
   | 'compras-recebimento'
+  | 'financeiro'
+  | 'financeiro-notas'
+  | 'financeiro-pagar'
+  | 'financeiro-plano'
   | 'viagens'
   | 'viagens-painel'
   | 'viagens-busca'
@@ -174,6 +179,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     currentSection.startsWith('comercial')
   );
   const [comprasSubmenuOpen, setComprasSubmenuOpen] = useState(currentSection.startsWith('compras'));
+  const [financeiroSubmenuOpen, setFinanceiroSubmenuOpen] = useState(currentSection.startsWith('financeiro'));
   const [viagensSubmenuOpen, setViagensSubmenuOpen] = useState(currentSection.startsWith('viagens'));
   const [marketingSubmenuOpen, setMarketingSubmenuOpen] = useState(
     currentSection.startsWith('marketing')
@@ -381,6 +387,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       ],
     },
     {
+      id: 'financeiro' as NavSection,
+      label: 'Financeiro',
+      icon: Wallet,
+      hasSubmenu: true,
+      subItems: [
+        { id: 'financeiro-notas' as NavSection, label: 'Caixa de Notas' },
+        { id: 'financeiro-pagar' as NavSection, label: 'Contas a Pagar' },
+        { id: 'financeiro-plano' as NavSection, label: 'Plano de Contas' },
+      ],
+    },
+    {
       id: 'viagens' as NavSection,
       label: 'Gestão de Viagens',
       icon: Bus,
@@ -533,6 +550,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Fornecedores';
       case 'compras-recebimento':
         return 'Recebimento & Corrida';
+      case 'financeiro':
+      case 'financeiro-notas':
+        return 'Caixa de Notas (NF-e)';
+      case 'financeiro-pagar':
+        return 'Contas a Pagar';
+      case 'financeiro-plano':
+        return 'Plano de Contas';
       case 'viagens':
       case 'viagens-painel':
         return 'Gestão de Viagens';
@@ -697,6 +721,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               const isRh = item.id === 'rh-salarios';
               const isCommercial = item.id === 'comercial';
               const isCompras = item.id === 'compras';
+              const isFinanceiro = item.id === 'financeiro';
               const isViagens = item.id === 'viagens';
               const isMarketing = item.id === 'marketing';
               const isWhatsAppAuto = item.id === 'whatsapp-automacao';
@@ -715,6 +740,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 ? commercialSubmenuOpen
                 : isCompras
                 ? comprasSubmenuOpen
+                : isFinanceiro
+                ? financeiroSubmenuOpen
                 : isViagens
                 ? viagensSubmenuOpen
                 : isMarketing
@@ -739,6 +766,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 (isRh && currentSection.startsWith('rh-')) ||
                 (isCommercial && currentSection.startsWith('comercial')) ||
                 (isCompras && currentSection.startsWith('compras')) ||
+                (isFinanceiro && currentSection.startsWith('financeiro')) ||
                 (isViagens && currentSection.startsWith('viagens')) ||
                 (isMarketing && currentSection.startsWith('marketing')) ||
                 (isWhatsAppAuto && currentSection.startsWith('whatsapp-'));
@@ -769,6 +797,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                       } else if (isCompras) {
                         setComprasSubmenuOpen(!comprasSubmenuOpen);
                         onNavigate('compras-painel');
+                      } else if (isFinanceiro) {
+                        setFinanceiroSubmenuOpen(!financeiroSubmenuOpen);
+                        onNavigate('financeiro-notas');
                       } else if (isViagens) {
                         setViagensSubmenuOpen(!viagensSubmenuOpen);
                         onNavigate('viagens-painel');

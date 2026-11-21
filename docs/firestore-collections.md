@@ -35,11 +35,16 @@ Owner kinds:
 | contracts | orgId | `orgId ==` | |
 | cost_centers | orgId | `orgId ==` | |
 | field_workers | orgId | `orgId ==` | |
+| finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
+| finance_payables | orgId | `orgId ==` | same roles; NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent) |
+| finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
 | inspections | orgId | `orgId ==` | |
 | item_categories | orgId | `orgId ==` | |
 | items | orgId | `orgId ==` | |
 | lpu_approvals | orgId | `orgId ==` | |
+| nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt` along aguardando_classificacao→classificando→classificada\|erro_classificacao→classificando |
+| nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
 | order_events | orgId (immutable) | `orgId ==` + `orderId ==` | timeline |
 | order_messages | orgId | `orgId ==` + `orderId ==` | |

@@ -243,3 +243,56 @@ test('trusted_devices: own create, org-scoped read', async () => {
   await assertSucceeds(updateDoc(doc(db, 'trusted_devices/d1'), { status: 'revogado' }));
   await assertFails(updateDoc(doc(db, 'trusted_devices/d1'), { userId: 'x' }));
 });
+
+const supervisor = () => as('member_m_sup', { org_a: 'Supervisor' });
+const seedAs = (fn: (db: any) => Promise<unknown>) => env.withSecurityRulesDisabled(async (ctx) => { await fn(ctx.firestore()); });
+
+test('finance collections: members read, Supervisor+ write, Admin/Gerente delete, owner immutable', async () => {
+  for (const c of ['finance_payables', 'finance_categories', 'finance_rules']) {
+    await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', v: 1 }));
+    await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', v: 1 }));
+    await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
+    await assertSucceeds(getDocs(query(collection(member(), c), where('orgId', '==', 'org_a'))));
+    await assertFails(getDoc(doc(member(), `${c}/b`)));
+    await assertFails(setDoc(doc(member(), `${c}/n`), { orgId: 'org_a' }));
+    await assertFails(updateDoc(doc(member(), `${c}/a`), { v: 2 }));
+    await assertSucceeds(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a' }));
+    await assertSucceeds(updateDoc(doc(supervisor(), `${c}/a`), { v: 2 }));
+    await assertFails(setDoc(doc(supervisor(), `${c}/x`), { orgId: 'org_b' }));
+    await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
+    await assertFails(deleteDoc(doc(supervisor(), `${c}/n`)));
+    await assertSucceeds(deleteDoc(doc(gerente(), `${c}/n`)));
+    await assertFails(deleteDoc(doc(as('g', { org_b: 'Gerente' }), `${c}/a`)));
+  }
+});
+
+test('nfe_documents: read by members, server-only create/delete, guarded status transitions', async () => {
+  await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_1'), { orgId: 'org_a', status: 'aguardando_classificacao', valorTotal: 10 }));
+  await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_b_1'), { orgId: 'org_b', status: 'aguardando_classificacao' }));
+  const d = 'nfe_documents/org_a_1';
+  await assertSucceeds(getDoc(doc(member(), d)));
+  await assertSucceeds(getDocs(query(collection(member(), 'nfe_documents'), where('orgId', '==', 'org_a'))));
+  await assertFails(getDoc(doc(member(), 'nfe_documents/org_b_1')));
+  await assertFails(setDoc(doc(gerente(), 'nfe_documents/org_a_2'), { orgId: 'org_a', status: 'aguardando_classificacao' }));
+  await assertFails(deleteDoc(doc(admin(), d)));
+  // other fields / skipped transitions denied
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando', valorTotal: 1 }));
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificada' }));
+  await assertFails(updateDoc(doc(member(), d), { status: 'classificando' })); // Operacional cannot classify
+  await assertFails(updateDoc(doc(as('g', { org_b: 'Gerente' }), d), { status: 'classificando' }));
+  await assertSucceeds(updateDoc(doc(supervisor(), d), { status: 'classificando', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'aguardando_classificacao' }));
+  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'erro_classificacao', erroClassificacao: 'falhou' }));
+  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificando' }));
+  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificada', classificacao: { lines: [] } }));
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando' }));
+  await assertFails(updateDoc(doc(master(), d), { status: 'aguardando_classificacao' }));
+});
+
+test('nfe_sync: members read, writes denied', async () => {
+  await seedAs((db) => setDoc(doc(db, 'nfe_sync/org_a'), { ultNSU: '0' }));
+  await assertSucceeds(getDoc(doc(member(), 'nfe_sync/org_a')));
+  await assertFails(getDoc(doc(as('x', { org_b: 'Admin' }), 'nfe_sync/org_a')));
+  await assertFails(setDoc(doc(admin(), 'nfe_sync/org_a'), { ultNSU: '9' }));
+  await assertFails(setDoc(doc(master(), 'nfe_sync/org_a'), { ultNSU: '9' }));
+});

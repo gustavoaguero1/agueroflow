@@ -24,6 +24,7 @@ import { RhPayrollModule, RhSubSection } from './modules/RhPayrollModule';
 import { CommercialModule, CommercialSubSection } from './modules/CommercialModule';
 import { PurchasingModule } from './modules/PurchasingModule';
 import { PurchasingSubSection } from './types/purchasing';
+import { FinanceModule, FinanceSubSection } from './modules/FinanceModule';
 import { TravelModule } from './modules/TravelModule';
 import { TravelSubSection } from './types/travel';
 import { MarketingModule } from './modules/MarketingModule';
@@ -344,6 +345,11 @@ function MainRouter() {
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
           currentOrgId={organization?.id || 'org_aguero_default'}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Comprador Industrial'}
+        />
+      )}
+      {currentNavSection.startsWith('financeiro') && (
+        <FinanceModule
+          currentSubSection={currentNavSection === 'financeiro' ? 'financeiro-notas' : (currentNavSection as FinanceSubSection)}
         />
       )}
       {(currentNavSection.startsWith('viagens') || currentNavSection === 'viagens') && (
