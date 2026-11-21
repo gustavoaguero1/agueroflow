@@ -20,7 +20,7 @@ export interface FinanceRule {
   updatedAt: string;
 }
 
-export interface Rateio { categoriaId: string; centroCustoId?: string; contractId?: string; valor: number }
+export interface Rateio { categoriaId: string; centroCustoId?: string; contractId?: string; workOrderId?: string; valor: number }
 
 export interface FinancePayable {
   id: string;
@@ -55,6 +55,13 @@ export interface NfeItem {
   valorUnitario: number;
   valorTotal: number;
   ean?: string;
+  // Parsed since the tax extraction; older docs lack them (code falls back to valorTotal).
+  vFrete?: number;
+  vSeg?: number;
+  vDesc?: number;
+  vOutro?: number;
+  impostos?: { vICMS: number; vICMSST: number; vIPI: number; vPIS: number; vCOFINS: number; pICMS?: number; pIPI?: number };
+  custoTotal?: number;
 }
 
 export type NfeStatus = 'resumo' | 'aguardando_classificacao' | 'classificando' | 'classificada' | 'erro_classificacao';
@@ -69,6 +76,16 @@ export interface NfeDocument {
   emitente: { cnpj: string; nome: string };
   destinatario?: { cnpj: string; nome: string };
   valorTotal: number;
+  valorProdutos?: number;
+  valorFrete?: number;
+  valorIcms?: number;
+  valorIpi?: number;
+  valorDesconto?: number;
+  valorSeguro?: number;
+  valorOutros?: number;
+  valorSt?: number;
+  valorPis?: number;
+  valorCofins?: number;
   itens?: NfeItem[];
   duplicatas?: { numero: string; vencimento: string; valor: number }[];
   status: NfeStatus;
@@ -76,7 +93,7 @@ export interface NfeDocument {
   recebidaEm?: string;
   updatedAt?: string;
   erroClassificacao?: string;
-  classificacao?: { lines: ClassifyLine[]; at: string; by: string; purchaseOrderId?: string };
+  classificacao?: { runId?: string; by?: string; startedAt?: { toMillis(): number }; lines?: ClassifyLine[]; at?: string; byName?: string; purchaseOrderId?: string };
 }
 
 export interface ClassifyLine {

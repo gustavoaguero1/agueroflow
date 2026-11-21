@@ -24,6 +24,9 @@ function weightedAvg(oldQty: number, oldAvg: number | undefined, qty: number, co
   return round4((oldQty * oldAvg + qty * cost) / (oldQty + qty));
 }
 
+/** Deterministic movement id for a sourceRef (e.g. `nfe:<chave>:<n>`); transfers append `_out`/`_in`. */
+export const movementIdFor = (orgId: string, sourceRef: string) => `mov_${orgId}_${sourceRef.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
 /** Applies a stock movement atomically (balance + immutable movement docs). */
 export async function applyStockMovement(
   db: Firestore,
@@ -38,7 +41,7 @@ export async function applyStockMovement(
 
   const balId = (u: string) => `bal_${u}_${item.id}`;
   const movId = (suffix: string) =>
-    input.sourceRef ? `mov_${orgId}_${input.sourceRef.replace(/[^A-Za-z0-9_-]/g, '_')}${suffix}` : `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${suffix}`;
+    input.sourceRef ? `${movementIdFor(orgId, input.sourceRef)}${suffix}` : `mov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${suffix}`;
 
   return runTransaction(db, async (tx) => {
     const now = new Date().toISOString();

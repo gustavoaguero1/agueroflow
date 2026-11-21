@@ -2,8 +2,8 @@ import test, { before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { classifyNfe, ensureDefaultCategories, releaseStuckNfe } from '../../src/services/financeService.ts';
+import { collection, doc, getDoc, getDocs, query, setDoc, Timestamp, where } from 'firebase/firestore';
+import { classifyNfe, ensureDefaultCategories, finalizeRun, registeredEntries, releaseStuckNfe } from '../../src/services/financeService.ts';
 
 let env: RulesTestEnvironment;
 before(async () => {
@@ -57,7 +57,7 @@ test('classify twice applies once', async () => {
   assert.equal(n.classificacao.lines.length, 2);
   assert.equal((await getDoc(doc(db(), 'finance_rules/rule_org_a_11111111000111_7219'))).data()?.categoriaId, 'cat_mat');
   const bal = (await getDoc(doc(db(), 'stock_balances/bal_u_a_it1'))).data()!;
-  assert.equal(bal.averageCost, 25.5);
+  assert.equal(bal.averageCost, 26.8784); // 255 × (585 / 555) / 10: freight etc. spread into stock cost
 });
 
 test('payables failure marks error; retry does not duplicate stock', async () => {
@@ -68,6 +68,11 @@ test('payables failure marks error; retry does not duplicate stock', async () =>
   assert.equal(n.status, 'erro_classificacao');
   assert.ok(n.erroClassificacao);
   assert.equal(await balance(), 10);
+  // retry may not move the line already in stock elsewhere
+  await assert.rejects(classifyNfe(db(), { ...input, lines: [{ ...input.lines[0], destino: 'despesa' }, input.lines[1]] }), /entrada em estoque já registrada/);
+  await assert.rejects(classifyNfe(db(), { ...input, lines: [{ ...input.lines[0], unitId: 'u_b' }, input.lines[1]] }), /entrada em estoque já registrada/);
+  assert.equal((await nfe()).status, 'erro_classificacao');
+  assert.deepEqual([...(await registeredEntries(db(), 'org_a', n as any))], [[1, { itemId: 'it1', unitId: 'u_a' }]]);
   await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'finance_payables/pay_org_a_K1_001'), { orgId: 'org_a', valor: 292.5, status: 'pago' }));
   await classifyNfe(db(), input);
   n = await nfe();
@@ -79,14 +84,45 @@ test('payables failure marks error; retry does not duplicate stock', async () =>
   assert.equal((await getDoc(doc(db(), 'finance_payables/pay_org_a_K1_001'))).data()?.status, 'pago'); // never overwritten
 });
 
+const stuck = () => env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `nfe_documents/${NFE}`), {
+  status: 'classificando', classificacao: { runId: 'old', by: 'other', startedAt: Timestamp.fromMillis(Date.now() - 3 * 60_000) },
+}, { merge: true }));
+
 test('invalid lines rejected before the guard; stuck classificando can be released', async () => {
   await assert.rejects(classifyNfe(db(), { ...input, lines: [{ ...input.lines[0], unitId: undefined }, input.lines[1]] }), /estoque exige/);
   assert.equal((await nfe()).status, 'aguardando_classificacao');
-  await updateDoc(doc(db(), `nfe_documents/${NFE}`), { status: 'classificando' });
+  await stuck();
   await assert.rejects(classifyNfe(db(), input), /Nota já classificada/);
+  await assert.rejects(releaseStuckNfe(db('Supervisor'), NFE)); // Admin/Gerente only
   await releaseStuckNfe(db(), NFE);
   await classifyNfe(db(), input);
   assert.equal((await nfe()).status, 'classificada');
+});
+
+test('stale run cannot finalize after release', async () => {
+  await stuck();
+  await releaseStuckNfe(db(), NFE);
+  assert.equal(await finalizeRun(db(), NFE, 'old', { status: 'classificada' }), false);
+  assert.equal((await nfe()).status, 'erro_classificacao');
+  await classifyNfe(db(), input); // new run takes over
+  assert.equal(await finalizeRun(db(), NFE, 'old', { status: 'erro_classificacao', erroClassificacao: 'x' }), false);
+  const n = await nfe();
+  assert.equal(n.status, 'classificada');
+  assert.equal(n.erroClassificacao, undefined);
+});
+
+test('duplicatas above vNF block classification; short ones get a saldo parcela', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `nfe_documents/${NFE}`), {
+    duplicatas: [{ numero: '001', vencimento: '2026-12-10', valor: 600 }],
+  }, { merge: true }));
+  await assert.rejects(classifyNfe(db(), input), /a mais que o total/);
+  assert.equal((await nfe()).status, 'aguardando_classificacao');
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), `nfe_documents/${NFE}`), {
+    duplicatas: [{ numero: '001', vencimento: '2026-12-10', valor: 500 }],
+  }, { merge: true }));
+  await classifyNfe(db(), input);
+  const ps = await payables();
+  assert.deepEqual(ps.map((p) => [p.parcela, p.valor]).sort(), [['001', 500], ['saldo', 85]]);
 });
 
 test('default chart created once', async () => {

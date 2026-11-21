@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -247,8 +247,8 @@ test('trusted_devices: own create, org-scoped read', async () => {
 const supervisor = () => as('member_m_sup', { org_a: 'Supervisor' });
 const seedAs = (fn: (db: any) => Promise<unknown>) => env.withSecurityRulesDisabled(async (ctx) => { await fn(ctx.firestore()); });
 
-test('finance collections: members read, Supervisor+ write, Admin/Gerente delete, owner immutable', async () => {
-  for (const c of ['finance_payables', 'finance_categories', 'finance_rules']) {
+test('finance categories/rules: members read, Supervisor+ write, Admin/Gerente delete, owner immutable', async () => {
+  for (const c of ['finance_categories', 'finance_rules']) {
     await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', v: 1 }));
     await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', v: 1 }));
     await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
@@ -266,27 +266,61 @@ test('finance collections: members read, Supervisor+ write, Admin/Gerente delete
   }
 });
 
+test('finance_payables: createdBy is the caller; Supervisor only settles aberto → pago; Admin/Gerente edit', async () => {
+  const c = 'finance_payables';
+  await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', valor: 10, status: 'aberto', createdBy: 'x' }));
+  await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', valor: 10, status: 'aberto' }));
+  await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
+  await assertFails(getDoc(doc(member(), `${c}/b`)));
+  await assertFails(setDoc(doc(member(), `${c}/n`), { orgId: 'org_a', createdBy: 'member_m_op' }));
+  await assertFails(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a', createdBy: 'someone' }));
+  await assertSucceeds(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a', createdBy: 'member_m_sup', status: 'aberto' }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { valor: 1 }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', valor: 1 }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'cancelado' }));
+  await assertSucceeds(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_sup', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'aberto' }));
+  await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { status: 'aberto', valor: 12 }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
+  await assertFails(updateDoc(doc(member(), `${c}/a`), { status: 'pago' }));
+  await assertFails(deleteDoc(doc(supervisor(), `${c}/n`)));
+  await assertSucceeds(deleteDoc(doc(admin(), `${c}/n`)));
+});
+
 test('nfe_documents: read by members, server-only create/delete, guarded status transitions', async () => {
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_1'), { orgId: 'org_a', status: 'aguardando_classificacao', valorTotal: 10 }));
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_b_1'), { orgId: 'org_b', status: 'aguardando_classificacao' }));
   const d = 'nfe_documents/org_a_1';
+  const runBy = (uid: string) => ({ classificacao: { runId: 'r', by: uid, startedAt: serverTimestamp() } });
   await assertSucceeds(getDoc(doc(member(), d)));
   await assertSucceeds(getDocs(query(collection(member(), 'nfe_documents'), where('orgId', '==', 'org_a'))));
   await assertFails(getDoc(doc(member(), 'nfe_documents/org_b_1')));
   await assertFails(setDoc(doc(gerente(), 'nfe_documents/org_a_2'), { orgId: 'org_a', status: 'aguardando_classificacao' }));
   await assertFails(deleteDoc(doc(admin(), d)));
-  // other fields / skipped transitions denied
-  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando', valorTotal: 1 }));
+  // other fields / skipped transitions / foreign run owner denied
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando', valorTotal: 1, ...runBy('member_m_ger') }));
   await assertFails(updateDoc(doc(gerente(), d), { status: 'classificada' }));
-  await assertFails(updateDoc(doc(member(), d), { status: 'classificando' })); // Operacional cannot classify
-  await assertFails(updateDoc(doc(as('g', { org_b: 'Gerente' }), d), { status: 'classificando' }));
-  await assertSucceeds(updateDoc(doc(supervisor(), d), { status: 'classificando', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(member(), d), { status: 'classificando', ...runBy('member_m_op') })); // Operacional cannot classify
+  await assertFails(updateDoc(doc(as('g', { org_b: 'Gerente' }), d), { status: 'classificando', ...runBy('g') }));
+  await assertFails(updateDoc(doc(supervisor(), d), { status: 'classificando', ...runBy('someone') }));
+  await assertSucceeds(updateDoc(doc(supervisor(), d), { status: 'classificando', updatedAt: 'x', ...runBy('member_m_sup') }));
   await assertFails(updateDoc(doc(gerente(), d), { status: 'aguardando_classificacao' }));
-  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'erro_classificacao', erroClassificacao: 'falhou' }));
-  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificando' }));
-  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificada', classificacao: { lines: [] } }));
-  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando' }));
+  // a fresh run belongs to its owner: a manager cannot release or finish it yet
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'erro_classificacao', erroClassificacao: 'x' }));
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificada' }));
+  await assertSucceeds(updateDoc(doc(supervisor(), d), { status: 'erro_classificacao', erroClassificacao: 'falhou' }));
+  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificando', ...runBy('member_m_ger') }));
+  await assertSucceeds(updateDoc(doc(gerente(), d), { status: 'classificada', classificacao: { runId: 'r', by: 'member_m_ger', lines: [] } }));
+  await assertFails(updateDoc(doc(gerente(), d), { status: 'classificando', ...runBy('member_m_ger') }));
   await assertFails(updateDoc(doc(master(), d), { status: 'aguardando_classificacao' }));
+});
+
+test('nfe_documents: stale run (≥ 2 min, server time) released by Admin/Gerente only', async () => {
+  const old = Timestamp.fromMillis(Date.now() - 3 * 60_000);
+  await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_s'), { orgId: 'org_a', status: 'classificando', classificacao: { runId: 'r', by: 'other', startedAt: old } }));
+  const rel = { status: 'erro_classificacao', erroClassificacao: 'interrompida' };
+  await assertFails(updateDoc(doc(supervisor(), 'nfe_documents/org_a_s'), rel));
+  await assertSucceeds(updateDoc(doc(gerente(), 'nfe_documents/org_a_s'), rel));
 });
 
 test('nfe_sync: members read, writes denied', async () => {

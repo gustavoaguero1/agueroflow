@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   suggestClassification, cfopDefault, buildPayables, payableKpis, matchCatalogItem, catId, DEFAULT_CATEGORIES,
+  stockUnitCost, parcelasOf, duplicatasExcess, autoLines,
 } from '../src/services/financeService.ts';
 
 const nfe = {
@@ -86,4 +87,62 @@ test('matchCatalogItem by EAN then normalized description', () => {
   assert.equal(matchCatalogItem(items, { ean: '7891234567895', descricao: 'Chapa inox 304 2mm' } as any)?.id, 'b');
   assert.equal(matchCatalogItem(items, { ean: 'SEM GTIN', descricao: 'CHAPA  INÓX 304 2MM' } as any)?.id, 'a');
   assert.equal(matchCatalogItem(items, { descricao: 'nada' } as any), undefined);
+});
+
+test('stockUnitCost fallback (no custoTotal) spreads freight/discount (vNF vs Σ vProd)', () => {
+  // vProd 100 + 300, vFrete 30, vDesc 10 → vNF 420; factor 1.05
+  const n = { valorTotal: 420, itens: [{ n: 1, quantidade: 4, valorTotal: 100 }, { n: 2, quantidade: 3, valorTotal: 300 }] } as any;
+  assert.equal(stockUnitCost(n, n.itens[0]), 26.25);
+  assert.equal(stockUnitCost(n, n.itens[1]), 105);
+  assert.equal(stockUnitCost({ valorTotal: 0, itens: [{ n: 1, quantidade: 2, valorTotal: 0 }] } as any, { n: 1, quantidade: 2, valorTotal: 0 } as any), 0);
+});
+
+test('parcelas: balancing saldo when duplicatas fall short of vNF; excess detected', () => {
+  const short = { ...nfe, duplicatas: [{ numero: '001', vencimento: '2026-12-10', valor: 292.5 }] };
+  assert.deepEqual(parcelasOf(short), [
+    { parcela: '001', valor: 292.5, vencimento: '2026-12-10' }, { parcela: 'saldo', valor: 292.5, vencimento: '2026-11-10' },
+  ]);
+  const p = buildPayables(short, lines, opts);
+  assert.equal(p.reduce((s, x) => s + x.valor, 0), 585);
+  assert.equal(p[1].id, 'pay_o_3526_saldo');
+  assert.equal(duplicatasExcess(nfe), 0);
+  assert.equal(parcelasOf(nfe).length, 2);
+  assert.equal(duplicatasExcess({ ...nfe, duplicatas: [{ numero: '1', vencimento: '2026-12-10', valor: 600 }] }), 15);
+});
+
+test('rateio carries workOrderId', () => {
+  const p = buildPayables(nfe, lines.map((l: any, i: number) => ({ ...l, workOrderId: `wo${i}` })), opts);
+  assert.deepEqual(p[0].rateio!.map((r) => r.workOrderId).sort(), ['wo0', 'wo1']);
+});
+
+test('stockUnitCost and rateio use the parsed custoTotal', () => {
+  const n = { ...nfe, itens: [{ n: 1, quantidade: 10, valorTotal: 255, custoTotal: 260 }, { n: 2, quantidade: 2, valorTotal: 300, custoTotal: 325 }] };
+  assert.equal(stockUnitCost(n, n.itens[0]), 26);
+  assert.equal(stockUnitCost(n, n.itens[1]), 162.5);
+  const p = buildPayables(n, lines, opts);
+  assert.equal(p[0].rateio!.find((r) => r.categoriaId === 'mat')!.valor, 130); // 292.50 × 260 / 585
+});
+
+test('autoLines pre-fills destino, categoria, catalog item and unit (rule → CFOP → default category)', () => {
+  const n = {
+    emitente: { cnpj: '11111111000111', nome: 'F' },
+    itens: [
+      { n: 1, descricao: 'Chapa inox 304 2mm', ncm: '7219', cfop: '5102', ean: '' },
+      { n: 2, descricao: 'Eletrodo', ncm: '8311', cfop: '5102' },
+      { n: 3, descricao: 'Luva', ncm: '6116', cfop: '5556' },
+      { n: 4, descricao: 'Frete', ncm: '0000', cfop: '5933' },
+    ],
+  } as any;
+  const rules = [rule('cnpj_ncm:11111111000111_8311', 'cat_o_consumiveis-solda-corte')];
+  rules[0].destino = 'consumo';
+  const cats = ['cat_o_materiais-diretos', 'cat_o_consumiveis-solda-corte', 'cat_o_administrativo'];
+  const ls = autoLines(n, rules, [{ id: 'it1', name: 'Chapa Inox 304 2mm' }], cats, 'o', 'u1');
+  assert.deepEqual(ls, [
+    { n: 1, destino: 'estoque', categoriaId: 'cat_o_materiais-diretos', itemId: 'it1', unitId: 'u1' },
+    { n: 2, destino: 'consumo', categoriaId: 'cat_o_consumiveis-solda-corte' },
+    { n: 3, destino: 'consumo', categoriaId: 'cat_o_materiais-diretos' },
+    { n: 4, destino: 'despesa', categoriaId: 'cat_o_administrativo' },
+  ]);
+  // no unit to stock into → consumo
+  assert.equal(autoLines(n, [], [], cats, 'o', '')[0].destino, 'consumo');
 });

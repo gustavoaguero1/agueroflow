@@ -38,7 +38,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
     && (!f.categoriaId || p.categoriaId === f.categoriaId || p.rateio?.some((r) => r.categoriaId === f.categoriaId))
     && (!f.contractId || p.contractId === f.contractId || p.rateio?.some((r) => r.contractId === f.contractId)));
 
-  const pay = (p: FinancePayable) => updateDoc(doc(db, 'finance_payables', p.id), { status: 'pago', pagoEm: today() })
+  const pay = (p: FinancePayable) => updateDoc(doc(db, 'finance_payables', p.id), { status: 'pago', pagoEm: today(), pagoPor: user?.uid ?? '', updatedAt: new Date().toISOString() })
     .catch((e) => setError(`Falha ao marcar como pago: ${e.message}`));
 
   const saveManual = async (e: React.FormEvent) => {
