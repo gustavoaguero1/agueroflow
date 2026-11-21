@@ -6,6 +6,7 @@ type H = Pick<AdminHandles, 'db'>;
 type Args = Record<string, any>;
 
 const TZ = 'America/Sao_Paulo';
+const spDate = (iso?: string) => (iso ? (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : new Date(iso).toLocaleDateString('sv', { timeZone: TZ })) : '');
 const todaySP = () => new Date().toLocaleDateString('sv', { timeZone: TZ });
 const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -55,7 +56,7 @@ const tools: Record<string, (h: H, orgId: string, a: Args) => Promise<object>> =
     const done = st.length ? st.filter((s) => s.isCompleted).map((s) => s.id.replace(`${orgId}_`, '')) : ['concluido', 'validado', 'concluida', 'encerrada'];
     const today = todaySP();
     const open = wos.filter((w) => !done.includes(w.status));
-    const late = open.filter((w) => w.scheduledEndDate && w.scheduledEndDate.slice(0, 10) < today);
+    const late = open.filter((w) => w.scheduledEndDate && spDate(w.scheduledEndDate) < today);
     const shown = (a.atrasadas ? late : open).sort((x, y) => (x.scheduledEndDate || '9').localeCompare(y.scheduledEndDate || '9')).slice(0, 5)
       .map((w) => ({ numero: w.orderNumber, titulo: w.title, status: w.status, prazo: w.scheduledEndDate }));
     return { abertas: open.length, atrasadas: late.length, lista: shown };
@@ -78,8 +79,20 @@ const tools: Record<string, (h: H, orgId: string, a: Args) => Promise<object>> =
 export async function runAgentTool(h: H, orgId: string, name: string, args: Args = {}): Promise<object> {
   const fn = tools[name];
   if (!fn) return { erro: `ferramenta desconhecida: ${name}` };
-  try { return await fn(h, orgId, args ?? {}); } catch (e) { return { erro: `dados indisponíveis (${name}): ${e instanceof Error ? e.message : String(e)}` }; }
+  try { return await fn(h, orgId, args ?? {}); } catch (e) { console.warn(`[agentTools] ${name}:`, e); return { erro: `dados indisponíveis (${name})` }; }
 }
+
+/** WhatsApp gate: ERP data only for the connected owner or an explicitly authorized phone. */
+export function canUseErpTools(o: { isOwner: boolean; senderDigits: string; authorizedPhones: string[] }): boolean {
+  return o.isOwner || (!!o.senderDigits && o.authorizedPhones.includes(o.senderDigits));
+}
+
+/** Web gate: master or Admin/Gerente/Supervisor in the org. */
+export function canQueryErp(user: { master: boolean; orgs: Record<string, string> } | undefined, orgId: string): boolean {
+  return !!user && (user.master || ['Admin', 'Gerente', 'Supervisor'].includes(user.orgs[orgId]));
+}
+
+export const ERP_QUESTION = /\b(contas?|pagar|vencid[oa]s?|vencendo|notas?|nf-?e|estoque|os|ordens?|servi[cç]os?|nr-?\d*|certifica[cç][aã]o|funil|propostas?|comercial|atrasad[oa]s?)\b/i;
 
 export type AgentGen = (p: { contents: any[]; config: any }) => Promise<any>;
 const SYSTEM = `Você é o @aguero, assistente do ERP AgueroFlow no WhatsApp. Responda em português do Brasil, de forma curta, com formatação WhatsApp (*negrito*, listas curtas com •). Use as ferramentas para consultar dados da empresa. Cite APENAS números retornados pelas ferramentas; nunca invente. Se uma ferramenta retornar erro, diga qual dado está indisponível.`;
@@ -98,7 +111,7 @@ export async function answerWithTools(
     if (!calls.length) return (res.text || '').trim();
     contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((functionCall) => ({ functionCall })) });
     const parts = [];
-    for (const c of calls) parts.push({ functionResponse: { name: c.name, response: await runAgentTool(h, orgId, c.name, c.args) } });
+    for (const c of calls.slice(0, 6)) parts.push({ functionResponse: { name: c.name, response: await runAgentTool(h, orgId, c.name, c.args) } });
     contents.push({ role: 'user', parts });
   }
   // Rounds exhausted: force a text answer from what was gathered.

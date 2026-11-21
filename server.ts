@@ -63,7 +63,7 @@ import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
 import { getAdmin, adminStatus } from './server/firebaseAdmin';
 import { effectiveOrg } from './server/orgDefaults';
-import { answerWithTools } from './server/agentTools';
+import { answerWithTools, canUseErpTools, canQueryErp, ERP_QUESTION } from './server/agentTools';
 import type {
   WhatsAppNdRecord,
   WhatsAppNdRule,
@@ -848,11 +848,15 @@ async function main() {
 
     try {
       // ERP tools: no client context supplied (or explicit flag) -> answer from live org data.
-      const toolOrg = req.orgId ?? (req.user?.orgs ? (Object.keys(req.user.orgs).length === 1 ? Object.keys(req.user.orgs)[0] : undefined) : undefined);
+      const toolOrg = req.orgId ?? (req.user?.orgs && Object.keys(req.user.orgs).length === 1 ? Object.keys(req.user.orgs)[0] : undefined);
       const h = getAdmin();
-      if (h && toolOrg && (useTools === true || !context)) {
-        const text = await answerWithTools(h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [], async (p) => (await generateContentWithFallback(p)).response);
-        if (text) return res.json({ reply: text, timestamp: new Date().toISOString() });
+      if (h && toolOrg && (useTools === true || !context) && canQueryErp(req.user, toolOrg)) {
+        try {
+          const text = await answerWithTools(h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [], async (p) => (await generateContentWithFallback(p)).response);
+          if (text) return res.json({ reply: text, timestamp: new Date().toISOString() });
+        } catch (e) {
+          console.warn('[AI chat tools] fallback para chat normal:', e);
+        }
       }
       // Build grounded operational system instructions
       const systemInstruction = `Você é o "AgueroFlow IA", o assistente corporativo de inteligência operacional integrado à plataforma AgueroFlow — Gestão Operacional.
@@ -6663,7 +6667,8 @@ Classifique e extraia em JSON estrito:
         // Company-data questions (read-only ERP tools); falls through to the open-domain assistant when empty.
         const erpH = getAdmin();
         if (erpH && process.env.GEMINI_API_KEY && !effectiveImageBase64 && !audioTranscript &&
-            /\b(contas?|pagar|vencid[oa]s?|vencendo|notas?|nf-?e|estoque|os|ordens?|servi[cç]os?|nr-?\d*|certifica[cç][aã]o|funil|propostas?|comercial|atrasad[oa]s?)\b/i.test(userQuestion)) {
+            canUseErpTools({ isOwner, senderDigits, authorizedPhones: (whatsAppReceiptsConfig.authorizedPhones || []).map((p: string) => normalizeWhatsAppPhone(p)) }) &&
+            ERP_QUESTION.test(userQuestion)) {
           try {
             const text = await answerWithTools(erpH, effectiveOrg(undefined), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 0 })).response);
             if (text) { aiResult = { intent: 'answer', replyText: text }; erpAnswered = true; }
@@ -9505,6 +9510,21 @@ DIRETRIZES ESSENCIAIS:
         replyText: result.replyText,
         pendingDraft: null,
       });
+    }
+
+    // Owner panel: ERP questions go straight to the read-only tools (route is behind requireAuth).
+    const erpPanelOrg = effectiveOrg(undefined);
+    if (process.env.GEMINI_API_KEY && !pendingChatRuleDraft && actionMode !== 'confirm_draft' && actionMode !== 'cancel_draft' &&
+        ERP_QUESTION.test(effectiveText) && canQueryErp(req.user, erpPanelOrg) && getAdmin()) {
+      try {
+        const text = await answerWithTools(getAdmin()!, erpPanelOrg, effectiveText, [], async (p) => (await generateContentWithFallback(p)).response);
+        if (text) {
+          const botEntry = pushAiChatEntry({ role: 'assistant', text });
+          return res.json({ success: true, reply: botEntry, rules: whatsAppAiRules, scheduledJobs: whatsAppScheduledJobs, chatHistory: whatsAppAiChat, pendingDraft: pendingChatRuleDraft });
+        }
+      } catch (e) {
+        console.warn('[WA panel ERP tools] fallback:', e);
+      }
     }
 
     let aiParsed: any = null;
