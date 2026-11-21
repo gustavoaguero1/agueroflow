@@ -19,8 +19,8 @@ export interface StockMovementInput {
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
-function weightedAvg(oldQty: number, oldAvg: number, qty: number, cost: number) {
-  if (oldQty <= 0 || oldAvg === 0) return round4(cost); // uncosted stock: incoming cost becomes the average
+function weightedAvg(oldQty: number, oldAvg: number | undefined, qty: number, cost: number) {
+  if (oldQty <= 0 || oldAvg == null) return round4(cost); // uncosted stock: incoming cost becomes the average
   return round4((oldQty * oldAvg + qty * cost) / (oldQty + qty));
 }
 
@@ -44,7 +44,7 @@ export async function applyStockMovement(
     const now = new Date().toISOString();
     const readBal = async (u: string) => {
       const s = await tx.get(doc(db, 'stock_balances', balId(u)));
-      return { qty: (s.data()?.currentBalance as number) ?? 0, avg: (s.data()?.averageCost as number) ?? 0 };
+      return { qty: (s.data()?.currentBalance as number) ?? 0, avg: (s.data()?.averageCost ?? undefined) as number | undefined }; // absent = legacy/uncosted; 0 is a real cost
     };
     const ids = type === 'transferencia' ? [movId('_out'), movId('_in')] : [movId('')];
     if (input.sourceRef) {
@@ -55,10 +55,10 @@ export async function applyStockMovement(
     const origin = await readBal(unitId);
     const dest = type === 'transferencia' ? await readBal(toUnitId!) : null;
 
-    const writeBal = (u: string, balance: number, avg: number) =>
-      tx.set(doc(db, 'stock_balances', balId(u)), {
+    const writeBal = (u: string, balance: number, avg: number | undefined) =>
+      tx.set(doc(db, 'stock_balances', balId(u)), clean({
         id: balId(u), orgId, unitId: u, itemId: item.id, currentBalance: balance, averageCost: avg, updatedAt: now,
-      });
+      }));
     const writeMov = (id: string, u: string, t: StockMovementType, balanceAfter: number, why: string) =>
       tx.set(doc(db, 'stock_movements', id), clean<StockMovement>({
         id, orgId, unitId: u, itemId: item.id, itemSku: item.sku, itemName: item.name, type: t, quantity: qty,
@@ -67,7 +67,7 @@ export async function applyStockMovement(
       }));
 
     if (type === 'entrada') {
-      const avg = unitCost != null ? weightedAvg(origin.qty, origin.avg, qty, unitCost) : origin.avg;
+      const avg = unitCost !== undefined ? weightedAvg(origin.qty, origin.avg, qty, unitCost) : origin.avg;
       const after = origin.qty + qty;
       writeBal(unitId, after, avg);
       writeMov(ids[0], unitId, type, after, reason);
@@ -87,7 +87,7 @@ export async function applyStockMovement(
     if (dest) {
       const destAfter = dest.qty + qty;
       // origin uncosted: keep destination average untouched
-      writeBal(toUnitId!, destAfter, origin.avg === 0 ? dest.avg : weightedAvg(dest.qty, dest.avg, qty, origin.avg));
+      writeBal(toUnitId!, destAfter, origin.avg == null ? dest.avg : weightedAvg(dest.qty, dest.avg, qty, origin.avg));
       writeMov(ids[1], toUnitId!, 'entrada', destAfter, `Transferência recebida. ${reason}`.trim());
     }
     return { balanceAfter: after, movementIds: ids };

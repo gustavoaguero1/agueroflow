@@ -79,3 +79,19 @@ test('uncosted stock takes incoming cost as average', async () => {
   await applyStockMovement(db(), { ...base, unitId: 'u_c', type: 'transferencia', quantity: 1, toUnitId: 'u_b' });
   assert.equal((await bal('u_b')).averageCost, 5);
 });
+
+test('zero-cost stock averages correctly', async () => {
+  await applyStockMovement(db(), { ...base, type: 'entrada', quantity: 10, unitCost: 0 });
+  await applyStockMovement(db(), { ...base, type: 'entrada', quantity: 10, unitCost: 5 });
+  assert.equal((await bal('u_a')).averageCost, 2.5);
+});
+
+test('legacy balance without averageCost takes incoming cost', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'stock_balances/bal_u_a_it1'), { id: 'bal_u_a_it1', orgId: 'org_a', unitId: 'u_a', itemId: 'it1', currentBalance: 10, updatedAt: 'x' });
+  });
+  await applyStockMovement(db(), { ...base, type: 'entrada', quantity: 5 });
+  assert.equal((await bal('u_a')).averageCost, undefined);
+  await applyStockMovement(db(), { ...base, type: 'entrada', quantity: 5, unitCost: 4 });
+  assert.equal((await bal('u_a')).averageCost, 4);
+});
