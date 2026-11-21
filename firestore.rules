@@ -43,7 +43,8 @@ service cloud.firestore {
     // OS number sequence: members create it once (seq >= 1) and may only bump it by 1; never reset or delete.
     match /counters/{docId} {
       allow read: if canRead(resource);
-      allow create: if (isMaster() || ownerOk(request.resource.data)) && request.resource.data.get('seq', 0) >= 1;
+      allow create: if (isMaster() || ownerOk(request.resource.data)) && request.resource.data.get('seq', 0) >= 1
+        && (isMaster() || docId == request.resource.data.get('orgId', '') + '_work_orders'); // deterministic id: no squatting another org's counter
       allow update: if sameOwner() && (isMaster() || ownerOk(resource.data))
         && request.resource.data.seq == resource.data.seq + 1;
     }
@@ -118,7 +119,10 @@ service cloud.firestore {
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
       allow read: if (orgScoped() || immutable()) && canRead(resource);
-      allow create: if (orgScoped() || immutable()) && canCreate();
+      // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
+      function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
+      function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk();
       allow update: if orgScoped() && canUpdate();
       allow delete: if orgScoped() && canDelete();
 
@@ -134,7 +138,7 @@ service cloud.firestore {
           && request.resource.data.get('pagoPor', '') == request.auth.uid;
       }
       allow read: if finance() && canRead(resource);
-      allow create: if finance() && canCreate() && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      allow create: if finance() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && (!isPayable() || request.resource.data.get('createdBy', '') == request.auth.uid);
       allow update: if finance() && canUpdate()
         && (isPayable() ? (financeRole(resource.data, ['Admin', 'Gerente']) || supervisorPays())

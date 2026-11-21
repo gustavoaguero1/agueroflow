@@ -605,7 +605,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
       const autoNumber = formNumber.trim() === previewNumber;
       await runTransaction(db, async (tx) => {
         if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
-        tx.set(doc(db, 'work_orders', orderId), newOrder);
+        tx.set(doc(db, 'work_orders', orderId), JSON.parse(JSON.stringify(newOrder))); // Firestore rejects undefined fields
       });
 
       // Record creation event in timeline

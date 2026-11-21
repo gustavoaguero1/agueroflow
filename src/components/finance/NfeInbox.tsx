@@ -18,7 +18,7 @@ const STATUS: Record<NfeStatus, { label: string; cls: string }> = {
   erro_classificacao: { label: 'Erro na classificação', cls: 'bg-red-950/70 text-red-400 border-red-800/50' },
 };
 const MAX_BYTES = 1_000_000; // same limit as the server
-const BATCH = 20;
+const BATCH = 10;
 
 type SyncStatus = { configured: boolean; lastRunAt?: string; nextRunAt?: string; lastStatus?: string; ambiente?: string; error?: string };
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR') : '—');

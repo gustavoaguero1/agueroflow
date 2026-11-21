@@ -218,17 +218,18 @@ export async function ensureDefaultCategories(db: Firestore, orgId: string): Pro
  * Adds an NF-e line to the catalog with the shape ItemsServicesModule writes. With `id` it is create-if-absent
  * (classification retries reuse the item created by an earlier attempt).
  */
-export async function createCatalogItem(db: Firestore, orgId: string, it: NfeItem, fixedId?: string): Promise<Item & { ean?: string }> {
+export async function createCatalogItem(db: Firestore, orgId: string, it: NfeItem, nfe: Pick<NfeDocument, 'valorTotal' | 'itens'>, fixedId?: string): Promise<Item & { ean?: string }> {
   const now = new Date().toISOString();
   const id = fixedId ?? `item_peca_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   if (fixedId) {
     const existing = (await getDoc(doc(db, 'items', id))).data();
     if (existing) return existing as Item;
   }
+  const cost = stockUnitCost(nfe, it);
   const item = clean<Item & { ean?: string }>({
     id, orgId, sku: it.codigo || id, code: it.codigo || undefined, name: it.descricao, description: `NCM ${it.ncm}`,
     type: 'peca', category: 'Sem categoria', unitOfMeasure: (it.unidade || 'UN').toUpperCase(), status: 'ACTIVE', active: true,
-    referencePrice: it.valorUnitario, averageCost: it.valorUnitario, minStock: 0, maxStock: 0,
+    referencePrice: cost, averageCost: cost, minStock: 0, maxStock: 0,
     ean: /^\d{8,14}$/.test(it.ean ?? '') ? it.ean : undefined, createdAt: now, updatedAt: now,
   });
   await setDoc(doc(db, 'items', id), item);
@@ -309,7 +310,7 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
     for (const l of lines.filter((x) => x.destino === 'estoque')) {
       const it = byN.get(l.n)!;
       // No catalog match: create the item now (inside the run); create-if-absent, so a retry reuses it.
-      if (autoItem.has(l.n)) await createCatalogItem(db, input.orgId, it, l.itemId);
+      if (autoItem.has(l.n)) await createCatalogItem(db, input.orgId, it, nfe, l.itemId);
       const cat = (await getDoc(doc(db, 'items', l.itemId!))).data() as Item | undefined;
       if (!cat) throw new Error(`Item ${l.n}: item do catálogo não encontrado.`);
       try {

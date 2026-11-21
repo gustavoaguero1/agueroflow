@@ -34,7 +34,7 @@ test('notas_pendentes: só pendentes, maiores primeiro', async () => {
   assert.equal(r.maiores[0].numero, '2');
 });
 
-test('estoque_critico: soma saldos entre unidades', async () => {
+test('estoque_critico: avalia cada saldo por unidade', async () => {
   await set('items/i1', { orgId: 'o', name: 'Parafuso', minStock: 10 });
   await set('items/i2', { orgId: 'o', name: 'Chapa', minStock: 10, criticalStock: 3 });
   await set('items/i3', { orgId: 'o', name: 'Ok', minStock: 1 });
@@ -43,7 +43,7 @@ test('estoque_critico: soma saldos entre unidades', async () => {
   await set('stock_balances/b3', { orgId: 'o', itemId: 'i2', currentBalance: 2 });
   await set('stock_balances/b4', { orgId: 'o', itemId: 'i3', currentBalance: 50 });
   const r: any = await runAgentTool(h, 'o', 'estoque_critico');
-  assert.deepEqual(r.itens.map((i: any) => [i.item, i.saldo, i.critico]), [['Chapa', 2, true], ['Parafuso', 6, false]]);
+  assert.deepEqual(r.itens.map((i: any) => [i.item, i.saldo, i.critico]), [['Chapa', 2, true], ['Parafuso', 2, false], ['Parafuso', 4, false]]);
 });
 
 test('os_abertas: ignora concluídas, conta atrasadas', async () => {

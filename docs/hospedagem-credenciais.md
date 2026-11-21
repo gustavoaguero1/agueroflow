@@ -120,3 +120,5 @@ Preencher na etapa 3 (data: ______ ; host: ______________)
 | `defaultOrg` | true | | `DEFAULT_ORG_ID` definido e `organizations/<id>` existe |
 
 Liberado para publicar as regras? ( ) sim ( ) não - assinado por: ____________
+
+Assinatura das NF-e: o servidor não verifica a assinatura digital dos XML enviados manualmente; apenas Admin/Gerente podem importar, então esses arquivos são tratados como confiáveis. Notas obtidas da SEFAZ (distribuição DF-e) são autênticas por origem.

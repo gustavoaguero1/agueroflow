@@ -43,10 +43,13 @@ const tools: Record<string, (h: H, orgId: string, a: Args) => Promise<object>> =
   },
   async estoque_critico(h, orgId) {
     const [bal, items] = await Promise.all([list(h, 'stock_balances', 'orgId', orgId), list(h, 'items', 'orgId', orgId)]);
-    const saldo = new Map<string, number>();
-    for (const b of bal) saldo.set(b.itemId, (saldo.get(b.itemId) ?? 0) + (Number(b.currentBalance) || 0));
-    const crit = items.flatMap((i) => {
-      const s = saldo.get(i.id) ?? 0, min = i.criticalStock || i.minStock || 0;
+    // Same rule as PendingCenter: each balance doc (item x unit) against the item's min/critical stock.
+    // Items without a balance doc are skipped in both places.
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const crit = bal.flatMap((b) => {
+      const i = byId.get(b.itemId);
+      if (!i) return [];
+      const s = Number(b.currentBalance) || 0, min = i.criticalStock || i.minStock || 0;
       return min > 0 && s <= min ? [{ item: i.name, saldo: s, minimo: min, critico: !!i.criticalStock && s <= i.criticalStock }] : [];
     }).sort((x, y) => Number(y.critico) - Number(x.critico) || x.saldo / x.minimo - y.saldo / y.minimo);
     return { quantidade: crit.length, itens: crit.slice(0, 5) };

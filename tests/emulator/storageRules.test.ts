@@ -27,6 +27,7 @@ test('org member writes/reads own org photos only', async () => {
 
 test('non-image, anonymous and other paths are denied; master allowed', async () => {
   const s = st({ orgs: { org_a: 'Admin' } });
+  await assertFails(uploadBytes(ref(s, 'work-orders/org_a/wo1/x.svg'), jpg, { contentType: 'image/svg+xml' }));
   await assertFails(uploadBytes(ref(s, 'work-orders/org_a/wo1/x.pdf'), jpg, { contentType: 'application/pdf' }));
   await assertFails(uploadBytes(ref(s, 'other/org_a/x.jpg'), jpg, { contentType: 'image/jpeg' }));
   await assertFails(uploadBytes(ref(st(), 'work-orders/org_a/wo1/x.jpg'), jpg, { contentType: 'image/jpeg' }));

@@ -8,7 +8,7 @@ service firebase.storage {
           (request.auth.token.get('master', false) == true || orgId in request.auth.token.get('orgs', {}));
       }
       allow read: if member();
-      allow write: if member() && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+      allow write: if member() && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
     match /{allPaths=**} { allow read, write: if false; }
   }

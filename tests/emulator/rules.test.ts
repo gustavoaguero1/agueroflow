@@ -248,20 +248,22 @@ const supervisor = () => as('member_m_sup', { org_a: 'Supervisor' });
 const seedAs = (fn: (db: any) => Promise<unknown>) => env.withSecurityRulesDisabled(async (ctx) => { await fn(ctx.firestore()); });
 
 test('finance categories/rules: members read, Supervisor+ write, Admin/Gerente delete, owner immutable', async () => {
-  for (const c of ['finance_categories', 'finance_rules']) {
+  for (const [c, pre] of [['finance_categories', 'cat_'], ['finance_rules', 'rule_']]) {
+    const n = `${pre}org_a_n`, x = `${pre}org_b_x`;
     await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', v: 1 }));
     await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', v: 1 }));
     await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
     await assertSucceeds(getDocs(query(collection(member(), c), where('orgId', '==', 'org_a'))));
     await assertFails(getDoc(doc(member(), `${c}/b`)));
-    await assertFails(setDoc(doc(member(), `${c}/n`), { orgId: 'org_a' }));
+    await assertFails(setDoc(doc(member(), `${c}/${n}`), { orgId: 'org_a' }));
     await assertFails(updateDoc(doc(member(), `${c}/a`), { v: 2 }));
-    await assertSucceeds(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a' }));
+    await assertSucceeds(setDoc(doc(supervisor(), `${c}/${n}`), { orgId: 'org_a' }));
+    await assertFails(setDoc(doc(supervisor(), `${c}/${pre}org_b_y`), { orgId: 'org_a' })); // id squatting another org
     await assertSucceeds(updateDoc(doc(supervisor(), `${c}/a`), { v: 2 }));
-    await assertFails(setDoc(doc(supervisor(), `${c}/x`), { orgId: 'org_b' }));
+    await assertFails(setDoc(doc(supervisor(), `${c}/${x}`), { orgId: 'org_b' }));
     await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
-    await assertFails(deleteDoc(doc(supervisor(), `${c}/n`)));
-    await assertSucceeds(deleteDoc(doc(gerente(), `${c}/n`)));
+    await assertFails(deleteDoc(doc(supervisor(), `${c}/${n}`)));
+    await assertSucceeds(deleteDoc(doc(gerente(), `${c}/${n}`)));
     await assertFails(deleteDoc(doc(as('g', { org_b: 'Gerente' }), `${c}/a`)));
   }
 });
@@ -272,9 +274,9 @@ test('finance_payables: createdBy is the caller; Supervisor only settles aberto 
   await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', valor: 10, status: 'aberto' }));
   await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
   await assertFails(getDoc(doc(member(), `${c}/b`)));
-  await assertFails(setDoc(doc(member(), `${c}/n`), { orgId: 'org_a', createdBy: 'member_m_op' }));
-  await assertFails(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a', createdBy: 'someone' }));
-  await assertSucceeds(setDoc(doc(supervisor(), `${c}/n`), { orgId: 'org_a', createdBy: 'member_m_sup', status: 'aberto' }));
+  await assertFails(setDoc(doc(member(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'member_m_op' }));
+  await assertFails(setDoc(doc(supervisor(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'someone' }));
+  await assertSucceeds(setDoc(doc(supervisor(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'member_m_sup', status: 'aberto' }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'cancelado' }));
@@ -284,8 +286,8 @@ test('finance_payables: createdBy is the caller; Supervisor only settles aberto 
   await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { status: 'aberto', valor: 12 }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
   await assertFails(updateDoc(doc(member(), `${c}/a`), { status: 'pago' }));
-  await assertFails(deleteDoc(doc(supervisor(), `${c}/n`)));
-  await assertSucceeds(deleteDoc(doc(admin(), `${c}/n`)));
+  await assertFails(deleteDoc(doc(supervisor(), `${c}/pay_org_a_n`)));
+  await assertSucceeds(deleteDoc(doc(admin(), `${c}/pay_org_a_n`)));
 });
 
 test('nfe_documents: read by members, server-only create/delete, guarded status transitions', async () => {
@@ -360,6 +362,10 @@ test('counters: member writes own org only', async () => {
   const db = member();
   await assertSucceeds(setDoc(doc(db, 'counters/org_a_work_orders'), { orgId: 'org_a', seq: 1 }));
   await assertFails(setDoc(doc(db, 'counters/org_b_work_orders'), { orgId: 'org_b', seq: 1 }));
+});
+
+test('counters: cannot claim another org\'s deterministic id', async () => {
+  await assertFails(setDoc(doc(member(), 'counters/org_b_work_orders'), { orgId: 'org_a', seq: 1 }));
 });
 
 test('counters: no reset, no delete, only +1', async () => {
