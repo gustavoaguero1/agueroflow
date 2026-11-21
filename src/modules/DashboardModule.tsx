@@ -39,6 +39,13 @@ import {
   Building2,
 } from 'lucide-react';
 import { NavSection } from '../components/layout/AppLayout';
+import { PendingCenter } from '../components/dashboard/PendingCenter';
+import { todaySaoPaulo } from '../services/pendingService';
+
+// Used until the org has configured work_order_statuses.
+const FALLBACK_COMPLETED = ['concluido', 'validado', 'concluida', 'encerrada'];
+const completedFrom = (cfg: { id: string; isCompleted?: boolean }[]) =>
+  cfg.length ? cfg.filter((c) => c.isCompleted).map((c) => c.id) : FALLBACK_COMPLETED;
 
 interface DashboardModuleProps {
   onNavigate: (section: NavSection) => void;
@@ -73,6 +80,7 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
   const [teams, setTeams] = useState<Team[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completedIds, setCompletedIds] = useState<string[]>(FALLBACK_COMPLETED);
 
   // Filters
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterType>('todos');
@@ -146,9 +154,15 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
       (snap) => setCostCenters(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CostCenter)))
     );
 
+    const unsubStatuses = onSnapshot(
+      query(collection(db, 'work_order_statuses'), where('orgId', '==', organization.id)),
+      (snap) => setCompletedIds(completedFrom(snap.docs.map((d) => ({ id: d.id.replace(`${organization.id}_`, ''), ...d.data() } as { id: string; isCompleted?: boolean }))))
+    );
+
     setLoading(false);
 
     return () => {
+      unsubStatuses();
       unsubWO();
       unsubOcc();
       unsubStock();
@@ -276,12 +290,12 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
   const plannedOrders = filteredOrders.filter((wo) => wo.status === 'planejada' || wo.status === 'agendada').length;
   const inProgressOrders = filteredOrders.filter((wo) => wo.status === 'em_execucao').length;
   const pausedOrders = filteredOrders.filter((wo) => wo.status === 'pausada').length;
-  const completedOrders = filteredOrders.filter((wo) => wo.status === 'concluida' || wo.status === 'encerrada').length;
+  const completedOrders = filteredOrders.filter((wo) => completedIds.includes(wo.status)).length;
   const canceledOrders = filteredOrders.filter((wo) => (wo.status as any) === 'cancelada').length;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todaySaoPaulo();
   const delayedOrdersCount = filteredOrders.filter(
-    (wo) => wo.scheduledEndDate && wo.scheduledEndDate < todayStr && wo.status !== 'concluida' && wo.status !== 'encerrada'
+    (wo) => wo.scheduledEndDate && wo.scheduledEndDate < todayStr && !completedIds.includes(wo.status)
   ).length;
 
   const pendingChecklistsCount = filteredOrders.filter((wo) => wo.checklistStatus === 'pendente').length;
@@ -320,6 +334,8 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
 
   return (
     <div className="space-y-6">
+      <PendingCenter onNavigate={onNavigate} workOrders={workOrders} completedStatusIds={completedIds} />
+
       {/* Top Banner & Comprehensive Filter Bar */}
       <div className="bg-white dark:bg-[#1C1C1E] p-5 sm:p-6 rounded-[22px] border border-black/[0.08] dark:border-white/[0.10] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.025)] space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

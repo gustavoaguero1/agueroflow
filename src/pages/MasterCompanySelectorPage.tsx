@@ -3,6 +3,8 @@ import { useAuth, MASTER_EMAIL } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { postJson, refreshClaims } from '../apiAuthFetch';
+import { FirstAccessLinkButton } from '../components/common/FirstAccessLinkButton';
 import { Organization, OrgMember, UserRole } from '../types';
 import { GatLogo } from '../components/common/GatLogo';
 import {
@@ -230,20 +232,24 @@ export const MasterCompanySelectorPage: React.FC<MasterCompanySelectorPageProps>
       const newMember: OrgMember = {
         id: memId,
         orgId: newUserOrgId,
-        userId: `uid_manual_${Date.now()}`,
+        userId: '', // bound by the server on the member's first Google session
         userEmail: normEmail,
         userName: cleanName,
         role: newUserRole,
         active: true,
-        passwordHash: cleanPass || undefined,
-        passwordSet: Boolean(cleanPass),
-        passwordSetAt: cleanPass ? now : undefined,
+        passwordSet: false,
         initialPasswordSetByAdmin: Boolean(cleanPass),
         createdAt: now,
         updatedAt: now,
       };
 
       await setDoc(doc(db, 'org_members', memId), newMember);
+      refreshClaims(memId);
+      if (cleanPass) {
+        const pw = await postJson('/api/auth/set-password', { memberId: memId, newPassword: cleanPass });
+        if (pw.ok) newMember.passwordSet = true;
+        else alert(`Usuário criado, mas a senha inicial não foi salva: ${pw.error || ''}`);
+      }
       setAllMembers((prev) => [...prev, newMember]);
       setShowCreateUserModal(false);
       setNewUserName('');
@@ -267,6 +273,7 @@ export const MasterCompanySelectorPage: React.FC<MasterCompanySelectorPageProps>
         orgId: targetOrgId,
         updatedAt: new Date().toISOString(),
       });
+      refreshClaims(member.id);
       setAllMembers((prev) =>
         prev.map((m) => (m.id === member.id ? { ...m, orgId: targetOrgId } : m))
       );
@@ -282,6 +289,7 @@ export const MasterCompanySelectorPage: React.FC<MasterCompanySelectorPageProps>
   const handleDeleteMember = async (member: OrgMember) => {
     try {
       await deleteDoc(doc(db, 'org_members', member.id));
+      refreshClaims(member.id); // missing member -> server revokes its sessions
       setAllMembers((prev) => prev.filter((m) => m.id !== member.id));
       setFeedback({ type: 'success', text: `Vínculo de ${member.userEmail} removido.` });
     } catch (err: any) {
@@ -615,6 +623,13 @@ export const MasterCompanySelectorPage: React.FC<MasterCompanySelectorPageProps>
                           {m.role}
                         </td>
                         <td className="py-3 px-5 text-right">
+                          {!m.passwordSet && (
+                            <FirstAccessLinkButton
+                              memberId={m.id}
+                              memberName={m.userName}
+                              className="mr-1.5 px-2.5 py-1 rounded-lg bg-[#F5F5F7] dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.10] text-[11px] font-medium text-[#1D1D1F] dark:text-[#F5F5F7] cursor-pointer"
+                            />
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteMember(m)}

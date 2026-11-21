@@ -205,6 +205,15 @@ export interface WorkOrder {
     before?: string[];
     after?: string[];
   };
+  /** Storage metadata for evidencePhotos (same order is not guaranteed; match by url). */
+  evidencePhotoMeta?: {
+    kind: 'antes' | 'depois';
+    path: string;
+    url: string;
+    takenAt: string;
+    lat: number | null;
+    lng: number | null;
+  }[];
   executionEvidences?: OrderExecutionEvidence[];
   executionChecklist?: OrderChecklistItem[];
   executionGps?: {
@@ -213,7 +222,7 @@ export interface WorkOrder {
     accuracy?: number;
     capturedAt: string;
     capturedBy?: string;
-  };
+  } | null;
   signatureUrl?: string;
   signedBy?: string;
   signedAt?: string;
@@ -481,6 +490,7 @@ export interface StockBalance {
   unitId: string;
   itemId: string;
   currentBalance: number;
+  averageCost?: number;
   updatedAt: string;
 }
 

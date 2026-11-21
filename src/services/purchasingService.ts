@@ -362,271 +362,6 @@ export function exportPurchaseOrderPdf(order: PurchaseOrder, companyName: string
   doc.save(`${order.code}_${order.supplierName.replace(/\s+/g, '_').slice(0, 20)}.pdf`);
 }
 
-export async function seedPurchasingDemoDataIfEmpty(
-  organizationId: string,
-  userName: string = 'Comprador Industrial'
-): Promise<void> {
-  try {
-    const existing = await getPurchasingSuppliers(organizationId);
-    if (existing.length === 0) {
-      await seedPurchasingDemoData(organizationId, userName);
-    }
-  } catch (err) {
-    console.warn('Erro ao verificar/inserir dados demo de compras:', err);
-  }
-}
-
-export async function seedPurchasingDemoData(organizationId: string, userName: string = 'Comprador Industrial'): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
-  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-
-  // 1. Suppliers
-  const suppliers: PurchasingSupplier[] = [
-    {
-      id: `sup_aperam_${organizationId}`,
-      organizationId,
-      name: 'Aperam South America Indústria de Tubos',
-      tradeName: 'Aperam Tubos Inox',
-      cnpj: '60.872.504/0001-23',
-      contactPerson: 'Carlos Guimarães - Vendas Industriais',
-      email: 'carlos.guimaraes@aperam.com',
-      phone: '(31) 3849-7000',
-      city: 'Timóteo',
-      state: 'MG',
-      address: 'Av. dos Inoxidáveis, 4500',
-      categories: ['Tubulações Inox', 'Chapas Inox', 'Curvas BW'],
-      rating: 5,
-      isCertifiedIso: true,
-      status: 'homologado',
-      notes: 'Fornecedor principal usina de tubulações em AISI 304 e 316L com certificado rastreável.',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: `sup_bray_${organizationId}`,
-      organizationId,
-      name: 'Bray Controls Brasil Válvulas e Atuadores',
-      tradeName: 'Bray Controls',
-      cnpj: '03.441.890/0001-55',
-      contactPerson: 'Juliana Prado - Engenharia de Aplicação',
-      email: 'vendas.brasil@bray.com',
-      phone: '(11) 4366-4400',
-      city: 'Paulinia',
-      state: 'SP',
-      address: 'Rodovia Professor Zeferino Vaz, km 121',
-      categories: ['Válvulas Borboleta', 'Válvulas Esfera', 'Atuadores Pneumáticos'],
-      rating: 5,
-      isCertifiedIso: true,
-      status: 'homologado',
-      notes: 'Homologado para válvulas sanitárias e de processo químico.',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: `sup_tenaris_${organizationId}`,
-      organizationId,
-      name: 'Tenaris Confab Conexões e Flanges Industriais',
-      tradeName: 'Tenaris',
-      cnpj: '51.810.123/0001-90',
-      contactPerson: 'Roberto Albuquerque',
-      email: 'vendas@tenaris.com.br',
-      phone: '(12) 3644-9000',
-      city: 'Pindamonhangaba',
-      state: 'SP',
-      categories: ['Flanges WN/SO', 'Conexões Forjadas', 'Curvas ASME'],
-      rating: 4,
-      isCertifiedIso: true,
-      status: 'homologado',
-      notes: 'Fornecedor líder em flanges ASME B16.5 150# a 600#.',
-      createdAt: new Date().toISOString(),
-    },
-  ];
-
-  for (const s of suppliers) {
-    await savePurchasingSupplier(s);
-  }
-
-  // 2. Sample Requisition (RC)
-  const sampleRequisition: PurchaseRequisition = {
-    id: `rc_demo_01_${organizationId}`,
-    organizationId,
-    code: 'RC-2026-001',
-    title: 'Materiais para Linha de Mosto — Cervejaria Heineken Paulínia',
-    requestedBy: 'coord_montagem',
-    requestedByName: 'Eng. Marcelo Antunes',
-    department: 'Obras & Montagem',
-    costCenter: 'CC-OBRA-PAULINIA-01',
-    urgency: 'alta',
-    neededByDate: nextWeek,
-    status: 'pedido_gerado',
-    items: [
-      {
-        id: 'it_rc_1',
-        code: 'TB-INX-304-2-S10',
-        description: 'Tubo Aço Inox 304 com costura SCH 10 2" DN50 ASTM A312',
-        specs: 'AISI 304, 2" SCH 10, Solda BW',
-        unit: 'M',
-        quantity: 60,
-        estimatedCost: 85.5,
-        currentStock: 0,
-      },
-      {
-        id: 'it_rc_2',
-        code: 'VAL-BOR-304-2-WAF',
-        description: 'Válvula Borboleta Wafer Inox 304 EPDM 2" 150#',
-        specs: 'Wafer 150#, DN50, Disco 304, Vedação EPDM',
-        unit: 'UN',
-        quantity: 8,
-        estimatedCost: 380.0,
-        currentStock: 1,
-      },
-      {
-        id: 'it_rc_3',
-        code: 'FLG-WNR-304-2-150',
-        description: 'Flange Pescoço Weld Neck RF Inox 304 2" 150# SCH 10',
-        specs: 'ASME B16.5, 2" 150# SCH 10',
-        unit: 'UN',
-        quantity: 16,
-        estimatedCost: 72.0,
-        currentStock: 2,
-      },
-    ],
-    notes: 'Prioridade alta para montagem na parada programada de manutenção da fábrica.',
-    createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await savePurchaseRequisition(sampleRequisition);
-
-  // 3. Sample Purchase Order (OC)
-  const sampleOrder: PurchaseOrder = {
-    id: `oc_demo_01_${organizationId}`,
-    organizationId,
-    code: 'OC-2026-0042',
-    requisitionCode: 'RC-2026-001',
-    quotationMapCode: 'MAP-2026-001',
-    supplierId: suppliers[0].id,
-    supplierName: suppliers[0].name,
-    supplierCnpj: suppliers[0].cnpj,
-    supplierContact: suppliers[0].contactPerson,
-    supplierEmail: suppliers[0].email,
-    supplierPhone: suppliers[0].phone,
-    buyerId: 'user_buyer_01',
-    buyerName: userName,
-    emissionDate: today,
-    expectedDeliveryDate: nextWeek,
-    deliveryLocation: 'Canteiro de Obras Paulínia SP (Av. Industrial, 1200)',
-    billingAddress: 'Aguero Inox & Montagens Industriais S/A (Matriz)',
-    paymentTerms: '28 dias DDL após faturamento',
-    freightType: 'CIF',
-    freightValue: 0,
-    items: [
-      {
-        id: 'oc_it_1',
-        itemNumber: 1,
-        internalCode: 'TB-INX-304-2-S10',
-        manufacturerCode: 'TUB-304-SCH10-DN50',
-        brand: 'Aperam',
-        description: 'Tubo Aço Inox 304 com costura SCH 10 2" DN50 ASTM A312',
-        specs: 'AISI 304, 2" SCH 10, Solda BW, Barras de 6m',
-        unit: 'M',
-        quantityOrdered: 60,
-        quantityReceived: 60,
-        unitPrice: 85.5,
-        totalPrice: 5130.0,
-        heatNumber: 'CORR-AP-9412B',
-      },
-      {
-        id: 'oc_it_2',
-        itemNumber: 2,
-        internalCode: 'CRV-90-304-2-S10',
-        manufacturerCode: 'ELB-90LR-BW-304-DN50',
-        brand: 'Aperam',
-        description: 'Curva 90º Raio Longo Inox 304 SCH 10 2" BW ANSI B16.9',
-        specs: 'AISI 304, 2" SCH 10',
-        unit: 'UN',
-        quantityOrdered: 12,
-        quantityReceived: 12,
-        unitPrice: 45.0,
-        totalPrice: 540.0,
-        heatNumber: 'CORR-AP-8821C',
-      },
-    ],
-    subtotal: 5670.0,
-    taxValue: 0,
-    totalValue: 5670.0,
-    status: 'recebida_total',
-    carrierName: 'Jamef Transportes Urgentes',
-    trackingCode: 'JAM-9920141',
-    invoiceNumber: 'NF-e 049.201',
-    receiptDate: today,
-    notes: 'Entregue com certificados metalúrgicos de corrida inspecionados e aprovados.',
-    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await savePurchaseOrder(sampleOrder);
-
-  // 4. Sample Quotation Map (3-Bid comparison)
-  const sampleQuotationMap: PurchaseQuotationMap = {
-    id: `map_demo_01_${organizationId}`,
-    organizationId,
-    code: 'MAP-2026-001',
-    title: 'Mapa Comparativo Tubulações e Válvulas Inox 304',
-    requisitionId: sampleRequisition.id,
-    requisitionCode: sampleRequisition.code,
-    items: sampleRequisition.items,
-    bids: [
-      {
-        id: 'bid_1',
-        supplierId: suppliers[0].id,
-        supplierName: suppliers[0].name,
-        quoteNumber: 'COT-AP-2026-941',
-        quoteDate: today,
-        validityDays: 30,
-        freightType: 'CIF',
-        freightCost: 0,
-        paymentTerms: '28 DDL',
-        deliveryDays: 7,
-        totalValue: 5670.0,
-        isWinner: true,
-        itemsPrices: [
-          { itemId: 'it_rc_1', unitPrice: 85.5, totalPrice: 5130.0, brand: 'Aperam' },
-          { itemId: 'it_rc_2', unitPrice: 410.0, totalPrice: 3280.0, brand: 'Bray' },
-          { itemId: 'it_rc_3', unitPrice: 75.0, totalPrice: 1200.0, brand: 'Tenaris' },
-        ],
-        notes: 'Melhor prazo e frete CIF incluso no preço unitário.',
-      },
-      {
-        id: 'bid_2',
-        supplierId: 'sup_granjo',
-        supplierName: 'Aços Granjo Distribuidora de Inox',
-        quoteNumber: 'COT-AG-8812',
-        quoteDate: today,
-        validityDays: 15,
-        freightType: 'FOB',
-        freightCost: 350.0,
-        paymentTerms: '30 DDL',
-        deliveryDays: 12,
-        totalValue: 6150.0,
-        isWinner: false,
-        itemsPrices: [
-          { itemId: 'it_rc_1', unitPrice: 92.0, totalPrice: 5520.0, brand: 'Inox Tech' },
-          { itemId: 'it_rc_2', unitPrice: 395.0, totalPrice: 3160.0, brand: 'MGA' },
-          { itemId: 'it_rc_3', unitPrice: 72.0, totalPrice: 1152.0, brand: 'Conforja' },
-        ],
-        notes: 'Frete FOB por nossa conta; prazo superior a 10 dias.',
-      },
-    ],
-    winningSupplierId: suppliers[0].id,
-    winningSupplierName: suppliers[0].name,
-    winningJustification: 'Menor valor global ponderado, frete CIF com entrega em 7 dias compatível com a parada de obra.',
-    status: 'homologado',
-    buyerName: userName,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await savePurchaseQuotation(sampleQuotationMap);
-}
 
 // ---------------------------------------------------------------------------
 // 7. AI MARKET PRICE BENCHMARK & MONTHLY SAVINGS
@@ -651,13 +386,14 @@ export async function fetchAiMarketBenchmark(
     return json.data;
   } catch (err) {
     console.warn('Erro ao consultar benchmark de mercado via IA, usando valores calculados:', err);
-    const spend = totalSpend && totalSpend > 0 ? totalSpend : 384500;
+    const spend = totalSpend && totalSpend > 0 ? totalSpend : 0;
     return {
       month: new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date()),
       totalMonthlySpend: spend,
-      estimatedMarketSpend: spend * 1.108,
-      totalSavingsAmount: spend * 0.108,
-      savingsPercentage: 9.8,
+      estimatedMarketSpend: spend,
+      totalSavingsAmount: 0, // sem dado real não há economia apurada
+      savingsPercentage: 0,
+      isEstimate: true,
       topSavedItems: [
         {
           id: 'bm_1',
@@ -669,7 +405,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.81,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Aperam Tubos / Marcegaglia Brasil',
+          sourceNotes: 'Estimativa — Aperam Tubos / Marcegaglia Brasil',
         },
         {
           id: 'bm_2',
@@ -681,7 +417,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -10.59,
           trend: 'alta',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Bray Controls / MGA Válvulas',
+          sourceNotes: 'Estimativa — Bray Controls / MGA Válvulas',
         },
         {
           id: 'bm_3',
@@ -693,7 +429,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -11.66,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Conforja / Tenaris Brasil',
+          sourceNotes: 'Estimativa — Conforja / Tenaris Brasil',
         },
         {
           id: 'bm_4',
@@ -705,7 +441,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -8.88,
           trend: 'alta',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Aperam / ArcelorMittal Inox Brasil',
+          sourceNotes: 'Estimativa — Aperam / ArcelorMittal Inox Brasil',
         },
         {
           id: 'bm_5',
@@ -717,7 +453,7 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.09,
           trend: 'queda',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'Conexões forjadas nacionais com MTR rastreável',
+          sourceNotes: 'Estimativa — Conexões forjadas nacionais com MTR rastreável',
         },
         {
           id: 'bm_6',
@@ -729,10 +465,10 @@ export async function fetchAiMarketBenchmark(
           priceDeltaPercent: -9.57,
           trend: 'estavel',
           lastUpdated: new Date().toISOString(),
-          sourceNotes: 'ESAB / Lincoln Electric Brasil',
+          sourceNotes: 'Estimativa — ESAB / Lincoln Electric Brasil',
         },
       ],
-      aiMarketAnalysisSummary: 'Cotação do Níquel na London Metal Exchange (LME) em US$ 16.420/t com mercado estável. O processo de equalização técnica de propostas permitiu negociar economia média de 9,8% com fornecedores homologados.',
+      aiMarketAnalysisSummary: 'Valores de referência estimados (serviço de benchmark indisponível); não representam cotação nem economia real.',
       commodityIndices: {
         nickelLmeUsdTon: 16420,
         dollarPtaxBrl: 5.72,

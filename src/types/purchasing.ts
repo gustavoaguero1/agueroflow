@@ -231,6 +231,8 @@ export interface MonthlySavingsReport {
   savingsPercentage: number;
   topSavedItems: MarketPriceBenchmarkItem[];
   aiMarketAnalysisSummary: string;
+  /** true when values are reference fallbacks, not real market/ERP data. */
+  isEstimate?: boolean;
   commodityIndices: {
     nickelLmeUsdTon: number;
     dollarPtaxBrl: number;

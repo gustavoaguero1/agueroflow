@@ -26,7 +26,6 @@ import {
   getPurchaseOrders,
   getPurchasingSuppliers,
   getMaterialReceipts,
-  seedPurchasingDemoDataIfEmpty,
 } from '../services/purchasingService';
 import { PurchasingDashboard } from '../components/purchasing/PurchasingDashboard';
 import { PurchasingRequisitions } from '../components/purchasing/PurchasingRequisitions';
@@ -75,9 +74,6 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
 
   const loadAllData = useCallback(async () => {
     try {
-      // First ensure demo seed exists if empty
-      await seedPurchasingDemoDataIfEmpty(currentOrgId);
-
       const [reqs, quotes, ords, sups, recs] = await Promise.all([
         getPurchaseRequisitions(currentOrgId),
         getPurchaseQuotations(currentOrgId),
@@ -266,7 +262,6 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               onNavigateSub={handleTabChange}
               onNewRequisition={() => handleTabChange('compras-requisicoes')}
               onNewOrder={() => setIsNewOrderModalOpen(true)}
-              onSeedDemo={loadAllData}
               userName={currentUserName}
             />
           )}

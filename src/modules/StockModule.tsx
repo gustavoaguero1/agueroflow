@@ -6,10 +6,11 @@ import {
   where,
   onSnapshot,
   doc,
-  setDoc,
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { applyStockMovement } from '../services/stockService';
+import { savePurchaseRequisition, getPurchaseRequisitions } from '../services/purchasingService';
 import {
   StockBalance,
   StockMovement,
@@ -50,6 +51,8 @@ export const StockModule: React.FC = () => {
   const [movQuantity, setMovQuantity] = useState('1');
   const [movReason, setMovReason] = useState('');
   const [movOrderId, setMovOrderId] = useState('');
+  const [movToUnitId, setMovToUnitId] = useState('');
+  const [rcBusy, setRcBusy] = useState(false);
   const [movError, setMovError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -104,83 +107,85 @@ export const StockModule: React.FC = () => {
     const unit = units.find((u) => u.id === movUnitId) || units[0];
     const unitIdTarget = unit?.id || 'default_unit';
 
-    // Find current balance
-    const balanceKey = `bal_${unitIdTarget}_${item.id}`;
-    const currentBalRecord = balances.find((b) => b.id === balanceKey || (b.unitId === unitIdTarget && b.itemId === item.id));
-    const currentBalance = currentBalRecord ? currentBalRecord.currentBalance : 0;
-
-    let newBalance = currentBalance;
-    if (movType === 'entrada') {
-      newBalance = currentBalance + qty;
-    } else if (movType === 'saida') {
-      // STRICT REQUIREMENT: BLOCK WITHDRAWALS EXCEEDING AVAILABLE BALANCE
-      if (qty > currentBalance) {
-        setMovError(
-          `Operação bloqueada: Saldo insuficiente em estoque! Saldo disponível: ${currentBalance} ${item.unitOfMeasure}, solicitado: ${qty} ${item.unitOfMeasure}.`
-        );
-        return;
-      }
-      newBalance = currentBalance - qty;
-    } else if (movType === 'ajuste') {
-      newBalance = qty;
-    } else if (movType === 'transferencia') {
-      if (qty > currentBalance) {
-        setMovError(`Saldo insuficiente para transferência: disponível ${currentBalance} ${item.unitOfMeasure}.`);
-        return;
-      }
-      newBalance = currentBalance - qty;
+    if (movType === 'ajuste' && movReason.trim().length < 5) {
+      setMovError('Ajuste de inventário exige justificativa (mínimo 5 caracteres).');
+      return;
+    }
+    if (movType === 'transferencia' && (!movToUnitId || movToUnitId === unitIdTarget)) {
+      setMovError('Selecione uma unidade de destino diferente da origem.');
+      return;
     }
 
     setIsSubmitting(true);
     try {
-      // 1. Update or create balance doc
-      await setDoc(doc(db, 'stock_balances', balanceKey), {
-        id: balanceKey,
-        orgId: organization.id,
-        unitId: unitIdTarget,
-        itemId: item.id,
-        currentBalance: newBalance,
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 2. Append movement record
-      const movId = `mov_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const selectedWO = workOrders.find((w) => w.id === movOrderId);
-
-      const movementDoc: StockMovement = {
-        id: movId,
+      const { balanceAfter, movementIds } = await applyStockMovement(db, {
         orgId: organization.id,
         unitId: unitIdTarget,
-        itemId: item.id,
-        itemSku: item.sku,
-        itemName: item.name,
+        item: { id: item.id, sku: item.sku, name: item.name, unitOfMeasure: item.unitOfMeasure },
         type: movType,
         quantity: qty,
-        balanceAfter: newBalance,
+        toUnitId: movType === 'transferencia' ? movToUnitId : undefined,
         reason: movReason.trim() || 'Movimentação operacional',
         orderId: movOrderId || undefined,
         orderNumber: selectedWO?.orderNumber || undefined,
-        createdBy: user.uid,
-        userName: user.displayName || user.email || 'Almoxarife',
-        createdAt: new Date().toISOString(),
-      };
-
-      await setDoc(doc(db, 'stock_movements', movId), movementDoc);
+        user: { uid: user.uid, name: user.displayName || user.email || 'Almoxarife' },
+      });
       await logAudit(
         'Estoque',
         `Movimentação de ${movType.toUpperCase()}`,
-        `${qty} ${item.unitOfMeasure} de ${item.name} (${item.sku}) em ${unit?.name || 'Unidade'}. Saldo pós: ${newBalance}`,
-        movId
+        `${qty} ${item.unitOfMeasure} de ${item.name} (${item.sku}) em ${unit?.name || 'Unidade'}. Saldo pós: ${balanceAfter}`,
+        movementIds[0]
       );
 
       setShowMoveModal(false);
       setMovQuantity('1');
       setMovReason('');
+      setMovToUnitId('');
     } catch (err: any) {
       console.error('Erro ao registrar movimentação de estoque:', err);
       setMovError(err?.message || 'Falha ao registrar movimentação.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGenerateRC = async (item: Item, balance: number, unitName: string) => {
+    if (!organization || !user) return;
+    const min = item.minStock ?? 0;
+    const suggested = Math.max(min * 2 - balance, 1); // no minStock set: falls back to 1
+    const now = new Date().toISOString();
+    if (rcBusy) return;
+    setRcBusy(true);
+    try {
+      const open = (await getPurchaseRequisitions(organization.id)).some(
+        (r) => (r.status === 'pendente' || r.status === 'em_cotacao') && r.items.some((i) => i.id === item.id)
+      );
+      if (open) {
+        alert(`Já existe uma requisição de compra em aberto para ${item.name}.`);
+        return;
+      }
+      await savePurchaseRequisition({
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        organizationId: organization.id,
+        code: `RC-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`,
+        title: `Reposição de estoque: ${item.name}`,
+        requestedBy: user.uid,
+        requestedByName: user.displayName || user.email || 'Almoxarife',
+        department: 'Estoque & Manutenção',
+        urgency: item.criticalStock !== undefined && balance <= item.criticalStock ? 'alta' : 'normal',
+        neededByDate: now.slice(0, 10),
+        items: [{ id: item.id, code: item.sku, description: item.name, unit: item.unitOfMeasure, quantity: suggested, currentStock: balance, notes: unitName }],
+        status: 'pendente',
+        notes: 'Reposição automática: estoque abaixo do mínimo',
+        createdAt: now,
+        updatedAt: now,
+      });
+      alert(`Requisição de compra gerada (${suggested} ${item.unitOfMeasure} de ${item.name}).`);
+    } catch (err: any) {
+      alert(err?.message || 'Falha ao gerar requisição de compra.');
+    } finally {
+      setRcBusy(false);
     }
   };
 
@@ -229,6 +234,7 @@ export const StockModule: React.FC = () => {
               setMovItemId(items[0]?.id || '');
               setMovUnitId(units[0]?.id || '');
               setMovType('entrada');
+              setMovToUnitId('');
               setMovError(null);
               setShowMoveModal(true);
             }}
@@ -312,6 +318,15 @@ export const StockModule: React.FC = () => {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
+                          {(isCritical || isWarning) && (
+                            <button
+                              disabled={rcBusy}
+                              onClick={() => handleGenerateRC(item, bal.currentBalance, unit?.name || 'Local Central')}
+                              className="mr-2 px-2.5 py-1 rounded bg-amber-900/60 hover:bg-amber-800/60 text-amber-300 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                            >
+                              Gerar RC
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               setMovItemId(item.id);
@@ -473,6 +488,24 @@ export const StockModule: React.FC = () => {
                   ))}
                 </select>
               </div>
+
+              {movType === 'transferencia' && (
+                <div>
+                  <label className="block font-medium text-slate-300 mb-1">Unidade de Destino *</label>
+                  <select
+                    value={movToUnitId}
+                    onChange={(e) => setMovToUnitId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Selecione...</option>
+                    {units.filter((u) => u.id !== movUnitId).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block font-medium text-slate-300 mb-1">Vincular à Ordem de Serviço (opcional)</label>

@@ -42,10 +42,12 @@ import { CommercialReportsView } from '../components/commercial/CommercialReport
 import { CommercialProposalDetailModal } from '../components/commercial/CommercialProposalDetailModal';
 import { CostCompositionModuleView } from '../components/commercial/costComposition/CostCompositionModuleView';
 import { WhatsAppBusinessHub } from '../components/commercial/WhatsAppBusinessHub';
+import { CommercialFunnelBoard } from '../components/commercial/CommercialFunnelBoard';
 import { Calculator } from 'lucide-react';
 
 export type CommercialSubSection =
   | 'comercial-painel'
+  | 'comercial-funil'
   | 'comercial-nova'
   | 'comercial-composicao'
   | 'comercial-revisao'
@@ -161,12 +163,6 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     await loadData();
   };
 
-  // Handle Seed Demo Data
-  const handleSeedDemo = async () => {
-    await seedCommercialDemoData(organizationId, userId, userName);
-    await loadData();
-  };
-
   // Handle Wizard Success
   const handleWizardSuccess = async (newProposalId: string) => {
     await loadData();
@@ -182,6 +178,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
 
   const navTabs = [
     { id: 'comercial-painel' as CommercialSubSection, label: 'Painel de Propostas', icon: FileText },
+    { id: 'comercial-funil' as CommercialSubSection, label: 'Funil de Vendas', icon: Calculator },
     { id: 'comercial-nova' as CommercialSubSection, label: 'Nova Proposta', icon: Plus },
     { id: 'comercial-composicao' as CommercialSubSection, label: 'Composição de Custos', icon: Calculator },
     { id: 'comercial-revisao' as CommercialSubSection, label: 'Revisão de BOM', icon: Layers },
@@ -231,9 +228,12 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
               onReviewBom={handleReviewBom}
               onOpenProposalDetail={handleOpenDetail}
               onDeleteProposal={handleDeleteProposal}
-              onSeedDemo={handleSeedDemo}
               userRole={role}
             />
+          )}
+
+          {currentTab === 'comercial-funil' && (
+            <CommercialFunnelBoard proposals={proposals} user={{ uid: userId, name: userName }} onRefresh={loadData} />
           )}
 
           {currentTab === 'comercial-nova' && (

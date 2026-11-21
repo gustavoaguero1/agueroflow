@@ -44,6 +44,7 @@ import {
   testOutlookBridgeConnection,
   updateWhatsAppNdRule,
 } from '../../services/composioWhatsAppClient';
+import { downloadApi } from '../../apiAuthFetch';
 
 interface Props {
   organizationId: string;
@@ -1584,14 +1585,18 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
               />
             </div>
 
-            <a
-              href="/api/whatsapp/nd/records/export-xlsx"
-              download
-              className="px-3 py-1.5 rounded-lg bg-[#E8F8EE] hover:bg-[#D7F2E2] dark:bg-emerald-950/70 dark:hover:bg-emerald-900/70 border border-[#166534]/25 dark:border-emerald-700/60 text-xs font-semibold text-[#166534] dark:text-emerald-300 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition"
+            <button
+              type="button"
+              onClick={() =>
+                downloadApi('/api/whatsapp/nd/records/export-xlsx', 'notas-de-debito.xlsx').catch(() =>
+                  alert('Não foi possível exportar a planilha.')
+                )
+              }
+              className="px-3 py-1.5 rounded-lg bg-[#E8F8EE] hover:bg-[#D7F2E2] dark:bg-emerald-950/70 dark:hover:bg-emerald-900/70 border border-[#166534]/25 dark:border-emerald-700/60 text-xs font-semibold text-[#166534] dark:text-emerald-300 flex items-center gap-1.5 whitespace-nowrap shrink-0 transition cursor-pointer"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
               <span>Exportar Excel (.xlsx)</span>
-            </a>
+            </button>
           </div>
         </div>
 
@@ -1694,14 +1699,16 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
-                          <a
-                            href={pdfUrl}
-                            download={rec.fileName}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadApi(pdfUrl, rec.fileName).catch(() => alert('Não foi possível baixar o PDF.'))
+                            }
                             title="Baixar PDF"
-                            className="p-1.5 rounded-lg bg-white hover:bg-[#F2F2F7] dark:bg-slate-900 dark:hover:bg-slate-800 border border-black/[0.1] dark:border-slate-700 text-[#424245] dark:text-slate-300 transition"
+                            className="p-1.5 rounded-lg bg-white hover:bg-[#F2F2F7] dark:bg-slate-900 dark:hover:bg-slate-800 border border-black/[0.1] dark:border-slate-700 text-[#424245] dark:text-slate-300 transition cursor-pointer"
                           >
                             <Download className="w-3.5 h-3.5" />
-                          </a>
+                          </button>
                           <button
                             type="button"
                             disabled={isBusy || !rec.sourceGroupJid}
@@ -1745,14 +1752,16 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={previewBlobUrl || `/api/whatsapp/nd/records/${encodeURIComponent(previewRecord.id)}/pdf`}
-                  download={previewRecord.fileName}
-                  className="px-3 py-1.5 rounded-lg bg-[#0071E3] hover:bg-[#0077ED] text-xs font-semibold text-white apple-solid-btn flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  <Download className="w-3.5 h-3.5 shrink-0" />
-                  <span>Baixar PDF</span>
-                </a>
+                {previewBlobUrl && (
+                  <a
+                    href={previewBlobUrl}
+                    download={previewRecord.fileName}
+                    className="px-3 py-1.5 rounded-lg bg-[#0071E3] hover:bg-[#0077ED] text-xs font-semibold text-white apple-solid-btn flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5 shrink-0" />
+                    <span>Baixar PDF</span>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => setPreviewRecord(null)}

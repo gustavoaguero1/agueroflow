@@ -67,8 +67,8 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
         getDocs(query(collection(db, 'items'), where('orgId', '==', organization.id))),
         getDocs(query(collection(db, 'assets'), where('orgId', '==', organization.id))),
         getDocs(query(collection(db, 'units'), where('orgId', '==', organization.id))),
-        getDocs(query(collection(db, 'collective_assets'), where('organizationId', '==', organization.id))),
-        getDocs(query(collection(db, 'collective_asset_movements'), where('organizationId', '==', organization.id), where('status', 'in', ['em_uso', 'atrasado']))),
+        getDocs(query(collection(db, 'collective_assets'), where('orgId', '==', organization.id))),
+        getDocs(query(collection(db, 'collective_asset_movements'), where('orgId', '==', organization.id), where('status', 'in', ['em_uso', 'atrasado']))),
       ]);
 
       const itemsList = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Item));

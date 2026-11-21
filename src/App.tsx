@@ -24,6 +24,7 @@ import { RhPayrollModule, RhSubSection } from './modules/RhPayrollModule';
 import { CommercialModule, CommercialSubSection } from './modules/CommercialModule';
 import { PurchasingModule } from './modules/PurchasingModule';
 import { PurchasingSubSection } from './types/purchasing';
+import { FinanceModule, FinanceSubSection } from './modules/FinanceModule';
 import { TravelModule } from './modules/TravelModule';
 import { TravelSubSection } from './types/travel';
 import { MarketingModule } from './modules/MarketingModule';
@@ -36,6 +37,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { testConnection } from './firebase';
 import { GatLogo } from './components/common/GatLogo';
 import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
+import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
 
 function MainRouter() {
@@ -46,6 +48,7 @@ function MainRouter() {
   const [currentNavSection, setCurrentNavSection] = useState<NavSection>('painel');
   const [navPayload, setNavPayload] = useState<{ targetId?: string; searchQuery?: string } | undefined>(undefined);
   const [onboardingToken, setOnboardingToken] = useState<string>('');
+  const firstAccessToken = new URLSearchParams(window.location.search).get('primeiro-acesso');
 
   // Sync route cleanly with URL and auth state
   useEffect(() => {
@@ -128,6 +131,10 @@ function MainRouter() {
         </div>
       </div>
     );
+  }
+
+  if (firstAccessToken) {
+    return <FirstAccessPage token={firstAccessToken} />;
   }
 
   // 0. Public Employee Onboarding Page (Token de Uso Único)
@@ -338,6 +345,11 @@ function MainRouter() {
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
           currentOrgId={organization?.id || 'org_aguero_default'}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Comprador Industrial'}
+        />
+      )}
+      {currentNavSection.startsWith('financeiro') && (
+        <FinanceModule
+          currentSubSection={currentNavSection === 'financeiro' ? 'financeiro-notas' : (currentNavSection as FinanceSubSection)}
         />
       )}
       {(currentNavSection.startsWith('viagens') || currentNavSection === 'viagens') && (

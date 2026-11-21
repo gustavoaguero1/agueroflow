@@ -1,310 +1,241 @@
 rules_version = '2';
+// Org isolation. Claims are set by the server: { master: bool, orgs: { [orgId]: Role } }.
+// Collection inventory and owner fields: docs/firestore-collections.md. Anything not matched here is denied.
+// The Admin SDK (server) bypasses these rules.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function isMaster() { return signedIn() && request.auth.token.get('master', false) == true; }
+    function orgClaims() { return request.auth.token.get('orgs', {}); }
+    function isMemberOf(org) { return signedIn() && org is string && org != '' && org in orgClaims(); }
+    function hasRole(org, roles) { return isMemberOf(org) && orgClaims()[org] in roles; }
+    function hasAnyOrg() { return signedIn() && orgClaims().size() > 0; }
+    // Owner field is orgId, else organizationId.
+    function orgOf(d) { return d.get('orgId', d.get('organizationId', '')); }
+
+    // Reads need the same owner check as writes (a mixed-owner doc is readable only by members of both orgs).
+    // A missing doc reveals nothing, so getDoc on it stays allowed (callers check exists()).
+    function canRead(res) { return isMaster() || (res == null && signedIn()) || ownerOk(res.data); }
+    // Writes: at least one owner field, and every owner field present must be one of the caller's orgs.
+    function ownerOk(d) {
+      let o = d.get('orgId', null);
+      let p = d.get('organizationId', null);
+      return (o in [null, ''] || isMemberOf(o)) && (p in [null, ''] || isMemberOf(p)) && (isMemberOf(o) || isMemberOf(p));
+    }
+    function sameOwner() {
+      return request.resource.data.get('orgId', null) == resource.data.get('orgId', null)
+        && request.resource.data.get('organizationId', null) == resource.data.get('organizationId', null);
+    }
+    function canCreate() { return isMaster() || ownerOk(request.resource.data); }
+    function canUpdate() { return sameOwner() && (isMaster() || ownerOk(resource.data)); }
+    function canDelete() { return isMaster() || ownerOk(resource.data); }
+
+    // ---- Server-only (Admin SDK) -------------------------------------------
+    match /member_credentials/{id} { allow read, write: if false; }
+    match /first_access_tokens/{id} { allow read, write: if false; }
+    match /system_security/{id} { allow read, write: if false; } // legacy master-password doc
+    match /users/{id} { allow read, write: if false; } // unused by the client
+
+    // Connectivity probe in src/firebase.ts (testConnection).
+    match /test/{docId} { allow get: if signedIn() && docId == 'connection'; }
+
+    // OS number sequence: members create it once (seq >= 1) and may only bump it by 1; never reset or delete.
+    match /counters/{docId} {
+      allow read: if canRead(resource);
+      allow create: if (isMaster() || ownerOk(request.resource.data)) && request.resource.data.get('seq', 0) >= 1
+        && (isMaster() || docId == request.resource.data.get('orgId', '') + '_work_orders'); // deterministic id: no squatting another org's counter
+      allow update: if sameOwner() && (isMaster() || ownerOk(resource.data))
+        && request.resource.data.seq == resource.data.seq + 1;
     }
 
-    function isCurrentUser(uid) {
-      return isSignedIn() && request.auth.uid == uid;
-    }
-
-    // Formulário público para demonstração na landing page
-    match /lead_requests/{leadId} {
-      allow create: if request.resource.data.name is string 
-                    && request.resource.data.email is string
-                    && request.resource.data.name.size() > 0
-                    && request.resource.data.name.size() <= 100
-                    && request.resource.data.email.size() > 0
-                    && request.resource.data.email.size() <= 150;
-      allow read, update, delete: if true;
-    }
-
-    // Autenticação e Perfis de Usuário
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    // Credenciais e Parâmetros de Segurança do Sistema (Master Auth)
-    match /system_security/{docId} {
-      allow read, write: if true;
-    }
-
-    // Organizações - Leitura aberta para busca de empresa no login, escrita permitida
+    // ---- Organizations ------------------------------------------------------
     match /organizations/{orgId} {
-      allow read, create, update: if true;
-      allow delete: if false; // Não permitir deleção física direta
+      allow read: if signedIn();
+      allow create, delete: if isMaster();
+      allow update: if isMaster() || hasRole(orgId, ['Admin']);
     }
 
-    // Membros das organizações - Leitura e escrita permitidas para validação de credenciais e primeiro acesso
+    // ---- Members --------------------------------------------------------------
     match /org_members/{memberId} {
-      allow read, create, update, delete: if true;
+      function isSelf() {
+        return resource.data.get('userId', '') == request.auth.uid || request.auth.uid == 'member_' + memberId;
+      }
+      // A Gerente may not create, change or remove an Admin.
+      function roleOk(org, d) { return isMaster() || orgClaims()[org] == 'Admin' || d.get('role', '') != 'Admin'; }
+      function manages(org) { return isMaster() || hasRole(org, ['Admin', 'Gerente']); }
+
+      allow read: if isMaster() || (resource == null && signedIn())
+        || isMemberOf(resource.data.get('orgId', ''))
+        || (signedIn() && (resource.data.get('userId', '') == request.auth.uid || request.auth.uid == 'member_' + memberId))
+        || (signedIn() && request.auth.token.get('email_verified', false) == true
+            && request.auth.token.get('email', null) is string
+            && resource.data.get('userEmail', '') == request.auth.token.email.lower());
+      allow create: if !('passwordHash' in request.resource.data)
+        && request.resource.data.get('userId', '') in ['', request.auth.uid]
+        && manages(request.resource.data.get('orgId', ''))
+        && roleOk(request.resource.data.get('orgId', ''), request.resource.data);
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId'])
+        && (isMaster()
+          || (manages(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId
+              && roleOk(resource.data.orgId, resource.data) && roleOk(resource.data.orgId, request.resource.data))
+          || (signedIn() && isSelf()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userName', 'updatedAt', 'lastLoginAt'])));
+      allow delete: if manages(resource.data.orgId) && roleOk(resource.data.orgId, resource.data);
     }
 
-    // Dispositivos confiáveis e MFA
+    // ---- Trusted devices (orgId + userId) ------------------------------------
     match /trusted_devices/{deviceId} {
-      allow read, write: if true;
+      allow read: if canRead(resource);
+      allow create: if canCreate() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow update, delete: if (isMaster()
+          || (ownerOk(resource.data)
+              && (resource.data.get('userId', '') == request.auth.uid || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))))
+        && (request.method == 'delete' || (sameOwner() && request.resource.data.get('userId', '') == resource.data.get('userId', '')));
     }
 
-    // Unidades e filiais
-    match /units/{unitId} {
-      allow read, write: if true;
+    // ---- Org-scoped by orgId / organizationId field ----------------------------
+    match /{coll}/{docId} {
+      function orgScoped() {
+        return coll in [
+          // orgId
+          'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
+          'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
+          'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
+          'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
+          'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
+          'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
+          'teams', 'units', 'work_order_statuses', 'work_orders', 'work_shifts', 'worker_time_logs',
+          // organizationId
+          'commercial_clients', 'commercial_cost_compositions', 'commercial_imports',
+          'commercial_materials', 'commercial_proposals', 'hr_onboardings', 'purchasing_orders',
+          'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions',
+          'purchasing_suppliers', 'travel_requests', 'travel_searches'
+        ];
+      }
+      // Append-only history.
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs']; }
+      // Doc id is the orgId.
+      function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
+
+      allow read: if (orgScoped() || immutable()) && canRead(resource);
+      // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
+      function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
+      function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk();
+      allow update: if orgScoped() && canUpdate();
+      allow delete: if orgScoped() && canDelete();
+
+      // Finance: members read; Admin/Gerente/Supervisor create/update; Admin/Gerente delete.
+      function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules']; }
+      function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
+      function isPayable() { return coll == 'finance_payables'; }
+      // Payables: Supervisor may only settle an open one (aberto → pago); Admin/Gerente edit freely.
+      function supervisorPays() {
+        return hasRole(orgOf(resource.data), ['Supervisor'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'pagoEm', 'pagoPor', 'updatedAt'])
+          && resource.data.get('status', '') == 'aberto' && request.resource.data.get('status', '') == 'pago'
+          && request.resource.data.get('pagoPor', '') == request.auth.uid;
+      }
+      allow read: if finance() && canRead(resource);
+      allow create: if finance() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+        && (!isPayable() || request.resource.data.get('createdBy', '') == request.auth.uid);
+      allow update: if finance() && canUpdate()
+        && (isPayable() ? (financeRole(resource.data, ['Admin', 'Gerente']) || supervisorPays())
+                        : financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']));
+      allow delete: if finance() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']);
+
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId));
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId))
+        && (request.method == 'delete'
+            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
     }
 
-    // Centros de custo
-    match /cost_centers/{costCenterId} {
-      allow read, write: if true;
+    // ---- NF-e (written by the server; the client only moves classification status) ----
+    match /nfe_documents/{id} {
+      function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
+      function run() { return resource.data.get('classificacao', {}); }
+      function ownRun() { return run().get('by', '') == request.auth.uid; }
+      // A run left 'classificando' for 2+ minutes (server time) — or a legacy one without startedAt — may be released by Admin/Gerente.
+      function stale() { return !(run().get('startedAt', null) is timestamp) || request.time > run().startedAt + duration.value(2, 'm'); }
+      function newRun() {
+        let r = request.resource.data.get('classificacao', {});
+        return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
+      }
+      function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
+      allow read: if canRead(resource);
+      allow update: if canUpdate()
+        && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
+        && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
+             && newRun())
+          || (move() == 'classificando>classificada' && ownRun())
+          || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
+    }
+    match /nfe_sync/{orgId} { allow read: if isMaster() || isMemberOf(orgId); }
+
+    // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
+    match /commercial_proposal_items/{itemId} {
+      function parentOrg(d) {
+        return get(/databases/$(database)/documents/commercial_proposals/$(d.proposalId)).data.get('organizationId', '');
+      }
+      // A new/updated item must belong to its parent proposal's org (no attaching items to another org's proposal).
+      function matchesParent() {
+        return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
+          && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
+      }
+      allow read: if canRead(resource) || isMemberOf(parentOrg(resource.data));
+      allow create: if canCreate() && matchesParent();
+      allow update: if canUpdate() && matchesParent();
+      allow delete: if canDelete() || isMemberOf(parentOrg(resource.data));
     }
 
-    // Contratos
-    match /contracts/{contractId} {
-      allow read, write: if true;
-    }
+    // ---- WhatsApp bridge mirror ----------------------------------------------
+    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
+    // authenticated member. The mirror matches that: any member of some org (or master).
+    function waMember() { return isMaster() || hasAnyOrg(); }
 
-    // Ativos e equipamentos
-    match /assets/{assetId} {
-      allow read, write: if true;
-    }
+    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
+    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
 
-    // Equipes
-    match /teams/{teamId} {
-      allow read, write: if true;
-    }
-
-    // Ordens de Serviço
-    match /work_orders/{orderId} {
-      allow read, write: if true;
-    }
-
-    // Mensagens e Diálogo Interno da OS
-    match /order_messages/{msgId} {
-      allow read, write: if true;
-    }
-
-    // Estados configuráveis de Ordens de Serviço
-    match /work_order_statuses/{statusId} {
-      allow read, write: if true;
-    }
-
-    // Eventos e timeline da OS
-    match /order_events/{eventId} {
-      allow read, create: if true;
-      allow update, delete: if false; // Timeline imutável
-    }
-
-    // Aprovações LPU
-    match /lpu_approvals/{approvalId} {
-      allow read, write: if true;
-    }
-
-    // Recorrências
-    match /recurring_orders/{recId} {
-      allow read, write: if true;
-    }
-
-    // Templates de Checklist
-    match /checklist_templates/{templateId} {
-      allow read, write: if true;
-    }
-
-    // Execuções de Checklist
-    match /checklist_runs/{runId} {
-      allow read, write: if true;
-    }
-
-    // Inspeções
-    match /inspections/{inspectionId} {
-      allow read, write: if true;
-    }
-
-    // Catálogo de Peças, Serviços e Mão de Obra
-    match /items/{itemId} {
-      allow read, write: if true;
-    }
-
-    // Categorias de itens
-    match /item_categories/{catId} {
-      allow read, write: if true;
-    }
-
-    // Saldos de estoque
-    match /stock_balances/{balanceId} {
-      allow read, write: if true;
-    }
-
-    // Movimentações de estoque
-    match /stock_movements/{movId} {
-      allow read, create: if true;
-      allow update, delete: if false; // Movimentações são imutáveis para garantir auditoria
-    }
-
-    // Ocorrências e Não Conformidades
-    match /occurrences/{occId} {
-      allow read, write: if true;
-    }
-
-    // Suporte / Chamados
-    match /support_tickets/{ticketId} {
-      allow read, write: if true;
-    }
-
-    // Trilha de Auditoria
-    match /audit_logs/{logId} {
-      allow read, create: if true;
-      allow update, delete: if false; // Auditoria é estritamente append-only
-    }
-
-    // Histórico de conversas da IA por usuário
-    match /ai_conversations/{convId} {
-      allow read, write: if true;
-    }
-
-    // RDO - Relatórios Diários de Obra / Diário de Campo
-    match /construction_reports/{reportId} {
-      allow read, write: if true;
-    }
-
-    // Marcos de Avanço Físico de Obras & Montagens
-    match /construction_milestones/{milestoneId} {
-      allow read, write: if true;
-    }
-
-    // Colaboradores de Campo / Equipe de Obras
-    match /field_workers/{workerId} {
-      allow read, write: if true;
-    }
-
-    // Apontamentos Diários de Jornada e Horas Extras (Diário de Campo)
-    match /worker_time_logs/{logId} {
-      allow read, write: if true;
-    }
-
-    // Configuração de Turnos de Trabalho
-    match /work_shifts/{shiftId} {
-      allow read, write: if true;
-    }
-
-    // Regras de Cálculo de Horas Extras e Adicionais por Empresa
-    match /overtime_rules/{orgId} {
-      allow read, write: if true;
-    }
-
-    // Obras e Construções Gerais
-    match /constructions/{constructionId} {
-      allow read, write: if true;
-    }
-
-    // Módulo Bens Coletivos / Almoxarifado
-    match /collective_asset_categories/{categoryId} {
-      allow read, write: if true;
-    }
-
-    match /collective_assets/{assetId} {
-      allow read, write: if true;
-    }
-
-    match /collective_asset_workers/{workerId} {
-      allow read, write: if true;
-    }
-
-    match /collective_asset_movements/{movementId} {
-      allow read, write: if true;
-    }
-
-    match /collective_asset_services/{serviceId} {
-      allow read, write: if true;
-    }
-
-    match /collective_asset_policies/{policyId} {
-      allow read, write: if true;
-    }
-
-    // Módulo RH / Salários e Provisionamento do 13º
-    match /rh_employees/{employeeId} {
-      allow read, write: if true;
-    }
-
-    match /rh_calculations/{calculationId} {
-      allow read, write: if true;
-    }
-
-    match /rh_batches/{batchId} {
-      allow read, write: if true;
-    }
-
-    match /rh_imports/{importId} {
-      allow read, write: if true;
-    }
-
-    match /rh_policies/{policyId} {
-      allow read, write: if true;
-    }
-
-    // Comandos Programados do Assistente IA (WhatsApp)
     match /whatsapp_scheduled_jobs/{jobId} {
-      allow read, delete: if true;
-      allow create, update: if request.resource.data.name is string
-                            && request.resource.data.name.size() > 0
-                            && request.resource.data.name.size() <= 160
-                            && request.resource.data.scheduleTime is string
-                            && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
-                            && request.resource.data.promptInstruction is string
-                            && request.resource.data.promptInstruction.size() > 0
-                            && request.resource.data.promptInstruction.size() <= 2000;
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.scheduleTime is string
+        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+        && request.resource.data.promptInstruction is string
+        && request.resource.data.promptInstruction.size() > 0
+        && request.resource.data.promptInstruction.size() <= 2000;
     }
 
-    // Cofre em Nuvem de Comprovantes OCR & Notas de Débito
     match /whatsapp_ocr_receipts/{receiptId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.establishmentName is string
-                            && request.resource.data.establishmentName.size() <= 200
-                            && request.resource.data.totalAmount is number;
-      allow delete: if false; // Histórico OCR protegido contra exclusão acidental
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.establishmentName is string
+        && request.resource.data.establishmentName.size() <= 200
+        && request.resource.data.totalAmount is number;
     }
 
-    // Contatos, Respostas Rápidas e Regras do Assistente WhatsApp
-    match /whatsapp_contacts/{contactId} {
-      allow read, write: if true;
-    }
-
-    match /whatsapp_quick_replies/{replyId} {
-      allow read, write: if true;
-    }
-
-    match /whatsapp_ai_rules/{ruleId} {
-      allow read, write: if true;
-    }
-
-    match /whatsapp_ai_settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    // Regras e Histórico de Automação de Notas de Débito (ND + Outlook)
     match /whatsapp_nd_rules/{ruleId} {
-      allow read, delete: if true;
-      allow create, update: if request.resource.data.name is string
-                            && request.resource.data.name.size() > 0
-                            && request.resource.data.name.size() <= 160
-                            && request.resource.data.groupJid is string;
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.groupJid is string;
     }
 
     match /whatsapp_nd_records/{recordId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.receiverName is string
-                            && request.resource.data.receiverName.size() <= 180
-                            && request.resource.data.amount is number;
-      allow delete: if false; // Histórico de NDs protegido contra exclusão acidental
-    }
-
-    // Teste de conexão
-    match /test/{docId} {
-      allow read, write: if true;
-    }
-
-    // Default fallback
-    match /{document=**} {
-      allow read, write: if isSignedIn();
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.receiverName is string
+        && request.resource.data.receiverName.size() <= 180
+        && request.resource.data.amount is number;
     }
   }
 }

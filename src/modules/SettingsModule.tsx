@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { TrustedDevice } from '../types';
 import { WhatsAppReceiptsConfig } from '../types/travel';
@@ -60,6 +60,24 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   const [notifyCriticalStock, setNotifyCriticalStock] = useState(true);
   const [enableReworkTracking, setEnableReworkTracking] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Load persisted operation parameters (organizations/{orgId}.settings)
+  useEffect(() => {
+    if (!organization) return;
+    let cancelled = false;
+    getDoc(doc(db, 'organizations', organization.id))
+      .then((snap) => {
+        const st = snap.data()?.settings;
+        if (cancelled || !st) return;
+        if (st.slaHours != null) setSlaHours(String(st.slaHours));
+        if (st.lpuLimit != null) setLpuLimit(String(st.lpuLimit));
+        if (st.notifyCriticalStock != null) setNotifyCriticalStock(!!st.notifyCriticalStock);
+        if (st.enableReworkTracking != null) setEnableReworkTracking(!!st.enableReworkTracking);
+      })
+      .catch((err) => console.error('Erro ao carregar parâmetros:', err));
+    return () => { cancelled = true; };
+  }, [organization?.id]);
 
   // WhatsApp Webhook & OCR State
   const [waConfig, setWaConfig] = useState<WhatsAppReceiptsConfig>({
@@ -149,77 +167,24 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const generateNewToken = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_';
-    let token = 'aguero_wa_';
-    for (let i = 0; i < 20; i++) {
-      token += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setWaConfig((prev) => ({ ...prev, verifyToken: token }));
-  };
-
+  // The verify token lives only in WHATSAPP_VERIFY_TOKEN on the server, so this only probes that the endpoint answers.
   const handleTestHandshake = async () => {
     setWaTestStatus({ running: true });
     try {
-      const testChallenge = `challenge_${Math.random().toString(36).substring(2, 9)}`;
-      const url = `/api/webhooks/whatsapp-receipts?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(
-        waConfig.verifyToken
-      )}&hub.challenge=${testChallenge}`;
-      const res = await fetch(url);
-      const bodyText = await res.text();
-      if (res.ok && bodyText === testChallenge) {
-        setWaTestStatus({
-          running: false,
-          success: true,
-          message: `Handshake GET aprovado com sucesso! Código HTTP 200 retornado com o challenge de validação correspondente (${testChallenge}). O endpoint está pronto para receber notificações do webhook.`,
-        });
-      } else {
-        setWaTestStatus({
-          running: false,
-          success: false,
-          message: `Falha no handshake (Status ${res.status}): ${bodyText || 'Token não aceito'}. Verifique se o token salvo coincide exatamente com o parâmetro de requisição.`,
-        });
-      }
+      const res = await fetch('/api/webhooks/whatsapp-receipts');
+      const data = await res.json().catch(() => ({}));
+      setWaTestStatus({
+        running: false,
+        success: res.ok && data.success === true,
+        message: res.ok && data.success
+          ? `${data.message || 'Endpoint ativo.'} O token do handshake é conferido com a variável WHATSAPP_VERIFY_TOKEN do servidor.`
+          : `Falha ao consultar o endpoint (Status ${res.status}): ${data.error || 'resposta inesperada'}.`,
+      });
     } catch (err: any) {
       setWaTestStatus({
         running: false,
         success: false,
         message: `Erro ao testar endpoint de webhook: ${err.message}`,
-      });
-    }
-  };
-
-  const handleSimulateWebhookReceipt = async () => {
-    setWaTestStatus({ running: true });
-    try {
-      const res = await fetch('/api/webhooks/whatsapp-receipts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderPhone: '+55 19 98123-4567',
-          senderName: 'Carlos Eduardo Silva (Técnico de Campo)',
-          fileBase64: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD...',
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setWaTestStatus({
-          running: false,
-          success: true,
-          message: 'Payload POST do WhatsApp recebido e processado com sucesso! O comprovante simulado foi registrado na fila de reembolsos com OCR.',
-        });
-      } else {
-        setWaTestStatus({
-          running: false,
-          success: false,
-          message: `Falha no teste POST: ${data.error || 'Erro desconhecido'}`,
-        });
-      }
-    } catch (err: any) {
-      setWaTestStatus({
-        running: false,
-        success: false,
-        message: `Erro na simulação POST: ${err.message}`,
       });
     }
   };
@@ -326,6 +291,27 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
 
   const handleSavePreferences = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!organization) return;
+    setSaveError(null);
+    try {
+      await setDoc(
+        doc(db, 'organizations', organization.id),
+        {
+          settings: {
+            slaHours: Number(slaHours) || 24,
+            lpuLimit: Number(lpuLimit) || 0,
+            notifyCriticalStock,
+            enableReworkTracking,
+          },
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error('Erro ao salvar parâmetros:', err);
+      setSaveError('Não foi possível salvar (apenas Administradores podem alterar os parâmetros).');
+      return;
+    }
     setSavedSuccess(true);
     await logAudit(
       'Configurações',
@@ -372,6 +358,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>Parâmetros operacionais salvos com sucesso!</span>
         </div>
+      )}
+
+      {saveError && (
+        <div className="p-3.5 rounded-xl bg-red-950/70 border border-red-800 text-red-300 text-xs">{saveError}</div>
       )}
 
       {actionMessage && (
@@ -729,39 +719,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
                   <label className="text-slate-300 font-semibold flex items-center space-x-1.5">
                     <span>Token de Verificação (Verify Token)</span>
                   </label>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={generateNewToken}
-                      className="text-[10px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
-                    >
-                      Gerar Novo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(waConfig.verifyToken, 'verifyToken')}
-                      className="text-[10px] text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800 border border-slate-700 flex items-center space-x-1 cursor-pointer transition-colors"
-                    >
-                      {copiedField === 'verifyToken' ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-400 font-bold">Copiado</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3 text-slate-400" />
-                          <span>Copiar Token</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
                 </div>
                 <input
                   type="text"
                   value={waConfig.verifyToken}
-                  onChange={(e) => setWaConfig({ ...waConfig, verifyToken: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 font-mono text-amber-300 text-xs focus:outline-none focus:border-amber-500 transition-colors"
+                  readOnly
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 font-mono text-amber-300 text-xs focus:outline-none opacity-70 cursor-not-allowed"
                 />
+                <p className="text-[10px] text-slate-500">Definido na variável WHATSAPP_VERIFY_TOKEN do servidor.</p>
               </div>
 
               {/* Provedor de Conexão */}
@@ -809,7 +774,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
                 className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold flex items-center space-x-1 cursor-pointer text-xs"
               >
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Testar Handshake GET</span>
+                <span>Testar Endpoint GET</span>
               </button>
             </div>
           </form>

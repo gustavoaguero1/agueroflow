@@ -1,0 +1,91 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
+import type { Request, RequestHandler } from 'express';
+import type { Auth } from 'firebase-admin/auth';
+import { getAdmin } from './firebaseAdmin.ts';
+import type { Role } from './authService.ts';
+
+export type AuthUser = { uid: string; email?: string; emailVerified?: boolean; master: boolean; orgs: Record<string, Role> };
+
+declare global {
+  namespace Express {
+    interface Request { user?: AuthUser; orgId?: string }
+  }
+}
+
+export const PUBLIC_API_PATTERNS: RegExp[] = [
+  /^\/api\/health\/?$/,
+  /^\/api\/auth\/credential-login\/?$/,
+  /^\/api\/auth\/first-access\/check\/[^/]+\/?$/,
+  /^\/api\/auth\/first-access\/complete\/?$/,
+  /^\/api\/hr\/onboarding\/check\/[^/]+\/?$/,
+  /^\/api\/hr\/onboarding\/submit\/?$/,
+  /^\/api\/leads\/demo\/?$/,
+  /^\/api\/outlook\/oauth\/callback\/?$/,
+  /^\/api\/composio\/whatsapp\/webhook\/?$/,
+  /^\/api\/webhooks\/whatsapp-receipts\/?$/,
+];
+
+export const isPublicPath = (originalUrl: string) => {
+  const path = originalUrl.split('?')[0];
+  return PUBLIC_API_PATTERNS.some((r) => r.test(path));
+};
+
+type Verifier = Pick<Auth, 'verifyIdToken'>;
+
+/** Verifies the Bearer ID token (rejecting revoked ones) unless the path is public. */
+export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.auth ?? null, skipPublic = true): RequestHandler {
+  return async (req, res, next) => {
+    if (req.user || (skipPublic && isPublicPath(req.originalUrl))) return next();
+    const auth = getAuth();
+    if (!auth) return res.status(503).json({ error: 'auth_unavailable' });
+    const token = /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1];
+    if (!token) return res.status(401).json({ error: 'unauthenticated' });
+    try {
+      const d = await auth.verifyIdToken(token, true);
+      req.user = {
+        uid: d.uid, email: d.email, emailVerified: d.email_verified === true,
+        master: d.master === true, orgs: d.orgs && typeof d.orgs === 'object' ? d.orgs : {},
+      };
+    } catch {
+      return res.status(401).json({ error: 'unauthenticated' });
+    }
+    next();
+  };
+}
+
+export const createRequireAuth = (getAuth?: () => Verifier | null) => verifyToken(getAuth);
+export const requireAuth: RequestHandler = createRequireAuth();
+
+const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+
+/** The org a request targets; null when the request names it ambiguously or with a non-string value. */
+export function orgIdOf(req: Request): string | undefined | null {
+  const named = [req.params?.orgId, req.query?.orgId, req.body?.orgId, req.body?.organizationId].filter((v) => v !== undefined);
+  if (named.some((v) => typeof v !== 'string' || !v) || new Set(named).size > 1) return null;
+  if (named.length) return named[0] as string;
+  const orgs = Object.keys(req.user?.orgs ?? {});
+  return orgs.length === 1 ? orgs[0] : undefined;
+}
+
+/** Passes master or a member whose role in the target org is allowed; sets req.orgId to the authorized org. */
+export function requireRole(...roles: Role[]): RequestHandler {
+  return (req, res, next) => {
+    const u = req.user;
+    if (!u) return res.status(401).json({ error: 'unauthenticated' });
+    const org = orgIdOf(req);
+    if (org === null || (!u.master && !(org && roles.includes(u.orgs[org])))) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    req.orgId = org;
+    next();
+  };
+}
+
+const digest = (s: string) => createHash('sha256').update(s).digest();
+
+export const requireWebhookSecret: RequestHandler = (req, res, next) => {
+  const secret = process.env.WEBHOOK_SECRET;
+  const given = str(req.query?.token) ?? str(req.headers['x-webhook-token']);
+  if (secret && given && timingSafeEqual(digest(given), digest(secret))) return next();
+  res.status(403).json({ error: 'forbidden' });
+};

@@ -32,7 +32,6 @@ import {
   saveRhEmployee,
   deleteRhEmployee,
   saveRhCalculation,
-  seedRhDemoData,
   calculateEmployeeThirteenth,
   syncAllRhEmployeesToFieldWorkers,
 } from '../services/rhPayrollService';
@@ -80,7 +79,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
   // Tab State
   const [currentTab, setCurrentTab] = useState<RhSubSection>(activeSubSection);
-  const [referenceYear, setReferenceYear] = useState<number>(2025);
+  const [referenceYear, setReferenceYear] = useState<number>(new Date().getFullYear());
 
   // Data State
   const [employees, setEmployees] = useState<RhEmployee[]>([]);
@@ -174,32 +173,6 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
       unsubImports();
     };
   }, [organization?.id, referenceYear, isAuthorized]);
-
-  // Seeder de Demonstração
-  const handleSeedDemo = async () => {
-    if (!organization?.id || !user?.email) return;
-    if (
-      !confirm(
-        'Deseja carregar a base de demonstração do 13º Salário (Aguero Inox)? Ela será devidamente identificada como [Demonstração ilustrativa — dados fictícios].'
-      )
-    ) {
-      return;
-    }
-
-    setSeedingDemo(true);
-    try {
-      await seedRhDemoData(organization.id, user.email);
-      await logAudit(
-        'RH / Salários',
-        'Carga de Demonstração',
-        'Carga ilustrativa de colaboradores e provisão de 13º salário realizada com sucesso.'
-      );
-    } catch (err: any) {
-      alert('Erro ao carregar dados de demonstração: ' + err.message);
-    } finally {
-      setSeedingDemo(false);
-    }
-  };
 
   // Save Employee
   const handleSaveEmployee = async (employee: RhEmployee) => {
@@ -328,17 +301,6 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
             </div>
           </div>
 
-          {/* Demonstration Seeder Button */}
-          {employees.length === 0 && canEdit && (
-            <button
-              onClick={handleSeedDemo}
-              disabled={seedingDemo}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-md transition disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4 text-cyan-300" />
-              {seedingDemo ? 'Carregando Demonstração...' : 'Carregar Dados de Demonstração (Aguero Inox)'}
-            </button>
-          )}
         </div>
 
         {/* Mandatory Module Disclaimer Banner */}

@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { installApiAuthFetch } from '../src/apiAuthFetch.ts';
+
+function setup(token: string | null) {
+  const calls: { input: unknown; init?: RequestInit }[] = [];
+  const target = {
+    location: { origin: 'http://app.test' },
+    fetch: async (input: unknown, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response('ok');
+    },
+  };
+  installApiAuthFetch(async () => token, target);
+  const auth = (i = 0) => {
+    const c = calls[i];
+    const h = new Headers(c.init?.headers ?? (c.input instanceof Request ? c.input.headers : undefined));
+    return h.get('authorization');
+  };
+  return { target, calls, auth };
+}
+
+test('adds bearer to /api calls', async () => {
+  const { target, auth } = setup('tok');
+  await target.fetch('/api/x');
+  await target.fetch(new URL('http://app.test/api/y'));
+  await target.fetch(new Request('http://app.test/api/z', { method: 'POST' }));
+  assert.equal(auth(0), 'Bearer tok');
+  assert.equal(auth(1), 'Bearer tok');
+  assert.equal(auth(2), 'Bearer tok');
+});
+
+test('leaves external urls untouched', async () => {
+  const { target, calls, auth } = setup('tok');
+  await target.fetch('https://evil.test/api/x');
+  await target.fetch('/other');
+  assert.equal(auth(0), null);
+  assert.equal(auth(1), null);
+  assert.equal(calls[0].init, undefined);
+});
+
+test('keeps existing authorization header', async () => {
+  const { target, auth } = setup('tok');
+  await target.fetch('/api/x', { headers: { Authorization: 'Bearer mine' } });
+  await target.fetch(new Request('http://app.test/api/x', { headers: { Authorization: 'Bearer req' } }));
+  assert.equal(auth(0), 'Bearer mine');
+  assert.equal(auth(1), 'Bearer req');
+});
+
+test('no token → no header', async () => {
+  const { target, auth } = setup(null);
+  await target.fetch('/api/x');
+  assert.equal(auth(0), null);
+});

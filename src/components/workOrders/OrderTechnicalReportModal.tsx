@@ -114,15 +114,15 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Planta / Unidade</span>
-                <strong className="text-slate-900">{order.assignedTeam || 'CD Marília (BMDV)'}</strong>
+                <strong className="text-slate-900">{order.assignedTeam || '—'}</strong>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Técnico Responsável</span>
-                <strong className="text-slate-900">{order.assignedTo || 'Gilfran — gilfran.bispo'}</strong>
+                <strong className="text-slate-900">{order.assignedTo || '—'}</strong>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Data Planejada</span>
-                <strong className="text-slate-900">{order.scheduledStartDate || '13/09/2026'}</strong>
+                <strong className="text-slate-900">{order.scheduledStartDate || '—'}</strong>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Tempo Ativo / SLA</span>
@@ -130,7 +130,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Ativo Vinculado</span>
-                <strong className="text-slate-900">{asset ? `${asset.tag} - ${asset.name}` : 'Ralos da Reembalagem'}</strong>
+                <strong className="text-slate-900">{asset ? `${asset.tag} - ${asset.name}` : '—'}</strong>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px]">Solicitante / Gestor</span>
@@ -155,7 +155,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                 <span className="text-slate-600 text-[10px]">
                   {order.executionGps
                     ? `Coordenadas: Lat ${order.executionGps.latitude.toFixed(6)}, Long ${order.executionGps.longitude.toFixed(6)} (Precisão: ±${order.executionGps.accuracy?.toFixed(1) || 5}m)`
-                    : 'Coordenadas capturadas no local da obra (-22.2155, -49.9538) — Planta CD Marília (BMDV)'}
+                    : 'Localização não registrada'}
                 </span>
               </div>
             </div>
@@ -279,16 +279,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td className="py-1.5 font-mono font-bold">MGR</td>
-                    <td className="py-1.5">Material geral de reparo — CD Marília (BMDV)</td>
-                    <td className="py-1.5 text-center font-mono">UN</td>
-                    <td className="py-1.5 text-right font-mono font-bold">12</td>
-                    <td className="py-1.5 text-right font-mono">0</td>
-                    <td className="py-1.5 text-right font-mono text-[9px] text-amber-700 font-bold">
-                      Aguardando Aprovação (Bloqueante)
-                    </td>
-                  </tr>
+                  <tr><td colSpan={6} className="py-1.5 text-slate-400">Nenhuma peça planejada</td></tr>
                 )}
               </tbody>
             </table>
@@ -311,7 +302,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                 ) : (
                   <div className="text-slate-400">
                     <span className="block font-bold text-[11px] text-slate-700">Foto 1: Estado Inicial (Antes)</span>
-                    <span className="text-[10px]">Registro de abertura anexado pelo técnico Gilfran</span>
+                    <span className="text-[10px]">Nenhuma foto registrada</span>
                   </div>
                 )}
               </div>
@@ -326,7 +317,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                 ) : (
                   <div className="text-slate-400">
                     <span className="block font-bold text-[11px] text-slate-700">Foto 2: Pós-Reparo (Depois)</span>
-                    <span className="text-[10px]">Evidência após conclusão dos ralos e vedação</span>
+                    <span className="text-[10px]">Nenhuma foto registrada</span>
                   </div>
                 )}
               </div>
@@ -340,11 +331,11 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                 {order.technicianSignatureUrl ? (
                   <img src={order.technicianSignatureUrl} alt="Assinatura Técnico" className="h-14 object-contain" />
                 ) : (
-                  <span className="font-serif italic text-slate-600 text-sm">Gilfran Bispo (Técnico Executor)</span>
+                  <span className="font-serif italic text-slate-600 text-sm">{order.technicianSignedBy || 'Técnico Executor'}</span>
                 )}
               </div>
               <p className="font-bold text-[11px] text-slate-900 mt-1">Assinatura do Técnico Responsável</p>
-              <p className="text-[9px] text-slate-500">CPF: ***.458.128-** • CREA/CFT Registrado</p>
+              <p className="text-[9px] text-slate-500">Assinatura digital</p>
             </div>
 
             <div className="text-center">
@@ -352,11 +343,11 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
                 {order.clientSignatureUrl ? (
                   <img src={order.clientSignatureUrl} alt="Assinatura Responsável" className="h-14 object-contain" />
                 ) : (
-                  <span className="font-serif italic text-slate-600 text-sm">Derek Liria (Gestor / Supervisão)</span>
+                  <span className="font-serif italic text-slate-600 text-sm">{order.clientSignedBy || 'Responsável da Planta'}</span>
                 )}
               </div>
               <p className="font-bold text-[11px] text-slate-900 mt-1">Assinatura do Responsável da Planta</p>
-              <p className="text-[9px] text-slate-500">CD Marília (BMDV) • Aceite Operacional</p>
+              <p className="text-[9px] text-slate-500">Aceite Operacional</p>
             </div>
           </div>
 

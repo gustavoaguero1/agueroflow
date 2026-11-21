@@ -48,7 +48,6 @@ interface PurchasingDashboardProps {
   onNavigateSub: (tab: PurchasingSubSection) => void;
   onNewRequisition: () => void;
   onNewOrder: () => void;
-  onSeedDemo: () => Promise<void>;
   userName: string;
 }
 
@@ -60,7 +59,6 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
   onNavigateSub,
   onNewRequisition,
   onNewOrder,
-  onSeedDemo,
   userName,
 }) => {
   // 1. Pending Requisitions
@@ -118,6 +116,7 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
 
   // 4. Monthly Savings & AI Market Benchmark State
   const [benchmarkData, setBenchmarkData] = useState<MonthlySavingsReport | null>(null);
+  const noSavings = !benchmarkData || benchmarkData.isEstimate || !(benchmarkData.totalSavingsAmount > 0);
   const [loadingBenchmark, setLoadingBenchmark] = useState<boolean>(false);
   const [activeCategoryHover, setActiveCategoryHover] = useState<string | null>(null);
 
@@ -343,16 +342,6 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {orders.length === 0 && requisitions.length === 0 && (
-            <button
-              onClick={onSeedDemo}
-              className="flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 font-semibold text-xs rounded-xl border border-cyan-800/60 transition cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span>Carregar Dados Demo</span>
-            </button>
-          )}
-
           <button
             onClick={() => onNavigateSub('compras-inteligencia')}
             className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition cursor-pointer"
@@ -712,11 +701,11 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
                   Economia Mensal Negociada
                 </span>
                 <p className="text-lg font-extrabold font-mono text-emerald-400 mt-0.5">
-                  {formatBrl(benchmarkData?.totalSavingsAmount || 38450)}
+                  {noSavings ? '—' : formatBrl(benchmarkData!.totalSavingsAmount)}
                 </p>
                 <span className="text-[10px] font-semibold text-emerald-300 flex items-center gap-1 mt-0.5">
                   <TrendingDown size={11} />
-                  -{(benchmarkData?.savingsPercentage || 9.8).toFixed(1)}% vs Preço de Mercado
+                  {noSavings ? 'Sem dados reais de economia' : `-${benchmarkData!.savingsPercentage.toFixed(1)}% vs Preço de Mercado`}
                 </span>
               </div>
 
@@ -725,7 +714,7 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
                   Benchmark Níquel LME
                 </span>
                 <p className="text-lg font-extrabold font-mono text-cyan-400 mt-0.5">
-                  US$ {(benchmarkData?.commodityIndices?.nickelLmeUsdTon || 16420).toLocaleString('pt-BR')}
+                  {benchmarkData?.commodityIndices?.nickelLmeUsdTon ? `US$ ${benchmarkData.commodityIndices.nickelLmeUsdTon.toLocaleString('pt-BR')}${benchmarkData.isEstimate ? ' (estimativa)' : ''}` : '—'}
                 </p>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
                   Sobretaxa liga 304 estável
@@ -737,7 +726,7 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
                   Índice Dólar Ptax / Insumos
                 </span>
                 <p className="text-lg font-extrabold font-mono text-slate-200 mt-0.5">
-                  R$ {(benchmarkData?.commodityIndices?.dollarPtaxBrl || 5.72).toFixed(2)}
+                  {benchmarkData?.commodityIndices?.dollarPtaxBrl ? `R$ ${benchmarkData.commodityIndices.dollarPtaxBrl.toFixed(2)}${benchmarkData.isEstimate ? ' (estimativa)' : ''}` : '—'}
                 </p>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
                   Base de importação componentes
@@ -775,7 +764,7 @@ export const PurchasingDashboard: React.FC<PurchasingDashboardProps> = ({
                         {formatBrl(it.currentMarketPrice)}
                       </td>
                       <td className="p-2.5 text-right font-mono font-bold text-emerald-400">
-                        {it.priceDeltaPercent < 0 ? `${Math.abs(it.priceDeltaPercent).toFixed(1)}%` : '+0.0%'}
+                        {benchmarkData?.isEstimate ? '—' : it.priceDeltaPercent < 0 ? `${Math.abs(it.priceDeltaPercent).toFixed(1)}%` : '+0.0%'}
                       </td>
                       <td className="p-2.5 text-center">
                         <span

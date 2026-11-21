@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import {
   collection,
   query,
@@ -11,7 +11,8 @@ import {
   addDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
+import { postJson } from '../apiAuthFetch';
 import {
   Organization,
   OrgMember,
@@ -99,12 +100,37 @@ interface AuthContextType {
     providedEmail?: string
   ) => Promise<{ authorized: boolean; org?: Organization; member?: OrgMember; error?: string }>;
   logAudit: (module: string, action: string, details: string, targetId?: string) => Promise<void>;
-  seedDemoData: () => Promise<void>;
-  demoDataLoaded: boolean;
   authError: string | null;
 }
 
 export const MASTER_EMAIL = 'gustavo@agueroinox.com.br';
+const FIRST_ACCESS_LINK_MSG = 'Peça ao administrador o seu link de primeiro acesso.';
+
+type ServerSession = { claims?: { master?: boolean }; member?: OrgMember | null; org?: Organization | null };
+
+// Binds the uid on the server and refreshes claims. Non-fatal: without the server (e.g. local dev) we keep the Firestore lookups.
+// Google sign-in and onAuthStateChanged both sync right after the popup: share one in-flight call per uid.
+const inflightSessions = new Map<string, Promise<ServerSession | null>>();
+function syncServerSession(currentUser: User): Promise<ServerSession | null> {
+  let p = inflightSessions.get(currentUser.uid);
+  if (!p) {
+    p = doSyncServerSession(currentUser).finally(() => inflightSessions.delete(currentUser.uid));
+    inflightSessions.set(currentUser.uid, p);
+  }
+  return p;
+}
+
+async function doSyncServerSession(currentUser: User): Promise<ServerSession | null> {
+  try {
+    const r = await postJson<ServerSession>('/api/auth/session');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    await currentUser.getIdToken(true);
+    return r.data;
+  } catch (err) {
+    console.warn('Sessão do servidor indisponível; seguindo com dados locais:', err);
+    return null;
+  }
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -124,7 +150,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [member, setMember] = useState<OrgMember | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [demoDataLoaded, setDemoDataLoaded] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Global Multi-unit & Contract Context
@@ -138,6 +163,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isDeviceTrusted, setIsDeviceTrusted] = useState<boolean>(true);
   const [requireMfaVerification, setRequireMfaVerification] = useState<boolean>(false);
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
+  // Bumped on every explicit org selection, so a slower loadUserData started earlier cannot override it.
+  const orgSelectionSeq = useRef(0);
 
   // Load units and contracts when active organization changes
   const loadOrgHierarchy = useCallback(async (orgId: string) => {
@@ -258,11 +285,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!snap.empty) {
         const existing = snap.docs[0];
         const data = existing.data() as OrgMember;
-        if (data.role !== 'Admin' || !data.active || (uid && data.userId !== uid)) {
+        if (data.role !== 'Admin' || !data.active) {
           await updateDoc(doc(db, 'org_members', existing.id), {
             role: 'Admin',
             active: true,
-            userId: uid || data.userId || 'usr_master_gustavo',
             userName: 'Gustavo Aguero (Master)',
             updatedAt: new Date().toISOString(),
           });
@@ -339,25 +365,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Email fallback only runs if the uid lookup missed; a rules denial (no matching claims) means "not found".
       if (!matchedDoc && norm) {
-        const emailSnap = await getDocs(query(membersRef, where('userEmail', '==', norm), where('active', '==', true)));
-        if (!emailSnap.empty) {
-          matchedDoc = { id: emailSnap.docs[0].id, data: emailSnap.docs[0].data() as OrgMember };
-        }
-      }
-
-      // Case-insensitive fallback scan by userEmail or userName
-      if (!matchedDoc && norm) {
-        const allActiveSnap = await getDocs(query(membersRef, where('active', '==', true)));
-        const found = allActiveSnap.docs.find((d) => {
-          const m = d.data() as OrgMember;
-          return (
-            (m.userEmail && m.userEmail.toLowerCase().trim() === norm) ||
-            (m.userName && m.userName.toLowerCase().trim() === norm)
-          );
+        const emailSnap = await getDocs(query(membersRef, where('userEmail', '==', norm), where('active', '==', true))).catch((err) => {
+          if (err?.code === 'permission-denied') return null;
+          throw err;
         });
-        if (found) {
-          matchedDoc = { id: found.id, data: found.data() as OrgMember };
+        if (emailSnap && !emailSnap.empty) {
+          matchedDoc = { id: emailSnap.docs[0].id, data: emailSnap.docs[0].data() as OrgMember };
         }
       }
 
@@ -374,18 +389,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  const loadUserData = useCallback(async (currentUser: User) => {
+  const loadUserData = useCallback(async (currentUser: User, session?: ServerSession | null, seq = orgSelectionSeq.current) => {
+    const stale = () => orgSelectionSeq.current !== seq;
     try {
-      const isMaster = currentUser.email?.toLowerCase().trim() === MASTER_EMAIL;
+      const isMaster = currentUser.email?.toLowerCase().trim() === MASTER_EMAIL || session?.claims?.master === true;
 
       if (isMaster) {
         // Master user has access to ALL organizations via selective panel
         const allOrgs = await fetchAllOrganizations();
         const savedOrgId = sessionStorage.getItem('gat_master_active_org');
         const restoredOrg = savedOrgId ? allOrgs.find((o) => o.id === savedOrgId) : null;
+        if (stale()) return;
 
         if (restoredOrg) {
           const masterMember = await ensureMasterMembership(restoredOrg, currentUser.uid);
+          if (stale()) return;
           setMember(masterMember);
           setOrganization(restoredOrg);
           await loadOrgHierarchy(restoredOrg.id);
@@ -411,18 +429,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Non-master user: strictly 1 company per email -> direct routing to assigned company
-      const resolved = await findSingleActiveMember(currentUser.email || '', currentUser.uid);
+      // Password users (uid member_<id>) have no email: their member/org come only from the server session.
+      const resolved = currentUser.uid.startsWith('member_')
+        ? (session?.member && session.org ? { member: session.member, org: session.org } : null)
+        : await findSingleActiveMember(currentUser.email || '', currentUser.uid);
 
       if (resolved) {
         const { member: mData, org: singleOrg } = resolved;
-        if (currentUser.uid && mData.userId !== currentUser.uid) {
-          await updateDoc(doc(db, 'org_members', mData.id), {
-            userId: currentUser.uid,
-            userName: currentUser.displayName || mData.userName || (currentUser.email || '').split('@')[0],
-            updatedAt: new Date().toISOString(),
-          });
-          mData.userId = currentUser.uid;
-        }
         setOrganizations([singleOrg]);
         setMember(mData);
         setOrganization(singleOrg);
@@ -444,7 +457,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       setAuthError(null);
       if (currentUser) {
-        await loadUserData(currentUser);
+        const seq = orgSelectionSeq.current;
+        await loadUserData(currentUser, await syncServerSession(currentUser), seq);
       } else {
         setMember(null);
         setOrganization(null);
@@ -561,16 +575,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!memEmailSnap.empty) {
             matchedDocSnap = memEmailSnap.docs[0];
             memberDoc = { id: matchedDocSnap.id, ...matchedDocSnap.data() } as OrgMember;
-
-            // If user has a Firebase UID, bind it
-            if (uidToCheck) {
-              await updateDoc(doc(db, 'org_members', matchedDocSnap.id), {
-                userId: uidToCheck,
-                userName: currentUser?.displayName || memberDoc.userName || normEmail.split('@')[0],
-                updatedAt: new Date().toISOString(),
-              });
-              memberDoc.userId = uidToCheck;
-            }
           }
         }
       }
@@ -602,7 +606,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
-        await loadUserData(result.user);
+        await loadUserData(result.user, await syncServerSession(result.user));
         return result.user;
       }
       return null;
@@ -627,6 +631,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!googleUser || !googleUser.email) {
         return { authorized: false, isMaster: false, error: 'Não foi possível obter o e-mail da conta Google.' };
       }
+      // Bind uid + fresh claims before any org-scoped read (rules check claims). Non-fatal, like onAuthStateChanged.
+      await syncServerSession(googleUser);
 
       const normEmail = googleUser.email.toLowerCase().trim();
       const isMaster = normEmail === MASTER_EMAIL;
@@ -665,14 +671,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const { member: mData, org: singleOrg } = resolved;
-      if (mData.userId !== googleUser.uid) {
-        await updateDoc(doc(db, 'org_members', mData.id), {
-          userId: googleUser.uid,
-          userName: googleUser.displayName || mData.userName || normEmail.split('@')[0],
-          updatedAt: new Date().toISOString(),
-        });
-        mData.userId = googleUser.uid;
-      }
 
       setOrganizations([singleOrg]);
       setOrganization(singleOrg);
@@ -692,79 +690,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setupFirstAccessPassword = async (
-    memberId: string,
-    orgId: string,
-    newPassword: string
+    _memberId: string,
+    _orgId: string,
+    _newPassword: string
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!newPassword || newPassword.trim().length < 6) {
-      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
-    }
-
-    try {
-      const memberRef = doc(db, 'org_members', memberId);
-      const memberSnap = await getDoc(memberRef);
-
-      if (!memberSnap.exists()) {
-        return { success: false, error: 'Cadastro do colaborador não localizado no sistema.' };
-      }
-
-      const mData = { id: memberSnap.id, ...memberSnap.data() } as OrgMember;
-      if (mData.orgId !== orgId) {
-        return { success: false, error: 'O colaborador não pertence à empresa indicada.' };
-      }
-
-      const now = new Date().toISOString();
-      await updateDoc(memberRef, {
-        passwordHash: newPassword,
-        passwordSet: true,
-        passwordSetAt: now,
-        updatedAt: now,
-      });
-
-      const updatedMember: OrgMember = {
-        ...mData,
-        passwordHash: newPassword,
-        passwordSet: true,
-        passwordSetAt: now,
-        updatedAt: now,
-      };
-
-      const orgDoc = await getDoc(doc(db, 'organizations', orgId));
-      if (!orgDoc.exists()) {
-        return { success: false, error: 'Empresa não encontrada.' };
-      }
-      const targetOrg = { id: orgDoc.id, ...orgDoc.data() } as Organization;
-
-      setOrganization(targetOrg);
-      setMember(updatedMember);
-      setOrganizations([targetOrg]);
-      await loadOrgHierarchy(targetOrg.id);
-
-      if (!user) {
-        const syntheticUser = {
-          uid: updatedMember.userId || `usr_${updatedMember.id}`,
-          email: updatedMember.userEmail,
-          displayName: updatedMember.userName,
-          photoURL: null,
-          emailVerified: true,
-        } as unknown as User;
-        setUser(syntheticUser);
-      }
-
-      await logAuditDirect(
-        targetOrg.id,
-        updatedMember.userId,
-        updatedMember.userEmail,
-        'Autenticação',
-        'Primeiro Acesso - Definição de Senha',
-        `Senha pessoal cadastrada com sucesso pelo colaborador ${updatedMember.userName} (${updatedMember.userEmail}) no primeiro acesso à empresa ${targetOrg.name}.`
-      );
-
-      return { success: true };
-    } catch (err: any) {
-      console.error('Erro ao cadastrar senha de primeiro acesso:', err);
-      return { success: false, error: err.message || 'Falha ao salvar senha pessoal de primeiro acesso.' };
-    }
+    // Passwords are only set through the admin's first-access link (FirstAccessPage) or by the admin.
+    return { success: false, error: FIRST_ACCESS_LINK_MSG };
   };
 
   const changeUserPassword = async (
@@ -788,32 +719,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const resolved = await findSingleActiveMember(cleanUser);
-      if (!resolved) {
-        return {
-          success: false,
-          error: `Usuário '${cleanUser}' não encontrado em nenhuma empresa cadastrada. Solicite o cadastro ao administrador.`,
-        };
-      }
-
-      const { member: memberData, org: targetOrg } = resolved;
-
-      if (memberData.passwordHash && memberData.passwordHash !== cleanCurrent) {
-        return { success: false, error: 'A senha atual / provisória informada não confere.' };
-      }
-
-      const now = new Date().toISOString();
-      await updateDoc(doc(db, 'org_members', memberData.id), {
-        passwordHash: cleanNew,
-        passwordSet: true,
-        passwordSetAt: now,
-        initialPasswordSetByAdmin: false,
-        updatedAt: now,
+      // Called from the login screen: authenticate on an isolated Auth instance so the app session is untouched.
+      const login = await postJson('/api/auth/credential-login', {
+        nameOrEmail: cleanUser,
+        password: cleanCurrent,
+        company: companyInput.trim() || undefined,
       });
+      if (!login.ok) {
+        return { success: false, error: login.data?.isFirstAccess ? FIRST_ACCESS_LINK_MSG : login.error || 'A senha atual / provisória informada não confere.' };
+      }
+      if (login.data.isMaster) {
+        return { success: false, error: 'A senha Master não pode ser alterada por esta tela.' };
+      }
+      let res;
+      try {
+        const tmp = await signInWithCustomToken(isolatedAuth(), login.data.token);
+        res = await postJson(
+          '/api/auth/set-password',
+          { currentPassword: cleanCurrent, newPassword: cleanNew },
+          { Authorization: `Bearer ${await tmp.user.getIdToken()}` },
+        );
+      } finally {
+        await fbSignOut(isolatedAuth()).catch(() => {});
+      }
+      if (!res.ok) {
+        return { success: false, error: res.error || 'Falha ao alterar senha.' };
+      }
 
+      const memberData = login.data.member as OrgMember;
       await logAuditDirect(
-        targetOrg.id,
-        memberData.userId || `usr_${memberData.id}`,
+        memberData.orgId,
+        `member_${memberData.id}`,
         memberData.userEmail,
         'Segurança',
         'Alteração de Senha',
@@ -836,21 +772,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const memberRef = doc(db, 'org_members', memberId);
-      const memberSnap = await getDoc(memberRef);
-      if (!memberSnap.exists()) {
-        return { success: false, error: 'Colaborador não encontrado.' };
+      const res = await postJson('/api/auth/set-password', { memberId, newPassword: newPassword.trim() });
+      if (!res.ok) {
+        return { success: false, error: res.error || 'Falha ao salvar senha.' };
       }
-
-      const mData = memberSnap.data() as OrgMember;
-      const now = new Date().toISOString();
-      await updateDoc(memberRef, {
-        passwordHash: newPassword.trim(),
-        passwordSet: true,
-        passwordSetAt: now,
-        initialPasswordSetByAdmin: true,
-        updatedAt: now,
-      });
 
       if (organization) {
         await logAuditDirect(
@@ -859,7 +784,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           user?.email || 'admin',
           'Segurança',
           'Redefinição de Senha por Admin',
-          `Senha do colaborador ${mData.userName} (${mData.userEmail}) definida/redefinida pelo administrador.`,
+          `Senha do colaborador ${memberId} definida/redefinida pelo administrador.`,
           memberId
         );
       }
@@ -888,93 +813,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }> => {
     setAuthError(null);
     const cleanUser = nameOrEmail.trim();
-    const isMaster = cleanUser.toLowerCase() === MASTER_EMAIL;
 
     if (!cleanUser) {
       return { success: false, error: 'Por favor, informe seu E-mail ou Nome cadastrado.' };
     }
 
     try {
-      if (isMaster) {
-        if (!password || password.trim().length < 6) {
-          return { success: false, error: 'Por favor, informe sua Senha de acesso Master (mínimo 6 caracteres).' };
+      const res = await postJson('/api/auth/credential-login', {
+        nameOrEmail: cleanUser,
+        password,
+        company: companyInput?.trim() || undefined,
+      });
+      if (!res.ok) {
+        if (res.data?.isFirstAccess) {
+          return { success: false, isFirstAccess: true, memberName: res.data.memberName, error: FIRST_ACCESS_LINK_MSG };
         }
+        return { success: false, error: res.error || 'Falha ao autenticar com as credenciais informadas.' };
+      }
 
-        const ACCEPTED_MASTER_PASSWORDS = [
-          'admin123',
-          'aguero2026',
-          'aguero@2026',
-          'master123',
-          '123456',
-          'agueroinox',
-          'aguero',
-        ];
-        const masterCredRef = doc(db, 'system_security', 'master_auth');
-        const masterCredSnap = await getDoc(masterCredRef);
-
-        let passwordValid = false;
-        if (masterCredSnap.exists()) {
-          const storedHash = masterCredSnap.data()?.passwordHash;
-          if (storedHash === password || ACCEPTED_MASTER_PASSWORDS.includes(password.toLowerCase())) {
-            passwordValid = true;
-            if (storedHash !== password) {
-              try {
-                await setDoc(
-                  masterCredRef,
-                  {
-                    masterEmail: MASTER_EMAIL,
-                    passwordHash: password,
-                    updatedAt: new Date().toISOString(),
-                  },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.warn('Erro ao atualizar hash master:', e);
-              }
-            }
-          }
-        } else {
-          passwordValid = true;
-          try {
-            await setDoc(masterCredRef, {
-              masterEmail: MASTER_EMAIL,
-              passwordHash: password,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-          } catch (e) {
-            console.warn('Não foi possível persistir senha master em system_security:', e);
-          }
-        }
-
-        if (!passwordValid) {
-          return {
-            success: false,
-            error: 'Senha do Usuário Master incorreta. Utilize sua senha cadastrada ou clique em "Continuar com Google".',
-          };
-        }
-
+      if (res.data.isMaster) {
         // Load all companies and route Master to the Selective Company Panel
-        await fetchAllOrganizations();
         sessionStorage.removeItem('gat_master_active_org');
+        const cred = await signInWithCustomToken(auth, res.data.token);
+        await fetchAllOrganizations();
         setOrganization(null);
         setUnits([]);
         setContracts([]);
-
-        const syntheticMasterUser =
-          user ||
-          ({
-            uid: 'usr_master_gustavo',
-            email: MASTER_EMAIL,
-            displayName: 'Gustavo Aguero (Master)',
-            photoURL: null,
-            emailVerified: true,
-          } as unknown as User);
-
         setMember({
           id: 'mem_master_global',
           orgId: '',
-          userId: syntheticMasterUser.uid,
+          userId: cred.user.uid,
           userEmail: MASTER_EMAIL,
           userName: 'Gustavo Aguero (Master)',
           role: 'Admin',
@@ -982,82 +850,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-        setUser(syntheticMasterUser);
+        setUser(cred.user);
 
         return { success: true, isMaster: true };
       }
 
-      // Non-master user: 1 company per email — auto-resolve assigned organization
-      const resolved = await findSingleActiveMember(cleanUser);
-      if (!resolved) {
-        return {
-          success: false,
-          error: `O e-mail ou usuário '${cleanUser}' não possui cadastro ativo em nenhuma empresa. Solicite seu acesso ao administrador.`,
-        };
-      }
-
-      const { member: memberData, org: targetOrg } = resolved;
-
-      // Optional check if caller explicitly supplied a company filter
-      if (companyInput && companyInput.trim()) {
-        const cleanCo = companyInput.trim().toLowerCase();
-        if (
-          targetOrg.slug?.toLowerCase() !== cleanCo &&
-          targetOrg.name?.toLowerCase() !== cleanCo
-        ) {
-          return {
-            success: false,
-            error: `Este e-mail está vinculado exclusivamente à empresa '${targetOrg.name}'.`,
-          };
-        }
-      }
-
-      // Check Primeiro Acesso
-      const isFirstAccess = !memberData.passwordSet && !memberData.passwordHash;
-      if (isFirstAccess) {
-        return {
-          success: false,
-          isFirstAccess: true,
-          memberId: memberData.id,
-          memberName: memberData.userName,
-          memberEmail: memberData.userEmail,
-          orgId: targetOrg.id,
-          orgName: targetOrg.name,
-          error: 'Primeiro acesso detectado: Cadastre sua senha pessoal para continuar.',
-        };
-      }
-
-      if (!password || password.trim().length < 6) {
-        return { success: false, error: 'Por favor, informe sua senha de acesso (mínimo 6 caracteres).' };
-      }
-
-      if (memberData.passwordHash && memberData.passwordHash !== password) {
-        return {
-          success: false,
-          error: 'Senha incorreta. Verifique os dados digitados ou utilize "Continuar com Google".',
-        };
-      }
+      const memberData = res.data.member as OrgMember;
+      const targetOrg = res.data.org as Organization;
+      const cred = await signInWithCustomToken(auth, res.data.token);
 
       // Establish direct single-company session
       setOrganization(targetOrg);
       setMember(memberData);
       setOrganizations([targetOrg]);
+      setUser(cred.user);
       await loadOrgHierarchy(targetOrg.id);
-
-      if (!user) {
-        const syntheticUser = {
-          uid: memberData.userId || `usr_${memberData.id}`,
-          email: memberData.userEmail,
-          displayName: memberData.userName,
-          photoURL: null,
-          emailVerified: true,
-        } as unknown as User;
-        setUser(syntheticUser);
-      }
 
       await logAuditDirect(
         targetOrg.id,
-        memberData.userId,
+        cred.user.uid,
         memberData.userEmail,
         'Autenticação',
         'Login por Credenciais',
@@ -1106,7 +917,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, 'organizations', orgId), newOrg);
 
       const newMember =
-        user.email?.toLowerCase().trim() === MASTER_EMAIL
+        isMasterUser
           ? await ensureMasterMembership(newOrg, user.uid)
           : await (async () => {
               const memberId = `mem_${user.uid}_${orgId}`;
@@ -1132,9 +943,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
         return merged;
       });
+      orgSelectionSeq.current++;
       setOrganization(newOrg);
       setMember(newMember);
-      if (user.email?.toLowerCase().trim() === MASTER_EMAIL) {
+      if (isMasterUser) {
         sessionStorage.setItem('gat_master_active_org', newOrg.id);
       }
       await loadOrgHierarchy(newOrg.id);
@@ -1147,7 +959,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectOrganization = async (orgId: string) => {
     if (!user) return;
-    const isMaster = user.email?.toLowerCase().trim() === MASTER_EMAIL;
+    const isMaster = isMasterUser;
     // Strictly restrict multi-company switching to Master user only
     if (!isMaster) return;
 
@@ -1161,6 +973,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!targetOrg) return;
 
     try {
+      orgSelectionSeq.current++;
       const masterMember = await ensureMasterMembership(targetOrg, user.uid);
       sessionStorage.setItem('gat_master_active_org', targetOrg.id);
       setSelectedUnitId('todas');
@@ -1174,8 +987,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const clearActiveOrganization = () => {
-    const isMaster = user?.email?.toLowerCase().trim() === MASTER_EMAIL;
+    const isMaster = isMasterUser;
     if (!isMaster) return;
+    orgSelectionSeq.current++;
     sessionStorage.removeItem('gat_master_active_org');
     setOrganization(null);
     setUnits([]);
@@ -1214,565 +1028,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logAudit = async (module: string, action: string, details: string, targetId?: string) => {
     if (!user || !organization) return;
     await logAuditDirect(organization.id, user.uid, user.email || '', module, action, details, targetId);
-  };
-
-  // Seed standard operational demo data explicitly identified as demonstration
-  const seedDemoData = async () => {
-    if (!user || !organization) return;
-    setDemoDataLoaded(true);
-
-    try {
-      const orgId = organization.id;
-
-      // 1. Units
-      const unit1Id = `unit_central_${orgId}`;
-      const unit2Id = `unit_regional_${orgId}`;
-      await setDoc(doc(db, 'units', unit1Id), {
-        id: unit1Id,
-        orgId,
-        name: 'Unidade Operacional Principal (Matriz)',
-        code: 'UN-01',
-        city: 'São Paulo',
-        state: 'SP',
-        managerName: 'Carlos Eduardo Mendes',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'units', unit2Id), {
-        id: unit2Id,
-        orgId,
-        name: 'Centro de Serviços Regional',
-        code: 'UN-02',
-        city: 'Campinas',
-        state: 'SP',
-        managerName: 'Mariana Duarte',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 2. Cost Centers
-      const cc1Id = `cc_operacional_${orgId}`;
-      await setDoc(doc(db, 'cost_centers', cc1Id), {
-        id: cc1Id,
-        orgId,
-        code: 'CC-101',
-        name: 'Operações e Serviços Técnicos',
-        budget: 180000,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 3. Contracts
-      const contractId = `ct_manut_${orgId}`;
-      await setDoc(doc(db, 'contracts', contractId), {
-        id: contractId,
-        orgId,
-        title: 'Contrato de Serviços Técnicos e Sustentação Operacional',
-        contractNumber: 'CT-2026/088',
-        partyName: 'TecnoService Manutenção & Operação Ltda',
-        type: 'prestador',
-        startDate: '2026-01-01',
-        endDate: '2026-12-31',
-        status: 'ativo',
-        value: 120000.0,
-        unitIds: [unit1Id, unit2Id],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 4. Assets
-      const asset1Id = `ast_climatizacao_${orgId}`;
-      const asset2Id = `ast_gerador_${orgId}`;
-      await setDoc(doc(db, 'assets', asset1Id), {
-        id: asset1Id,
-        orgId,
-        unitId: unit1Id,
-        tag: 'ATV-1001',
-        name: 'Sistema de Climatização Central Chiller 80TR',
-        category: 'Facilities & Climatização',
-        model: 'Carrier AquaSnap 30RB',
-        serialNumber: 'CR-884210',
-        status: 'operacional',
-        location: 'Cobertura Técnica - Bloco A',
-        lastMaintenanceDate: '2026-09-20',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'assets', asset2Id), {
-        id: asset2Id,
-        orgId,
-        unitId: unit1Id,
-        tag: 'ATV-1002',
-        name: 'Grupo Gerador a Diesel 500kVA',
-        category: 'Energia & Utilidades',
-        model: 'Cummins C500D6',
-        serialNumber: 'CM-2024-09',
-        status: 'em_manutencao',
-        location: 'Subsolo 1 - Sala de Força',
-        lastMaintenanceDate: '2026-10-02',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 5. Teams
-      const teamId = `team_eletro_${orgId}`;
-      await setDoc(doc(db, 'teams', teamId), {
-        id: teamId,
-        orgId,
-        name: 'Equipe de Operações e Serviços Técnicos',
-        specialty: 'Eletromecânica & Facilities',
-        leaderName: 'Roberto Silva',
-        memberCount: 6,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 6. Items (Materials & Services)
-      const item1Id = `item_valvula_${orgId}`;
-      const item2Id = `item_filtro_${orgId}`;
-      const item3Id = `item_oleo_${orgId}`;
-      await setDoc(doc(db, 'items', item1Id), {
-        id: item1Id,
-        orgId,
-        sku: 'SKU-VLV-304',
-        name: 'Válvula Reguladora de Fluxo 2" em Aço Inox',
-        type: 'peca',
-        category: 'Tubulações & Fluidos',
-        unitOfMeasure: 'UN',
-        referencePrice: 420.0,
-        minStock: 5,
-        maxStock: 30,
-        criticalStock: 3,
-        supplier: 'Distribuidora Central de Válvulas',
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'items', item2Id), {
-        id: item2Id,
-        orgId,
-        sku: 'SKU-FLT-HEPA',
-        name: 'Filtro de Ar de Alta Eficiência HEPA H13',
-        type: 'peca',
-        category: 'Climatização & Filtros',
-        unitOfMeasure: 'UN',
-        referencePrice: 185.0,
-        minStock: 10,
-        maxStock: 50,
-        criticalStock: 4,
-        supplier: 'Filtros & Ar Técnico Ltda',
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'items', item3Id), {
-        id: item3Id,
-        orgId,
-        sku: 'SKU-LUB-ISO68',
-        name: 'Lubrificante Sintético Industrial ISO VG 68 (Balde 20L)',
-        type: 'peca',
-        category: 'Fluidos e Lubrificantes',
-        unitOfMeasure: 'BALDE',
-        referencePrice: 380.0,
-        minStock: 8,
-        maxStock: 40,
-        criticalStock: 5,
-        supplier: 'PetroLube Distribuição',
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Stock balances
-      await setDoc(doc(db, 'stock_balances', `bal_${unit1Id}_${item1Id}`), {
-        id: `bal_${unit1Id}_${item1Id}`,
-        orgId,
-        unitId: unit1Id,
-        itemId: item1Id,
-        currentBalance: 12,
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'stock_balances', `bal_${unit1Id}_${item2Id}`), {
-        id: `bal_${unit1Id}_${item2Id}`,
-        orgId,
-        unitId: unit1Id,
-        itemId: item2Id,
-        currentBalance: 2, // Critical level!
-        updatedAt: new Date().toISOString(),
-      });
-      await setDoc(doc(db, 'stock_balances', `bal_${unit1Id}_${item3Id}`), {
-        id: `bal_${unit1Id}_${item3Id}`,
-        orgId,
-        unitId: unit1Id,
-        itemId: item3Id,
-        currentBalance: 18,
-        updatedAt: new Date().toISOString(),
-      });
-
-      // 7. Work Orders
-      const order1Id = `os_1001_${orgId}`;
-      const order2Id = `os_1002_${orgId}`;
-      const order3Id = `os_1003_${orgId}`;
-
-      await setDoc(doc(db, 'work_orders', order1Id), {
-        id: order1Id,
-        orgId,
-        unitId: unit1Id,
-        contractId,
-        costCenterId: cc1Id,
-        assetId: asset1Id,
-        orderNumber: 'OS-2026-001',
-        title: 'Manutenção Preventiva do Chiller e Troca de Filtros',
-        description: 'Revisão periódica de compressores, medição de pressão do gás refrigerante, inspeção de comandos e troca dos filtros de ar.',
-        orderType: 'preventiva',
-        priority: 'alta',
-        status: 'em_execucao',
-        requesterId: user.uid,
-        requesterName: user.displayName || 'Coordenação de Operações',
-        assignedTeam: 'Equipe de Operações e Serviços Técnicos',
-        assignedUsers: [user.uid],
-        scheduledStartDate: '2026-10-14',
-        scheduledEndDate: '2026-10-18',
-        actualStartDate: '2026-10-15',
-        estimatedHours: 16,
-        actualHours: 8,
-        estimatedCost: 2850.0,
-        messageCount: 3,
-        pendingQuestionCount: 0,
-        plannedServices: [
-          {
-            id: 'srv_1',
-            description: 'Inspeção preliminar de pressões e vazamentos de refrigerante',
-            category: 'mecanica',
-            estimatedHours: 3,
-            actualHours: 3,
-            status: 'concluido',
-            assignedWorker: 'Carlos Mecânico',
-            completedAt: '2026-10-15T11:30:00.000Z',
-          },
-          {
-            id: 'srv_2',
-            description: 'Substituição e higienização dos filtros HEPA H13',
-            category: 'climatizacao' as any,
-            estimatedHours: 4,
-            actualHours: 3,
-            status: 'concluido',
-            assignedWorker: 'Carlos Mecânico',
-            completedAt: '2026-10-15T15:00:00.000Z',
-          },
-          {
-            id: 'srv_3',
-            description: 'Medição de corrente dos compressores e reaperto de barramentos',
-            category: 'eletrica',
-            estimatedHours: 5,
-            actualHours: 2,
-            status: 'em_andamento',
-            assignedWorker: 'André Eletricista',
-          },
-          {
-            id: 'srv_4',
-            description: 'Teste de carga contínua por 4 horas e emissão de laudo',
-            category: 'geral',
-            estimatedHours: 4,
-            actualHours: 0,
-            status: 'planejado',
-          },
-        ],
-        plannedLabor: [
-          {
-            id: 'lab_1',
-            workerName: 'Carlos Mecânico',
-            role: 'Mecânico de Climatização Sênior',
-            estimatedHours: 8,
-            actualHours: 6,
-            hourlyRate: 85,
-            totalCost: 680,
-            status: 'em_campo',
-          },
-          {
-            id: 'lab_2',
-            workerName: 'André Eletrotécnico',
-            role: 'Eletricista de Força e Controle',
-            estimatedHours: 8,
-            actualHours: 2,
-            hourlyRate: 90,
-            totalCost: 720,
-            status: 'alocado',
-          },
-        ],
-        plannedParts: [
-          {
-            id: 'prt_1',
-            sku: 'SKU-FLT-HEPA',
-            name: 'Filtro de Ar de Alta Eficiência HEPA H13',
-            quantityPlanned: 4,
-            quantityUsed: 4,
-            unit: 'UN',
-            unitPrice: 185,
-            totalCost: 740,
-            status: 'aplicado',
-          },
-          {
-            id: 'prt_2',
-            sku: 'SKU-LUB-ISO68',
-            name: 'Lubrificante Sintético Industrial ISO VG 68',
-            quantityPlanned: 1,
-            quantityUsed: 0,
-            unit: 'BALDE',
-            unitPrice: 380,
-            totalCost: 380,
-            status: 'disponivel',
-          },
-        ],
-        notes: '[Demonstração ilustrativa — dados fictícios] Acesso autorizado à cobertura técnica.',
-        createdAt: '2026-10-14T08:00:00.000Z',
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Sample discussion messages for OS 1
-      await setDoc(doc(db, 'order_messages', `msg_1_${order1Id}`), {
-        id: `msg_1_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        senderId: 'sup_01',
-        senderName: 'Engenheiro Marcelo (Superior)',
-        senderRole: 'Superior',
-        messageType: 'pergunta',
-        content: 'Como está o diferencial de pressão nos filtros após a substituição inicial?',
-        createdAt: '2026-10-15T11:45:00.000Z',
-        resolved: true,
-      });
-
-      await setDoc(doc(db, 'order_messages', `msg_2_${order1Id}`), {
-        id: `msg_2_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        senderId: user.uid,
-        senderName: 'Carlos Mecânico (Responsável)',
-        senderRole: 'Responsavel',
-        messageType: 'resposta',
-        replyToId: `msg_1_${order1Id}`,
-        replyToAuthor: 'Engenheiro Marcelo',
-        replyToContent: 'Como está o diferencial de pressão nos filtros...',
-        content: 'Diferencial caiu de 280 Pa para 75 Pa. Fluxo nominal restabelecido conforme especificação do fabricante.',
-        createdAt: '2026-10-15T12:10:00.000Z',
-      });
-
-      await setDoc(doc(db, 'order_messages', `msg_3_${order1Id}`), {
-        id: `msg_3_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        senderId: 'sup_01',
-        senderName: 'Engenheiro Marcelo (Superior)',
-        senderRole: 'Superior',
-        messageType: 'liberacao',
-        content: 'Excelente resultado. Autorizado o avanço para a etapa elétrica e medição de corrente.',
-        createdAt: '2026-10-15T12:20:00.000Z',
-      });
-
-      // Sample events for OS 1
-      await setDoc(doc(db, 'order_events', `evt_1_${order1Id}`), {
-        id: `evt_1_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        userId: user.uid,
-        userName: user.displayName || 'Coordenador Operacional',
-        eventType: 'criacao',
-        description: 'Ordem de Serviço OS-2026-001 aberta no estado "Aberto".',
-        newStatus: 'aberto',
-        timestamp: '2026-10-14T08:00:00.000Z',
-      });
-
-      await setDoc(doc(db, 'order_events', `evt_2_${order1Id}`), {
-        id: `evt_2_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        userId: user.uid,
-        userName: 'Carlos Mecânico',
-        eventType: 'mudanca_status',
-        description: 'Transição operacional: Aberto → Em Execução. Equipe mobilizada com ferramentas e EPIs.',
-        previousStatus: 'aberto',
-        newStatus: 'em_execucao',
-        timestamp: '2026-10-15T08:30:00.000Z',
-      });
-
-      await setDoc(doc(db, 'order_events', `evt_3_${order1Id}`), {
-        id: `evt_3_${order1Id}`,
-        orgId,
-        orderId: order1Id,
-        userId: 'sup_01',
-        userName: 'Engenheiro Marcelo (Superior)',
-        eventType: 'dialogo',
-        description: '[Diálogo] Superior alinhou medição de pressão dos filtros e autorizou continuidade elétrica.',
-        timestamp: '2026-10-15T12:20:00.000Z',
-      });
-
-      await setDoc(doc(db, 'work_orders', order2Id), {
-        id: order2Id,
-        orgId,
-        unitId: unit1Id,
-        contractId,
-        costCenterId: cc1Id,
-        assetId: asset2Id,
-        orderNumber: 'OS-2026-002',
-        title: 'Inspeção e Troca da Válvula Reguladora de Pressão',
-        description: 'Vazamento intermitente detectado na conexão do gerador. Troca da junta e teste de estanqueidade.',
-        orderType: 'corretiva',
-        priority: 'critica',
-        status: 'aguardando_pecas',
-        requesterId: user.uid,
-        requesterName: 'Supervisor de Operações',
-        assignedTeam: 'Equipe de Operações e Serviços Técnicos',
-        scheduledStartDate: '2026-10-16',
-        scheduledEndDate: '2026-10-17',
-        estimatedHours: 6,
-        actualHours: 2,
-        estimatedCost: 1450.0,
-        messageCount: 1,
-        pendingQuestionCount: 1,
-        plannedServices: [
-          {
-            id: 'srv_2_1',
-            description: 'Bloqueio do fluxo e despressurização da linha',
-            category: 'caldeiraria',
-            estimatedHours: 2,
-            actualHours: 2,
-            status: 'concluido',
-            assignedWorker: 'Roberto Silva',
-          },
-          {
-            id: 'srv_2_2',
-            description: 'Substituição da válvula reguladora 2" e juntas de vedação',
-            category: 'mecanica',
-            estimatedHours: 4,
-            actualHours: 0,
-            status: 'planejado',
-          },
-        ],
-        plannedLabor: [
-          {
-            id: 'lab_2_1',
-            workerName: 'Roberto Silva',
-            role: 'Caldeireiro Especialista',
-            estimatedHours: 6,
-            actualHours: 2,
-            hourlyRate: 95,
-            totalCost: 570,
-            status: 'em_campo',
-          },
-        ],
-        plannedParts: [
-          {
-            id: 'prt_2_1',
-            sku: 'SKU-VLV-304',
-            name: 'Válvula Reguladora de Fluxo 2" em Aço Inox',
-            quantityPlanned: 1,
-            quantityUsed: 0,
-            unit: 'UN',
-            unitPrice: 420,
-            totalCost: 420,
-            status: 'solicitado',
-          },
-        ],
-        notes: '[Demonstração ilustrativa — dados fictícios] Requer bloqueio de segurança.',
-        createdAt: '2026-10-16T09:00:00.000Z',
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Sample question for OS 2
-      await setDoc(doc(db, 'order_messages', `msg_1_${order2Id}`), {
-        id: `msg_1_${order2Id}`,
-        orgId,
-        orderId: order2Id,
-        senderId: user.uid,
-        senderName: 'Roberto Silva (Responsável)',
-        senderRole: 'Responsavel',
-        messageType: 'pergunta',
-        content: 'Linha despressurizada. A nova válvula já foi liberada pelo almoxarifado ou necessita de pedido emergencial?',
-        createdAt: '2026-10-16T11:00:00.000Z',
-        resolved: false,
-      });
-
-      await setDoc(doc(db, 'order_events', `evt_1_${order2Id}`), {
-        id: `evt_1_${order2Id}`,
-        orgId,
-        orderId: order2Id,
-        userId: user.uid,
-        userName: 'Roberto Silva',
-        eventType: 'criacao',
-        description: 'OS-2026-002 registrada com prioridade Crítica para o Gerador.',
-        timestamp: '2026-10-16T09:00:00.000Z',
-      });
-
-      await setDoc(doc(db, 'work_orders', order3Id), {
-        id: order3Id,
-        orgId,
-        unitId: unit2Id,
-        contractId,
-        orderNumber: 'OS-2026-003',
-        title: 'Vistoria Termográfica do Quadro Geral de Distribuição',
-        description: 'Inspeção termográfica preventiva em barramentos e disjuntores da subestação.',
-        orderType: 'inspecao',
-        priority: 'media',
-        status: 'concluido',
-        requesterId: user.uid,
-        requesterName: 'Auditoria de Qualidade',
-        assignedTeam: 'Equipe de Operações e Serviços Técnicos',
-        scheduledStartDate: '2026-10-05',
-        scheduledEndDate: '2026-10-06',
-        actualStartDate: '2026-10-05',
-        actualEndDate: '2026-10-06',
-        estimatedHours: 4,
-        actualHours: 4,
-        estimatedCost: 800.0,
-        messageCount: 2,
-        pendingQuestionCount: 0,
-        plannedServices: [
-          {
-            id: 'srv_3_1',
-            description: 'Varredura termográfica infravermelha com câmera calibrada',
-            category: 'eletrica',
-            estimatedHours: 4,
-            actualHours: 4,
-            status: 'concluido',
-            assignedWorker: 'André Eletricista',
-            completedAt: '2026-10-06T14:00:00.000Z',
-          },
-        ],
-        notes: '[Demonstração ilustrativa — dados fictícios] Todos os pontos em conformidade técnica.',
-        createdAt: '2026-10-05T07:30:00.000Z',
-        updatedAt: '2026-10-06T15:00:00.000Z',
-      });
-
-      // 8. Occurrences
-      const occId = `occ_101_${orgId}`;
-      await setDoc(doc(db, 'occurrences', occId), {
-        id: occId,
-        orgId,
-        unitId: unit1Id,
-        assetId: asset2Id,
-        orderId: order2Id,
-        title: 'Vazamento detectado em conexão de combustível do gerador',
-        description: 'Identificado gotejamento de diesel na linha de retorno. Área isolada preventivamente.',
-        type: 'seguranca',
-        urgency: 'alta',
-        status: 'acao_corretiva',
-        reportedBy: user.displayName || 'Inspetor Técnico',
-        assignedTo: 'Equipe de Operações e Serviços Técnicos',
-        deadline: '2026-10-18',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      await loadOrgHierarchy(orgId);
-      await logAudit(
-        'Demonstração',
-        'Carga de Dados',
-        'Carga de dados de demonstração operacionais carregada com identificação oficial [Demonstração ilustrativa — dados fictícios].'
-      );
-    } catch (err) {
-      console.error('Erro ao popular dados de demonstração:', err);
-    }
   };
 
   const isMasterUser =
@@ -1824,8 +1079,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshOrganizations,
         validateUserOrgMembershipBySlug,
         logAudit,
-        seedDemoData,
-        demoDataLoaded,
         authError,
       }}
     >

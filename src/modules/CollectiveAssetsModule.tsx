@@ -15,7 +15,6 @@ import {
   subscribeCollectiveMovements,
   subscribeCollectiveServices,
   getCollectiveAssetPolicy,
-  seedCollectiveAssetsDemo,
 } from '../services/collectiveAssetsService';
 import { CollectiveAssetsOverview } from '../components/collectiveAssets/CollectiveAssetsOverview';
 import { CollectiveAssetsDashboard } from '../components/collectiveAssets/CollectiveAssetsDashboard';
@@ -214,18 +213,6 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
 
         {/* Global Policy, Overview Toggle & Demo Buttons */}
         <div className="flex items-center gap-2">
-          {assets.length === 0 && !loading && (
-            <button
-              onClick={async () => {
-                await seedCollectiveAssetsDemo(organizationId, userEmail);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Carregar Dados Demo
-            </button>
-          )}
-
           <button
             onClick={() => setShowOverview(!showOverview)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${

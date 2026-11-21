@@ -1,0 +1,15 @@
+rules_version = '2';
+// Photos of work orders: org members (custom claims set by the server) or master. Everything else denied.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /work-orders/{orgId}/{allPaths=**} {
+      function member() {
+        return request.auth != null &&
+          (request.auth.token.get('master', false) == true || orgId in request.auth.token.get('orgs', {}));
+      }
+      allow read: if member();
+      allow write: if member() && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

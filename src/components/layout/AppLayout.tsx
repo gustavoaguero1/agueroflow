@@ -26,6 +26,7 @@ import {
   Calculator,
   Receipt,
   ShoppingCart,
+  Wallet,
   Sun,
   Moon,
   Bus,
@@ -81,6 +82,7 @@ export type NavSection =
   | 'rh-holerites'
   | 'comercial'
   | 'comercial-painel'
+  | 'comercial-funil'
   | 'comercial-nova'
   | 'comercial-composicao'
   | 'comercial-revisao'
@@ -98,6 +100,10 @@ export type NavSection =
   | 'compras-inteligencia'
   | 'compras-fornecedores'
   | 'compras-recebimento'
+  | 'financeiro'
+  | 'financeiro-notas'
+  | 'financeiro-pagar'
+  | 'financeiro-plano'
   | 'viagens'
   | 'viagens-painel'
   | 'viagens-busca'
@@ -152,7 +158,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     units,
     contracts,
     signOut,
-    seedDemoData,
   } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -174,6 +179,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     currentSection.startsWith('comercial')
   );
   const [comprasSubmenuOpen, setComprasSubmenuOpen] = useState(currentSection.startsWith('compras'));
+  const [financeiroSubmenuOpen, setFinanceiroSubmenuOpen] = useState(currentSection.startsWith('financeiro'));
   const [viagensSubmenuOpen, setViagensSubmenuOpen] = useState(currentSection.startsWith('viagens'));
   const [marketingSubmenuOpen, setMarketingSubmenuOpen] = useState(
     currentSection.startsWith('marketing')
@@ -203,15 +209,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       targetId: result.targetId,
       searchQuery: result.code || result.title,
     });
-  };
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    try {
-      await seedDemoData();
-    } finally {
-      setSeeding(false);
-    }
   };
 
   const navItems = [
@@ -354,6 +351,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       hasSubmenu: true,
       subItems: [
         { id: 'comercial-painel' as NavSection, label: 'Painel de Propostas' },
+        { id: 'comercial-funil' as NavSection, label: 'Funil de Vendas' },
         { id: 'comercial-nova' as NavSection, label: 'Nova Proposta' },
         { id: 'comercial-composicao' as NavSection, label: 'Composição de Custos' },
         { id: 'comercial-revisao' as NavSection, label: 'Revisão de BOM' },
@@ -378,6 +376,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'compras-inteligencia' as NavSection, label: 'Inteligência de Fornecedores' },
         { id: 'compras-fornecedores' as NavSection, label: 'Fornecedores' },
         { id: 'compras-recebimento' as NavSection, label: 'Recebimento & Corrida' },
+      ],
+    },
+    {
+      id: 'financeiro' as NavSection,
+      label: 'Financeiro',
+      icon: Wallet,
+      hasSubmenu: true,
+      subItems: [
+        { id: 'financeiro-notas' as NavSection, label: 'Caixa de Notas' },
+        { id: 'financeiro-pagar' as NavSection, label: 'Contas a Pagar' },
+        { id: 'financeiro-plano' as NavSection, label: 'Plano de Contas' },
       ],
     },
     {
@@ -500,6 +509,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       case 'comercial':
       case 'comercial-painel':
         return 'Comercial (OrçaÁgil)';
+      case 'comercial-funil':
+        return 'Funil de Vendas';
       case 'comercial-nova':
         return 'Nova Proposta';
       case 'comercial-composicao':
@@ -533,6 +544,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Fornecedores';
       case 'compras-recebimento':
         return 'Recebimento & Corrida';
+      case 'financeiro':
+      case 'financeiro-notas':
+        return 'Caixa de Notas (NF-e)';
+      case 'financeiro-pagar':
+        return 'Contas a Pagar';
+      case 'financeiro-plano':
+        return 'Plano de Contas';
       case 'viagens':
       case 'viagens-painel':
         return 'Gestão de Viagens';
@@ -697,6 +715,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               const isRh = item.id === 'rh-salarios';
               const isCommercial = item.id === 'comercial';
               const isCompras = item.id === 'compras';
+              const isFinanceiro = item.id === 'financeiro';
               const isViagens = item.id === 'viagens';
               const isMarketing = item.id === 'marketing';
               const isWhatsAppAuto = item.id === 'whatsapp-automacao';
@@ -715,6 +734,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 ? commercialSubmenuOpen
                 : isCompras
                 ? comprasSubmenuOpen
+                : isFinanceiro
+                ? financeiroSubmenuOpen
                 : isViagens
                 ? viagensSubmenuOpen
                 : isMarketing
@@ -739,6 +760,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 (isRh && currentSection.startsWith('rh-')) ||
                 (isCommercial && currentSection.startsWith('comercial')) ||
                 (isCompras && currentSection.startsWith('compras')) ||
+                (isFinanceiro && currentSection.startsWith('financeiro')) ||
                 (isViagens && currentSection.startsWith('viagens')) ||
                 (isMarketing && currentSection.startsWith('marketing')) ||
                 (isWhatsAppAuto && currentSection.startsWith('whatsapp-'));
@@ -769,6 +791,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                       } else if (isCompras) {
                         setComprasSubmenuOpen(!comprasSubmenuOpen);
                         onNavigate('compras-painel');
+                      } else if (isFinanceiro) {
+                        setFinanceiroSubmenuOpen(!financeiroSubmenuOpen);
+                        onNavigate('financeiro-notas');
                       } else if (isViagens) {
                         setViagensSubmenuOpen(!viagensSubmenuOpen);
                         onNavigate('viagens-painel');
@@ -981,19 +1006,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               )}
             </button>
 
-            {/* Quick Demo Data Loader */}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={handleSeed}
-                disabled={seeding}
-                title="Carregar dados de demonstração"
-                className="hidden xl:inline-flex items-center space-x-1.5 text-xs font-medium px-2.5 py-1.5 rounded-xl bg-black/[0.045] hover:bg-black/[0.08] dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-[#424245] dark:text-[#AEAEB2] transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Database className="w-3.5 h-3.5 text-[#0071E3] dark:text-[#409CFF]" />
-                <span>{seeding ? 'Carregando...' : 'Demo'}</span>
-              </button>
-            )}
           </div>
         </header>
 
