@@ -36,3 +36,15 @@ test('accepts bare NFe with single det and dup', () => {
 test('rejects non-NFe xml', () => {
   assert.throws(() => parseNfeXml('<foo><bar/></foo>'), /XML não é uma NF-e válida/);
 });
+
+test('rejects doctype/entity xml', () => {
+  assert.throws(() => parseNfeXml('<!DOCTYPE x [<!ENTITY a "b">]>' + xml), /XML não é uma NF-e válida/);
+});
+
+test('rejects invalid chave', () => {
+  assert.throws(() => parseNfeXml(xml.replace(/NFe\d{44}/, 'NFe123')), /XML não é uma NF-e válida/);
+});
+
+test('missing vNF rejected', () => {
+  assert.throws(() => parseNfeXml(xml.replace(/<vNF>.*?<\/vNF>/, '')), /XML não é uma NF-e válida/);
+});

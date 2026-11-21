@@ -21,7 +21,7 @@ beforeEach(async () => {
 
 async function call(body: unknown, orgId = 'org_a') {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
   app.use((req, _res, next) => { req.user = { uid: 'u', master: false, orgs: { [orgId]: 'Admin' } }; next(); });
   app.use('/api/nfe', createNfeRouter(() => h));
   const srv = app.listen(0);
@@ -73,4 +73,20 @@ test('summary then full upgrades status', async () => {
   // summary after full never downgrades
   await upsertNfeSummary(h, 'org_a', resumo);
   assert.equal((await h.db.doc(`nfe_documents/${id}`).get()).data()!.status, 'aguardando_classificacao');
+});
+
+test('reupload does not overwrite stored xml', async () => {
+  let saves = 0;
+  const stub = { ...h, bucket: { file: () => ({ save: async () => { saves++; } }) } } as unknown as AdminHandles;
+  await upsertNfe(stub, 'org_a', parsed, 'upload', xml);
+  await upsertNfe(stub, 'org_a', parsed, 'upload', xml);
+  assert.equal(saves, 1);
+  assert.equal((await h.db.doc(`nfe_documents/${id}`).get()).data()!.xmlPath, `nfe-xml/org_a/${parsed.chave}.xml`);
+});
+
+test('rejects oversize and non-string content', async () => {
+  const r = await call({ files: [{ name: 'big.xml', content: 'x'.repeat(1_000_001) }, { name: 'n.xml', content: 5 }] });
+  assert.equal(r.results[0].ok, false);
+  assert.equal(r.results[1].ok, false);
+  assert.equal((await call({ files: Array(51).fill({ name: 'a', content: '' }) })).error, 'Máximo de 50 arquivos por envio.');
 });
