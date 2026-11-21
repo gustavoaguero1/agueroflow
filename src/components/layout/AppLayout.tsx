@@ -1016,19 +1016,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               )}
             </button>
 
-            {/* Quick Demo Data Loader */}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={handleSeed}
-                disabled={seeding}
-                title="Carregar dados de demonstração"
-                className="hidden xl:inline-flex items-center space-x-1.5 text-xs font-medium px-2.5 py-1.5 rounded-xl bg-black/[0.045] hover:bg-black/[0.08] dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-[#424245] dark:text-[#AEAEB2] transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Database className="w-3.5 h-3.5 text-[#0071E3] dark:text-[#409CFF]" />
-                <span>{seeding ? 'Carregando...' : 'Demo'}</span>
-              </button>
-            )}
           </div>
         </header>
 

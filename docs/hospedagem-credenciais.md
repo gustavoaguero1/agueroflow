@@ -100,6 +100,7 @@ quando será a próxima busca.
    `npx firebase deploy --only firestore --config firebase.deploy.json --project gen-lang-client-0444631531`
    (o banco tem nome próprio, por isso o arquivo `firebase.deploy.json` em vez do `firebase.json`).
    Alternativa sem terminal: Cloud Console -> Firestore -> escolha exatamente o banco `ai-studio-agueroflowgestoo-fd1a8235-af5f-4faa-8f53-85d81fa6ae61` (confira o ID completo; não use o `(default)`) -> **Regras** -> cole o conteúdo de `firestore.rules` -> Publicar (mesmo aviso acima vale aqui). (Índices: o comando acima os publica; pelo console, crie-os manualmente se o app pedir.)
+   Fotos de OS (Storage): ative o Firebase Storage no projeto e publique `npx firebase deploy --only storage --config firebase.deploy.json --project gen-lang-client-0444631531` (regras em `storage.rules`; sem isso o envio de fotos é negado).
 5. Opcional: `npm run migrate:passwords` (precisa das credenciais do Passo 1 no ambiente). Converte senhas antigas em texto puro para hash e mostra só contagens. Sem isso, a conversão acontece sozinha no primeiro login de cada pessoa.
 6. Para colaboradores sem senha: na tela **Estrutura**, gere o link de primeiro acesso e envie a cada um.
 7. **Webhook do WhatsApp (comprovantes):** o webhook agora exige o `WEBHOOK_SECRET`. No painel do seu provedor (Evolution API, Z-API ou Meta), troque a URL do webhook para

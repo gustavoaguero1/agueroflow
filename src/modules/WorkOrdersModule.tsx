@@ -70,7 +70,6 @@ import {
   GripVertical,
   Settings2,
   Tag,
-  Sparkles,
   MessageSquare,
   Wrench,
 } from 'lucide-react';
@@ -636,169 +635,6 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     }
   };
 
-  // Carregar Cenário Real ilustrado pelo usuário: ORD-20260924-0002
-  const handleLoadRealScenario = async () => {
-    if (!organization || !user) return;
-    setIsSubmitting(true);
-    try {
-      const orderId = `os_ord_20260924_0002_${organization.id}`;
-      const realOrder: WorkOrder = {
-        id: orderId,
-        orgId: organization.id,
-        unitId: units[0]?.id || 'cd_marilia_bmdv',
-        orderNumber: 'ORD-20260924-0002',
-        title: '13150805 MANUTENÇÃO RALOS DA REEMBALAGEM',
-        description: 'Manutenção ralos da reembalagem na planta CD Marília (BMDV). Bloqueio ativo por reserva de peças.',
-        orderType: 'corretiva',
-        priority: 'media',
-        status: 'em_aprovacao',
-        requesterId: user.uid,
-        requesterName: 'Derek Liria',
-        assignedTo: 'Gilfran — gilfran.bispo',
-        assignedTeam: 'CD Marília (BMDV)',
-        scheduledStartDate: '2026-09-13',
-        scheduledEndDate: '2026-09-13',
-        estimatedHours: 36,
-        estimatedCost: canViewFinancials ? 3850 : 0,
-        isRework: false,
-        notes: 'Checklist vinculado: Check-list de Corretiva — versão 1 publicada. LPU: Não criar, pois LPU corresponde ao planejamento.',
-        messageCount: 2,
-        pendingQuestionCount: 1,
-        lastDiscussionAt: '2026-09-24T16:15:00.000Z',
-        plannedServices: [
-          {
-            id: 'srv_real_1',
-            description: 'Hospedagem de dupla técnica',
-            category: 'civil',
-            estimatedHours: 0,
-            actualHours: 0,
-            status: 'planejado',
-          },
-          {
-            id: 'srv_real_2',
-            description: 'Valor mínimo de atendimento com deslocamento',
-            category: 'mecanica',
-            estimatedHours: 0,
-            actualHours: 0,
-            status: 'planejado',
-          },
-        ],
-        plannedLabor: [
-          {
-            id: 'lab_real_1',
-            workerName: 'Gilfran Bispo & Auxiliar',
-            role: 'Serralheiro',
-            estimatedHours: 18,
-            actualHours: 0,
-            hourlyRate: 85,
-            totalCost: 1530,
-            status: 'alocado',
-          },
-          {
-            id: 'lab_real_2',
-            workerName: 'Soldador Especialista',
-            role: 'Soldador',
-            estimatedHours: 18,
-            actualHours: 0,
-            hourlyRate: 95,
-            totalCost: 1710,
-            status: 'alocado',
-          },
-        ],
-        plannedParts: [
-          {
-            id: 'prt_real_1',
-            sku: 'MGR',
-            name: 'Material geral de reparo — CD Marília (BMDV)',
-            quantityPlanned: 12,
-            quantityUsed: 0,
-            unit: 'UN',
-            unitPrice: 50,
-            totalCost: 600,
-            status: 'solicitado',
-          },
-        ],
-        createdAt: '2026-09-24T14:48:12.000Z',
-        updatedAt: '2026-09-24T15:58:19.000Z',
-      };
-
-      await setDoc(doc(db, 'work_orders', orderId), realOrder);
-
-      // Create conversation messages
-      await setDoc(doc(db, 'order_messages', `msg_real_1_${orderId}`), {
-        id: `msg_real_1_${orderId}`,
-        orgId: organization.id,
-        orderId,
-        senderId: 'gilfran_bispo',
-        senderName: 'Gilfran (Responsável Técnico)',
-        senderRole: 'Responsavel',
-        messageType: 'pergunta',
-        content: 'Olá supervisão, cheguei no CD Marília para iniciar os ralos da reembalagem. A ordem acusa atraso pois estava prevista para 13/09, e há reserva de 12 un. de MGR bloqueando o início no sistema, além da validação de GPS. Como proceder?',
-        createdAt: '2026-09-24T16:05:00.000Z',
-        resolved: false,
-      });
-
-      await setDoc(doc(db, 'order_messages', `msg_real_2_${orderId}`), {
-        id: `msg_real_2_${orderId}`,
-        orgId: organization.id,
-        orderId,
-        senderId: user.uid,
-        senderName: 'Derek Liria (Gestor / Superior)',
-        senderRole: 'Superior',
-        messageType: 'resposta',
-        replyToMessageId: `msg_real_1_${orderId}`,
-        replyToSnippet: 'A ordem acusa atraso... reserva de 12 un. de MGR bloqueando...',
-        content: 'Gilfran, a ordem foi enviada para aprovação e a reserva de 12 unidades de MGR foi incluída às 15:58. O gestor da planta está validando o orçamento de 36h de mão de obra (Serralheiro + Soldador) e os insumos. Não inicie antes da aprovação da reserva para não gerar inconsistência de LPU/estoque. Ative o GPS no navegador para quando liberar.',
-        createdAt: '2026-09-24T16:15:00.000Z',
-        resolved: false,
-      });
-
-      // Populate all 12 timeline events from the user's brief
-      const realEvents = [
-        { time: '2026-09-24T14:48:12.000Z', type: 'criacao', desc: 'Criação da ordem — Status inicial: Planejado.' },
-        { time: '2026-09-24T14:48:45.000Z', type: 'planejamento', desc: 'Alteração do orçamento — Composição de serviços: 1 linha. Mão de obra: 0 linhas.' },
-        { time: '2026-09-24T14:48:55.000Z', type: 'planejamento', desc: 'Alteração do orçamento — Composição de serviços: 2 linhas. Mão de obra: 0 linhas.' },
-        { time: '2026-09-24T14:49:22.000Z', type: 'planejamento', desc: 'Alteração do orçamento — Composição de serviços: 2 linhas. Mão de obra: 1 linha.' },
-        { time: '2026-09-24T14:49:29.000Z', type: 'planejamento', desc: 'Alteração do orçamento — Composição de serviços: 2 linhas. Mão de obra: 2 linhas.' },
-        { time: '2026-09-24T14:50:20.000Z', type: 'pecas', desc: 'Inclusão de reserva — Material MGR — quantidade 1, unidade BMDV.' },
-        { time: '2026-09-24T14:51:11.000Z', type: 'pecas', desc: 'Cancelamento de reserva — Reserva de MGR cancelada.' },
-        { time: '2026-09-24T14:56:46.000Z', type: 'pecas', desc: 'Inclusão de reserva — Material MGR — quantidade 1, unidade BMDV.' },
-        { time: '2026-09-24T14:56:59.000Z', type: 'pecas', desc: 'Cancelamento de reserva — Reserva de MGR cancelada.' },
-        { time: '2026-09-24T15:57:21.000Z', type: 'status_change', desc: 'Envio para aprovação — Status alterado de Planejado para Em aprovação.' },
-        { time: '2026-09-24T15:57:21.000Z', type: 'planejamento', desc: 'Alteração do orçamento — Registro do envio da ordem para aprovação do gestor.' },
-        { time: '2026-09-24T15:58:19.000Z', type: 'pecas', desc: 'Inclusão de reserva — Material MGR — quantidade 12, unidade BMDV (Bloqueante).' },
-      ];
-
-      for (let i = 0; i < realEvents.length; i++) {
-        const ev = realEvents[i];
-        await setDoc(doc(db, 'order_events', `evt_real_${i}_${orderId}`), {
-          id: `evt_real_${i}_${orderId}`,
-          orgId: organization.id,
-          orderId,
-          userId: user.uid,
-          userName: 'Derek Liria',
-          eventType: ev.type,
-          description: ev.desc,
-          timestamp: ev.time,
-        });
-      }
-
-      await logAudit(
-        'Ordens de Serviço',
-        'Cenário Real',
-        'Carregamento da OS ORD-20260924-0002 com serviços, mão de obra, reservas de peças e linha do tempo histórica',
-        orderId
-      );
-
-      setSelectedOrder(realOrder);
-      setActiveModalTab('overview');
-    } catch (err) {
-      console.error('Erro ao carregar cenário real:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   // Status transitions
   const handleUpdateOrderStatus = async (
     order: WorkOrder,
@@ -1144,17 +980,6 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           >
             <Sliders className="w-3.5 h-3.5 text-blue-400" />
             <span>Configurar Estados</span>
-          </button>
-
-          {/* Carregar Exemplo Real */}
-          <button
-            onClick={handleLoadRealScenario}
-            disabled={isSubmitting}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 text-xs font-semibold border border-amber-500/30 shadow-sm transition-all cursor-pointer"
-            title="Carregar exemplo completo: ORD-20260924-0002 com Planejamento, Diálogo de Execução e Linha do Tempo"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Exemplo Real (ORD-20260924)</span>
           </button>
 
           <button
@@ -2246,7 +2071,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                     setSelectedOrder((prev) => (prev ? { ...prev, ...upd } : null))
                   }
                   onOpenReportModal={() => setShowReportModal(true)}
-                  canApprove={true}
+                  canApprove={role === 'Admin' || role === 'Gerente'}
                 />
               )}
 

@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator, initializeAuth, inMemoryPersistence, type Auth } from 'firebase/auth';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -11,6 +12,8 @@ export const app = getApps().length === 0 ? initializeApp(useEmulators ? { ...fi
 // CRITICAL: Initialize Firestore with the exact database ID from config
 export const db = useEmulators ? getFirestore(app) : getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
+export const storage = getStorage(app);
+
 // Initialize Firebase Auth & Providers
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -18,6 +21,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 if (useEmulators) {
   connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, 'localhost', 8085);
+  connectStorageEmulator(storage, 'localhost', 9199);
 }
 
 let isolated: Auth | undefined;

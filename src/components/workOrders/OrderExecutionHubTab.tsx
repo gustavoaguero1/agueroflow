@@ -12,7 +12,9 @@ import {
   addDoc,
   collection,
 } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase';
+import { compressImage } from '../../lib/compressImage';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -44,7 +46,7 @@ interface OrderExecutionHubTabProps {
 
 const DEFAULT_MANDATORY_TASKS: OrderChecklistItem[] = [
   { id: 'chk_1', task: '1. Qual ordem será atendida (Validação de escopo no local)', isMandatory: true, status: 'pendente' },
-  { id: 'chk_2', task: '2. Imagem inicial (antes) — foto obrigatória do ralo/área', isMandatory: true, status: 'pendente' },
+  { id: 'chk_2', task: '2. Imagem inicial (antes) — foto obrigatória da área/equipamento', isMandatory: true, status: 'pendente' },
   { id: 'chk_3', task: '3. Imagem após reparo (depois) — foto obrigatória pós-conclusão', isMandatory: true, status: 'pendente' },
   { id: 'chk_4', task: '4. A ordem foi atendida completamente e sem pendências?', isMandatory: true, status: 'pendente' },
   { id: 'chk_5', task: '5. Assinatura digital do técnico executor', isMandatory: true, status: 'pendente' },
@@ -79,8 +81,8 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
   );
 
   // Signatures
-  const [techName, setTechName] = useState(order.technicianSignedBy || order.assignedTo || 'Gilfran — gilfran.bispo');
-  const [clientName, setClientName] = useState(order.clientSignedBy || order.requesterName || 'Derek Liria');
+  const [techName, setTechName] = useState(order.technicianSignedBy || order.assignedTo || '');
+  const [clientName, setClientName] = useState(order.clientSignedBy || order.requesterName || '');
 
   // Canvas refs
   const techCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -143,21 +145,15 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
       },
       (err) => {
         console.error('GPS error:', err);
-        // Fallback for dev / mock GPS if user denies permission
-        const mockCoords = {
-          latitude: -22.2155,
-          longitude: -49.9538,
-          accuracy: 8,
-          capturedAt: new Date().toISOString(),
-          capturedBy: currentUser.displayName || currentUser.email || 'Usuário',
-        };
+        // Never invent coordinates: record no location and tell the user.
+        setGpsError('Localização não autorizada');
         updateDoc(doc(db, 'work_orders', order.id), {
-          executionGps: mockCoords,
+          executionGps: null,
           updatedAt: new Date().toISOString(),
-        }).then(() => {
-          onOrderUpdated({ executionGps: mockCoords });
-        });
-        setGpsLoading(false);
+        })
+          .then(() => onOrderUpdated({ executionGps: null }))
+          .catch((e) => console.error('Erro ao salvar GPS:', e))
+          .finally(() => setGpsLoading(false));
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -191,44 +187,41 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
     }
   };
 
-  // Quick photo upload / preset
-  const handleAddSamplePhoto = async (type: 'before' | 'after') => {
-    // High quality industrial repair illustrative photos
-    const sampleBefore = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80';
-    const sampleAfter = 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=800&q=80';
-
-    const chosen = type === 'before' ? sampleBefore : sampleAfter;
-
-    if (type === 'before') {
-      const nextList = [...beforePhotos, chosen];
-      setBeforePhotos(nextList);
+  // Real photo upload: compress, send to Storage, keep URL in evidencePhotos + metadata.
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<'before' | 'after' | null>(null);
+  const handlePhotoFile = async (type: 'before' | 'after', file: File | undefined) => {
+    if (!file) return;
+    setUploading(type);
+    setPhotoError(null);
+    try {
+      const kind = type === 'before' ? ('antes' as const) : ('depois' as const);
+      const takenAt = new Date().toISOString();
+      const blob = await compressImage(file);
+      const path = `work-orders/${organizationId}/${order.id}/${kind}_${Date.now()}.jpg`;
+      const r = storageRef(storage, path);
+      await uploadBytes(r, blob, { contentType: 'image/jpeg' });
+      const url = await getDownloadURL(r);
+      const nextBefore = type === 'before' ? [...beforePhotos, url] : beforePhotos;
+      const nextAfter = type === 'after' ? [...afterPhotos, url] : afterPhotos;
+      const meta = [
+        ...(order.evidencePhotoMeta || []),
+        { kind, path, url, takenAt, lat: order.executionGps?.latitude ?? null, lng: order.executionGps?.longitude ?? null },
+      ];
       await updateDoc(doc(db, 'work_orders', order.id), {
-        evidencePhotos: {
-          before: nextList,
-          after: afterPhotos,
-        },
+        evidencePhotos: { before: nextBefore, after: nextAfter },
+        evidencePhotoMeta: meta,
         updatedAt: new Date().toISOString(),
       });
-      onOrderUpdated({
-        evidencePhotos: { before: nextList, after: afterPhotos },
-      });
-      // automatically mark task 2 as done
-      handleToggleChecklist('chk_2');
-    } else {
-      const nextList = [...afterPhotos, chosen];
-      setAfterPhotos(nextList);
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        evidencePhotos: {
-          before: beforePhotos,
-          after: nextList,
-        },
-        updatedAt: new Date().toISOString(),
-      });
-      onOrderUpdated({
-        evidencePhotos: { before: beforePhotos, after: nextList },
-      });
-      // automatically mark task 3 as done
-      handleToggleChecklist('chk_3');
+      setBeforePhotos(nextBefore);
+      setAfterPhotos(nextAfter);
+      onOrderUpdated({ evidencePhotos: { before: nextBefore, after: nextAfter }, evidencePhotoMeta: meta });
+      handleToggleChecklist(type === 'before' ? 'chk_2' : 'chk_3');
+    } catch (err) {
+      console.error('Erro ao enviar foto:', err);
+      setPhotoError('Não foi possível enviar a foto. Verifique a conexão e tente novamente.');
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -352,7 +345,7 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         userId: currentUser.uid,
         userName: currentUser.displayName || currentUser.email || 'Gestor',
         eventType: 'aprovacao',
-        description: `Reserva de peças (12 un. MGR) aprovada pelo Gestor. Ordem desbloqueada e liberada para execução imediata no CD Marília.`,
+        description: `Reserva de peças aprovada pelo Gestor. Ordem desbloqueada e liberada para execução.`,
         newStatus: 'em_execucao',
         timestamp: new Date().toISOString(),
       });
@@ -365,7 +358,7 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         senderName: currentUser.displayName || 'Gestor / Superior',
         senderRole: 'Superior',
         messageType: 'liberacao',
-        content: '✅ APROVADO: A reserva de 12 unidades de MGR foi autorizada pela gestão. A ordem está desbloqueada e em execução. Podem iniciar os trabalhos de solda e serralheria.',
+        content: '✅ APROVADO: A reserva de peças foi autorizada pela gestão. A ordem está desbloqueada e em execução.',
         createdAt: new Date().toISOString(),
         resolved: true,
       });
@@ -398,7 +391,7 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
                 </span>
               </h4>
               <p className="text-xs text-amber-200/80 mt-0.5">
-                Há uma reserva de 12 unidades de material geral de reparo (MGR) aguardando aprovação do Gestor da planta CD Marília (BMDV). O início da execução física requer liberação prévia.
+                Há reserva de peças aguardando aprovação do Gestor. O início da execução física requer liberação prévia.
               </p>
             </div>
           </div>
@@ -452,6 +445,7 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
           </button>
         </div>
 
+        {gpsError && <p className="text-xs text-red-400 font-semibold">{gpsError}</p>}
         {order.executionGps ? (
           <div className="p-3 rounded-lg bg-slate-950/80 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div className="flex items-center space-x-2 text-slate-300">
@@ -563,19 +557,24 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
           </span>
         </div>
 
+        {photoError && <p className="text-xs text-red-400">{photoError}</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Antes */}
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-bold text-xs text-slate-200">Foto Inicial (Antes do Reparo)</span>
-              <button
-                type="button"
-                onClick={() => handleAddSamplePhoto('before')}
-                className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-400 text-[10px] font-semibold cursor-pointer"
-              >
+              <label className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-400 text-[10px] font-semibold cursor-pointer">
                 <Upload className="w-3 h-3" />
-                <span>Anexar Foto Antes</span>
-              </button>
+                <span>{uploading === 'before' ? 'Enviando...' : 'Anexar Foto Antes'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={uploading !== null}
+                  onChange={(e) => { handlePhotoFile('before', e.target.files?.[0]); e.target.value = ''; }}
+                />
+              </label>
             </div>
 
             {beforePhotos.length > 0 ? (
@@ -601,14 +600,18 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-bold text-xs text-slate-200">Foto Concluída (Depois do Reparo)</span>
-              <button
-                type="button"
-                onClick={() => handleAddSamplePhoto('after')}
-                className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[10px] font-semibold cursor-pointer"
-              >
+              <label className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-[10px] font-semibold cursor-pointer">
                 <Upload className="w-3 h-3" />
-                <span>Anexar Foto Depois</span>
-              </button>
+                <span>{uploading === 'after' ? 'Enviando...' : 'Anexar Foto Depois'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={uploading !== null}
+                  onChange={(e) => { handlePhotoFile('after', e.target.files?.[0]); e.target.value = ''; }}
+                />
+              </label>
             </div>
 
             {afterPhotos.length > 0 ? (
