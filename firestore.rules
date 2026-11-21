@@ -122,7 +122,8 @@ service cloud.firestore {
       function supervisorPays() {
         return hasRole(orgOf(resource.data), ['Supervisor'])
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'pagoEm', 'pagoPor', 'updatedAt'])
-          && resource.data.get('status', '') == 'aberto' && request.resource.data.get('status', '') == 'pago';
+          && resource.data.get('status', '') == 'aberto' && request.resource.data.get('status', '') == 'pago'
+          && request.resource.data.get('pagoPor', '') == request.auth.uid;
       }
       allow read: if finance() && canRead(resource);
       allow create: if finance() && canCreate() && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
@@ -143,15 +144,19 @@ service cloud.firestore {
       function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
       function run() { return resource.data.get('classificacao', {}); }
       function ownRun() { return run().get('by', '') == request.auth.uid; }
-      // A run left 'classificando' for 2+ minutes (server time) may be released by Admin/Gerente.
-      function stale() { return run().get('startedAt', null) is timestamp && request.time > run().startedAt + duration.value(2, 'm'); }
+      // A run left 'classificando' for 2+ minutes (server time) — or a legacy one without startedAt — may be released by Admin/Gerente.
+      function stale() { return !(run().get('startedAt', null) is timestamp) || request.time > run().startedAt + duration.value(2, 'm'); }
+      function newRun() {
+        let r = request.resource.data.get('classificacao', {});
+        return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
+      }
       function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
       allow read: if canRead(resource);
       allow update: if canUpdate()
         && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
         && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
-             && request.resource.data.get('classificacao', {}).get('by', '') == request.auth.uid)
+             && newRun())
           || (move() == 'classificando>classificada' && ownRun())
           || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
     }

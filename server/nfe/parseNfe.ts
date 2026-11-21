@@ -1,10 +1,12 @@
 import { XMLParser } from 'fast-xml-parser';
 
-export type NfeImpostos = { vICMS: number; vICMSST: number; vIPI: number; vPIS: number; vCOFINS: number; pICMS?: number; pIPI?: number };
+export type NfeImpostos = {
+  vICMS: number; vICMSST: number; vFCPST: number; vIPI: number; vIPIDevol: number; vII: number; vPIS: number; vCOFINS: number; pICMS?: number; pIPI?: number;
+};
 export type NfeItem = {
   n: number; codigo: string; descricao: string; ncm: string; cfop: string; unidade: string; quantidade: number; valorUnitario: number; valorTotal: number; ean?: string;
   vFrete: number; vSeg: number; vDesc: number; vOutro: number; impostos: NfeImpostos;
-  /** Acquisition cost of the line: vProd + vFrete + vSeg + vOutro + vICMSST + vIPI − vDesc. */
+  /** Acquisition cost: vProd + vFrete + vSeg + vOutro + vICMSST + vFCPST + vIPI + vIPIDevol + vII − vDesc (Σ == vNF up to R$ 0,05, see parseNfeXml). */
   custoTotal: number;
 };
 export type ParsedNfe = {
@@ -31,13 +33,28 @@ const str = (v: unknown) => (v == null ? '' : String(v));
 const group = (w: any): any => (w && typeof w === 'object' ? Object.entries(w).find(([k, v]) => !k.startsWith('@') && v && typeof v === 'object')?.[1] ?? {} : {});
 const rate = (v: unknown) => (v == null || v === '' ? undefined : num(v));
 
-function impostos(imp: any = {}): NfeImpostos {
+function impostos(imp: any = {}, devol: any = {}): NfeImpostos {
   const icms = group(imp.ICMS), pis = group(imp.PIS), cofins = group(imp.COFINS);
   const ipi = imp.IPI?.IPITrib ?? {};
   const pICMS = rate(icms.pICMS), pIPI = rate(ipi.pIPI);
   return {
-    vICMS: money(icms.vICMS), vICMSST: money(icms.vICMSST), vIPI: money(ipi.vIPI), vPIS: money(pis.vPIS), vCOFINS: money(cofins.vCOFINS),
+    vICMS: money(icms.vICMS), vICMSST: money(icms.vICMSST), vFCPST: money(icms.vFCPST), vIPI: money(ipi.vIPI),
+    vIPIDevol: money(devol.IPI?.vIPIDevol), vII: money(imp.II?.vII), vPIS: money(pis.vPIS), vCOFINS: money(cofins.vCOFINS),
     ...(pICMS !== undefined && { pICMS }), ...(pIPI !== undefined && { pIPI }),
+  };
+}
+
+function parseItem(d: any): NfeItem {
+  const p = d.prod ?? {};
+  const ean = str(p.cEAN);
+  const imp = impostos(d.imposto, d.impostoDevol);
+  const [vProd, vFrete, vSeg, vDesc, vOutro] = [p.vProd, p.vFrete, p.vSeg, p.vDesc, p.vOutro].map(money);
+  return {
+    n: num(d['@nItem']), codigo: str(p.cProd), descricao: str(p.xProd), ncm: str(p.NCM), cfop: str(p.CFOP), unidade: str(p.uCom),
+    quantidade: num(p.qCom), valorUnitario: num(p.vUnCom), valorTotal: vProd,
+    ...(/^\d{8,14}$/.test(ean) && { ean }), // "SEM GTIN" is not an EAN
+    vFrete, vSeg, vDesc, vOutro, impostos: imp,
+    custoTotal: money(vProd + vFrete + vSeg + vOutro + imp.vICMSST + imp.vFCPST + imp.vIPI + imp.vIPIDevol + imp.vII - vDesc),
   };
 }
 
@@ -50,6 +67,13 @@ export function parseNfeXml(xml: string): ParsedNfe {
   const t = total.ICMSTot ?? {};
   const chave = str(inf['@Id']).replace(/^NFe/, '');
   if (!/^\d{44}$/.test(chave) || !Number.isFinite(Number(t.vNF)) || t.vNF == null || t.vNF === '') throw new Error(INVALID);
+  const itens = (inf.det ?? []).map(parseItem);
+  // Per-line rounding leaves cents off vNF: give the remainder (≤ R$ 0,05) to the largest line; bigger gaps are real and kept.
+  const diff = money(money(t.vNF) - itens.reduce((s: number, i: NfeItem) => s + i.custoTotal, 0));
+  if (diff !== 0 && Math.abs(diff) <= 0.05 && itens.length) {
+    const big = itens.reduce((a: NfeItem, b: NfeItem) => (b.custoTotal > a.custoTotal ? b : a));
+    big.custoTotal = money(big.custoTotal + diff);
+  }
   return {
     chave,
     numero: str(ide.nNF), serie: str(ide.serie), modelo: str(ide.mod), emitidaEm: str(ide.dhEmi ?? ide.dEmi),
@@ -58,19 +82,7 @@ export function parseNfeXml(xml: string): ParsedNfe {
     valorTotal: money(t.vNF), valorProdutos: money(t.vProd), valorFrete: money(t.vFrete), valorIcms: money(t.vICMS), valorIpi: money(t.vIPI),
     valorDesconto: money(t.vDesc), valorSeguro: money(t.vSeg), valorOutros: money(t.vOutro), valorSt: money(t.vST),
     valorPis: money(t.vPIS), valorCofins: money(t.vCOFINS),
-    itens: (inf.det ?? []).map((d: any): NfeItem => {
-      const p = d.prod ?? {};
-      const ean = str(p.cEAN);
-      const imp = impostos(d.imposto);
-      const [vProd, vFrete, vSeg, vDesc, vOutro] = [p.vProd, p.vFrete, p.vSeg, p.vDesc, p.vOutro].map(money);
-      return {
-        n: num(d['@nItem']), codigo: str(p.cProd), descricao: str(p.xProd), ncm: str(p.NCM), cfop: str(p.CFOP), unidade: str(p.uCom),
-        quantidade: num(p.qCom), valorUnitario: num(p.vUnCom), valorTotal: vProd,
-        ...(/^\d{8,14}$/.test(ean) && { ean }), // "SEM GTIN" is not an EAN
-        vFrete, vSeg, vDesc, vOutro, impostos: imp,
-        custoTotal: money(vProd + vFrete + vSeg + vOutro + imp.vICMSST + imp.vIPI - vDesc),
-      };
-    }),
+    itens,
     duplicatas: (cobr.dup ?? []).map((d: any) => ({ numero: str(d.nDup), vencimento: str(d.dVenc), valor: money(d.vDup) })),
     naturezaOperacao: str(ide.natOp),
   };

@@ -4,7 +4,7 @@ import { PackagePlus, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  autoLines, brl, classifyNfe, createCatalogItem, duplicatasExcess, lineCost, parcelasOf, registeredEntries,
+  autoLines, brl, classifyNfe, duplicatasExcess, lineCost, parcelasOf, registeredEntries,
 } from '../../services/financeService';
 import type { CostCenter, Item, WorkOrder } from '../../types';
 import type { PurchaseOrder } from '../../types/purchasing';
@@ -37,7 +37,8 @@ export const NfeTaxSummary: React.FC<{ nfe: NfeDocument }> = ({ nfe }) => {
 const LineTaxes: React.FC<{ it: NfeItem }> = ({ it }) => {
   const parts: [string, number | undefined][] = [
     ['Frete', it.vFrete], ['Seguro', it.vSeg], ['Outras', it.vOutro], ['Desconto', it.vDesc && -it.vDesc],
-    ['IPI', it.impostos?.vIPI], ['ICMS-ST', it.impostos?.vICMSST], ['ICMS (informativo)', it.impostos?.vICMS],
+    ['IPI', it.impostos?.vIPI], ['IPI devolvido', it.impostos?.vIPIDevol], ['ICMS-ST', it.impostos?.vICMSST], ['FCP-ST', it.impostos?.vFCPST],
+    ['II', it.impostos?.vII], ['ICMS (informativo)', it.impostos?.vICMS],
   ];
   return (
     <p className="text-[11px] text-slate-400" data-testid={`line-taxes-${it.n}`}>
@@ -114,16 +115,8 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
     setError(null);
     setBusy(true);
     try {
-      // Stock lines without a catalog match get a new catalog item (from the NF-e description/unit).
-      const final: ClassifyLine[] = [];
-      for (const l of lines) {
-        if (l.destino !== 'estoque') { final.push({ ...l, itemId: undefined, unitId: undefined }); continue; }
-        if (l.itemId) { final.push(l); continue; }
-        const created = await createCatalogItem(db, orgId, itens.find((x) => x.n === l.n)!);
-        setItems((xs) => [...(xs ?? []), created]);
-        set(l.n, { itemId: created.id });
-        final.push({ ...l, itemId: created.id });
-      }
+      // Stock lines without a catalog match: classifyNfe creates the item inside the run.
+      const final = lines.map((l) => (l.destino === 'estoque' ? l : { ...l, itemId: undefined, unitId: undefined }));
       await classifyNfe(db, {
         orgId, nfeId: nfe.id, lines: final, vencimentos: venc, purchaseOrderId: purchaseOrderId || undefined, rememberRules: remember,
         user: { uid: user?.uid ?? '', name: member?.userName || user?.displayName || user?.email || 'Usuário' },

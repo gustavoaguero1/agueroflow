@@ -278,6 +278,7 @@ test('finance_payables: createdBy is the caller; Supervisor only settles aberto 
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'cancelado' }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'someone', updatedAt: 'x' }));
   await assertSucceeds(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_sup', updatedAt: 'x' }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'aberto' }));
   await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { status: 'aberto', valor: 12 }));
@@ -303,6 +304,8 @@ test('nfe_documents: read by members, server-only create/delete, guarded status 
   await assertFails(updateDoc(doc(member(), d), { status: 'classificando', ...runBy('member_m_op') })); // Operacional cannot classify
   await assertFails(updateDoc(doc(as('g', { org_b: 'Gerente' }), d), { status: 'classificando', ...runBy('g') }));
   await assertFails(updateDoc(doc(supervisor(), d), { status: 'classificando', ...runBy('someone') }));
+  // startedAt must be the server time (no backdating to make a run look stale)
+  await assertFails(updateDoc(doc(supervisor(), d), { status: 'classificando', classificacao: { runId: 'r', by: 'member_m_sup', startedAt: Timestamp.fromMillis(Date.now() - 3 * 60_000) } }));
   await assertSucceeds(updateDoc(doc(supervisor(), d), { status: 'classificando', updatedAt: 'x', ...runBy('member_m_sup') }));
   await assertFails(updateDoc(doc(gerente(), d), { status: 'aguardando_classificacao' }));
   // a fresh run belongs to its owner: a manager cannot release or finish it yet
@@ -321,6 +324,12 @@ test('nfe_documents: stale run (≥ 2 min, server time) released by Admin/Gerent
   const rel = { status: 'erro_classificacao', erroClassificacao: 'interrompida' };
   await assertFails(updateDoc(doc(supervisor(), 'nfe_documents/org_a_s'), rel));
   await assertSucceeds(updateDoc(doc(gerente(), 'nfe_documents/org_a_s'), rel));
+  // legacy run without startedAt
+  await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_l'), { orgId: 'org_a', status: 'classificando', classificacao: { runId: 'r', by: 'other' } }));
+  await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_l2'), { orgId: 'org_a', status: 'classificando' }));
+  await assertFails(updateDoc(doc(supervisor(), 'nfe_documents/org_a_l'), rel));
+  await assertSucceeds(updateDoc(doc(gerente(), 'nfe_documents/org_a_l'), rel));
+  await assertSucceeds(updateDoc(doc(admin(), 'nfe_documents/org_a_l2'), rel));
 });
 
 test('nfe_sync: members read, writes denied', async () => {

@@ -214,10 +214,17 @@ export async function ensureDefaultCategories(db: Firestore, orgId: string): Pro
   return true;
 }
 
-/** Adds an NF-e line to the catalog with the shape ItemsServicesModule writes. */
-export async function createCatalogItem(db: Firestore, orgId: string, it: NfeItem): Promise<Item & { ean?: string }> {
+/**
+ * Adds an NF-e line to the catalog with the shape ItemsServicesModule writes. With `id` it is create-if-absent
+ * (classification retries reuse the item created by an earlier attempt).
+ */
+export async function createCatalogItem(db: Firestore, orgId: string, it: NfeItem, fixedId?: string): Promise<Item & { ean?: string }> {
   const now = new Date().toISOString();
-  const id = `item_peca_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const id = fixedId ?? `item_peca_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  if (fixedId) {
+    const existing = (await getDoc(doc(db, 'items', id))).data();
+    if (existing) return existing as Item;
+  }
   const item = clean<Item & { ean?: string }>({
     id, orgId, sku: it.codigo || id, code: it.codigo || undefined, name: it.descricao, description: `NCM ${it.ncm}`,
     type: 'peca', category: 'Sem categoria', unitOfMeasure: (it.unidade || 'UN').toUpperCase(), status: 'ACTIVE', active: true,
@@ -278,7 +285,7 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
     for (const it of d.itens ?? []) {
       const l = lines.find((x) => x.n === it.n);
       if (!l?.categoriaId) throw new Error(`Item ${it.n}: informe a categoria.`);
-      if (l.destino === 'estoque' && (!l.itemId || !l.unitId)) throw new Error(`Item ${it.n}: estoque exige item do catálogo e unidade.`);
+      if (l.destino === 'estoque' && !l.unitId) throw new Error(`Item ${it.n}: estoque exige unidade (almoxarifado).`);
       // A previous attempt may already have put this line in stock: it must stay there, same item and unit.
       const m = (await tx.get(doc(db, 'stock_movements', movementIdFor(input.orgId, `nfe:${d.chave}:${it.n}`)))).data();
       if (m && (l.destino !== 'estoque' || l.itemId !== m.itemId || l.unitId !== m.unitId)) {
@@ -295,7 +302,9 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
     const byN = new Map((nfe.itens ?? []).map((i) => [i.n, i]));
     for (const l of lines.filter((x) => x.destino === 'estoque')) {
       const it = byN.get(l.n)!;
-      const cat = (await getDoc(doc(db, 'items', l.itemId!))).data() as Item | undefined;
+      // No catalog match: create the item now (inside the run), with an id per NF-e line so a retry reuses it.
+      if (!l.itemId) l.itemId = (await createCatalogItem(db, input.orgId, it, `item_nfe_${input.orgId}_${nfe.chave}_${l.n}`)).id;
+      const cat = (await getDoc(doc(db, 'items', l.itemId))).data() as Item | undefined;
       if (!cat) throw new Error(`Item ${l.n}: item do catálogo não encontrado.`);
       try {
         await applyStockMovement(db, {

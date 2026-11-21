@@ -60,7 +60,10 @@ export interface NfeItem {
   vSeg?: number;
   vDesc?: number;
   vOutro?: number;
-  impostos?: { vICMS: number; vICMSST: number; vIPI: number; vPIS: number; vCOFINS: number; pICMS?: number; pIPI?: number };
+  impostos?: {
+    vICMS: number; vICMSST: number; vFCPST?: number; vIPI: number; vIPIDevol?: number; vII?: number; vPIS: number; vCOFINS: number;
+    pICMS?: number; pIPI?: number;
+  };
   custoTotal?: number;
 }
 
