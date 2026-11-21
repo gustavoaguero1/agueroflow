@@ -24,8 +24,7 @@ import {
 } from '../../types/rhPayroll';
 import {
   calculateEmployeeThirteenth,
-  OFFICIAL_INSS_BRACKETS_2025,
-  INSS_CEILING_2025,
+  getInssBrackets,
   roundCurrency,
 } from '../../services/rhPayrollService';
 
@@ -514,7 +513,7 @@ export const RhCalculationEngine: React.FC<RhCalculationEngineProps> = ({
               <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
                 <h4 className="font-bold text-cyan-400 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4" />
-                  3. 2ª Parcela (Quitação e Apuração Progressiva do INSS 2025)
+                  3. 2ª Parcela (Quitação e Apuração Progressiva do INSS)
                 </h4>
                 <div className="space-y-1.5 font-mono text-[11px] text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800">
                   <div className="flex justify-between">
@@ -553,13 +552,14 @@ export const RhCalculationEngine: React.FC<RhCalculationEngineProps> = ({
               {/* Tabela de Faixas Progressivas do INSS Vigente */}
               <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Tabela Progressiva Oficial de INSS (EC 103/2019 — 2025):
+                  Tabela Progressiva Oficial de INSS (EC 103/2019 — {viewingCalc.referenceYear}):
                 </span>
                 <div className="grid grid-cols-4 gap-2 text-[10px] font-mono text-slate-400">
-                  <div className="p-1.5 bg-slate-900 rounded">Faixa 1 (até R$ 1.518,00): 7,5%</div>
-                  <div className="p-1.5 bg-slate-900 rounded">Faixa 2 (até R$ 2.793,88): 9,0%</div>
-                  <div className="p-1.5 bg-slate-900 rounded">Faixa 3 (até R$ 4.190,83): 12,0%</div>
-                  <div className="p-1.5 bg-slate-900 rounded">Faixa 4 (até R$ 8.157,41): 14,0%</div>
+                  {getInssBrackets(viewingCalc.referenceYear).map((br, i) => (
+                    <div key={i} className="p-1.5 bg-slate-900 rounded">
+                      Faixa {i + 1} (até R$ {br.max.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}): {(br.rate * 100).toLocaleString('pt-BR')}%
+                    </div>
+                  ))}
                 </div>
               </div>
 
