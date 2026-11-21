@@ -11,7 +11,9 @@ import {
   deleteDoc,
   addDoc,
   getDocs,
+  runTransaction,
 } from 'firebase/firestore';
+import { maxOrderSeq, nextOrderNumber } from '../services/workOrderNumbering';
 import { db } from '../firebase';
 import {
   WorkOrder,
@@ -399,6 +401,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
   // Form State
   const [formNumber, setFormNumber] = useState('');
+  const [previewNumber, setPreviewNumber] = useState('');
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formType, setFormType] = useState<WorkOrderType>('solicitacao');
@@ -534,8 +537,9 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   }, [selectedOrder, organization]);
 
   const handleOpenCreate = () => {
-    const nextNum = `OS-${new Date().getFullYear()}-${String(orders.length + 1).padStart(3, '0')}`;
+    const nextNum = `OS-${new Date().getFullYear()}-${String(maxOrderSeq(orders) + 1).padStart(3, '0')}`;
     setFormNumber(nextNum);
+    setPreviewNumber(nextNum);
     setFormTitle('');
     setFormDescription('');
     setFormType('solicitacao');
@@ -598,7 +602,12 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      await setDoc(doc(db, 'work_orders', orderId), newOrder);
+      // Untouched preview -> allocate the real number from the org counter, atomically with the OS.
+      const autoNumber = formNumber.trim() === previewNumber;
+      await runTransaction(db, async (tx) => {
+        if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
+        tx.set(doc(db, 'work_orders', orderId), newOrder);
+      });
 
       // Record creation event in timeline
       await addDoc(collection(db, 'order_events'), {

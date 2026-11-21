@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { funnelSummary, validateLoss, LOSS_REASONS } from '../src/services/commercialFunnelService.ts';
+import { funnelSummary, validateLoss, pickInitialStatus, LOSS_REASONS } from '../src/services/commercialFunnelService.ts';
 
 const p = (status: string, v: number, extra: any = {}) =>
   ({ id: Math.random().toString(), status, proposedTotal: v, updatedAt: '2026-11-10T00:00:00Z', ...extra }) as any;
@@ -32,4 +32,18 @@ test('validateLoss requires a known reason and min 3 chars', () => {
   assert.throws(() => validateLoss('Xyz', 'abc'), /motivo/i);
   assert.equal(validateLoss('Outro', ' sem verba '), 'Outro: sem verba');
   assert.equal(validateLoss('Preço', ''), 'Preço');
+});
+
+test('period filters only closed deals; open pipeline forecast stays whole', () => {
+  const s = funnelSummary(
+    [p('enviada', 1000, { updatedAt: '2025-01-01T00:00:00Z' }), p('perdida', 5, { updatedAt: '2025-01-01T00:00:00Z' })],
+    { from: '2026-11-01' },
+  );
+  assert.equal(s.forecast, 300);
+  assert.equal(s.byStatus.perdida.count, 0);
+});
+
+test('pickInitialStatus prefers isInitial, then lowest order', () => {
+  assert.equal(pickInitialStatus([{ id: 'a', order: 1 }, { id: 'b', order: 3, isInitial: true }])?.id, 'b');
+  assert.equal(pickInitialStatus([{ id: 'a', order: 2 }, { id: 'b', order: 1 }])?.id, 'b');
 });

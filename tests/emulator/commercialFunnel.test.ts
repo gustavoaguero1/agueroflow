@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { nextOrderNumber } from '../../src/services/workOrderNumbering.ts';
+import { runTransaction } from 'firebase/firestore';
 import { markProposalWon, markProposalLost } from '../../src/services/commercialFunnelService.ts';
 
 let env: RulesTestEnvironment;
@@ -48,4 +50,28 @@ test('markProposalLost requires motivo and stores it', async () => {
   await markProposalLost(db(), prop, 'Preço', user, 'caro');
   const p = (await getDoc(doc(db(), 'commercial_proposals', 'p1'))).data() as any;
   assert.deepEqual([p.status, p.motivoPerda], ['perdida', 'Preço: caro']);
+});
+
+test('counter seeds from existing max number and never restarts', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'work_orders/old'), { orgId: 'org_a', orderNumber: 'OS-2026-041' });
+  });
+  await markProposalWon(db(), prop, user);
+  const wo = (await getDoc(doc(db(), 'work_orders', 'os_prop_p1'))).data() as any;
+  assert.match(wo.orderNumber, /-042$/);
+});
+
+test('parallel number allocation yields unique numbers', async () => {
+  const d = db();
+  const nums = await Promise.all(Array.from({ length: 4 }, () => runTransaction(d, (tx) => nextOrderNumber(tx, d, 'org_a', 0))));
+  assert.equal(new Set(nums).size, 4);
+});
+
+test('won refuses perdida; lost refuses proposal with OS', async () => {
+  await markProposalLost(db(), prop, 'Prazo', user);
+  await assert.rejects(markProposalWon(db(), prop, user), /perdida/);
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'commercial_proposals/p1'), { id: 'p1', organizationId: 'org_a', status: 'ganha', workOrderId: 'x' });
+  });
+  await assert.rejects(markProposalLost(db(), prop, 'Prazo', user), /OS/);
 });

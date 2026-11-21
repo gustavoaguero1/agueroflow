@@ -24,6 +24,15 @@ const COLUMNS = [
 ] as const;
 const DEFAULT_PROB: Record<string, number> = { enviada: 30, negociacao: 60 };
 
+function periodRange(p: string): { from?: string } | undefined {
+  const now = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (p === 'mes') return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)) };
+  if (p === '90d') return { from: iso(new Date(now.getTime() - 90 * 86400000)) };
+  if (p === 'ano') return { from: `${now.getFullYear()}-01-01` };
+  return undefined;
+}
+
 type Dialog = { kind: 'won' | 'lost'; proposal: CommercialProposal } | null;
 
 export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefresh }) => {
@@ -33,7 +42,8 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const summary = funnelSummary(proposals);
+  const [period, setPeriod] = useState<'mes' | '90d' | 'ano' | 'tudo'>('tudo');
+  const summary = funnelSummary(proposals, periodRange(period));
   const readyToSend = proposals.filter((p) => p.status === 'aprovada' || p.status === 'finalizada');
   const days = (p: CommercialProposal) =>
     Math.floor((Date.now() - new Date(p.statusHistory?.at(-1)?.at || p.updatedAt || p.createdAt).getTime()) / 86400000);
@@ -57,10 +67,21 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2 text-xs text-slate-400">
+        <span>Período (ganhas/perdidas):</span>
+        <select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}
+          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+          <option value="mes">Mês atual</option>
+          <option value="90d">Últimos 90 dias</option>
+          <option value="ano">Ano atual</option>
+          <option value="tudo">Tudo</option>
+        </select>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
         <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-4">
           <span className="text-slate-400">Previsão ponderada</span>
-          <p className="text-xl font-bold font-mono text-cyan-300">{brl(summary.forecast)}</p>
+          <p className="text-xl font-bold font-mono text-cyan-300 truncate">{brl(summary.forecast)}</p>
         </div>
         <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-4">
           <span className="text-slate-400">Taxa de conversão</span>
@@ -88,7 +109,7 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
             <div key={col.id} className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-3 space-y-2">
               <div className="flex justify-between text-xs font-semibold text-slate-200">
                 <span>{col.label} ({s.count})</span>
-                <span className="font-mono text-cyan-300">{brl(s.value)}</span>
+                <span className="font-mono text-cyan-300 truncate">{brl(s.value)}</span>
               </div>
               {cards.map((p) => (
                 <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs space-y-1">

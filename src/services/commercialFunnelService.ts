@@ -1,4 +1,5 @@
 import { collection, doc, getDocs, query, runTransaction, where, type Firestore } from 'firebase/firestore';
+import { maxOrderSeq, nextOrderNumber } from './workOrderNumbering';
 import type { CommercialProposal, CommercialProposalStatus } from '../types/commercial';
 
 export const FUNNEL_STATUSES = ['enviada', 'negociacao', 'ganha', 'perdida'] as const;
@@ -14,8 +15,10 @@ export function funnelSummary(proposals: CommercialProposal[], period?: { from?:
   let forecast = 0;
   for (const p of proposals) {
     if (!(p.status in byStatus)) continue;
+    const closedDeal = p.status === 'ganha' || p.status === 'perdida';
     const at = (lastChange(p) || '').slice(0, 10);
-    if ((period?.from && at < period.from) || (period?.to && at > period.to)) continue;
+    // Period applies to closed deals only; the open pipeline is always current.
+    if (closedDeal && ((period?.from && at < period.from) || (period?.to && at > period.to))) continue;
     const v = p.proposedTotal || 0;
     byStatus[p.status].count++;
     byStatus[p.status].value += v;
@@ -56,29 +59,34 @@ export async function markProposalLost(db: Firestore, proposal: CommercialPropos
   await runTransaction(db, async (tx) => {
     const ref = doc(db, 'commercial_proposals', proposal.id);
     const cur = (await tx.get(ref)).data() as CommercialProposal;
+    if (cur.workOrderId) throw new Error('Proposta já gerou OS e não pode ser marcada como perdida.');
     tx.update(ref, { status: 'perdida', motivoPerda, updatedAt: new Date().toISOString(), statusHistory: [...(cur.statusHistory || []), historyEntry('perdida', user.name)] });
   });
+}
+
+/** isInitial first, then lowest order (same as WorkOrdersModule). */
+export function pickInitialStatus<T extends { order?: number; isInitial?: boolean }>(list: T[]): T | undefined {
+  return [...list].sort((a, b) => Number(!!b.isInitial) - Number(!!a.isInitial) || (a.order ?? 0) - (b.order ?? 0))[0];
 }
 
 /** Deterministic OS id + transaction: concurrent calls yield a single work order. */
 export async function markProposalWon(db: Firestore, proposal: CommercialProposal, user: Actor): Promise<string> {
   const orgId = proposal.organizationId;
   const sts = await getDocs(query(collection(db, 'work_order_statuses'), where('orgId', '==', orgId)));
-  const first = sts.docs.map((d) => d.data() as { id?: string; order?: number }).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
+  const first = pickInitialStatus(sts.docs.map((d) => d.data() as { id?: string; order?: number; isInitial?: boolean }));
   const status = first?.id || 'aberto';
+  const existing = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', orgId)));
+  const seed = maxOrderSeq(existing.docs.map((d) => d.data() as { orderNumber?: string }));
   const orderId = `os_prop_${proposal.id}`;
 
   return runTransaction(db, async (tx) => {
     const pRef = doc(db, 'commercial_proposals', proposal.id);
-    const cRef = doc(db, 'counters', `${orgId}_work_orders`);
-    const [pSnap, cSnap] = await Promise.all([tx.get(pRef), tx.get(cRef)]);
-    const cur = pSnap.data() as CommercialProposal;
+    const cur = (await tx.get(pRef)).data() as CommercialProposal;
     if (cur.workOrderId) return cur.workOrderId;
+    if (cur.status === 'perdida' || cur.status === 'rejeitada') throw new Error('Proposta perdida/rejeitada não pode gerar OS.');
 
-    const seq = ((cSnap.data()?.seq as number) || 0) + 1;
     const now = new Date().toISOString();
-    const orderNumber = `OS-${new Date().getFullYear()}-${String(seq).padStart(3, '0')}`;
-    tx.set(cRef, { orgId, seq });
+    const orderNumber = await nextOrderNumber(tx, db, orgId, seed);
     tx.set(doc(db, 'work_orders', orderId), {
       id: orderId,
       orgId,

@@ -40,6 +40,14 @@ service cloud.firestore {
     // Connectivity probe in src/firebase.ts (testConnection).
     match /test/{docId} { allow get: if signedIn() && docId == 'connection'; }
 
+    // OS number sequence: members create it once (seq >= 1) and may only bump it by 1; never reset or delete.
+    match /counters/{docId} {
+      allow read: if canRead(resource);
+      allow create: if (isMaster() || ownerOk(request.resource.data)) && request.resource.data.get('seq', 0) >= 1;
+      allow update: if sameOwner() && (isMaster() || ownerOk(resource.data))
+        && request.resource.data.seq == resource.data.seq + 1;
+    }
+
     // ---- Organizations ------------------------------------------------------
     match /organizations/{orgId} {
       allow read: if signedIn();
@@ -93,7 +101,7 @@ service cloud.firestore {
           'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
-          'contracts', 'cost_centers', 'counters', 'field_workers', 'inspections', 'item_categories', 'items',
+          'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
           'teams', 'units', 'work_order_statuses', 'work_orders', 'work_shifts', 'worker_time_logs',

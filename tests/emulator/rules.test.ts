@@ -361,3 +361,13 @@ test('counters: member writes own org only', async () => {
   await assertSucceeds(setDoc(doc(db, 'counters/org_a_work_orders'), { orgId: 'org_a', seq: 1 }));
   await assertFails(setDoc(doc(db, 'counters/org_b_work_orders'), { orgId: 'org_b', seq: 1 }));
 });
+
+test('counters: no reset, no delete, only +1', async () => {
+  const db = member();
+  await assertFails(setDoc(doc(db, 'counters/org_a_x'), { orgId: 'org_a', seq: 0 }));
+  await assertSucceeds(setDoc(doc(db, 'counters/org_a_work_orders'), { orgId: 'org_a', seq: 5 }));
+  await assertFails(setDoc(doc(db, 'counters/org_a_work_orders'), { orgId: 'org_a', seq: 1 }));
+  await assertFails(updateDoc(doc(db, 'counters/org_a_work_orders'), { seq: 7 }));
+  await assertSucceeds(updateDoc(doc(db, 'counters/org_a_work_orders'), { seq: 6 }));
+  await assertFails(deleteDoc(doc(db, 'counters/org_a_work_orders')));
+});
