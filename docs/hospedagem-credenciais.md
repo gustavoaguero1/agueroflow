@@ -47,6 +47,45 @@ Vale se o app roda no Cloud Run do AI Studio.
 ## Passo 3 - Máximo de instâncias = 1
 Cloud Run -> serviço -> **Editar e implantar nova revisão** -> **Escalonamento automático** -> máximo de instâncias = **1**. Implante.
 
+## Passo 4 - Notas fiscais automáticas da SEFAZ (certificado A1)
+
+Com isso, toda NF-e emitida para o CNPJ da empresa aparece sozinha na Caixa de Notas. O servidor consulta a SEFAZ
+(Distribuição DF-e) a cada poucos minutos e, quando a SEFAZ manda só o resumo de uma nota, registra a
+**Ciência da Operação** para liberar o XML completo (é o evento oficial que diz "a empresa sabe que essa nota existe";
+não aceita nem recusa a nota).
+
+**Atenção: o certificado A1 é a assinatura legal da empresa.** Quem tem o arquivo e a senha assina documentos fiscais
+em nome dela. Guarde-o **só** nos Secrets do AI Studio: nunca no chat, e-mail, WhatsApp, GitHub ou pasta compartilhada.
+
+1. **Converta o .pfx para base64** (texto). Em um computador de confiança:
+   - Windows (PowerShell): `[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\caminho\certificado.pfx")) | Set-Clipboard`
+     (o texto vai para a área de transferência).
+   - Mac/Linux (Terminal): `base64 -i certificado.pfx | tr -d '\n' | pbcopy` (Mac) ou `base64 -w0 certificado.pfx` (Linux).
+2. No AI Studio, em **Secrets**, crie:
+
+| Variável | Valor |
+|---|---|
+| `NFE_CERT_PFX_BASE64` | O texto copiado no item 1 (uma linha só). |
+| `NFE_CERT_PASSWORD` | A senha do certificado. |
+| `NFE_CNPJ` | CNPJ da empresa dona do certificado. |
+| `NFE_UF` | Código IBGE da UF da empresa (SP = 35, RJ = 33, MG = 31, PR = 41, RS = 43, BA = 29). |
+| `NFE_ORG_ID` | ID da empresa no app (mesmo tipo de valor de `DEFAULT_ORG_ID`). |
+| `NFE_AMBIENTE` | Comece com `2` (homologação = ambiente de testes da SEFAZ). |
+
+3. **Teste em homologação primeiro.** Publique, espere uns minutos e, logado como Admin, rode no console do navegador (F12):
+   `fetch('/api/nfe/sync-status?orgId=<NFE_ORG_ID>').then(r=>r.json()).then(console.log)` (troque `<NFE_ORG_ID>` pelo ID;
+   o token de acesso vai junto automaticamente, como no diagnóstico). Espere `configured: true` e um `lastStatus`
+   começando com `137` (nada a retornar) ou `138` (documentos encontrados). Erros comuns:
+   - `Certificado A1 inválido ou senha incorreta`: confira a senha e se o base64 foi colado inteiro.
+   - `unable to get local issuer certificate`: avise o desenvolvedor (falta a cadeia ICP-Brasil em `NFE_CA_PEM`).
+   - `656 Consumo indevido`: o servidor já espera 1 hora sozinho; não force novas buscas.
+4. Com o teste OK, troque `NFE_AMBIENTE` para `1` (produção) e publique de novo. A primeira busca pode trazer as notas
+   dos últimos 90 dias aos poucos (até 20 consultas a cada 5 minutos; quando não há mais nada, a SEFAZ pede 1 hora de intervalo).
+5. Quando o certificado vencer (A1 vale 1 ano), gere o base64 do novo e substitua `NFE_CERT_PFX_BASE64` e `NFE_CERT_PASSWORD`.
+
+O botão "Buscar na SEFAZ agora" (Admin/Gerente) respeita o mesmo intervalo: antes do horário permitido ele só informa
+quando será a próxima busca.
+
 ## Ordem do go-live (não pule etapas)
 
 1. Configure a credencial e as variáveis (acima).

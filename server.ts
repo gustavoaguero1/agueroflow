@@ -60,6 +60,7 @@ import {
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
+import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
 import { getAdmin, adminStatus } from './server/firebaseAdmin';
 import { effectiveOrg } from './server/orgDefaults';
 import type {
@@ -462,6 +463,7 @@ async function main() {
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
   app.use('/api/nfe', nfeRouter);
+  app.use('/api/nfe', nfeSyncRouter);
 
   // Health and Database Status endpoint
   const firestoreDatabaseId = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8')).firestoreDatabaseId;
@@ -10812,6 +10814,7 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 AgueroFlow Server rodando na porta ${PORT} [${isProduction ? 'PROD' : 'DEV'}]`);
+    startNfeSyncScheduler();
   });
 }
 
