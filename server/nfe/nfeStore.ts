@@ -23,12 +23,12 @@ export async function upsertNfe(h: AdminHandles, orgId: string, parsed: ParsedNf
     }
     // Only a 'resumo' is upgraded; any other status is never touched.
     if (snap.data()!.status === 'resumo') { tx.update(ref, { ...parsed, status: 'aguardando_classificacao', source }); return 'upgraded' as const; }
-    return 'none' as const;
+    return snap.data()!.xmlPath ? 'none' as const : 'backfill' as const;
   });
-  // Stored XML is only written on first full receipt, never overwritten by re-uploads.
+  // Stored XML is written on first full receipt or to backfill a missing xmlPath; never overwritten.
   if (xml && outcome !== 'none') {
     const xmlPath = await saveXml(h, orgId, parsed.chave, xml);
-    if (xmlPath) await ref.update({ xmlPath });
+    if (xmlPath) await ref.update({ xmlPath }).catch((e) => warn(`NF-e ${parsed.chave}: xmlPath não gravado (${e instanceof Error ? e.message : String(e)})`));
   }
   const created = outcome === 'created';
   return { id, created };

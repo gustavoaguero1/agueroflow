@@ -90,3 +90,15 @@ test('rejects oversize and non-string content', async () => {
   assert.equal(r.results[1].ok, false);
   assert.equal((await call({ files: Array(51).fill({ name: 'a', content: '' }) })).error, 'Máximo de 50 arquivos por envio.');
 });
+
+test('retry backfills missing xmlPath', async () => {
+  const failing = { ...h, bucket: { file: () => ({ save: async () => { throw new Error('down'); } }) } } as unknown as AdminHandles;
+  assert.equal((await upsertNfe(failing, 'org_a', parsed, 'upload', xml)).created, true);
+  assert.equal((await h.db.doc(`nfe_documents/${id}`).get()).data()!.xmlPath, undefined);
+  let saves = 0;
+  const ok = { ...h, bucket: { file: () => ({ save: async () => { saves++; } }) } } as unknown as AdminHandles;
+  assert.equal((await upsertNfe(ok, 'org_a', parsed, 'upload', xml)).created, false);
+  assert.equal((await h.db.doc(`nfe_documents/${id}`).get()).data()!.xmlPath, `nfe-xml/org_a/${parsed.chave}.xml`);
+  await upsertNfe(ok, 'org_a', parsed, 'upload', xml);
+  assert.equal(saves, 1);
+});
