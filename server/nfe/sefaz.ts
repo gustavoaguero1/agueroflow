@@ -36,7 +36,7 @@ function httpsTransport(cfg: SefazCfg): Transport {
   const { keyPem, certB64 } = readPfx(cfg.pfx, cfg.passphrase);
   const cert = `-----BEGIN CERTIFICATE-----\n${certB64.replace(/.{64}/g, '$&\n')}\n-----END CERTIFICATE-----\n`;
   // SEFAZ servers use ICP-Brasil certificates, which may be missing from Node's CA list: NFE_CA_PEM adds them.
-  const agent = new https.Agent({ key: keyPem, cert, ...(cfg.caPem && { ca: [...rootCertificates, cfg.caPem] }) });
+  const agent = new https.Agent({ keepAlive: true, key: keyPem, cert, ...(cfg.caPem && { ca: [...rootCertificates, cfg.caPem] }) });
   return (url, soapXml, action) => new Promise((resolve, reject) => {
     const req = https.request(url, {
       method: 'POST', agent, timeout: 30_000,
@@ -56,7 +56,13 @@ function httpsTransport(cfg: SefazCfg): Transport {
   });
 }
 
-const transportOf = (cfg: SefazCfg) => cfg.transport ?? httpsTransport(cfg);
+const transports = new WeakMap<SefazCfg, Transport>(); // one mTLS agent (keep-alive, parsed PFX) per config
+function transportOf(cfg: SefazCfg): Transport {
+  if (cfg.transport) return cfg.transport;
+  let t = transports.get(cfg);
+  if (!t) { t = httpsTransport(cfg); transports.set(cfg, t); }
+  return t;
+}
 const envelope = (body: string) =>
   `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body>${body}</soap12:Body></soap12:Envelope>`;
 

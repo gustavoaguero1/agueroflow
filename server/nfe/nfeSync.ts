@@ -11,8 +11,10 @@ const MAX_CALLS = 20;
 const MAX_CIENCIA = 20;
 const BACKOFF = 61 * MIN; // SEFAZ: wait ≥ 1h after 137/656 or when caught up (Review Focus 4)
 const MORE = 5 * MIN;
-const LEASE = 10 * MIN; // cross-instance lock; a crashed run frees itself
+const LEASE = 25 * MIN; // cross-instance lock > worst-case run (20 × 30 s DistDFe + 20 × 30 s ciência); a crashed run frees itself
 const CIENCIA_OK = new Set(['135', '136', '573']); // 573 = duplicidade de evento: already registered
+const CIENCIA_TRANSIENT = new Set(['108', '109', '999']); // serviço paralisado / erro não catalogado: retry
+const MAX_TRIES = 3;
 
 export type SyncResult =
   | { skipped?: undefined; fetched: number; summaries: number; full: number; ciencia: number; nextRunAt: string }
@@ -48,16 +50,29 @@ async function storeDoc(h: AdminHandles, cfg: SefazCfg, d: DistDoc, c: Counts) {
 }
 
 async function sendPendingCiencias(h: AdminHandles, cfg: SefazCfg, now: Date): Promise<number> {
-  const pend = await h.db.collection('nfe_documents').where('orgId', '==', cfg.orgId).where('cienciaPendente', '==', true).limit(MAX_CIENCIA).get();
+  const pend = await h.db.collection('nfe_documents').where('orgId', '==', cfg.orgId).where('cienciaPendente', '==', true)
+    .orderBy('recebidaEm').limit(MAX_CIENCIA).get();
   let sent = 0;
+  // Permanent rejections leave the queue at once; transient ones (and transport errors) are retried up to MAX_TRIES runs.
+  const fail = (doc: (typeof pend.docs)[number], cStat: string, xMotivo: string, transient: boolean) => {
+    const tries = Number(doc.data().cienciaTentativas ?? 0) + 1;
+    return doc.ref.update({
+      cienciaErro: { cStat, xMotivo, at: now.toISOString() }, cienciaTentativas: tries,
+      ...(!(transient && tries < MAX_TRIES) && { cienciaPendente: FieldValue.delete() }),
+    });
+  };
   for (const doc of pend.docs) {
-    try {
-      const r = await sendCiencia(cfg, String(doc.data().chave));
-      if (CIENCIA_OK.has(r.cStat)) {
-        await doc.ref.update({ cienciaEnviadaEm: now.toISOString(), cienciaPendente: FieldValue.delete(), cienciaErro: FieldValue.delete() });
-        sent++;
-      } else await doc.ref.update({ cienciaErro: `${r.cStat} ${r.xMotivo}` });
-    } catch (e) { warn(`ciência ${doc.data().chave}: ${errMsg(e)}`); }
+    let r;
+    try { r = await sendCiencia(cfg, String(doc.data().chave)); }
+    catch (e) {
+      warn(`ciência ${doc.data().chave}: ${errMsg(e)}`);
+      await fail(doc, 'transporte', errMsg(e), true);
+      break; // SEFAZ unreachable: don't spend the rest of the run on timeouts
+    }
+    if (CIENCIA_OK.has(r.cStat)) {
+      await doc.ref.update({ cienciaEnviadaEm: now.toISOString(), cienciaPendente: FieldValue.delete(), cienciaErro: FieldValue.delete() });
+      sent++;
+    } else await fail(doc, r.cStat, r.xMotivo, CIENCIA_TRANSIENT.has(r.cStat));
   }
   return sent;
 }
@@ -73,7 +88,7 @@ export async function runNfeSync(h: AdminHandles, cfg: SefazCfg): Promise<SyncRe
     const claim = await h.db.runTransaction(async (tx) => {
       const s = (await tx.get(stateRef)).data() ?? {};
       if (s.nextRunAt && Date.parse(s.nextRunAt) > t) return { skip: s.nextRunAt as string };
-      if (s.lockedUntil && Date.parse(s.lockedUntil) > t) return { skip: s.nextRunAt as string | undefined };
+      if (s.lockedUntil && Date.parse(s.lockedUntil) > t) return { skip: s.lockedUntil as string };
       tx.set(stateRef, { orgId: cfg.orgId, lockedUntil: new Date(t + LEASE).toISOString() }, { merge: true });
       return { ultNSU: String(s.ultNSU ?? '0') };
     });
@@ -102,7 +117,12 @@ export async function runNfeSync(h: AdminHandles, cfg: SefazCfg): Promise<SyncRe
     catch (e) { status = `${status}; ciência: ${errMsg(e)}`; }
 
     const nextRunAt = new Date(next).toISOString();
-    await stateRef.set({ orgId: cfg.orgId, ultNSU, lastRunAt: now.toISOString(), nextRunAt, lastStatus: status, lockedUntil: FieldValue.delete() }, { merge: true });
+    try {
+      await stateRef.set({ orgId: cfg.orgId, ultNSU, lastRunAt: now.toISOString(), nextRunAt, lastStatus: status, lockedUntil: FieldValue.delete() }, { merge: true });
+    } catch {
+      // Must not lose the backoff: retry once with the essentials (ultNSU was already saved per page).
+      await stateRef.set({ nextRunAt, lastStatus: status }, { merge: true });
+    }
     return { fetched, summaries: c.summaries, full: c.full, ciencia, nextRunAt };
   } finally { running = false; }
 }
@@ -134,8 +154,10 @@ export function createNfeSyncRouter(getH: () => AdminHandles | null = getAdmin, 
   r.get('/sync-status', requireRole('Admin', 'Gerente', 'Supervisor', 'Operacional', 'Visualizador'), async (req, res) => {
     const h = getH(), cfg = getCfg();
     if (!h || !cfg || req.orgId !== cfg.orgId) return res.json({ configured: false });
-    const { lockedUntil: _l, ...s } = (await h.db.doc(`nfe_sync/${cfg.orgId}`).get()).data() ?? {};
-    res.json({ configured: true, ambiente: cfg.ambiente, ...s });
+    try {
+      const { lockedUntil: _l, ...s } = (await h.db.doc(`nfe_sync/${cfg.orgId}`).get()).data() ?? {};
+      res.json({ configured: true, ambiente: cfg.ambiente, ...s });
+    } catch (e) { res.status(500).json({ error: errMsg(e) }); }
   });
   return r;
 }

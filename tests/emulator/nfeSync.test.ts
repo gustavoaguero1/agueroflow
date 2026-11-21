@@ -163,3 +163,61 @@ test('sync routes: role check, honours nextRunAt, status for members', async () 
   assert.equal((await route('POST', 'sync-now', 'Admin', null)).status, 503);
   assert.equal((await route('GET', 'sync-status', 'Visualizador', null)).body.configured, false);
 });
+
+const oneSummary = (...chaves: string[]) => (ult: string) => ult === n15(0)
+  ? distResponse({ cStat: '138', ultNSU: n15(chaves.length), maxNSU: n15(chaves.length), docs: chaves.map((c, i) => ({ nsu: n15(i + 1), schema: 'resNFe_v1.01.xsd', xml: resNFe(c) })) })
+  : distResponse({ cStat: '137', ultNSU: ult, maxNSU: ult });
+const eventos = (calls: Call[]) => calls.filter((c) => c.url.includes('RecepcaoEvento')).length;
+
+test('permanent ciencia rejection leaves queue', async () => {
+  const f = fake(oneSummary(A), () => eventoResponse('650'));
+  await runNfeSync(h, f.cfg);
+  const a = (await doc(A))!;
+  assert.equal(a.cienciaPendente, undefined);
+  assert.deepEqual(a.cienciaErro, { cStat: '650', xMotivo: 'Evento registrado', at: T0.toISOString() });
+  f.setNow(new Date(T0.getTime() + 62 * MIN));
+  await runNfeSync(h, f.cfg);
+  assert.equal(eventos(f.calls), 1);
+});
+
+test('transient retried max 3', async () => {
+  const f = fake(oneSummary(A), () => eventoResponse('999'));
+  for (let i = 0; i < 4; i++) { f.setNow(new Date(T0.getTime() + i * 62 * MIN)); await runNfeSync(h, f.cfg); }
+  assert.equal(eventos(f.calls), 3);
+  const a = (await doc(A))!;
+  assert.equal(a.cienciaTentativas, 3); assert.equal(a.cienciaPendente, undefined); assert.equal(a.cienciaErro.cStat, '999');
+});
+
+test('transport error stops the ciência loop and stays pending', async () => {
+  const f = fake(oneSummary(A, B), () => { throw new Error('ETIMEDOUT'); });
+  await runNfeSync(h, f.cfg);
+  assert.equal(eventos(f.calls), 1);
+  const docs = [(await doc(A))!, (await doc(B))!];
+  assert.equal(docs.filter((d) => d.cienciaPendente === true).length, 2);
+  assert.equal(docs.filter((d) => d.cienciaTentativas === 1).length, 1);
+});
+
+test('lease covers the run (25 min) and a skip during the lease returns lockedUntil', async () => {
+  let leased: string | undefined;
+  const f = fake(() => distResponse({ cStat: '137', ultNSU: n15(0), maxNSU: n15(0) }));
+  const base = f.cfg.transport!;
+  f.cfg.transport = async (url, body, action) => { leased = (await state()).lockedUntil; return base(url, body, action); };
+  await runNfeSync(h, f.cfg);
+  assert.equal(leased, new Date(T0.getTime() + 25 * MIN).toISOString());
+  assert.equal((await state()).lockedUntil, undefined);
+  const until = new Date(T0.getTime() + 20 * MIN).toISOString();
+  await h.db.doc('nfe_sync/org_a').set({ orgId: 'org_a', ultNSU: n15(0), lockedUntil: until });
+  assert.deepEqual(await runRaw(h, f.cfg), { skipped: true, nextRunAt: until });
+});
+
+test('full XML arriving after the summary cancels the pending ciência', async () => {
+  const chave = '35261111111111111111550010000012341000012345';
+  const f = fake(() => distResponse({ cStat: '138', ultNSU: n15(2), maxNSU: n15(2), docs: [
+    { nsu: n15(1), schema: 'resNFe_v1.01.xsd', xml: resNFe(chave) },
+    { nsu: n15(2), schema: 'procNFe_v4.00.xsd', xml: full },
+  ] }));
+  const r = await runNfeSync(h, f.cfg);
+  assert.equal(r.ciencia, 0); assert.equal(eventos(f.calls), 0);
+  const d = (await doc(chave))!;
+  assert.equal(d.status, 'aguardando_classificacao'); assert.equal(d.cienciaPendente, undefined);
+});

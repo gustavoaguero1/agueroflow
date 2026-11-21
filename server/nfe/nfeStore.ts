@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getAdmin, type AdminHandles } from '../firebaseAdmin.ts';
 import { requireRole } from '../authMiddleware.ts';
 import { parseNfeXml, type ParsedNfe } from './parseNfe.ts';
@@ -22,7 +23,7 @@ export async function upsertNfe(h: AdminHandles, orgId: string, parsed: ParsedNf
       return 'created' as const;
     }
     // Only a 'resumo' is upgraded; any other status is never touched.
-    if (snap.data()!.status === 'resumo') { tx.update(ref, { ...parsed, status: 'aguardando_classificacao', source }); return 'upgraded' as const; }
+    if (snap.data()!.status === 'resumo') { tx.update(ref, { ...parsed, status: 'aguardando_classificacao', source, cienciaPendente: FieldValue.delete() }); return 'upgraded' as const; }
     return snap.data()!.xmlPath ? 'none' as const : 'backfill' as const;
   });
   // Stored XML is written on first full receipt or to backfill a missing xmlPath; never overwritten.
