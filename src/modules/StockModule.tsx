@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { applyStockMovement } from '../services/stockService';
-import { savePurchaseRequisition } from '../services/purchasingService';
+import { savePurchaseRequisition, getPurchaseRequisitions } from '../services/purchasingService';
 import {
   StockBalance,
   StockMovement,
@@ -52,6 +52,7 @@ export const StockModule: React.FC = () => {
   const [movReason, setMovReason] = useState('');
   const [movOrderId, setMovOrderId] = useState('');
   const [movToUnitId, setMovToUnitId] = useState('');
+  const [rcBusy, setRcBusy] = useState(false);
   const [movError, setMovError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -140,6 +141,7 @@ export const StockModule: React.FC = () => {
       setShowMoveModal(false);
       setMovQuantity('1');
       setMovReason('');
+      setMovToUnitId('');
     } catch (err: any) {
       console.error('Erro ao registrar movimentação de estoque:', err);
       setMovError(err?.message || 'Falha ao registrar movimentação.');
@@ -151,9 +153,18 @@ export const StockModule: React.FC = () => {
   const handleGenerateRC = async (item: Item, balance: number, unitName: string) => {
     if (!organization || !user) return;
     const min = item.minStock ?? 0;
-    const suggested = Math.max(min * 2 - balance, min - balance, 1);
+    const suggested = Math.max(min * 2 - balance, 1); // no minStock set: falls back to 1
     const now = new Date().toISOString();
+    if (rcBusy) return;
+    setRcBusy(true);
     try {
+      const open = (await getPurchaseRequisitions(organization.id)).some(
+        (r) => (r.status === 'pendente' || r.status === 'em_cotacao') && r.items.some((i) => i.id === item.id)
+      );
+      if (open) {
+        alert(`Já existe uma requisição de compra em aberto para ${item.name}.`);
+        return;
+      }
       await savePurchaseRequisition({
         id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         organizationId: organization.id,
@@ -173,6 +184,8 @@ export const StockModule: React.FC = () => {
       alert(`Requisição de compra gerada (${suggested} ${item.unitOfMeasure} de ${item.name}).`);
     } catch (err: any) {
       alert(err?.message || 'Falha ao gerar requisição de compra.');
+    } finally {
+      setRcBusy(false);
     }
   };
 
@@ -307,8 +320,9 @@ export const StockModule: React.FC = () => {
                         <td className="py-3 px-4 text-right">
                           {(isCritical || isWarning) && (
                             <button
+                              disabled={rcBusy}
                               onClick={() => handleGenerateRC(item, bal.currentBalance, unit?.name || 'Local Central')}
-                              className="mr-2 px-2.5 py-1 rounded bg-amber-900/60 hover:bg-amber-800/60 text-amber-300 text-xs font-semibold cursor-pointer"
+                              className="mr-2 px-2.5 py-1 rounded bg-amber-900/60 hover:bg-amber-800/60 text-amber-300 text-xs font-semibold cursor-pointer disabled:opacity-50"
                             >
                               Gerar RC
                             </button>
