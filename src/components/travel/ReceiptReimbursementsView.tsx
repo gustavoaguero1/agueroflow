@@ -39,6 +39,7 @@ import {
 } from '../../types/travel';
 import { WhatsAppConfigModal } from './WhatsAppConfigModal';
 import { apiFetch } from '../../apiAuthFetch';
+import { WeeklyReimbursementSummary } from './WeeklyReimbursementSummary';
 
 interface ReceiptReimbursementsViewProps {
   currentUser: {
@@ -71,9 +72,9 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
 
   // Manual OCR upload modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [uploadEmployeeName, setUploadEmployeeName] = useState('Carlos Eduardo Silva');
-  const [uploadEmployeePhone, setUploadEmployeePhone] = useState('+55 19 98123-4567');
-  const [uploadWorkOrder, setUploadWorkOrder] = useState('OS-2025-042');
+  const [uploadEmployeeName, setUploadEmployeeName] = useState('');
+  const [uploadEmployeePhone, setUploadEmployeePhone] = useState('');
+  const [uploadWorkOrder, setUploadWorkOrder] = useState('');
   const [selectedFileBase64, setSelectedFileBase64] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
@@ -408,6 +409,8 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
           <span>{toastMessage}</span>
         </div>
       )}
+
+      <WeeklyReimbursementSummary />
 
       {/* Real-time Webhook Live Bar */}
       <div className="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-3 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">

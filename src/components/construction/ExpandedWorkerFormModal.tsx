@@ -123,6 +123,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
   // Form fields strictly empty for direct user typing
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [role, setRole] = useState('');
   const [baseSalary, setBaseSalary] = useState('');
   const [currentSite, setCurrentSite] = useState('');
@@ -156,6 +157,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
     if (editingWorker) {
       setName(editingWorker.name || '');
       setCpf(editingWorker.cpf || '');
+      setWhatsapp(editingWorker.whatsapp || '');
       setRole(editingWorker.role || '');
       setBaseSalary(editingWorker.baseSalary ? editingWorker.baseSalary.toString() : '');
       setCurrentSite(editingWorker.currentSite || '');
@@ -198,6 +200,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
     } else {
       // Clean blank state for typing
       setName('');
+      setWhatsapp('');
       setCpf('');
       setRole('');
       setBaseSalary('');
@@ -456,6 +459,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
         await updateDoc(doc(db, 'field_workers', editingWorker.id), {
           name: name.trim(),
           cpf: cpf.trim(),
+          whatsapp: whatsapp.trim(),
           role: role.trim(),
           baseSalary: salaryNum,
           hourlyRate: hourlyCalculated,
@@ -477,6 +481,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
           orgId: organizationId,
           name: name.trim(),
           cpf: cpf.trim(),
+          whatsapp: whatsapp.trim(),
           role: role.trim(),
           baseSalary: salaryNum,
           hourlyRate: hourlyCalculated,
@@ -621,6 +626,19 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
                     value={cpf}
                     onChange={(e) => setCpf(e.target.value)}
                     placeholder="000.000.000-00"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">
+                    WhatsApp (para identificar notas de reembolso)
+                  </label>
+                  <input
+                    type="tel"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    placeholder="(19) 99999-9999"
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>

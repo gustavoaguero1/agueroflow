@@ -36,6 +36,7 @@ service cloud.firestore {
     match /first_access_tokens/{id} { allow read, write: if false; }
     match /system_security/{id} { allow read, write: if false; } // legacy master-password doc
     match /users/{id} { allow read, write: if false; } // unused by the client
+    match /receipt_images/{id} { allow read, write: if false; } // served by GET /api/reembolsos/:id/imagem
 
     // Connectivity probe in src/firebase.ts (testConnection).
     match /test/{docId} { allow get: if signedIn() && docId == 'connection'; }

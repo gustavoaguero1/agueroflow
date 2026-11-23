@@ -62,6 +62,7 @@ import {
 } from './src/services/ndGeneratorServer';
 import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
+import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
@@ -4578,6 +4579,12 @@ Sua missão é extrair rigorosamente os seguintes campos:
     return out;
   };
 
+  app.use('/api/reembolsos', createReembolsosRouter({
+    receipts: () => reimbursementReceipts,
+    persist: () => persistReceipts(),
+    db: () => getAdmin()?.db,
+  }));
+
   // Get WhatsApp receipts config
   app.get('/api/whatsapp/config', (req: Request, res: Response) => {
     res.json({
@@ -4645,7 +4652,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         items: Array.isArray(parsed.items) && parsed.items.length > 0 ? parsed.items : [
           { description: parsed.summary || 'Despesa de Campo', quantity: 1, unitPrice: parsed.totalAmount, subtotal: parsed.totalAmount }
         ],
-        workOrderNumber: workOrderNumber || 'OS-2025-042',
+        workOrderNumber: workOrderNumber || '',
         status: 'pendente',
         notes: parsed.summary || `Comprovante enviado em ${new Date().toLocaleDateString('pt-BR')}`,
         confidence: parsed.confidence || 90,
@@ -4988,7 +4995,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         taxAmount: Number(parsedData.taxAmount) || 0,
         paymentMethod: parsedData.paymentMethod || 'cartao_proprio',
         items: parsedData.items || [],
-        workOrderNumber: 'OS-2025-042',
+        workOrderNumber: '',
         status: 'pendente',
         notes: captionText ? `[WhatsApp]: "${captionText}" | Lida via Gemini Flash OCR` : `Recebido via WhatsApp de ${senderName} (${senderPhone})`,
         confidence: parsedData.confidence || 92,
@@ -5408,7 +5415,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
           taxAmount: Number(parsed.taxAmount) || 0,
           paymentMethod: parsed.paymentMethod || 'cartao_proprio',
           items: parsed.items || [],
-          workOrderNumber: workOrderNumber || 'OS-2025-042',
+          workOrderNumber: workOrderNumber || '',
           status: 'pendente',
           notes: parsed.summary ? `[WhatsApp Lote]: ${parsed.summary}` : `Importado do grupo WhatsApp`,
           confidence: parsed.confidence || 93,
@@ -5522,7 +5529,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         taxAmount: sample.taxAmount,
         paymentMethod: sample.paymentMethod,
         items: sample.items,
-        workOrderNumber: 'OS-2025-042',
+        workOrderNumber: '',
         status: 'pendente',
         notes: `Teste de validação de Webhook & OCR do WhatsApp [Grupo: ${whatsAppReceiptsConfig.targetGroupName || 'REEMBOLSOS AGUERO INOX'}]`,
         confidence: sample.confidence,
@@ -8773,7 +8780,7 @@ DIRETRIZES ESSENCIAIS:
             taxAmount: Number(parsedData.taxAmount) || 0,
             paymentMethod: parsedData.paymentMethod || 'cartao_proprio',
             items: parsedData.items || [],
-            workOrderNumber: 'OS-2025-042',
+            workOrderNumber: '',
             status: 'pendente',
             notes: evt.isGroup
               ? `[Grupo ${evt.groupName}] ${evt.text || ''} | OCR Gemini Flash`.trim()
@@ -8785,7 +8792,15 @@ DIRETRIZES ESSENCIAIS:
             sourceGroupName: evt.isGroup ? evt.groupName || channelRecord?.name || evt.remoteJid : evt.senderName,
             sourceContactName: evt.senderName,
             ocrChannelOptIn: true,
-          };
+          } as any;
+          // Reembolsos v1: who spent, which obra, and the image itself; never let it break the OCR.
+          try {
+            Object.assign(newRec, await enrichReceipt(getAdmin()?.db, newRec));
+            const imageStatus = await saveReceiptImage(getAdmin()?.db, newRec.id, newRec.organizationId, evt.mediaBase64, evt.mediaMimeType || 'image/jpeg');
+            if (imageStatus) newRec.imageStatus = imageStatus;
+          } catch (enrichErr) {
+            console.warn('[Reembolsos] enriquecimento da nota falhou:', enrichErr);
+          }
 
           reimbursementReceipts = [newRec, ...reimbursementReceipts];
           persistReceipts();
@@ -12280,6 +12295,22 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 AgueroFlow Server rodando na porta ${PORT} [${isProduction ? 'PROD' : 'DEV'}]`);
     startNfeSyncScheduler();
+    // Reembolsos: weekly summary to the owner on Monday from 08:00 (São Paulo), once per week.
+    const reembolsoMarker = path.join(__dirname, 'data_reembolso_resumo_enviado.json');
+    const reembolsoSkipLogged = new Set<string>();
+    setInterval(() => {
+      weeklyCheck({
+        now: new Date(),
+        org: effectiveOrg(undefined),
+        receipts: reimbursementReceipts,
+        ownerPhone: process.env.OWNER_PHONE,
+        connected: getWhatsAppBridgeStatus().state === 'conectado',
+        lastSent: () => { try { return JSON.parse(fs.readFileSync(reembolsoMarker, 'utf-8')).inicio; } catch { return undefined; } },
+        markSent: (inicio) => fs.writeFileSync(reembolsoMarker, JSON.stringify({ inicio, enviadoEm: new Date().toISOString() }), 'utf-8'),
+        send: (to, text) => sendMessageViaWhatsAppBridge({ toJidOrPhone: to, text }),
+        skipped: (why) => { if (!reembolsoSkipLogged.has(why)) { reembolsoSkipLogged.add(why); console.warn(`[Reembolsos] resumo semanal não enviado: ${why}`); } },
+      }).catch((err) => console.warn('[Reembolsos] resumo semanal falhou:', err));
+    }, 10 * 60 * 1000);
   });
 }
 

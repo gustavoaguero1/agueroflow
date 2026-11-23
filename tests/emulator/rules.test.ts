@@ -142,6 +142,13 @@ test('member_credentials always denied', async () => {
   await assertFails(setDoc(doc(admin(), 'member_credentials/m_op'), { hash: 'y' }));
 });
 
+test('receipt_images always denied (server-only)', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'receipt_images/r1'), { orgId: 'org_a', base64: 'x' }));
+  await assertFails(getDoc(doc(member(), 'receipt_images/r1')));
+  await assertFails(getDoc(doc(master(), 'receipt_images/r1')));
+  await assertFails(setDoc(doc(admin(), 'receipt_images/r2'), { orgId: 'org_a', base64: 'x' }));
+});
+
 test('first_access_tokens always denied', async () => {
   await assertFails(getDoc(doc(master(), 'first_access_tokens/t1')));
   await assertFails(setDoc(doc(admin(), 'first_access_tokens/t2'), { memberId: 'm_op' }));
