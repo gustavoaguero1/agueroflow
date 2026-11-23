@@ -26,6 +26,7 @@ import { PurchasingModule } from './modules/PurchasingModule';
 import { PurchasingSubSection } from './types/purchasing';
 import { FinanceModule, FinanceSubSection } from './modules/FinanceModule';
 import { TravelModule } from './modules/TravelModule';
+import { OperationsModule } from './modules/OperationsModule';
 import { TravelSubSection } from './types/travel';
 import { MarketingModule } from './modules/MarketingModule';
 import { MarketingSubSection } from './types/marketing';
@@ -303,6 +304,7 @@ function MainRouter() {
         />
       )}
       {currentNavSection === 'obras' && <ConstructionModule />}
+      {currentNavSection === 'operacoes' && <OperationsModule />}
       {currentNavSection.startsWith('bens') && (
         <CollectiveAssetsModule
           currentOrganizationId={organization?.id}
