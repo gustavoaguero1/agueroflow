@@ -1,0 +1,61 @@
+import test, { beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { getAdmin, type AdminHandles } from '../../server/firebaseAdmin.ts';
+import { enrichReceipt, saveReceiptImage, MAX_IMAGE_BASE64, summaryMarker, weeklyCheck } from '../../server/reembolsos.ts';
+
+const h = getAdmin() as AdminHandles;
+assert.ok(h);
+const set = (p: string, d: object) => h.db.doc(p).set(d);
+
+beforeEach(async () => {
+  await fetch('http://127.0.0.1:8085/emulator/v1/projects/demo-agueroflow/databases/(default)/documents', { method: 'DELETE' });
+  await set('field_workers/w1', { orgId: 'o', name: 'José da Silva', whatsapp: '(19) 98123-4567', currentSite: 'CD Marília' });
+  await set('field_workers/wx', { orgId: 'other', name: 'Ana', whatsapp: '11 99999-0000' });
+  await set('worker_time_logs/t1', { orgId: 'o', workerId: 'w1', date: '2026-11-18', siteName: 'Obra X', contractId: 'c1' });
+});
+
+test('enrichReceipt: worker by phone in the receipt org, obra from the timesheet of the receipt date', async () => {
+  const e = await enrichReceipt(h.db, { organizationId: 'o', employeePhone: '5519981234567', employeeName: 'Zé', receiptDate: '2026-11-18' });
+  assert.deepEqual([e.workerId, e.employeeName, e.obraName, e.contractId, e.obraSource], ['w1', 'José da Silva', 'Obra X', 'c1', 'apontamento']);
+  const cad = await enrichReceipt(h.db, { organizationId: 'o', employeePhone: '19981234567', receiptDate: '2026-11-19' });
+  assert.deepEqual([cad.obraName, cad.obraSource], ['CD Marília', 'cadastro']);
+  const other = await enrichReceipt(h.db, { organizationId: 'o', employeePhone: '11999990000', employeeName: 'Ana' });
+  assert.equal(other.workerStatus, 'a_identificar'); // worker of another org never matches
+  assert.deepEqual(await enrichReceipt(null, {}), {});
+});
+
+test('saveReceiptImage: stores base64 with orgId, skips oversized', async () => {
+  assert.equal(await saveReceiptImage(h.db, 'r1', 'o', Buffer.from('img').toString('base64'), 'image/png'), 'salva');
+  const d = (await h.db.doc('receipt_images/r1').get()).data()!;
+  assert.deepEqual([d.orgId, d.mimeType, d.bytes, Buffer.from(d.base64, 'base64').toString()], ['o', 'image/png', 3, 'img']);
+  assert.equal(await saveReceiptImage(h.db, 'r2', 'o', 'A'.repeat(MAX_IMAGE_BASE64 + 1)), 'grande_demais');
+  assert.equal((await h.db.doc('receipt_images/r2').get()).exists, false);
+});
+
+test('enrichReceipt: default org also finds docs still on the legacy org id', async () => {
+  const prev = process.env.DEFAULT_ORG_ID;
+  process.env.DEFAULT_ORG_ID = 'real';
+  try {
+    await set('field_workers/wl', { orgId: 'org_aguero_default', name: 'Legado', whatsapp: '11 98888-7777' });
+    await set('worker_time_logs/tl', { orgId: 'org_aguero_default', workerId: 'wl', date: '2026-11-18', siteName: 'Obra L' });
+    const e = await enrichReceipt(h.db, { organizationId: 'org_aguero_default', employeePhone: '11988887777', receiptDate: '2026-11-18' });
+    assert.deepEqual([e.workerId, e.obraName], ['wl', 'Obra L']);
+  } finally {
+    if (prev === undefined) delete process.env.DEFAULT_ORG_ID; else process.env.DEFAULT_ORG_ID = prev;
+  }
+});
+
+test('summaryMarker: Firestore marker survives a restart, so the summary is not resent', async () => {
+  const sent: string[] = [];
+  const run = () => {
+    const m = summaryMarker(h.db, 'o', '/nonexistent/should-not-be-used.json'); // new instance = restarted server
+    return weeklyCheck({
+      now: new Date('2026-11-24T12:00:00Z'), org: 'o', receipts: [], ownerPhone: '5519900000000', connected: true,
+      lastSent: m.get, markSent: m.set, send: async (_to, t) => { sent.push(t); return { success: true }; }, skipped: () => {},
+    });
+  };
+  assert.equal(await run(), true);
+  assert.equal((await h.db.doc('server_state/reembolso_resumo_o').get()).data()?.lastSentWeek, '2026-11-16');
+  assert.equal(await run(), false);
+  assert.equal(sent.length, 1);
+});

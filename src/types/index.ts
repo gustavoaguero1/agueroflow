@@ -633,6 +633,7 @@ export interface FieldWorker {
   orgId: string;
   name: string;
   cpf: string;
+  whatsapp?: string;
   role: string;
   baseSalary: number;
   hourlyRate: number;

@@ -558,6 +558,15 @@ export interface ReimbursementReceipt {
   approvedAt?: string;
   source?: 'whatsapp_real' | 'manual_upload' | 'simulacao_teste' | 'demo';
   rawImageUrl?: string;
+  workerId?: string;
+  workerStatus?: 'identificado' | 'a_identificar';
+  obraName?: string;
+  contractId?: string;
+  obraSource?: 'apontamento' | 'cadastro' | 'manual' | 'a_definir';
+  obraStatus?: 'ok' | 'a_definir';
+  imageStatus?: 'salva' | 'grande_demais' | 'erro';
+  reimbursedAt?: string;
+  reimbursedBy?: string;
 }
 
 export interface WhatsAppWebhookLog {
