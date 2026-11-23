@@ -1,6 +1,6 @@
 type FetchTarget = { fetch: typeof fetch; location: { origin: string } };
 
-/** Returns a fetch that adds `Authorization: Bearer <token>` to same-origin /api/ calls (never overwriting one).
+/** Returns a fetch that adds `Authorization: Bearer <token>` (mirrored in `X-Firebase-Auth`) to same-origin /api/ calls (never overwriting one).
  * It never replaces window.fetch: some hosts (Google AI Studio) expose it as a read-only getter. */
 export function createApiFetch(getToken: () => Promise<string | null>, target: FetchTarget = globalThis as any): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -10,10 +10,15 @@ export function createApiFetch(getToken: () => Promise<string | null>, target: F
     const url = new URL(raw, target.location.origin);
     if (url.origin !== target.location.origin || !url.pathname.startsWith('/api/')) return orig(input, init);
     const headers = new Headers(init?.headers ?? (isReq ? (input as Request).headers : undefined));
-    if (headers.has('Authorization')) return orig(input, init);
-    const token = await getToken().catch(() => null);
-    if (!token) return orig(input, init);
-    headers.set('Authorization', `Bearer ${token}`);
+    let bearer = headers.get('Authorization');
+    if (!bearer) {
+      const token = await getToken().catch(() => null);
+      if (!token) return orig(input, init);
+      bearer = `Bearer ${token}`;
+      headers.set('Authorization', bearer);
+    }
+    // Hosting proxies (Cloud Run behind Google AI Studio) can consume/strip Authorization: mirror it in our own header.
+    if (!headers.has('X-Firebase-Auth')) headers.set('X-Firebase-Auth', bearer);
     return orig(input, { ...init, headers });
   };
 }
