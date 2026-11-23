@@ -4,7 +4,7 @@ import express from 'express';
 import * as XLSX from 'xlsx';
 import {
   weekRange, spDate, phonesMatch, resolveWorker, enrichmentFor, weeklySummary, weeklyMessage, weeklyDue,
-  isoDate, createReembolsosRouter, weekWorkbookBuffer, weeklyCheck,
+  isoDate, createReembolsosRouter, weekWorkbookBuffer, weeklyCheck, validYmd,
 } from '../server/reembolsos.ts';
 
 test('weekRange: previous full week in São Paulo, Sunday-night edge', () => {
@@ -15,6 +15,7 @@ test('weekRange: previous full week in São Paulo, Sunday-night edge', () => {
   // explicit inicio snaps to its Monday
   assert.deepEqual(weekRange('2026-11-19'), { inicio: '2026-11-16', fim: '2026-11-22' });
   assert.deepEqual(weekRange('2026-11-22'), { inicio: '2026-11-16', fim: '2026-11-22' });
+  assert.ok(validYmd('2026-02-28') && !validYmd('2026-02-31') && !validYmd('2026-13-01') && !validYmd('26-11-01'));
   assert.equal(spDate('2026-11-23T02:30:00Z'), '2026-11-22');
 });
 
@@ -37,6 +38,10 @@ test('resolveWorker: phone first, then exact normalized name', () => {
   assert.equal(resolveWorker({ employeePhone: '11999990000', employeeName: '  ANA  souza ' }, workers)?.id, 'w2');
   assert.equal(resolveWorker({ employeePhone: '', employeeName: 'Jose da Silva' }, workers)?.id, 'w1');
   assert.equal(resolveWorker({ employeePhone: '11999990000', employeeName: 'Ana' }, workers), undefined);
+  const dup = [...workers, { id: 'w3', name: 'Ana Souza', whatsapp: '19 98123-4567' }];
+  assert.equal(resolveWorker({ employeePhone: '19981234567', employeeName: 'José da Silva' }, dup), undefined); // phone fits 2
+  assert.equal(resolveWorker({ employeePhone: '', employeeName: 'Ana Souza' }, dup), undefined); // name fits 2
+  assert.equal(enrichmentFor({ employeeName: 'Ana Souza' }, dup, () => []).workerStatus, 'a_identificar');
 });
 
 test('enrichmentFor: apontamento > cadastro > a definir; unknown worker', () => {
@@ -92,8 +97,9 @@ test('weeklyDue: Monday from 08:00 SP, once per week', () => {
   assert.equal(weeklyDue(new Date('2026-11-23T10:59:00Z'), undefined), null); // 07:59 SP
   assert.equal(weeklyDue(new Date('2026-11-23T11:00:00Z'), undefined), '2026-11-16');
   assert.equal(weeklyDue(new Date('2026-11-23T11:00:00Z'), '2026-11-16'), null);
-  assert.equal(weeklyDue(new Date('2026-11-24T11:00:00Z'), undefined), null); // Tuesday
-  assert.equal(weeklyDue(new Date('2026-11-23T02:00:00Z'), undefined), null); // Monday UTC, Sunday SP
+  assert.equal(weeklyDue(new Date('2026-11-24T11:00:00Z'), undefined), '2026-11-16'); // Tuesday retries a missed Monday
+  assert.equal(weeklyDue(new Date('2026-11-24T11:00:00Z'), '2026-11-16'), null);
+  assert.equal(weeklyDue(new Date('2026-11-23T02:00:00Z'), '2026-11-09'), null); // Monday UTC, Sunday SP: still the week of 09/11
 });
 
 test('weekWorkbookBuffer: Resumo and Notas sheets', () => {
@@ -109,7 +115,10 @@ test('router: org scoping, roles, approve/reimburse week, obra manual', async ()
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { req.user = user; next(); });
-  app.use('/r', createReembolsosRouter({ receipts: () => data, persist: () => persisted++, db: () => null, now: () => new Date('2026-11-23T12:00:00Z') }));
+  const contracts: Record<string, any> = { c1: { orgId: 'o', title: 'Contrato Obra Z' }, cx: { orgId: 'other', title: 'Alheio' } };
+  let db: any = null;
+  const fakeDb = { collection: (c: string) => ({ doc: (id: string) => ({ get: async () => ({ data: () => (c === 'contracts' ? contracts[id] : undefined) }) }) }) };
+  app.use('/r', createReembolsosRouter({ receipts: () => data, persist: () => persisted++, db: () => db, now: () => new Date('2026-11-23T12:00:00Z') }));
   const srv = app.listen(0);
   const base = `http://127.0.0.1:${(srv.address() as any).port}/r`;
   const post = (p: string, body: object, method = 'POST') => fetch(base + p, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -129,11 +138,24 @@ test('router: org scoping, roles, approve/reimburse week, obra manual', async ()
     assert.equal(rb.alterados, 3);
     assert.ok(data[0].reimbursedAt && data[0].reimbursedBy === 'g@x');
 
-    assert.equal((await post('/c/obra', { obraName: 'Obra Z', contractId: 'cz' }, 'PUT')).status, 200);
-    assert.deepEqual([data[2].obraName, data[2].contractId, data[2].obraSource, data[2].obraStatus], ['Obra Z', 'cz', 'manual', 'ok']);
+    assert.equal((await fetch(`${base}/semana?inicio=2026-02-31`)).status, 400);
+    assert.equal((await post('/semana/aprovar', { inicio: '2026-13-01' })).status, 400);
+    assert.equal((await post('/c/obra', { contractId: 'c1' }, 'PUT')).status, 503); // cannot verify without Admin SDK
+    db = fakeDb;
+    assert.equal((await post('/c/obra', { contractId: 'cx', obraName: 'forjado' }, 'PUT')).status, 400); // other org's contract
+    assert.equal((await post('/c/obra', { contractId: 'nao-existe' }, 'PUT')).status, 400);
+    assert.equal((await post('/c/obra', { contractId: 'c1', obraName: 'ignorado' }, 'PUT')).status, 200);
+    assert.deepEqual([data[2].obraName, data[2].contractId, data[2].obraSource, data[2].obraStatus], ['Contrato Obra Z', 'c1', 'manual', 'ok']);
+    assert.equal((await post('/d/obra', { obraName: 'Obra livre' }, 'PUT')).status, 200);
+    assert.deepEqual([data[3].obraName, data[3].contractId], ['Obra livre', '']);
+    db = null;
     assert.equal((await post('/x/obra', { obraName: 'Z' }, 'PUT')).status, 404);
     assert.equal((await fetch(`${base}/a/imagem`)).status, 404); // no Admin SDK
     assert.ok(persisted >= 3);
+
+    user = { uid: 'm', master: true, orgs: {} };
+    assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16' })).status, 400); // master must name the org
+    assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16', orgId: 'o' })).status, 200);
 
     user = { uid: 'op', master: false, orgs: { o: 'Operacional' } };
     assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16' })).status, 403);

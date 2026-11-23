@@ -4579,6 +4579,24 @@ Sua missão é extrair rigorosamente os seguintes campos:
     return out;
   };
 
+  // Reembolsos v1: who spent, which obra, and the image itself; each step on its own so OCR never breaks.
+  const attachReembolsoInfo = async (rec: any, base64?: string, mimeType?: string) => {
+    const db = getAdmin()?.db;
+    try {
+      Object.assign(rec, await enrichReceipt(db, rec));
+    } catch (err) {
+      console.warn('[Reembolsos] enriquecimento da nota falhou:', err);
+    }
+    if (!base64) return;
+    try {
+      const imageStatus = await saveReceiptImage(db, rec.id, rec.organizationId, base64, mimeType);
+      if (imageStatus) rec.imageStatus = imageStatus;
+    } catch (err) {
+      rec.imageStatus = 'erro';
+      console.warn('[Reembolsos] imagem da nota não foi salva:', err);
+    }
+  };
+
   app.use('/api/reembolsos', createReembolsosRouter({
     receipts: () => reimbursementReceipts,
     persist: () => persistReceipts(),
@@ -5006,6 +5024,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         sourceContactName: senderName,
         ocrChannelOptIn: true,
       };
+      await attachReembolsoInfo(newRec, mediaBase64, 'image/jpeg');
 
       reimbursementReceipts = [newRec, ...reimbursementReceipts];
       persistReceipts();
@@ -8793,14 +8812,7 @@ DIRETRIZES ESSENCIAIS:
             sourceContactName: evt.senderName,
             ocrChannelOptIn: true,
           } as any;
-          // Reembolsos v1: who spent, which obra, and the image itself; never let it break the OCR.
-          try {
-            Object.assign(newRec, await enrichReceipt(getAdmin()?.db, newRec));
-            const imageStatus = await saveReceiptImage(getAdmin()?.db, newRec.id, newRec.organizationId, evt.mediaBase64, evt.mediaMimeType || 'image/jpeg');
-            if (imageStatus) newRec.imageStatus = imageStatus;
-          } catch (enrichErr) {
-            console.warn('[Reembolsos] enriquecimento da nota falhou:', enrichErr);
-          }
+          await attachReembolsoInfo(newRec, evt.mediaBase64, evt.mediaMimeType || 'image/jpeg');
 
           reimbursementReceipts = [newRec, ...reimbursementReceipts];
           persistReceipts();
@@ -12298,7 +12310,10 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
     // Reembolsos: weekly summary to the owner on Monday from 08:00 (São Paulo), once per week.
     const reembolsoMarker = path.join(__dirname, 'data_reembolso_resumo_enviado.json');
     const reembolsoSkipLogged = new Set<string>();
+    let reembolsoChecking = false;
     setInterval(() => {
+      if (reembolsoChecking) return; // a slow WhatsApp send must not overlap the next check (double message)
+      reembolsoChecking = true;
       weeklyCheck({
         now: new Date(),
         org: effectiveOrg(undefined),
@@ -12309,7 +12324,7 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
         markSent: (inicio) => fs.writeFileSync(reembolsoMarker, JSON.stringify({ inicio, enviadoEm: new Date().toISOString() }), 'utf-8'),
         send: (to, text) => sendMessageViaWhatsAppBridge({ toJidOrPhone: to, text }),
         skipped: (why) => { if (!reembolsoSkipLogged.has(why)) { reembolsoSkipLogged.add(why); console.warn(`[Reembolsos] resumo semanal não enviado: ${why}`); } },
-      }).catch((err) => console.warn('[Reembolsos] resumo semanal falhou:', err));
+      }).catch((err) => console.warn('[Reembolsos] resumo semanal falhou:', err)).finally(() => { reembolsoChecking = false; });
     }, 10 * 60 * 1000);
   });
 }

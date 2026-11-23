@@ -3,7 +3,7 @@ import { Router, type Request } from 'express';
 import type { Firestore } from 'firebase-admin/firestore';
 import * as XLSX from 'xlsx';
 import { requireRole, orgIdOf } from './authMiddleware.ts';
-import { effectiveOrg } from './orgDefaults.ts';
+import { effectiveOrg, LEGACY_ORG_ID } from './orgDefaults.ts';
 
 type Rec = Record<string, any>;
 type Worker = { id: string; name?: string; whatsapp?: string; currentSite?: string };
@@ -18,9 +18,11 @@ const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00
 const dow = (ymd: string) => new Date(`${ymd}T00:00:00Z`).getUTCDay(); // 0 = domingo
 
 /** Monday..Sunday week holding `inicio` (snapped to its Monday); default: the previous full week in São Paulo. */
+/** A real calendar date in YYYY-MM-DD (rejects 2026-02-31). */
+export const validYmd = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
+
 export function weekRange(inicio: string | undefined, now: Date = new Date()): { inicio: string; fim: string } {
-  const base = inicio && /^\d{4}-\d{2}-\d{2}$/.test(inicio) && !Number.isNaN(Date.parse(inicio)) ? inicio : null;
-  const ref = base ?? addDays(spDate(now), -7);
+  const ref = inicio && validYmd(inicio) ? inicio : addDays(spDate(now), -7);
   const monday = addDays(ref, -((dow(ref) + 6) % 7));
   return { inicio: monday, fim: addDays(monday, 6) };
 }
@@ -41,10 +43,13 @@ export function phonesMatch(a: string, b: string): boolean {
 export const normName = (s: string) =>
   String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** Phone first, then exact normalized name; an ambiguous match (2+ workers) counts as no match. */
 export function resolveWorker(rec: Rec, workers: Worker[]): Worker | undefined {
-  const byPhone = rec.employeePhone ? workers.find((w) => w.whatsapp && phonesMatch(w.whatsapp, rec.employeePhone)) : undefined;
+  const only = (ws: Worker[]) => (ws.length === 1 ? ws[0] : undefined);
+  const byPhone = rec.employeePhone ? workers.filter((w) => w.whatsapp && phonesMatch(w.whatsapp, rec.employeePhone)) : [];
+  if (byPhone.length) return only(byPhone);
   const name = normName(rec.employeeName);
-  return byPhone ?? (name ? workers.find((w) => normName(w.name || '') === name) : undefined);
+  return name ? only(workers.filter((w) => normName(w.name || '') === name)) : undefined;
 }
 
 /** OCR dates come as YYYY-MM-DD or dd/mm/yyyy. */
@@ -64,16 +69,20 @@ export function enrichmentFor(rec: Rec, workers: Worker[], logsOf: (workerId: st
   return { ...who, obraSource: 'a_definir', obraStatus: 'a_definir' };
 }
 
+/** Docs of the default org may still carry the legacy org id. */
+const orgIdsOf = (org: string) => (org === effectiveOrg(undefined) && org !== LEGACY_ORG_ID ? [org, LEGACY_ORG_ID] : [org]);
+
 /** Reads field_workers / worker_time_logs of the receipt's org. Without Admin SDK returns {} (OCR goes on). */
 export async function enrichReceipt(db: Firestore | null | undefined, rec: Rec): Promise<Rec> {
   if (!db) return {};
   const org = effectiveOrg(rec.organizationId);
-  const ws = await db.collection('field_workers').where('orgId', '==', org).get();
+  const orgs = orgIdsOf(org);
+  const ws = await db.collection('field_workers').where('orgId', 'in', orgs).get();
   const workers = ws.docs.map((d) => ({ ...(d.data() as Worker), id: d.id }));
   const w = resolveWorker(rec, workers);
   const date = isoDate(rec.receiptDate);
   const logs = w
-    ? (await db.collection('worker_time_logs').where('orgId', '==', org).where('workerId', '==', w.id).where('date', '==', date).get())
+    ? (await db.collection('worker_time_logs').where('orgId', 'in', orgs).where('workerId', '==', w.id).where('date', '==', date).get())
         .docs.map((d) => d.data() as TimeLog)
     : [];
   return enrichmentFor(rec, workers, () => logs);
@@ -168,7 +177,7 @@ export function weeklyMessage(s: WeeklySummary): string {
 /** Week (inicio) the Monday message should cover now, or null when it is not time / already sent. */
 export function weeklyDue(now: Date, lastSentInicio: string | undefined): string | null {
   const hour = Number(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }));
-  if (dow(spDate(now)) !== 1 || hour < 8) return null;
+  if (dow(spDate(now)) === 1 && hour < 8) return null; // later days retry a missed Monday; the marker stops resends
   const { inicio } = weekRange(undefined, now);
   return lastSentInicio === inicio ? null : inicio;
 }
@@ -206,12 +215,20 @@ export function createReembolsosRouter(deps: {
 }): Router {
   const r = Router();
   const now = () => deps.now?.() ?? new Date();
+  const inicioOf = (req: Request) => String(req.query.inicio || req.body?.inicio || '') || undefined;
+  const badInicio = (req: Request, res: any) => {
+    const i = inicioOf(req);
+    if (i && !validYmd(i)) { res.status(400).json({ error: 'inicio inválido: use uma data real AAAA-MM-DD' }); return true; }
+    return false;
+  };
   const summaryFor = (req: Request) => {
-    const w = weekRange(String(req.query.inicio || req.body?.inicio || '') || undefined, now());
+    const w = weekRange(inicioOf(req), now());
     return { w, s: weeklySummary(deps.receipts().filter(visibleTo(req)), w) };
   };
   const transition = (from: string, to: string, stamp: (rec: Rec, by: string, at: string) => void) => (req: Request, res: any) => {
-    const w = weekRange(String(req.body?.inicio || '') || undefined, now());
+    if (badInicio(req, res)) return;
+    if (!req.orgId) return res.status(400).json({ error: 'informe a organização (orgId)' });
+    const w = weekRange(inicioOf(req), now());
     const visible = visibleTo(req), by = req.user!.email || req.user!.uid, at = now().toISOString();
     let alterados = 0;
     for (const rec of deps.receipts()) {
@@ -221,20 +238,29 @@ export function createReembolsosRouter(deps: {
     res.json({ ok: true, ...w, alterados });
   };
 
-  r.get('/semana', (req, res) => res.json(summaryFor(req).s));
+  r.get('/semana', (req, res) => { if (!badInicio(req, res)) res.json(summaryFor(req).s); });
   r.get('/semana.xlsx', (req, res) => {
+    if (badInicio(req, res)) return;
     const { w, s } = summaryFor(req);
     res.setHeader('Content-Disposition', `attachment; filename="reembolsos_${w.inicio}.xlsx"`);
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(weekWorkbookBuffer(s));
   });
   r.post('/semana/aprovar', requireRole('Admin', 'Gerente'), transition('pendente', 'aprovado', (rec, by, at) => { rec.approvedBy = by; rec.approvedAt = at; }));
   r.post('/semana/reembolsado', requireRole('Admin', 'Gerente'), transition('aprovado', 'reembolsado', (rec, by, at) => { rec.reimbursedBy = by; rec.reimbursedAt = at; }));
-  r.put('/:id/obra', requireRole('Admin', 'Gerente'), (req, res) => {
+  r.put('/:id/obra', requireRole('Admin', 'Gerente'), async (req, res) => {
     const rec = deps.receipts().find((x) => x.id === req.params.id);
     if (!rec || !visibleTo(req)(rec)) return res.status(404).json({ error: 'nota não encontrada' });
-    const obraName = String(req.body?.obraName || '').trim();
+    const contractId = String(req.body?.contractId || '').trim();
+    let obraName = String(req.body?.obraName || '').trim();
+    if (contractId) {
+      const db = deps.db();
+      if (!db) return res.status(503).json({ error: 'banco indisponível para conferir o contrato' });
+      const c = (await db.collection('contracts').doc(contractId).get().catch(() => null))?.data();
+      if (!c || !orgIdsOf(effectiveOrg(rec.organizationId)).includes(c.orgId)) return res.status(400).json({ error: 'contrato não encontrado nesta organização' });
+      obraName = c.name || c.title || c.contractNumber || contractId;
+    }
     if (!obraName) return res.status(400).json({ error: 'informe a obra' });
-    Object.assign(rec, { obraName, contractId: String(req.body?.contractId || ''), obraSource: 'manual', obraStatus: 'ok' });
+    Object.assign(rec, { obraName, contractId, obraSource: 'manual', obraStatus: 'ok' });
     deps.persist();
     res.json({ ok: true, receipt: rec });
   });

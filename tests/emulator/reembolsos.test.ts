@@ -31,3 +31,16 @@ test('saveReceiptImage: stores base64 with orgId, skips oversized', async () => 
   assert.equal(await saveReceiptImage(h.db, 'r2', 'o', 'A'.repeat(MAX_IMAGE_BASE64 + 1)), 'grande_demais');
   assert.equal((await h.db.doc('receipt_images/r2').get()).exists, false);
 });
+
+test('enrichReceipt: default org also finds docs still on the legacy org id', async () => {
+  const prev = process.env.DEFAULT_ORG_ID;
+  process.env.DEFAULT_ORG_ID = 'real';
+  try {
+    await set('field_workers/wl', { orgId: 'org_aguero_default', name: 'Legado', whatsapp: '11 98888-7777' });
+    await set('worker_time_logs/tl', { orgId: 'org_aguero_default', workerId: 'wl', date: '2026-11-18', siteName: 'Obra L' });
+    const e = await enrichReceipt(h.db, { organizationId: 'org_aguero_default', employeePhone: '11988887777', receiptDate: '2026-11-18' });
+    assert.deepEqual([e.workerId, e.obraName], ['wl', 'Obra L']);
+  } finally {
+    if (prev === undefined) delete process.env.DEFAULT_ORG_ID; else process.env.DEFAULT_ORG_ID = prev;
+  }
+});
