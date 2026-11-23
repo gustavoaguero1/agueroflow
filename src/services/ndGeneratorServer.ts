@@ -19,7 +19,13 @@ function ensureNdPdfDir() {
   }
 }
 
-export function sanitizeNdFileName(projNumber: number, natureza: string, receiverName: string): string {
+export function sanitizeNdFileName(
+  projNumber: number,
+  natureza: string,
+  receiverName: string,
+  isRevised?: boolean,
+  revisionNumber?: number
+): string {
   const cleanPart = (val: string) =>
     String(val || '')
       .normalize('NFD')
@@ -31,7 +37,14 @@ export function sanitizeNdFileName(projNumber: number, natureza: string, receive
 
   const nat = cleanPart(natureza) || 'NOTA_DEBITO';
   const rec = cleanPart(receiverName) || 'RECEBEDOR';
-  return `${projNumber}_PROJ_-_${nat}_${rec}.pdf`;
+  const revNum = Number(revisionNumber) || 0;
+  const revPart =
+    isRevised || revNum > 0
+      ? revNum > 1
+        ? `REVISADA_REV${revNum}_-_`
+        : 'REVISADA_-_'
+      : '';
+  return `${projNumber}_PROJ_-_${revPart}${nat}_${rec}.pdf`;
 }
 
 export function formatEmissionDateTimeBr(date = new Date()): string {
@@ -100,17 +113,38 @@ export function generateNdPdfBuffer(record: WhatsAppNdRecord): Buffer {
     drawVectorAgueroBrand(doc, leftMargin, 18);
   }
 
+  const revNum = Number(record.revisionNumber) || 0;
+  const isRevised = Boolean(record.isRevised || revNum > 0);
+  const revLabel = revNum > 1 ? `REVISADA (REV. ${revNum})` : 'REVISADA';
+
   // "NOTA DE DEBITO" centered muted italic bold
   doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(13.5);
   doc.setTextColor(156, 163, 175); // #9CA3AF
-  doc.text('NOTA DE DEBITO', 92, 33, { align: 'center' });
+  doc.text('NOTA DE DEBITO', 92, isRevised ? 30 : 33, { align: 'center' });
 
-  // Red "Nº PROJ   4925   /   2026" on right
+  if (isRevised) {
+    // Bold crimson stamp box right-aligned above the ND number so Financeiro immediately spots the revision
+    const badgeWidth = revNum > 1 ? 42 : 28;
+    const badgeX = rightEdge - 2 - badgeWidth;
+    doc.setFillColor(254, 242, 242); // soft red tint
+    doc.setDrawColor(220, 38, 38); // #DC2626
+    doc.setLineWidth(0.45);
+    doc.roundedRect(badgeX, 24.5, badgeWidth, 7, 1.4, 1.4, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(185, 28, 28); // #B91C1C
+    doc.text(revLabel, badgeX + badgeWidth / 2, 29.2, { align: 'center' });
+  }
+
+  // Red "Nº PROJ   4925   /   2026" (plus "— REVISADA" when revised) on right
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(isRevised ? 10.5 : 11);
   doc.setTextColor(220, 38, 38); // #DC2626
-  doc.text(`Nº PROJ   ${record.projNumber}   /   ${record.projYear}`, rightEdge - 2, 41, {
+  const projHeaderText = isRevised
+    ? `Nº PROJ   ${record.projNumber}   /   ${record.projYear}   —   ${revLabel}`
+    : `Nº PROJ   ${record.projNumber}   /   ${record.projYear}`;
+  doc.text(projHeaderText, rightEdge - 2, 41, {
     align: 'right',
   });
 
@@ -276,7 +310,16 @@ function drawVectorAgueroBrand(doc: jsPDF, x: number, y: number) {
 
 export function saveNdPdfToDisk(record: WhatsAppNdRecord, pdfBuffer: Buffer): string {
   ensureNdPdfDir();
-  const safeName = path.basename(record.fileName || sanitizeNdFileName(record.projNumber, record.natureza, record.receiverName));
+  const safeName = path.basename(
+    record.fileName ||
+      sanitizeNdFileName(
+        record.projNumber,
+        record.natureza,
+        record.receiverName,
+        record.isRevised,
+        record.revisionNumber
+      )
+  );
   const fullPath = path.join(ND_PDF_DIR, safeName);
   fs.writeFileSync(fullPath, pdfBuffer);
   return fullPath;
@@ -284,7 +327,16 @@ export function saveNdPdfToDisk(record: WhatsAppNdRecord, pdfBuffer: Buffer): st
 
 export function getOrGenerateNdPdfBuffer(record: WhatsAppNdRecord): Buffer {
   ensureNdPdfDir();
-  const safeName = path.basename(record.fileName || sanitizeNdFileName(record.projNumber, record.natureza, record.receiverName));
+  const safeName = path.basename(
+    record.fileName ||
+      sanitizeNdFileName(
+        record.projNumber,
+        record.natureza,
+        record.receiverName,
+        record.isRevised,
+        record.revisionNumber
+      )
+  );
   const fullPath = path.join(ND_PDF_DIR, safeName);
   if (fs.existsSync(fullPath)) {
     try {
@@ -302,7 +354,10 @@ export function getOrGenerateNdPdfBuffer(record: WhatsAppNdRecord): Buffer {
 export function generateNdWorkbookBuffer(records: WhatsAppNdRecord[]): Buffer {
   const wb = XLSX.utils.book_new();
   const rows = records.map((r) => ({
-    'Nº PROJ': `${r.projNumber}/${r.projYear}`,
+    'Nº PROJ':
+      r.isRevised || (Number(r.revisionNumber) || 0) > 0
+        ? `${r.projNumber}/${r.projYear} (${(Number(r.revisionNumber) || 1) > 1 ? `REVISADA REV. ${r.revisionNumber}` : 'REVISADA'})`
+        : `${r.projNumber}/${r.projYear}`,
     'Data Emissão': r.emissionDateTime,
     Emissor: r.emitterName,
     Empresa: r.companyName,
@@ -1061,21 +1116,47 @@ async function sendViaOutlookSmtp(params: {
   }
 }
 
+type EmailDispatchOutcome = {
+  success: boolean;
+  provider: OutlookBridgeProvider;
+  emailId?: string;
+  pendingConfig?: boolean;
+  error?: string;
+};
+
+const inFlightEmailDispatches = new Map<string, Promise<EmailDispatchOutcome>>();
+const recentEmailDispatches = new Map<string, { ts: number; outcome: EmailDispatchOutcome }>();
+
 export async function sendNdEmailViaOutlook(params: {
   to: string[];
   cc: string[];
   subject: string;
   bodyText: string;
   attachment?: { fileName: string; buffer: Buffer };
-}): Promise<{
-  success: boolean;
-  provider: OutlookBridgeProvider;
-  emailId?: string;
-  pendingConfig?: boolean;
-  error?: string;
-}> {
-  const cleanTo = (params.to || []).map((e) => e.trim()).filter((e) => e.includes('@'));
-  const cleanCc = (params.cc || []).map((e) => e.trim()).filter((e) => e.includes('@'));
+}): Promise<EmailDispatchOutcome> {
+  // Deduplicate To case-insensitively and strip any CC address already present in To (prevents 2x copies across ALL providers)
+  const cleanTo: string[] = [];
+  const toLower = new Set<string>();
+  for (const raw of params.to || []) {
+    const e = String(raw || '').trim();
+    if (!e || !e.includes('@')) continue;
+    const low = e.toLowerCase();
+    if (!toLower.has(low)) {
+      toLower.add(low);
+      cleanTo.push(e);
+    }
+  }
+  const cleanCc: string[] = [];
+  const ccLower = new Set<string>();
+  for (const raw of params.cc || []) {
+    const e = String(raw || '').trim();
+    if (!e || !e.includes('@')) continue;
+    const low = e.toLowerCase();
+    if (!toLower.has(low) && !ccLower.has(low)) {
+      ccLower.add(low);
+      cleanCc.push(e);
+    }
+  }
 
   if (cleanTo.length === 0) {
     return {
@@ -1097,86 +1178,108 @@ export async function sendNdEmailViaOutlook(params: {
     };
   }
 
-  try {
-    if (status.activeProvider === 'outlook_oauth') {
-      const res = await sendViaOutlookOAuthGraph({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'outlook_oauth' };
-    }
-
-    if (status.activeProvider === 'outlook_graph') {
-      const res = await sendViaMicrosoftGraph({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'outlook_graph' };
-    }
-
-    if (status.activeProvider === 'brevo_api') {
-      const res = await sendViaBrevoApi({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'brevo_api' };
-    }
-
-    if (status.activeProvider === 'resend_api') {
-      const res = await sendViaResendApi({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'resend_api' };
-    }
-
-    if (status.activeProvider === 'outlook_webhook') {
-      const res = await sendViaOutlookWebhook({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'outlook_webhook' };
-    }
-
-    if (status.activeProvider === 'outlook_smtp') {
-      const res = await sendViaOutlookSmtp({
-        to: cleanTo,
-        cc: cleanCc,
-        subject: params.subject,
-        bodyText: params.bodyText,
-        attachment: params.attachment,
-      });
-      return { ...res, provider: 'outlook_smtp' };
-    }
-
-    return {
-      success: false,
-      provider: 'composio_outlook',
-      error:
-        'Para anexar PDF diretamente, utilize Microsoft OAuth 2.0, Brevo/Resend API, Webhook Outlook ou SMTP habilitado.',
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      provider: status.activeProvider,
-      error: err?.message || 'Erro ao enviar e-mail via Outlook.',
-    };
+  // 45-second idempotency guard + concurrent in-flight coalescing so the exact same ND email can NEVER go out 2x
+  const attachmentHash = params.attachment?.buffer
+    ? crypto.createHash('sha1').update(params.attachment.buffer).digest('hex').slice(0, 12)
+    : 'noatt';
+  const emailSig = `${cleanTo.map((e) => e.toLowerCase()).sort().join(',')}|${cleanCc.map((e) => e.toLowerCase()).sort().join(',')}|${params.subject.trim()}|${params.attachment?.fileName || ''}|${attachmentHash}`;
+  const nowMs = Date.now();
+  for (const [k, v] of recentEmailDispatches.entries()) {
+    if (nowMs - v.ts > 45_000) recentEmailDispatches.delete(k);
   }
+  const recentHit = recentEmailDispatches.get(emailSig);
+  if (recentHit && recentHit.outcome.success) {
+    console.log(`🛡️ [ND Email Dedup] Envio idêntico bloqueado dentro de 45s: "${params.subject}"`);
+    return recentHit.outcome;
+  }
+  const existingInFlight = inFlightEmailDispatches.get(emailSig);
+  if (existingInFlight) {
+    console.log(`🛡️ [ND Email Dedup] Reaproveitando envio concorrente em andamento: "${params.subject}"`);
+    return existingInFlight;
+  }
+
+  const dispatchPromise = (async (): Promise<EmailDispatchOutcome> => {
+    try {
+      let outcome: EmailDispatchOutcome;
+      if (status.activeProvider === 'outlook_oauth') {
+        const res = await sendViaOutlookOAuthGraph({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'outlook_oauth' };
+      } else if (status.activeProvider === 'outlook_graph') {
+        const res = await sendViaMicrosoftGraph({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'outlook_graph' };
+      } else if (status.activeProvider === 'brevo_api') {
+        const res = await sendViaBrevoApi({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'brevo_api' };
+      } else if (status.activeProvider === 'resend_api') {
+        const res = await sendViaResendApi({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'resend_api' };
+      } else if (status.activeProvider === 'outlook_webhook') {
+        const res = await sendViaOutlookWebhook({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'outlook_webhook' };
+      } else if (status.activeProvider === 'outlook_smtp') {
+        const res = await sendViaOutlookSmtp({
+          to: cleanTo,
+          cc: cleanCc,
+          subject: params.subject,
+          bodyText: params.bodyText,
+          attachment: params.attachment,
+        });
+        outcome = { ...res, provider: 'outlook_smtp' };
+      } else {
+        outcome = {
+          success: false,
+          provider: 'composio_outlook',
+          error:
+            'Para anexar PDF diretamente, utilize Microsoft OAuth 2.0, Brevo/Resend API, Webhook Outlook ou SMTP habilitado.',
+        };
+      }
+      if (outcome.success) {
+        recentEmailDispatches.set(emailSig, { ts: Date.now(), outcome });
+      }
+      return outcome;
+    } catch (err: any) {
+      return {
+        success: false,
+        provider: status.activeProvider,
+        error: err?.message || 'Erro ao enviar e-mail via Outlook.',
+      };
+    } finally {
+      inFlightEmailDispatches.delete(emailSig);
+    }
+  })();
+
+  inFlightEmailDispatches.set(emailSig, dispatchPromise);
+  return dispatchPromise;
 }
 
 export function createDefaultNdRuleForGroup(params: {

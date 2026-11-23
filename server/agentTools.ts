@@ -107,7 +107,7 @@ export async function answerWithTools(
     ...history.slice(-6).map((m) => ({ role: m.role === 'model' ? 'model' : 'user', parts: [{ text: String(m.text).slice(0, 1000) }] })),
     { role: 'user', parts: [{ text: question }] },
   ];
-  const config = { systemInstruction: SYSTEM, temperature: 0.2, tools: [{ functionDeclarations: agentToolDeclarations }] };
+  const config = { systemInstruction: SYSTEM, tools: [{ functionDeclarations: agentToolDeclarations }] };
   for (let round = 0; round < 4; round++) {
     const res = await gen({ contents, config });
     const calls: { name: string; args?: Args }[] = res.functionCalls ?? [];

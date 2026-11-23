@@ -398,6 +398,10 @@ export interface WhatsAppNdRecord {
   emailSentAt?: string;
   emailError?: string;
   emailProvider?: OutlookBridgeProvider;
+  isRevised?: boolean;
+  revisionNumber?: number;
+  revisedAt?: string;
+  revisedBy?: string;
   createdAt: string;
   updatedAt: string;
 }

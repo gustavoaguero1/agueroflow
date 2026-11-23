@@ -1,7 +1,7 @@
 {
-  "lastOnlineAt": "2026-11-20T15:09:42.733Z",
-  "lastCatchUpAt": "2026-11-20T15:06:29.554Z",
-  "lastCatchUpRecovered": 293,
+  "lastOnlineAt": "2026-11-23T16:43:32.574Z",
+  "lastCatchUpAt": "2026-11-23T16:43:32.574Z",
+  "lastCatchUpRecovered": 295,
   "processedMessageIds": [
     "AC560FF8F5897EB6F2B0775C681219B5",
     "AC9E1E0211A73C6849321EE23C977B70",
@@ -533,17 +533,26 @@
     "3B57768C54236BBD0CB5",
     "3EB034116891C9F20C3090",
     "3EB02327A97212D434FD4E",
-    "3BF23D717FD04082C82F"
+    "3BF23D717FD04082C82F",
+    "3A11B8CCE601D7517E2E",
+    "3EB05BB182B8D71730EA88",
+    "3A47FEF9CE0B537D470F",
+    "3EB06A6BD18D2B863A733A",
+    "AC796AEF58D232E1F2BD7223C5914139",
+    "3A538D33DBB0FC301A14",
+    "3A792BE927585A8309B4",
+    "3EB08B4F2A1223A29EAD3C",
+    "3EB0A17308076C9E485946"
   ],
   "chatAnchors": {
     "120363425653164611@g.us": {
       "key": {
         "remoteJid": "120363425653164611@g.us",
-        "id": "3AFAFC078C41CD751805",
+        "id": "3A47FEF9CE0B537D470F",
         "fromMe": false,
-        "participant": "193269334048934@lid"
+        "participant": "181002907455549@lid"
       },
-      "timestampMs": 1795183959000
+      "timestampMs": 1795451780000
     },
     "14131197423619@lid": {
       "key": {
@@ -583,29 +592,29 @@
     "120363408623779215@g.us": {
       "key": {
         "remoteJid": "120363408623779215@g.us",
-        "id": "A5D1682CFE08DAA82285D81EBDE1879D",
+        "id": "3A538D33DBB0FC301A14",
         "fromMe": false,
-        "participant": "148082704560329@lid"
+        "participant": "211523012178018@lid"
       },
-      "timestampMs": 1795183953000
+      "timestampMs": 1795452002000
     },
     "120363424641599520@g.us": {
       "key": {
         "remoteJid": "120363424641599520@g.us",
-        "id": "3A823C655A0F0A79D91D",
+        "id": "3A792BE927585A8309B4",
         "fromMe": false,
-        "participant": "144075147767930@lid"
+        "participant": "169135862448269@lid"
       },
-      "timestampMs": 1795120642000
+      "timestampMs": 1795452017000
     },
     "120363424373565383@g.us": {
       "key": {
         "remoteJid": "120363424373565383@g.us",
-        "id": "3EB019D07C981D2D3A94B6",
+        "id": "3EB05BB182B8D71730EA88",
         "fromMe": false,
         "participant": "96006108672145@lid"
       },
-      "timestampMs": 1795183809000
+      "timestampMs": 1795451773000
     },
     "120363418588107008@g.us": {
       "key": {
@@ -618,10 +627,10 @@
     "45965293686866@lid": {
       "key": {
         "remoteJid": "45965293686866@lid",
-        "id": "A59CDEEB5AFA92598E699FD71764473F",
+        "id": "A58B2C6CDBB3BCB54E7DB302D8D5F737",
         "fromMe": true
       },
-      "timestampMs": 1795187333000
+      "timestampMs": 1795451781000
     },
     "5511941327096-1589465503@g.us": {
       "key": {
@@ -668,11 +677,11 @@
     "120363406318401689@g.us": {
       "key": {
         "remoteJid": "120363406318401689@g.us",
-        "id": "A518800DF7D0800F3AE7E576A14E305C",
+        "id": "3EB0A17308076C9E485946",
         "fromMe": false,
         "participant": "46196752183352@lid"
       },
-      "timestampMs": 1795183933000
+      "timestampMs": 1795452196000
     },
     "120363429353869531@g.us": {
       "key": {
@@ -940,505 +949,18 @@
         "fromMe": false
       },
       "timestampMs": 1795182862000
+    },
+    "120363424641599520@g.us": {
+      "key": {
+        "remoteJid": "120363424641599520@g.us",
+        "id": "3A792BE927585A8309B4",
+        "fromMe": false,
+        "participant": "169135862448269@lid"
+      },
+      "timestampMs": 1795452017000
     }
   },
   "recentMessageKeys": [
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A592D1EEC6BC7280283F055E19DE4F8B",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5AF32E27A08873C73D7AEA35A974827",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A545CA0720B41E3F51BA5503A64BE635",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A553FF25643D90ED9D9A15221471655D",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A590C7B9BE85A070455618BEC0696BC1",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A54944D5034BEAEA8AE2236EAFD1F57A",
-        "fromMe": true
-      },
-      "timestampMs": 1795186268000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5A24EB493E3BB31027E91F971F09AC0",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A51F9908EB475DEE8009BD32D8870313",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5B328C21AA272D2AF16C1B378B78753",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5A8FEAAABC5ED513259AACE1EEE49F6",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A55273577BCA505027DEF23E6B81164B",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A58BDB5D2F7B9BF992AE4D7529287482",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5B216886B83F69474B8B2ABB0ED89AF",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5B3326A01A8CAAC1DA0B35C79BB92A9",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5E4E6EC7D079A30F2EB652BC0B522B0",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A55402F67F246D024D1F44CA781461D6",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A512CD8B33081BCD30001C42DE2C0D9D",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5976EA71A0E5824B55B1479C4B07F8F",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A53BC3198F9B61BEB71B23CAC6231CF2",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A568514EFC207D2022E2E29BC30FCD6B",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5510DB8DAB1F66637C2027F8635A959",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5E71CDAFAD24CE0FF6A70C06E0D9714",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5F09B3D1D19B24D62781A8CC8DEF84F",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A535D3C20F3857CFFD7E4A6EB4E89077",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5D305C470572E3CE3A6916BE843A0D2",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5F123B34A59D663CD2596B7420C0658",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5194441E29F246C5BB8F468477D99BB",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A52F9B4559632DDF94CB6E1DBBC77B69",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A557393BC51546C289198A09C3F7EB8D",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A56ED3866DC496BD4B52C98DCCAEEEC0",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5E64EC28D7EE1B46EAF52462218E7D2",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A55EFC5E76332D84D21E9A52F118FD4A",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A56D1AB3F7D10C8C0314A1E1EF6AABBE",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A51AF3AEC17D9253177E772BC2A2A846",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A51C89974F08F07B097CC362DB2770DE",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A55C624EC16F0557B4BE1EBE1559B629",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A587D062DFB5343911420E0EA47157FB",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5ADF30D1A9CDB2BD85BD810C203DE75",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A58B3338A88627F80A0D8479D5A0688B",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A50E41D9C57ECE87FDB48C9162B3DFFB",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5018E7EE8D33729C71543A5F9D95791",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A54BCAEF92006E23284778E95DBCE171",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5F475F06E36538F81A0252C8E66FB94",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5828556AEB1C94687B28E6B0B728F64",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5A0FB9ABE06DCB1CB8FFEA5E68662FA",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A59D07F0FFA264D8D0079A8E7A5E74B9",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5CDA2673E5BF99A93648F6D6CB08401",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A51542C6B761D5FC4A315044897C2DF5",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5227D471AD7FB8C3AC7473BECAE919B",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A563A4C4F3BBB12EAF586ED3E57759C5",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5D084814C9284E682C4D138216468F0",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5073C5AEB11414E333BADF7DC3254E0",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A52106EB85052623C9DD97A91FB4D0BB",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A547AA95ABBE9DC71BA78A29E8A14643",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A580C6989855891D5F7F16B0FA581BFE",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A52C33C9638EFD6D604DA8CF4C624AD9",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5D6F103556E8789C1D26E420D5AB800",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5607E61B028A00FFBE638FDAEDA4457",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A52305826FA68819B1DAE3419D69E676",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A577508E710BFEF06000CF8D35C602FC",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A5984602442437E99560A542B01A2450",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
-    {
-      "key": {
-        "remoteJid": "45965293686866@lid",
-        "id": "A53FF40703DD4A594764687DC9D0327F",
-        "fromMe": true
-      },
-      "timestampMs": 1795186269000
-    },
     {
       "key": {
         "remoteJid": "45965293686866@lid",
@@ -9329,10 +8851,9 @@
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "3EB0CA9A1B2080EA3BE79E",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186835000
+      "timestampMs": 1795185648000
     },
     {
       "key": {
@@ -9364,10 +8885,9 @@
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "3EB0971E0BEA8F3FB0EDB0",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186836000
+      "timestampMs": 1795185528000
     },
     {
       "key": {
@@ -9390,10 +8910,9 @@
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "3EB05DC5469AB3A8F88F2A",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186836000
+      "timestampMs": 1795185476000
     },
     {
       "key": {
@@ -13303,37 +12822,33 @@
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "A5A662A5C1EC9EFA5CB5E25EE0C21014",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186972000
+      "timestampMs": 1795186935000
     },
     {
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "A5253D29ACB09B8FC6DCFB03BD3DC79B",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186972000
+      "timestampMs": 1795186958000
     },
     {
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "A52A89F66EED40409F95317A4FA2FE5C",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795186973000
+      "timestampMs": 1795186898000
     },
     {
       "key": {
         "remoteJid": "5511941327096-1589465503@g.us",
         "id": "A558A7A5AFFB304150D8D787AE6B0943",
-        "fromMe": true,
-        "participant": "45965293686866@lid"
+        "fromMe": true
       },
-      "timestampMs": 1795187039000
+      "timestampMs": 1795187022000
     },
     {
       "key": {
@@ -16997,6 +16512,511 @@
         "fromMe": true
       },
       "timestampMs": 1795187333000
+    },
+    {
+      "key": {
+        "remoteJid": "120363408623779215@g.us",
+        "id": "3A11B8CCE601D7517E2E",
+        "fromMe": false,
+        "participant": "181002907455549@lid"
+      },
+      "timestampMs": 1795451751000
+    },
+    {
+      "key": {
+        "remoteJid": "120363424373565383@g.us",
+        "id": "3EB05BB182B8D71730EA88",
+        "fromMe": false,
+        "participant": "96006108672145@lid"
+      },
+      "timestampMs": 1795451773000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB015A333EDE9B512ACF6",
+        "fromMe": false
+      },
+      "timestampMs": 1795013584000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB07B1A8AB8945B626066",
+        "fromMe": false
+      },
+      "timestampMs": 1795013590000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0DCFBCE65586EE8F599",
+        "fromMe": false
+      },
+      "timestampMs": 1795015122000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0914F1CC32E0A04C36B",
+        "fromMe": false
+      },
+      "timestampMs": 1795015145000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0B5A5ED3A468A7EE2E0",
+        "fromMe": false
+      },
+      "timestampMs": 1795015303000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0CAE6419DE6EFE8FE5D",
+        "fromMe": false
+      },
+      "timestampMs": 1795015438000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0C0DBA106772ECB1301",
+        "fromMe": false
+      },
+      "timestampMs": 1795015643000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB08607CF37CD1A87DB5D",
+        "fromMe": false
+      },
+      "timestampMs": 1795015767000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB070E5C9A5B357AE151E",
+        "fromMe": false
+      },
+      "timestampMs": 1795020261000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB099CCE8AC27BBF92B83",
+        "fromMe": false
+      },
+      "timestampMs": 1795020276000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB091B75501781448B22A",
+        "fromMe": false
+      },
+      "timestampMs": 1795020378000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0860A616BBA774691CD",
+        "fromMe": false
+      },
+      "timestampMs": 1795024430000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "ACB9925CBBCBED7CF74A49CCDA951D4B",
+        "fromMe": false
+      },
+      "timestampMs": 1795024891000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "ACC009720C90281C3C9299D1B59B05D1",
+        "fromMe": false
+      },
+      "timestampMs": 1795025937000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A55071E501093D8933A9DA3416435AB0",
+        "fromMe": false
+      },
+      "timestampMs": 1795028013000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A586BD0A4D73F3B6A5F52043AF03557E",
+        "fromMe": false
+      },
+      "timestampMs": 1795028029000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "ACAC04F1F8992175E882A0A986C4D5B0",
+        "fromMe": false
+      },
+      "timestampMs": 1795028255000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A50E2F04A88F6DB45DC1F26763D694FD",
+        "fromMe": false
+      },
+      "timestampMs": 1795028435000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A5FD8C36EA2D09D1AC62AA4C22CBBC79",
+        "fromMe": false
+      },
+      "timestampMs": 1795028439000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A50FFABDC5B545EBC44CB635BF2897DE",
+        "fromMe": false
+      },
+      "timestampMs": 1795028448000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "A504A65918BCE78B64697020A4C110CE",
+        "fromMe": false
+      },
+      "timestampMs": 1795028692000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "AC7CDA8264F63D9AAB80B6E3E17A7F5F",
+        "fromMe": false
+      },
+      "timestampMs": 1795028995000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB028F593EC453792EE6E",
+        "fromMe": false
+      },
+      "timestampMs": 1795029303000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB07D66F01E5764C399B1",
+        "fromMe": false
+      },
+      "timestampMs": 1795031170000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB00E28532DDACBD7255F",
+        "fromMe": false
+      },
+      "timestampMs": 1795088718000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3A2C3D2786AF716FAC64",
+        "fromMe": false
+      },
+      "timestampMs": 1795088867000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB03E3B6028DFF1DB9BEE",
+        "fromMe": false
+      },
+      "timestampMs": 1795091871000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB0EB2DB593D90A2809DE",
+        "fromMe": false
+      },
+      "timestampMs": 1795106274000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB06B56C73EC0071D80DE",
+        "fromMe": false
+      },
+      "timestampMs": 1795106795000
+    },
+    {
+      "key": {
+        "remoteJid": "120363418588107008@g.us",
+        "id": "3EB04DCEC546C5DF6179B8",
+        "fromMe": false
+      },
+      "timestampMs": 1795106802000
+    },
+    {
+      "key": {
+        "remoteJid": "45965293686866@lid",
+        "id": "A57C8DDCC4E175A0DD7FCACD29C0A32A",
+        "fromMe": true
+      },
+      "timestampMs": 1795451779000
+    },
+    {
+      "key": {
+        "remoteJid": "120363425653164611@g.us",
+        "id": "3A47FEF9CE0B537D470F",
+        "fromMe": false,
+        "participant": "181002907455549@lid"
+      },
+      "timestampMs": 1795451780000
+    },
+    {
+      "key": {
+        "remoteJid": "120363406318401689@g.us",
+        "id": "3EB06A6BD18D2B863A733A",
+        "fromMe": false,
+        "participant": "46196752183352@lid"
+      },
+      "timestampMs": 1795451780000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3EB0391091D958A6511645",
+        "fromMe": true
+      },
+      "timestampMs": 1795102605000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "AC97664964DCD301F3B63B719013E5D7",
+        "fromMe": false
+      },
+      "timestampMs": 1795110676000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACD0AF33C93E86F2869D2EA702D94CC2",
+        "fromMe": false
+      },
+      "timestampMs": 1795110702000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACBEBA85760A3623BE63E5E765FEC8AD",
+        "fromMe": false
+      },
+      "timestampMs": 1795110719000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3EB065D6368EA867AD4C92",
+        "fromMe": false
+      },
+      "timestampMs": 1795113189000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3EB0B89C89B128E71364E8",
+        "fromMe": false
+      },
+      "timestampMs": 1795113189000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "4A5C98619AA336BF2A4E",
+        "fromMe": false
+      },
+      "timestampMs": 1795114446000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACED9CB00083D41B501ED06A2E339B0A",
+        "fromMe": false
+      },
+      "timestampMs": 1795116433000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "AC5207B2038BD8F79B5C6B1CA5120158",
+        "fromMe": false
+      },
+      "timestampMs": 1795116433000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACE5EC12EB2CB8BA216C5C405D069F7A",
+        "fromMe": false
+      },
+      "timestampMs": 1795116434000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACDDE8DA058F9C7C52B9C0AF46E78979",
+        "fromMe": false
+      },
+      "timestampMs": 1795117845000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "AC2A230843E8533B2C3B329FBEF0D8BD",
+        "fromMe": false
+      },
+      "timestampMs": 1795118964000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "AC32FAD9801F7CD01CEEA8F6C7E09F9D",
+        "fromMe": false
+      },
+      "timestampMs": 1795118964000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "ACA8EE26DA7FDE1273854AF19FF8F67D",
+        "fromMe": false
+      },
+      "timestampMs": 1795135884000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "AC8129F52AAAD9D3EDF0C7A5F068677E",
+        "fromMe": false
+      },
+      "timestampMs": 1795167865000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "4AD1FAFE9787AE2746AF",
+        "fromMe": false
+      },
+      "timestampMs": 1795179431000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "4AAFC20290C66C2F251F",
+        "fromMe": false
+      },
+      "timestampMs": 1795182209000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3ADD1899BBB158C6EEF2",
+        "fromMe": false
+      },
+      "timestampMs": 1795184477000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3AF5CAF119A16CFB96A0",
+        "fromMe": false
+      },
+      "timestampMs": 1795184580000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3ABAF93F7285350F1A5A",
+        "fromMe": false
+      },
+      "timestampMs": 1795184581000
+    },
+    {
+      "key": {
+        "remoteJid": "5511941327096-1589465503@g.us",
+        "id": "3AC12FF5A435FBE89319",
+        "fromMe": false
+      },
+      "timestampMs": 1795184581000
+    },
+    {
+      "key": {
+        "remoteJid": "45965293686866@lid",
+        "id": "A58B2C6CDBB3BCB54E7DB302D8D5F737",
+        "fromMe": true
+      },
+      "timestampMs": 1795451781000
+    },
+    {
+      "key": {
+        "remoteJid": "120363408623779215@g.us",
+        "id": "AC796AEF58D232E1F2BD7223C5914139",
+        "fromMe": false,
+        "participant": "111269885546719@lid"
+      },
+      "timestampMs": 1795451861000
+    },
+    {
+      "key": {
+        "remoteJid": "120363408623779215@g.us",
+        "id": "3A538D33DBB0FC301A14",
+        "fromMe": false,
+        "participant": "211523012178018@lid"
+      },
+      "timestampMs": 1795452002000
+    },
+    {
+      "key": {
+        "remoteJid": "120363424641599520@g.us",
+        "id": "3A792BE927585A8309B4",
+        "fromMe": false,
+        "participant": "169135862448269@lid"
+      },
+      "timestampMs": 1795452017000
+    },
+    {
+      "key": {
+        "remoteJid": "120363406318401689@g.us",
+        "id": "3EB08B4F2A1223A29EAD3C",
+        "fromMe": false,
+        "participant": "46196752183352@lid"
+      },
+      "timestampMs": 1795452032000
+    },
+    {
+      "key": {
+        "remoteJid": "120363406318401689@g.us",
+        "id": "3EB0A17308076C9E485946",
+        "fromMe": false,
+        "participant": "46196752183352@lid"
+      },
+      "timestampMs": 1795452196000
     }
   ],
   "knownGroupNames": {

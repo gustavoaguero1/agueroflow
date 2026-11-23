@@ -1,5 +1,45 @@
 [
   {
+    "id": "log_1795452212013_ap6g",
+    "timestamp": "2026-11-23T16:43:32.013Z",
+    "method": "WA_WEB_BRIDGE",
+    "event": "dispositivo_conectado",
+    "senderPhone": "+55 11 91789-7747",
+    "senderName": "Gustavo",
+    "hasMedia": false,
+    "status": "sucesso",
+    "summary": "WhatsApp conectado via Dispositivos Conectados (+55 11 91789-7747 · Gustavo)."
+  },
+  {
+    "id": "log_1795451782092_7ssa",
+    "timestamp": "2026-11-23T16:36:22.092Z",
+    "method": "WA_CATCHUP",
+    "event": "ocr_catchup_sweep",
+    "hasMedia": false,
+    "status": "sucesso",
+    "summary": "♻️ Varredura (reconexao_auto_18s, desde 23/11, 13:21): 0 novo(s) cupom(ns) OCR | 0 nova(s) ND(s) gerada(s) | 62 msg(s) offline sincronizadas | 0 img(s) e 0 msg(s) ND avaliadas."
+  },
+  {
+    "id": "log_1795451753120_pywq",
+    "timestamp": "2026-11-23T16:35:53.120Z",
+    "method": "WA_WEB_BRIDGE",
+    "event": "dispositivo_conectado",
+    "senderPhone": "+55 11 91789-7747",
+    "senderName": "Gustavo",
+    "hasMedia": false,
+    "status": "sucesso",
+    "summary": "WhatsApp conectado via Dispositivos Conectados (+55 11 91789-7747 · Gustavo)."
+  },
+  {
+    "id": "log_1795446425244_8ptc",
+    "timestamp": "2026-11-23T15:07:05.244Z",
+    "method": "WA_WEB_BRIDGE",
+    "event": "dispositivo_desconectado",
+    "hasMedia": false,
+    "status": "aviso",
+    "summary": "Aparelho desconectado pelo WhatsApp (sessão revogada no celular). Gere um novo QR Code para reconectar."
+  },
+  {
     "id": "log_1795181926080_ckvk",
     "timestamp": "2026-11-20T13:38:46.080Z",
     "method": "WA_ND_AUTOMATION",

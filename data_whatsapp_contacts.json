@@ -1,5 +1,110 @@
 [
   {
+    "id": "wact_1795452019959_84fc",
+    "jidOrPhone": "+169135862448269",
+    "normalizedPhone": "169135862448269",
+    "name": "Thales Baesso",
+    "isGroup": false,
+    "contactType": "cliente",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:40:17.949Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:40:19.958Z",
+    "updatedAt": "2026-11-23T16:40:55.940Z"
+  },
+  {
+    "id": "wact_1795452017949_hz3k",
+    "jidOrPhone": "+55 14 99768-6950",
+    "normalizedPhone": "5514997686950",
+    "name": "Thales Baesso",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:40:17.949Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:40:17.949Z",
+    "updatedAt": "2026-11-23T16:40:55.940Z"
+  },
+  {
+    "id": "wact_1795452003902_88tt",
+    "jidOrPhone": "+55 45 9948-9563",
+    "normalizedPhone": "554599489563",
+    "name": "Veridiana",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:40:03.901Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:40:03.901Z",
+    "updatedAt": "2026-11-23T16:40:55.941Z"
+  },
+  {
+    "id": "wact_1795451863929_oc3r",
+    "jidOrPhone": "+111269885546719",
+    "normalizedPhone": "111269885546719",
+    "name": "AUGUSTO",
+    "isGroup": false,
+    "contactType": "cliente",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:37:42.099Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:37:43.927Z",
+    "updatedAt": "2026-11-23T16:40:55.940Z"
+  },
+  {
+    "id": "wact_1795451862100_hdfn",
+    "jidOrPhone": "+55 83 8886-7325",
+    "normalizedPhone": "558388867325",
+    "name": "AUGUSTO",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:37:42.100Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:37:42.100Z",
+    "updatedAt": "2026-11-23T16:40:55.940Z"
+  },
+  {
+    "id": "wact_1795451781474_yrlw",
+    "jidOrPhone": "+55 42 9869-3914",
+    "normalizedPhone": "554298693914",
+    "name": "Bryan",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:43:16.000Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:36:21.474Z",
+    "updatedAt": "2026-11-23T16:43:32.575Z"
+  },
+  {
+    "id": "wact_1795451754001_3mux",
+    "jidOrPhone": "+55 21 99798-1970",
+    "normalizedPhone": "5521997981970",
+    "name": "Eduardo Botelho",
+    "isGroup": false,
+    "contactType": "funcionario",
+    "ocrEnabled": false,
+    "ocrAutoReply": false,
+    "notes": "",
+    "lastMessageAt": "2026-11-23T16:36:21.053Z",
+    "source": "whatsapp_sync",
+    "createdAt": "2026-11-23T16:35:54.000Z",
+    "updatedAt": "2026-11-23T16:40:55.940Z"
+  },
+  {
     "id": "wact_1795187325875_gjxc",
     "jidOrPhone": "+59081788252377",
     "normalizedPhone": "59081788252377",
@@ -2319,10 +2424,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:59:47.703Z",
+    "lastMessageAt": "2026-11-23T16:40:03.901Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.375Z",
-    "updatedAt": "2026-11-20T13:01:47.480Z"
+    "updatedAt": "2026-11-23T16:40:55.940Z"
   },
   {
     "id": "wact_1795179031374_15ob",
@@ -2739,10 +2844,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:57:47.213Z",
+    "lastMessageAt": "2026-11-23T16:36:21.053Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.356Z",
-    "updatedAt": "2026-11-20T13:01:47.329Z"
+    "updatedAt": "2026-11-23T16:40:55.940Z"
   },
   {
     "id": "wact_1795179031355_c9lx",
@@ -2784,10 +2889,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T12:09:20.000Z",
+    "lastMessageAt": "2026-11-23T16:40:33.465Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-20T12:50:31.355Z",
-    "updatedAt": "2026-11-20T14:37:06.999Z"
+    "updatedAt": "2026-11-23T16:40:55.940Z"
   },
   {
     "id": "wact_1795179031354_oa2o",
@@ -3339,10 +3444,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:54:33.000Z",
+    "lastMessageAt": "2026-11-23T16:36:14.014Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:37:32.002Z",
-    "updatedAt": "2026-11-20T14:37:22.492Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795120646594_ongi",
@@ -3354,10 +3459,10 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T14:10:09.000Z",
+    "lastMessageAt": "2026-11-23T16:36:14.014Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:37:26.594Z",
-    "updatedAt": "2026-11-20T14:37:00.495Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795120640279_hzq2",
@@ -3882,7 +3987,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.928Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800928_vmli",
@@ -3897,7 +4002,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.928Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800928_qe8o",
@@ -3912,7 +4017,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.928Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800927_xzqk",
@@ -3927,7 +4032,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800927_8wsm",
@@ -3942,7 +4047,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800927_bzzu",
@@ -3957,7 +4062,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800927_gnai",
@@ -3972,7 +4077,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T14:58:40.000Z"
   },
   {
@@ -3982,13 +4087,13 @@
     "name": "RH - COMUNICADOS AGUERO",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 203,
+    "participantsCount": 204,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800927_d35l",
@@ -4003,7 +4108,7 @@
     "notes": "",
     "source": "manual",
     "createdAt": "2026-11-19T20:23:20.927Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T14:45:35.000Z"
   },
   {
@@ -4019,7 +4124,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800926_wiz5",
@@ -4034,7 +4139,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800926_79ow",
@@ -4049,7 +4154,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800926_ipln",
@@ -4058,14 +4163,14 @@
     "name": "Promos Clube do Homem | 45",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 978,
+    "participantsCount": 973,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-20T13:54:33.000Z",
+    "lastMessageAt": "2026-11-23T16:36:13.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800926_zidq",
@@ -4080,7 +4185,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.926Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T14:57:23.000Z"
   },
   {
@@ -4096,7 +4201,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800925_867l",
@@ -4111,7 +4216,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800925_xrxn",
@@ -4120,14 +4225,14 @@
     "name": "PERFUMPROMO | 05",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 959,
+    "participantsCount": 965,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
-    "lastMessageAt": "2026-11-20T12:09:20.000Z"
+    "updatedAt": "2026-11-23T16:43:32.575Z",
+    "lastMessageAt": "2026-11-23T16:43:16.000Z"
   },
   {
     "id": "wact_1795119800925_1tjj",
@@ -4142,7 +4247,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T13:24:53.000Z"
   },
   {
@@ -4158,7 +4263,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800925_l8nq",
@@ -4173,7 +4278,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.925Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800924_ia5g",
@@ -4188,7 +4293,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800924_et1a",
@@ -4197,14 +4302,14 @@
     "name": "GIMENEZ PARFUMS",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 610,
+    "participantsCount": 607,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T20:37:22.000Z",
+    "lastMessageAt": "2026-11-23T16:40:17.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800924_m7ix",
@@ -4213,13 +4318,13 @@
     "name": "G4 | Sprint de IA - Turma 004",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 171,
+    "participantsCount": 169,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T13:39:55.000Z"
   },
   {
@@ -4235,7 +4340,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T14:11:11.000Z"
   },
   {
@@ -4251,7 +4356,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "lastMessageAt": "2026-11-20T12:26:07.000Z"
   },
   {
@@ -4267,7 +4372,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.924Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800923_mgp8",
@@ -4282,7 +4387,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.923Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800923_am19",
@@ -4297,7 +4402,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.923Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800923_3bw8",
@@ -4312,7 +4417,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.923Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_8sd6",
@@ -4321,14 +4426,14 @@
     "name": "CLIENTES FORGIARINI PARFUM( ALEXANDRE)♥️🚀",
     "isGroup": true,
     "contactType": "funcionario",
-    "participantsCount": 564,
+    "participantsCount": 566,
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
     "lastMessageAt": "2026-11-19T21:18:16.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_v3po",
@@ -4343,7 +4448,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_eatp",
@@ -4358,7 +4463,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_frb9",
@@ -4373,7 +4478,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_4hjz",
@@ -4388,7 +4493,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_vm0w",
@@ -4403,7 +4508,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_qob5",
@@ -4418,7 +4523,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_oyem",
@@ -4433,7 +4538,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800922_apuu",
@@ -4448,7 +4553,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.922Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800921_jbbn",
@@ -4463,7 +4568,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.921Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800921_7new",
@@ -4478,7 +4583,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.921Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.937Z"
   },
   {
     "id": "wact_1795119800921_6nhv",
@@ -4493,7 +4598,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.921Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.936Z"
   },
   {
     "id": "wact_1795119800921_6zwg",
@@ -4508,7 +4613,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.921Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.936Z"
   },
   {
     "id": "wact_1795119800921_75nk",
@@ -4523,7 +4628,7 @@
     "notes": "",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T20:23:20.921Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z"
+    "updatedAt": "2026-11-23T16:40:55.936Z"
   },
   {
     "id": "wact_1795119797813_ytgf",
@@ -4658,7 +4763,7 @@
     "lastMessageAt": "2026-11-20T13:25:29.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:03:17.050Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "participantsCount": 1015
   },
   {
@@ -4686,11 +4791,11 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T23:13:09.000Z",
+    "lastMessageAt": "2026-11-23T16:36:20.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:02:11.559Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z",
-    "participantsCount": 573
+    "updatedAt": "2026-11-23T16:40:55.937Z",
+    "participantsCount": 565
   },
   {
     "id": "wact_1795111328204_s0ww",
@@ -4732,11 +4837,11 @@
     "ocrEnabled": false,
     "ocrAutoReply": true,
     "notes": "",
-    "lastMessageAt": "2026-11-19T23:36:07.000Z",
+    "lastMessageAt": "2026-11-23T16:40:02.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T18:00:31.506Z",
-    "updatedAt": "2026-11-20T15:09:45.565Z",
-    "participantsCount": 1084
+    "updatedAt": "2026-11-23T16:40:55.937Z",
+    "participantsCount": 1079
   },
   {
     "id": "wact_1795111231188_usvo",
@@ -4811,7 +4916,7 @@
     "lastMessageAt": "2026-11-19T18:08:45.000Z",
     "source": "whatsapp_sync",
     "createdAt": "2026-11-19T17:59:04.012Z",
-    "updatedAt": "2026-11-20T15:09:45.566Z",
+    "updatedAt": "2026-11-23T16:40:55.937Z",
     "participantsCount": 18
   }
 ]

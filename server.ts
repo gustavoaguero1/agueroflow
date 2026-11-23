@@ -29,6 +29,7 @@ import {
   getKnownRecentMessageKeysForChat,
   getLastDisconnectedAtMs,
   getLatestChatMedia,
+  getWhatsAppBridgeConnectedLid,
   getWhatsAppBridgeStatus,
   hasPersistedBridgeSession,
   recoverMissingMessagesByKeys,
@@ -37,6 +38,8 @@ import {
   scanAndCatchUpChannels,
   sendDocumentViaWhatsAppBridge,
   sendMessageViaWhatsAppBridge,
+  sendPresenceViaWhatsAppBridge,
+  sendReactionViaWhatsAppBridge,
   startWhatsAppBridgeSession,
   stopWhatsAppBridgeSession,
   syncChatHistoryOnDemand,
@@ -223,6 +226,62 @@ function isHardDailyQuotaExhausted(err: any): boolean {
   );
 }
 
+// Sanitize model-specific parameters so Gemini 4 never receives deprecated sampling/budget fields
+function sanitizeConfigForModel(model: string, rawConfig?: any): any {
+  if (!rawConfig || typeof rawConfig !== 'object') return rawConfig;
+  const cfg: any = { ...rawConfig };
+  const isGemini4 = /^gemini-4(?:-|$)/i.test(model);
+  const isGemini3Or4 = /^gemini-[34](?:\.|-|$)/i.test(model);
+
+  if (isGemini4) {
+    delete cfg.temperature;
+    delete cfg.topP;
+    delete cfg.topK;
+    delete cfg.candidateCount;
+    if (cfg.thinkingConfig && typeof cfg.thinkingConfig === 'object') {
+      const tc = { ...cfg.thinkingConfig };
+      delete tc.thinkingBudget;
+      if (String(tc.thinkingLevel || '').toUpperCase() === 'MINIMAL') {
+        delete tc.thinkingLevel;
+      }
+      if (Object.keys(tc).length > 0) cfg.thinkingConfig = tc;
+      else delete cfg.thinkingConfig;
+    }
+  } else if (!isGemini3Or4) {
+    if (cfg.thinkingConfig && typeof cfg.thinkingConfig === 'object') {
+      const tc = { ...cfg.thinkingConfig };
+      delete tc.thinkingLevel;
+      if (Object.keys(tc).length > 0) cfg.thinkingConfig = tc;
+      else delete cfg.thinkingConfig;
+    }
+  }
+  return cfg;
+}
+
+function extractGeminiResponseText(response: any): string {
+  try {
+    if (typeof response?.text === 'string' && response.text.trim()) {
+      return response.text.trim();
+    }
+  } catch {
+    // Fallback to candidate parts extraction below
+  }
+  try {
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+      const joined = parts
+        .filter((p: any) => typeof p?.text === 'string' && !p?.thought)
+        .map((p: any) => p.text)
+        .join('')
+        .trim();
+      if (joined) return joined;
+    }
+  } catch {
+    // Ignore
+  }
+  return '';
+}
+
 // Multi-model resilient caller with strict per-attempt timeout & exponential backoff on 503/429
 async function generateContentWithFallback(params: {
   contents: any;
@@ -239,12 +298,14 @@ async function generateContentWithFallback(params: {
 
   const maxRetries = params.maxRetriesPerModel ?? 1; // 1 retry per model for fast failover
   const initialDelay = params.initialDelayMs ?? 500; // 500ms initial delay
-  const timeoutMs = Math.max(3000, params.timeoutMs ?? 20_000);
+  const timeoutMs = Math.max(3000, params.timeoutMs ?? 25_000);
   let lastError: any = null;
 
   for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
     const model = modelsToTry[mIdx];
     const isLastModel = mIdx === modelsToTry.length - 1;
+    let modelConfig = sanitizeConfigForModel(model, params.config);
+    let retriedWithoutThinking = false;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -256,7 +317,7 @@ async function generateContentWithFallback(params: {
           ai.models.generateContent({
             model,
             contents: params.contents,
-            config: params.config,
+            config: modelConfig,
           }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(
@@ -277,12 +338,27 @@ async function generateContentWithFallback(params: {
         if (timer) clearTimeout(timer);
         lastError = err;
         const errMsg = String(err?.message || err);
+        const errLower = errMsg.toLowerCase();
         const isHardQuota = isHardDailyQuotaExhausted(err);
         const transient = !isHardQuota && isTransientAiError(err);
 
         console.warn(
           `⚠️ [AgueroFlow IA] Falha no modelo '${model}' (Tentativa ${attempt + 1}/${maxRetries + 1}): ${errMsg}`
         );
+
+        // If this model rejected thinkingConfig (HTTP 400 INVALID_ARGUMENT), strip thinkingConfig and retry once immediately
+        if (
+          !retriedWithoutThinking &&
+          modelConfig?.thinkingConfig &&
+          (errLower.includes('thinking') || errLower.includes('invalid_argument') || err?.status === 400)
+        ) {
+          retriedWithoutThinking = true;
+          const nextCfg = { ...modelConfig };
+          delete nextCfg.thinkingConfig;
+          modelConfig = nextCfg;
+          attempt -= 1; // Do not consume a retry slot for config stripping
+          continue;
+        }
 
         // If daily limit exceeded on this model, DO NOT wait/retry; switch to next model immediately
         if (isHardQuota) {
@@ -902,7 +978,6 @@ ${JSON.stringify(context || {}, null, 2)}
         contents,
         config: {
           systemInstruction,
-          temperature: 0.3, // Low temperature for high factual accuracy
         },
       });
 
@@ -3350,6 +3425,7 @@ REGRAS DE NEGÓCIO OBRIGATÓRIAS:
 4. Se houver telefone ou observações extras, preencha phone e notes.
 5. Se a mensagem for apenas bate-papo (ex: "bom dia", "ok feito", "obrigado", "pode pagar", uma pergunta sem dados de ND), retorne isNdRequest: false.
 6. INCLUA TESTES E FORMATOS CURTOS: Mensagens com estrutura de ND que contenham a palavra "TESTE" (ex: "ND MDO - TESTE", valores baixos como "10,00", ou centros de custo simples como "21 - escritorio fixo" ou "GESTAO DE ESTOQUE") SÃO solicitações válidas (isNdRequest: true) e DEVEM ser extraídas normalmente!
+7. DATA LITERAL SEMPRE: Extraia EXATAMENTE a data de pagamento escrita na mensagem, MESMO QUE SEJA RETROATIVA (anterior a ${todayBr}). NUNCA troque uma data antiga pela data de hoje por conta própria — o sistema faz a validação e alerta o usuário automaticamente!
 
 Mensagem recebida no grupo "${rule.groupName}":
 """
@@ -3402,7 +3478,12 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
         },
       });
 
-      const parsed = JSON.parse(response.text || '{}');
+      const rawNdJson = extractGeminiResponseText(response)
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      const parsed = JSON.parse(rawNdJson || '{}');
       const normField = (val: any) => {
         const s = String(val || '').trim();
         if (!s || /^(n\/a|nao informado|não informado|null|undefined|-)$/i.test(s)) return 'OK';
@@ -3460,6 +3541,178 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     return Math.max(floor, Number(ruleNextProj) || 4925);
   };
 
+  type RetroactiveDateCheck = {
+    isRetroactive: boolean;
+    paymentDateBr: string;
+    todayBrFormatted: string;
+    daysAgo: number;
+  };
+
+  const checkNdRetroactiveDate = (paymentDateBr: string): RetroactiveDateCheck => {
+    const { dateBr: todayIso } = getBrazilNowParts(); // YYYY-MM-DD in America/Sao_Paulo
+    const [tY, tM, tD] = todayIso.split('-');
+    const todayBrFormatted = `${tD}/${tM}/${tY}`;
+    const clean = String(paymentDateBr || '').trim();
+    const m = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) {
+      return { isRetroactive: false, paymentDateBr: clean, todayBrFormatted, daysAgo: 0 };
+    }
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    let yyyy = Number(m[3]);
+    if (yyyy < 100) yyyy += 2000;
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 2000 || yyyy > 2100) {
+      return { isRetroactive: false, paymentDateBr: clean, todayBrFormatted, daysAgo: 0 };
+    }
+    const normalizedBr = `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+    const paymentIso = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    if (paymentIso < todayIso) {
+      const daysAgo = Math.max(
+        1,
+        Math.round(
+          (new Date(`${todayIso}T12:00:00Z`).getTime() - new Date(`${paymentIso}T12:00:00Z`).getTime()) /
+            86_400_000
+        )
+      );
+      return { isRetroactive: true, paymentDateBr: normalizedBr, todayBrFormatted, daysAgo };
+    }
+    return { isRetroactive: false, paymentDateBr: normalizedBr, todayBrFormatted, daysAgo: 0 };
+  };
+
+  const explicitlyAllowsRetroactiveDate = (text: string): boolean =>
+    /\b(retroativ[oa]s?|j[aá]\s+foi\s+pag[oa]|pag[oa]\s+antecipad[oa]|confirmar\s+(?:a\s+)?nd|pode\s+(?:gerar|enviar|mandar|emitir)\s+(?:mesmo\s+assim|com\s+(?:essa\s+)?data|retroativ[oa])|manter\s+(?:a\s+|essa\s+)?data|mesmo\s+com\s+data\s+retroativa)\b/i.test(
+      String(text || '')
+    );
+
+  type PausedRetroactiveNd = {
+    msgId: string;
+    groupJid: string;
+    groupName: string;
+    ruleId: string;
+    normText: string;
+    rawText: string;
+    senderName: string;
+    extracted: ExtractedNdPayload;
+    rawMessage?: any;
+    warningMessageId?: string;
+    createdAtMs: number;
+  };
+
+  const pausedRetroactiveNdByMsgId = new Map<string, PausedRetroactiveNd>();
+
+  async function notifyRetroactiveNdDateWarning(params: {
+    msgId: string;
+    rule: WhatsAppNdRule;
+    extracted: ExtractedNdPayload;
+    rawText: string;
+    senderName: string;
+    rawMessage?: any;
+    retro: RetroactiveDateCheck;
+  }): Promise<void> {
+    const { msgId, rule, extracted, rawText, senderName, rawMessage, retro } = params;
+    const normText = String(rawText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const keyId = msgId || `retro_${rule.groupJid}_${Date.now()}`;
+
+    // Prune paused entries older than 24h
+    const nowMs = Date.now();
+    for (const [k, v] of pausedRetroactiveNdByMsgId.entries()) {
+      if (nowMs - v.createdAtMs > 24 * 60 * 60 * 1000) pausedRetroactiveNdByMsgId.delete(k);
+    }
+
+    const existingPaused = pausedRetroactiveNdByMsgId.get(keyId);
+    if (existingPaused && existingPaused.normText === normText) {
+      return;
+    }
+
+    const pausedEntry: PausedRetroactiveNd = {
+      msgId: keyId,
+      groupJid: rule.groupJid,
+      groupName: rule.groupName,
+      ruleId: rule.id,
+      normText,
+      rawText,
+      senderName,
+      extracted,
+      rawMessage,
+      createdAtMs: nowMs,
+    };
+    pausedRetroactiveNdByMsgId.set(keyId, pausedEntry);
+
+    if (rawMessage?.key && rule.groupJid) {
+      sendReactionViaWhatsAppBridge({
+        toJidOrPhone: rule.groupJid,
+        messageKey: rawMessage.key,
+        emoji: '⚠️',
+      }).catch(() => undefined);
+    }
+
+    const diffLabel = retro.daysAgo === 1 ? 'ontem — 1 dia atrás' : `${retro.daysAgo} dias atrás`;
+    const warningText =
+      `⚠️ *AgueroFlow — Atenção: Data de Pagamento Retroativa!*\n\n` +
+      `A data informada nesta ND (*${retro.paymentDateBr}*) está *errada/retroativa* — hoje é *${retro.todayBrFormatted}* (${diffLabel}).\n\n` +
+      `• *Natureza:* ${extracted.natureza}\n` +
+      `• *Recebedor:* ${extracted.receiverName}\n` +
+      `• *Valor:* ${formatCurrencyBrl(extracted.amount)}\n` +
+      `• *Centro de Custos:* ${extracted.costCenter}\n\n` +
+      `🛑 *Geração do PDF e envio por e-mail pausados* para evitar ND com data incorreta ao Financeiro.\n\n` +
+      `👉 *Como resolver agora:*\n` +
+      `1️⃣ *Edite a mensagem acima* corrigindo a data — eu gero e envio automaticamente na hora;\n` +
+      `2️⃣ Ou responda com \`@aguero mudar data para ${retro.todayBrFormatted}\`;\n` +
+      `3️⃣ Se a data retroativa for proposital, responda \`@aguero confirmar ND com data retroativa\`.`;
+
+    const waWarn = await sendMessageViaWhatsAppBridge({
+      toJidOrPhone: rule.groupJid,
+      text: warningText,
+      quotedMessage: rawMessage,
+    }).catch((err: any) => ({ success: false, externalMessageId: undefined, error: err?.message || String(err) }));
+
+    if (waWarn.success && waWarn.externalMessageId) {
+      pausedEntry.warningMessageId = waWarn.externalMessageId;
+      recordWhatsAppMessage({
+        organizationId: effectiveOrg(rule.organizationId),
+        direction: 'outbound',
+        contactPhone: rule.groupJid,
+        contactName: rule.groupName,
+        contactType: 'funcionario',
+        category: 'orientacao_equipe',
+        text: warningText,
+        chatJid: rule.groupJid,
+        isGroup: rule.groupJid.endsWith('@g.us'),
+        groupName: rule.groupName,
+        participantPhone: whatsAppReceiptsConfig.connectedPhoneNumber,
+        participantName: 'AgueroFlow | Assistente IA',
+        sourceBridge: 'baileys_web',
+        externalMessageId: waWarn.externalMessageId,
+        status: 'enviado',
+        sentByUserName: 'AgueroFlow | Assistente IA',
+      });
+    }
+
+    addWebhookLog({
+      method: 'WA_ND_AUTOMATION',
+      event: 'nd_data_retroativa_alerta',
+      senderName,
+      groupName: rule.groupName,
+      groupJid: rule.groupJid,
+      hasMedia: false,
+      status: 'aviso',
+      summary: `⚠️ Data retroativa bloqueada (${retro.paymentDateBr} < hoje ${retro.todayBrFormatted}) na ND de ${extracted.receiverName} (${formatCurrencyBrl(extracted.amount)}). Aguardando correção ou confirmação.`,
+    });
+  }
+
+  const recentNdCreationBySig = new Map<
+    string,
+    {
+      ts: number;
+      result: {
+        record: WhatsAppNdRecord;
+        rule: WhatsAppNdRule;
+        whatsappResult?: { success: boolean; error?: string };
+        emailResult?: { success: boolean; error?: string; pendingConfig?: boolean };
+      };
+    }
+  >();
+
   async function processNdRequestAndDispatch(params: {
     rule: WhatsAppNdRule;
     extracted: ExtractedNdPayload;
@@ -3476,6 +3729,30 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     emailResult?: { success: boolean; error?: string; pendingConfig?: boolean };
   }> {
     const { rule, extracted } = params;
+    // Airtight dedup guard: if this exact sourceMessageId already exists OR identical WhatsApp ND request fired < 90s ago, reuse it
+    if (params.sourceMessageId) {
+      const existingById = whatsAppNdRecords.find((r) => r.sourceMessageId === params.sourceMessageId);
+      if (existingById) {
+        console.log(`🛡️ [ND Dedup] Mensagem ${params.sourceMessageId} já gerou ND PROJ ${existingById.projNumber}/${existingById.projYear}.`);
+        return {
+          record: existingById,
+          rule,
+          whatsappResult: { success: Boolean(existingById.whatsappSent) },
+          emailResult: { success: existingById.emailStatus === 'enviado' },
+        };
+      }
+      const normRaw = String(params.rawText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const contentSig = `${rule.groupJid}|${normRaw}|${Number(extracted.amount) || 0}|${String(extracted.receiverName || '').trim().toLowerCase()}`;
+      const nowDedupMs = Date.now();
+      for (const [k, v] of recentNdCreationBySig.entries()) {
+        if (nowDedupMs - v.ts > 90_000) recentNdCreationBySig.delete(k);
+      }
+      const recentHit = recentNdCreationBySig.get(contentSig);
+      if (recentHit) {
+        console.log(`🛡️ [ND Dedup] Pedido idêntico bloqueado dentro de 90s (ND PROJ ${recentHit.result.record.projNumber}/${recentHit.result.record.projYear}).`);
+        return recentHit.result;
+      }
+    }
     const now = new Date();
     const nowIso = now.toISOString();
     const projYear = Number(rule.projYear) || now.getFullYear();
@@ -3680,7 +3957,520 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
       } | E-mail: ${record.emailStatus}${record.emailError ? ` (${record.emailError.slice(0, 80)})` : ''}`,
     });
 
-    return { record, rule, whatsappResult, emailResult };
+    const finalOut = { record, rule, whatsappResult, emailResult };
+    if (params.sourceMessageId) {
+      const normRaw = String(params.rawText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const contentSig = `${rule.groupJid}|${normRaw}|${Number(extracted.amount) || 0}|${String(extracted.receiverName || '').trim().toLowerCase()}`;
+      recentNdCreationBySig.set(contentSig, { ts: Date.now(), result: finalOut });
+    }
+    return finalOut;
+  }
+
+  async function extractRevisedNdWithAi(params: {
+    existingRecord: WhatsAppNdRecord;
+    rule: WhatsAppNdRule;
+    userInstruction: string;
+    latestSourceText?: string;
+    quotedText?: string;
+    recentFollowUpText?: string;
+    media?: { base64: string; mimeType: string };
+  }): Promise<ExtractedNdPayload> {
+    const { existingRecord, rule, userInstruction, latestSourceText, quotedText, recentFollowUpText, media } = params;
+    const projYear = Number(existingRecord.projYear || rule.projYear) || new Date().getFullYear();
+    const hasMediaImage = Boolean(media?.base64);
+    const origTextTrim = String(existingRecord.sourceMessageText || '').trim();
+    const cleanLatestEdited =
+      latestSourceText && latestSourceText.trim() && latestSourceText.trim() !== origTextTrim
+        ? latestSourceText.trim()
+        : undefined;
+    const cleanQuotedDistinct =
+      quotedText &&
+      quotedText.trim() &&
+      !quotedText.trim().startsWith('📄 *Nota de Débito') &&
+      quotedText.trim() !== origTextTrim &&
+      quotedText.trim() !== cleanLatestEdited
+        ? quotedText.trim()
+        : undefined;
+
+    const buildFallbackMerge = (): ExtractedNdPayload => {
+      // ONLY parse candidateText if it is genuinely NEW/EDITED text (never overwrite with stale pre-edit text)
+      const candidateText = cleanLatestEdited || cleanQuotedDistinct || '';
+      const parsedNew = candidateText ? heuristicExtractNdFromMessage(candidateText, projYear) : null;
+      const merged: ExtractedNdPayload = {
+        isNdRequest: true,
+        natureza:
+          parsedNew && parsedNew.isNdRequest && parsedNew.natureza && parsedNew.natureza !== 'NOTA DE DEBITO'
+            ? parsedNew.natureza
+            : existingRecord.natureza,
+        receiverName:
+          parsedNew && parsedNew.isNdRequest && parsedNew.receiverName
+            ? parsedNew.receiverName
+            : existingRecord.receiverName,
+        amount:
+          parsedNew && parsedNew.isNdRequest && parsedNew.amount > 0
+            ? parsedNew.amount
+            : Number(existingRecord.amount) || 0,
+        paymentDate:
+          parsedNew && parsedNew.isNdRequest && parsedNew.paymentDate
+            ? parsedNew.paymentDate
+            : existingRecord.paymentDate,
+        costCenter:
+          parsedNew && parsedNew.isNdRequest && parsedNew.costCenter && parsedNew.costCenter !== 'Não informado'
+            ? parsedNew.costCenter
+            : existingRecord.costCenter,
+        employeeCode:
+          parsedNew && parsedNew.employeeCode && parsedNew.employeeCode !== 'OK'
+            ? parsedNew.employeeCode
+            : existingRecord.employeeCode || 'OK',
+        pixKey:
+          parsedNew && parsedNew.pixKey && parsedNew.pixKey !== 'OK'
+            ? parsedNew.pixKey
+            : existingRecord.pixKey || 'OK',
+        cpfCnpj:
+          parsedNew && parsedNew.cpfCnpj && parsedNew.cpfCnpj !== 'OK'
+            ? parsedNew.cpfCnpj
+            : existingRecord.cpfCnpj || 'OK',
+        bankAccount:
+          parsedNew && parsedNew.bankAccount && parsedNew.bankAccount !== 'OK'
+            ? parsedNew.bankAccount
+            : existingRecord.bankAccount || 'OK',
+        bankName:
+          parsedNew && parsedNew.bankName && parsedNew.bankName !== 'OK'
+            ? parsedNew.bankName
+            : existingRecord.bankName || 'OK',
+        phone: (parsedNew && parsedNew.phone) || existingRecord.phone || '',
+        notes: (parsedNew && parsedNew.notes) || existingRecord.notes || '',
+      };
+
+      // Honor explicit overrides written directly in the @aguero command
+      const explicitValMatch = userInstruction.match(
+        /\b(?:valor|r\$)\s*(?:de\s*|para\s*|pra\s*|[:=]\s*)?(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})|\d+(?:[.,]\d{1,2})?)/i
+      );
+      if (explicitValMatch) {
+        const parsedVal = Number(
+          explicitValMatch[1].includes(',')
+            ? explicitValMatch[1].replace(/\./g, '').replace(',', '.')
+            : explicitValMatch[1]
+        );
+        if (Number.isFinite(parsedVal) && parsedVal > 0 && parsedVal !== existingRecord.projNumber) {
+          merged.amount = parsedVal;
+        }
+      }
+      const explicitDateMatch = userInstruction.match(
+        /\b(?:data|pagto|pagamento|dia)\s*(?:de\s*|para\s*|pra\s*|[:=]\s*)?(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/i
+      );
+      if (explicitDateMatch) {
+        merged.paymentDate = normalizeNdDateBr(explicitDateMatch[1], projYear);
+      }
+      const explicitCcMatch = userInstruction.match(
+        /\b(?:cc|centro\s+de\s+custos?|obra)\s*(?:para\s*|pra\s*|[:=]\s*)?(\d{2,5}\/\d{2}(?:\s+[A-Za-zÀ-ÿ0-9\s-]{2,40})?)/i
+      );
+      if (explicitCcMatch) {
+        merged.costCenter = explicitCcMatch[1].trim();
+      }
+      const explicitPixMatch = userInstruction.match(/\bpix\s*(?:para\s*|pra\s*|[:=]\s*)?([^\n,;]{5,60})/i);
+      if (explicitPixMatch) {
+        merged.pixKey = explicitPixMatch[1].trim();
+      }
+      return merged;
+    };
+
+    if (!process.env.GEMINI_API_KEY) {
+      return buildFallbackMerge();
+    }
+
+    const todayBr = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date());
+
+    const existingJson = JSON.stringify(
+      {
+        projNumber: existingRecord.projNumber,
+        projYear: existingRecord.projYear,
+        natureza: existingRecord.natureza,
+        receiverName: existingRecord.receiverName,
+        amount: existingRecord.amount,
+        paymentDate: existingRecord.paymentDate,
+        costCenter: existingRecord.costCenter,
+        employeeCode: existingRecord.employeeCode,
+        pixKey: existingRecord.pixKey,
+        cpfCnpj: existingRecord.cpfCnpj,
+        bankAccount: existingRecord.bankAccount,
+        bankName: existingRecord.bankName,
+        phone: existingRecord.phone || '',
+        notes: existingRecord.notes || '',
+      },
+      null,
+      2
+    );
+
+    const revisionPrompt = `Você é o motor corporativo de revisão de Notas de Débito (ND) da Aguero Inox.
+O usuário pediu ao @aguero para REFAZER / REVISAR uma Nota de Débito já emitida (mantendo o mesmo número Nº PROJ ${existingRecord.projNumber}/${existingRecord.projYear}, agora como REVISADA).
+Data atual no Brasil: ${todayBr} (ano padrão: ${projYear}).
+
+DADOS ATUAIS DA ND EMITIDA ANTERIORMENTE (base):
+${existingJson}
+
+TEXTO ORIGINAL REGISTRADO NA 1ª EMISSÃO (referência histórica — NÃO sobreescrever edições novas com isso):
+"""
+${origTextTrim || '(não registrado)'}
+"""
+
+${cleanLatestEdited ? `TEXTO EDITADO / ATUALIZADO NO WHATSAPP (PRIORIDADE MÁXIMA — reflita TODAS as alterações deste texto!):\n"""\n${cleanLatestEdited}\n"""\n` : ''}
+${cleanQuotedDistinct ? `MENSAGEM CITADA PELO USUÁRIO AO CHAMAR @aguero (PRIORIDADE ALTA):\n"""\n${cleanQuotedDistinct}\n"""\n` : ''}
+${recentFollowUpText ? `MENSAGENS RECENTES NO GRUPO APÓS A ND ORIGINAL (podem conter correções/erratas):\n"""\n${recentFollowUpText}\n"""\n` : ''}
+COMANDO DO USUÁRIO PARA @aguero:
+"""
+${userInstruction}
+"""
+
+REGRAS OBRIGATÓRIAS DE REVISÃO:
+1. Compare os dados atuais com o TEXTO EDITADO NO WHATSAPP (se houver), a MENSAGEM CITADA, as erratas recentes e o COMANDO DO USUÁRIO (e imagem anexa, se houver).
+2. APLIQUE TODAS AS ALTERAÇÕES encontradas (valor, data de pagamento, natureza, recebedor, centro de custos, PIX, CPF/CNPJ, conta, banco, telefone ou observações).
+3. O TEXTO EDITADO e o COMANDO DO USUÁRIO SEMPRE vencem os dados antigos da 1ª emissão!
+4. PRESERVE os campos da base atual que NÃO foram alterados (não apague PIX, CPF/CNPJ, banco, conta ou centro de custos que continuam válidos).
+5. VALOR CHEIO SEMPRE: nunca divida o valor total em parcelas; registre datas parceladas em "notes".
+6. Remova prefixos técnicos como "ND MDO -", "ND -" do campo "natureza" e retorne em MAIÚSCULAS.
+7. Campos cadastrais internos sem informação explícita continuam exatamente como "OK".
+8. Retorne APENAS JSON válido conforme o schema.`;
+
+    try {
+      const parts: any[] = [{ text: revisionPrompt }];
+      if (hasMediaImage && media?.base64) {
+        let rawBase64 = media.base64;
+        let detectedMime = media.mimeType || 'image/jpeg';
+        if (rawBase64.startsWith('data:')) {
+          const m = rawBase64.match(/^data:([^;]+);base64,(.+)$/);
+          if (m) {
+            detectedMime = m[1];
+            rawBase64 = m[2];
+          }
+        }
+        if (detectedMime === 'image/jpg') detectedMime = 'image/jpeg';
+        parts.push({ inlineData: { data: rawBase64, mimeType: detectedMime } });
+      }
+
+      const { response } = await generateContentWithFallback({
+        models: ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'],
+        maxRetriesPerModel: 1,
+        timeoutMs: 28000,
+        contents: hasMediaImage ? [{ role: 'user', parts }] : revisionPrompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              natureza: { type: Type.STRING },
+              receiverName: { type: Type.STRING },
+              amount: { type: Type.NUMBER },
+              paymentDate: { type: Type.STRING },
+              costCenter: { type: Type.STRING },
+              employeeCode: { type: Type.STRING },
+              pixKey: { type: Type.STRING },
+              cpfCnpj: { type: Type.STRING },
+              bankAccount: { type: Type.STRING },
+              bankName: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              notes: { type: Type.STRING },
+            },
+            required: ['natureza', 'receiverName', 'amount', 'paymentDate', 'costCenter'],
+          },
+        },
+      });
+
+      const rawJsonText = extractGeminiResponseText(response)
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      const parsed = JSON.parse(rawJsonText || '{}');
+      const normField = (val: any, fallback: string) => {
+        const s = String(val || '').trim();
+        if (!s || /^(n\/a|nao informado|não informado|null|undefined|-)$/i.test(s)) return fallback || 'OK';
+        return s;
+      };
+      const cleanNatureza = String(parsed.natureza || existingRecord.natureza || 'NOTA DE DEBITO')
+        .replace(/^(n?d\s*(mdo)?\s*[-–:]\s*)/i, '')
+        .trim()
+        .toUpperCase();
+
+      return {
+        isNdRequest: true,
+        natureza: cleanNatureza || existingRecord.natureza || 'NOTA DE DEBITO',
+        receiverName: String(parsed.receiverName || '').trim() || existingRecord.receiverName,
+        amount: Number(parsed.amount) > 0 ? Number(parsed.amount) : Number(existingRecord.amount) || 0,
+        paymentDate: parsed.paymentDate
+          ? normalizeNdDateBr(parsed.paymentDate, projYear)
+          : existingRecord.paymentDate,
+        costCenter: String(parsed.costCenter || '').trim() || existingRecord.costCenter || 'Não informado',
+        employeeCode: normField(parsed.employeeCode, existingRecord.employeeCode || 'OK'),
+        pixKey: normField(parsed.pixKey, existingRecord.pixKey || 'OK'),
+        cpfCnpj: normField(parsed.cpfCnpj, existingRecord.cpfCnpj || 'OK'),
+        bankAccount: normField(parsed.bankAccount, existingRecord.bankAccount || 'OK'),
+        bankName: normField(parsed.bankName, existingRecord.bankName || 'OK'),
+        phone: parsed.phone !== undefined ? String(parsed.phone || '').trim() : existingRecord.phone || '',
+        notes: parsed.notes !== undefined ? String(parsed.notes || '').trim() : existingRecord.notes || '',
+      };
+    } catch (err: any) {
+      console.warn('⚠️ [ND Revision AI Extractor] Fallback heurístico acionado:', err?.message || err);
+      return buildFallbackMerge();
+    }
+  }
+
+  type NdRevisionOutcome = {
+    record: WhatsAppNdRecord;
+    rule: WhatsAppNdRule;
+    whatsappResult?: { success: boolean; error?: string };
+    emailResult?: { success: boolean; error?: string; pendingConfig?: boolean };
+  };
+  const inFlightNdRevisionByRecordId = new Map<string, Promise<NdRevisionOutcome>>();
+  const recentNdRevisionByRecordId = new Map<string, { sig: string; ts: number; outcome: NdRevisionOutcome }>();
+
+  async function reviseNdRecordAndDispatch(params: {
+    existingRecord: WhatsAppNdRecord;
+    rule: WhatsAppNdRule;
+    extracted: ExtractedNdPayload;
+    updatedRawText?: string;
+    revisedBy?: string;
+    quotedMessage?: any;
+    dispatchWhatsApp: boolean;
+    dispatchEmail: boolean;
+  }): Promise<NdRevisionOutcome> {
+    const { existingRecord, rule, extracted } = params;
+    const revPayloadSig = [
+      existingRecord.id,
+      String(extracted.natureza || '').trim().toUpperCase(),
+      String(extracted.receiverName || '').trim().toLowerCase(),
+      Number(extracted.amount) || 0,
+      String(extracted.paymentDate || '').trim(),
+      String(extracted.costCenter || '').trim().toLowerCase(),
+      String(extracted.pixKey || '').trim().toLowerCase(),
+      String(extracted.cpfCnpj || '').trim().toLowerCase(),
+      String(extracted.notes || '').trim().toLowerCase(),
+      params.dispatchWhatsApp ? 'wa1' : 'wa0',
+      params.dispatchEmail ? 'em1' : 'em0',
+    ].join('|');
+
+    const nowCheckMs = Date.now();
+    for (const [k, v] of recentNdRevisionByRecordId.entries()) {
+      if (nowCheckMs - v.ts > 30_000) recentNdRevisionByRecordId.delete(k);
+    }
+    const recentRev = recentNdRevisionByRecordId.get(existingRecord.id);
+    if (recentRev && recentRev.sig === revPayloadSig) {
+      console.log(`🛡️ [ND Revision Dedup] Revisão idêntica bloqueada dentro de 30s para ND PROJ ${existingRecord.projNumber}/${existingRecord.projYear}.`);
+      return recentRev.outcome;
+    }
+    const pendingRev = inFlightNdRevisionByRecordId.get(existingRecord.id);
+    if (pendingRev) {
+      console.log(`🛡️ [ND Revision Dedup] Reaproveitando revisão concorrente em andamento para ND PROJ ${existingRecord.projNumber}/${existingRecord.projYear}.`);
+      return pendingRev;
+    }
+
+    const runRevision = async (): Promise<NdRevisionOutcome> => {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const nextRevisionNumber = (Number(existingRecord.revisionNumber) || 0) + 1;
+    const revLabel = nextRevisionNumber > 1 ? `REVISADA (REV. ${nextRevisionNumber})` : 'REVISADA';
+
+    // ALWAYS keep the exact same projNumber and projYear (never increment sequence)
+    const fileName = sanitizeNdFileName(
+      existingRecord.projNumber,
+      extracted.natureza,
+      extracted.receiverName,
+      true,
+      nextRevisionNumber
+    );
+
+    const updatedRecord: WhatsAppNdRecord = {
+      ...existingRecord,
+      fileName,
+      emissionDateTime: formatEmissionDateTimeBr(now),
+      emissionIso: nowIso,
+      receiverName: extracted.receiverName || existingRecord.receiverName,
+      employeeCode: extracted.employeeCode || existingRecord.employeeCode || 'OK',
+      pixKey: extracted.pixKey || existingRecord.pixKey || 'OK',
+      cpfCnpj: extracted.cpfCnpj || existingRecord.cpfCnpj || 'OK',
+      bankAccount: extracted.bankAccount || existingRecord.bankAccount || 'OK',
+      bankName: extracted.bankName || existingRecord.bankName || 'OK',
+      phone: extracted.phone !== undefined ? extracted.phone : existingRecord.phone || '',
+      amount: Number(extracted.amount) || Number(existingRecord.amount) || 0,
+      paymentDate: extracted.paymentDate || existingRecord.paymentDate,
+      natureza: extracted.natureza || existingRecord.natureza,
+      costCenter: extracted.costCenter || existingRecord.costCenter,
+      notes: extracted.notes !== undefined ? extracted.notes : existingRecord.notes || '',
+      sourceMessageText: params.updatedRawText?.trim() || existingRecord.sourceMessageText,
+      isRevised: true,
+      revisionNumber: nextRevisionNumber,
+      revisedAt: nowIso,
+      revisedBy: params.revisedBy || 'AgueroFlow | Assistente IA',
+      emailTo: (rule.outlookTo && rule.outlookTo.length > 0 ? rule.outlookTo : existingRecord.emailTo) || [],
+      emailCc: (rule.outlookCc && rule.outlookCc.length > 0 ? rule.outlookCc : existingRecord.emailCc) || [],
+      updatedAt: nowIso,
+    };
+
+    // Update in-place immediately so no duplicate record or skipped number is ever created
+    whatsAppNdRecords = whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    persistWaNdRecords();
+
+    // Regenerate PDF with REVISADA stamp & save to disk
+    const pdfBuffer = generateNdPdfBuffer(updatedRecord);
+    saveNdPdfToDisk(updatedRecord, pdfBuffer);
+
+    let whatsappResult: { success: boolean; error?: string } | undefined;
+    let emailResult: { success: boolean; error?: string; pendingConfig?: boolean } | undefined;
+
+    const targetGroupJid = rule.groupJid || updatedRecord.sourceGroupJid;
+    const targetGroupName = rule.groupName || updatedRecord.sourceGroupName || targetGroupJid;
+    const emailRecipientsTo = updatedRecord.emailTo || [];
+    const emailRecipientsCc = updatedRecord.emailCc || [];
+
+    // 1. Send revised PDF back to the WhatsApp group (with 1x transient retry)
+    if (params.dispatchWhatsApp && targetGroupJid) {
+      const emailNotice =
+        params.dispatchEmail && emailRecipientsTo.length > 0
+          ? `\n📧 Encaminhamento E-mail (${revLabel}): ${emailRecipientsTo.join(', ')}`
+          : '';
+      const caption =
+        `📄 *Nota de Débito ${revLabel} — Nº PROJ ${updatedRecord.projNumber}/${updatedRecord.projYear}*\n\n` +
+        `• *Status:* ${revLabel} (mesmo número — substitui envio anterior)\n` +
+        `• *Natureza:* ${updatedRecord.natureza}\n` +
+        `• *Recebedor:* ${updatedRecord.receiverName}\n` +
+        `• *Valor:* ${formatCurrencyBrl(updatedRecord.amount)}\n` +
+        `• *Data de Pagto:* ${updatedRecord.paymentDate}\n` +
+        `• *Centro de Custos:* ${updatedRecord.costCenter}\n` +
+        `• *Emissor:* ${updatedRecord.emitterName}` +
+        (updatedRecord.notes ? `\n• *Obs.:* ${updatedRecord.notes}` : '') +
+        emailNotice;
+
+      let waRes = await sendDocumentViaWhatsAppBridge({
+        toJidOrPhone: targetGroupJid,
+        buffer: pdfBuffer,
+        fileName: updatedRecord.fileName,
+        mimetype: 'application/pdf',
+        caption,
+        quotedMessage: params.quotedMessage,
+      });
+
+      if (!waRes.success) {
+        await new Promise((r) => setTimeout(r, 2000));
+        waRes = await sendDocumentViaWhatsAppBridge({
+          toJidOrPhone: targetGroupJid,
+          buffer: pdfBuffer,
+          fileName: updatedRecord.fileName,
+          mimetype: 'application/pdf',
+          caption,
+        });
+      }
+
+      whatsappResult = { success: waRes.success, error: waRes.error };
+      if (waRes.success) {
+        updatedRecord.whatsappSent = true;
+        updatedRecord.whatsappSentAt = new Date().toISOString();
+        recordWhatsAppMessage({
+          organizationId: effectiveOrg(updatedRecord.organizationId),
+          direction: 'outbound',
+          contactPhone: targetGroupJid,
+          contactName: targetGroupName,
+          contactType: 'funcionario',
+          category: 'orientacao_equipe',
+          text: caption,
+          chatJid: targetGroupJid,
+          isGroup: targetGroupJid.endsWith('@g.us'),
+          groupName: targetGroupName,
+          participantPhone: whatsAppReceiptsConfig.connectedPhoneNumber,
+          participantName: updatedRecord.emitterName,
+          sourceBridge: 'baileys_web',
+          hasMedia: true,
+          mediaMimeType: 'application/pdf',
+          externalMessageId: waRes.externalMessageId,
+          status: 'enviado',
+          sentByUserName: updatedRecord.emitterName,
+        });
+      }
+    }
+
+    // 2. Re-dispatch Email flow clearly marked as REVISADA
+    if (params.dispatchEmail && (rule.autoEmailEnabled || emailRecipientsTo.length > 0)) {
+      const baseSubject = renderNdTemplate(
+        rule.outlookSubjectTemplate || 'ND Nº PROJ {projNumber}/{year} - {natureza} - {recebedor}',
+        updatedRecord
+      );
+      const renderedSubject = /revisada/i.test(baseSubject)
+        ? baseSubject
+        : `[${revLabel}] ${baseSubject}`;
+      const baseBody = renderNdTemplate(
+        rule.outlookBodyTemplate ||
+          'Segue em anexo a Nota de Débito Nº PROJ {projNumber}/{year} ({natureza} — {recebedor} — {valor}).',
+        updatedRecord
+      );
+      const renderedBody =
+        `ATENÇÃO — NOTA DE DÉBITO ${revLabel} (Nº PROJ ${updatedRecord.projNumber}/${updatedRecord.projYear})\n` +
+        `Esta versão revisada substitui o envio anterior da mesma Nota de Débito.\n\n` +
+        baseBody;
+
+      updatedRecord.emailSubject = renderedSubject;
+
+      const mailRes = await sendNdEmailViaOutlook({
+        to: emailRecipientsTo,
+        cc: emailRecipientsCc,
+        subject: renderedSubject,
+        bodyText: renderedBody,
+        attachment: {
+          fileName: updatedRecord.fileName,
+          buffer: pdfBuffer,
+        },
+      });
+
+      emailResult = {
+        success: mailRes.success,
+        error: mailRes.error,
+        pendingConfig: mailRes.pendingConfig,
+      };
+      updatedRecord.emailProvider = mailRes.provider;
+      if (mailRes.success) {
+        updatedRecord.emailStatus = 'enviado';
+        updatedRecord.emailSentAt = new Date().toISOString();
+        updatedRecord.emailError = '';
+      } else if (mailRes.pendingConfig) {
+        updatedRecord.emailStatus = 'pendente_config';
+        updatedRecord.emailError = mailRes.error || 'Aguardando configuração da ponte de e-mail.';
+      } else {
+        updatedRecord.emailStatus = 'erro';
+        updatedRecord.emailError = mailRes.error || 'Erro ao enviar e-mail da ND revisada.';
+      }
+    }
+
+    updatedRecord.updatedAt = new Date().toISOString();
+    whatsAppNdRecords = whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    persistWaNdRecords();
+
+    addWebhookLog({
+      method: 'WA_ND_AUTOMATION',
+      event: 'nd_pdf_revisada',
+      senderName: params.revisedBy || updatedRecord.emitterName,
+      groupName: targetGroupName,
+      groupJid: targetGroupJid,
+      hasMedia: true,
+      status: whatsappResult?.success === false || emailResult?.success === false ? 'aviso' : 'sucesso',
+      summary: `ND ${revLabel} Nº PROJ ${updatedRecord.projNumber}/${updatedRecord.projYear} (${updatedRecord.natureza} — ${updatedRecord.receiverName} — ${formatCurrencyBrl(updatedRecord.amount)}) | WhatsApp: ${
+        whatsappResult?.success ? 'Enviado' : whatsappResult?.error || 'Não enviado'
+      } | E-mail: ${updatedRecord.emailStatus}${updatedRecord.emailError ? ` (${updatedRecord.emailError.slice(0, 80)})` : ''}`,
+    });
+
+    const outcome: NdRevisionOutcome = { record: updatedRecord, rule, whatsappResult, emailResult };
+    recentNdRevisionByRecordId.set(existingRecord.id, { sig: revPayloadSig, ts: Date.now(), outcome });
+    return outcome;
+    };
+
+    const promise = runRevision().finally(() => {
+      inFlightNdRevisionByRecordId.delete(existingRecord.id);
+    });
+    inFlightNdRevisionByRecordId.set(existingRecord.id, promise);
+    return promise;
   }
 
   // Helper to parse receipt images using Gemini multimodal
@@ -5474,21 +6264,40 @@ Avalie rigorosamente:
   const parseAgueroMention = (rawText: string) => {
     const text = String(rawText || '').trim();
     if (!text) return null;
-    if (text.startsWith('🤖 *AgueroFlow') || text.startsWith('✅ *AgueroFlow')) return null;
+    if (
+      text.startsWith('🤖 *AgueroFlow') ||
+      text.startsWith('✅ *AgueroFlow') ||
+      text.startsWith('📄 *Nota de Débito')
+    ) {
+      return null;
+    }
 
     const cfg = whatsAppReceiptsConfig.mentionTrigger || {};
     if (cfg.enabled === false) return null;
 
     const rawKw = String(cfg.keyword || '@aguero').trim() || '@aguero';
     const kw = rawKw.startsWith('@') || rawKw.startsWith('/') ? rawKw : `@${rawKw}`;
-    const kwAlternatives = Array.from(new Set([kw, '@aguero', '@agueroflow'])).map(escapeRegexLiteral);
-    const regex = new RegExp(`(?:^|\\s)(?:${kwAlternatives.join('|')})(-privado)?\\b([\\s\\S]*)`, 'i');
-    const match = text.match(regex);
+    const kwAlternatives = Array.from(
+      new Set([kw, '@aguero', '@agueroflow', '@agüero', '@aguéro'])
+    ).map(escapeRegexLiteral);
+    // Match @aguero anywhere in the message (start, middle, or end), including with bold/punctuation like *@aguero* or (@aguero)
+    const tokenRegex = new RegExp(
+      `(^|[\\s(*_~"'\\[\\],;!?-])((?:${kwAlternatives.join('|')})(-privado)?)(?=$|[\\s)*_~"'\\].,;:!?\\-])`,
+      'i'
+    );
+    const match = text.match(tokenRegex);
     if (!match) return null;
 
+    const forcePrivateDm = Boolean(match[3]);
+    const matchStart = (match.index ?? 0) + (match[1]?.length || 0);
+    const matchEnd = matchStart + (match[2]?.length || 0);
+    const before = text.slice(0, matchStart).replace(/[*_~]+$/, '').trim();
+    const after = text.slice(matchEnd).replace(/^[*_~:,\-\s]+/, '').trim();
+    const promptText = [before, after].filter(Boolean).join(' ').trim();
+
     return {
-      forcePrivateDm: Boolean(match[1]),
-      promptText: String(match[2] || '').replace(/^[:,\-\s]+/, '').trim(),
+      forcePrivateDm,
+      promptText,
       rawMessageText: text,
     };
   };
@@ -6196,10 +7005,17 @@ INSTRUÇÕES:
     audioBase64?: string;
     audioMimeType?: string;
     quotedText?: string;
+    quotedMessageId?: string;
     quotedMediaBase64?: string;
     quotedMediaMimeType?: string;
     quotedAudioBase64?: string;
     quotedAudioMimeType?: string;
+    reactionMessageKey?: {
+      remoteJid?: string | null;
+      id?: string | null;
+      fromMe?: boolean | null;
+      participant?: string | null;
+    };
     isCatchUp?: boolean;
   }) => {
     const cfg = whatsAppReceiptsConfig.mentionTrigger || {
@@ -6215,10 +7031,18 @@ INSTRUÇÕES:
     const ownerDigits = normalizeWhatsAppPhone(
       bridgeStatus.connectedNumber || whatsAppReceiptsConfig.connectedPhoneNumber || ''
     );
+    const ownerLidDigits = normalizeWhatsAppPhone(getWhatsAppBridgeConnectedLid() || '');
     const senderDigits = normalizeWhatsAppPhone(params.senderPhone || '');
     const remoteDigits = normalizeWhatsAppPhone(params.remoteJid || '');
-    const isSelfChat = Boolean(!params.isGroup && ownerDigits && remoteDigits === ownerDigits);
-    const isOwner = Boolean(params.fromMe || (ownerDigits && senderDigits === ownerDigits));
+    const isSelfChat = Boolean(
+      !params.isGroup &&
+        ((ownerDigits && remoteDigits === ownerDigits) || (ownerLidDigits && remoteDigits === ownerLidDigits))
+    );
+    const isOwner = Boolean(
+      params.fromMe ||
+        (ownerDigits && senderDigits === ownerDigits) ||
+        (ownerLidDigits && senderDigits === ownerLidDigits)
+    );
     const managedChannel = findManagedContact(params.isGroup ? params.remoteJid : params.senderPhone);
     const isAuthorizedTeam = Boolean(
       isOwner ||
@@ -6230,12 +7054,43 @@ INSTRUÇÕES:
 
     if (params.dispatchToWhatsApp !== false) {
       if (cfg.allowedSenders === 'owner_only' && !isOwner) {
+        console.log(
+          `ℹ️ [WA @aguero] Ignorado (somente dono): remetente=${params.senderName} (${params.senderPhone}) em ${params.groupName || params.remoteJid}`
+        );
+        addWebhookLog({
+          method: 'WA_AGUERO_MENTION',
+          event: 'aguero_ignorado_permissao',
+          senderPhone: params.senderPhone,
+          senderName: params.senderName,
+          groupName: params.groupName || 'Privado',
+          groupJid: params.remoteJid,
+          hasMedia: Boolean(params.mediaBase64 || params.audioBase64),
+          status: 'aviso',
+          summary: `@aguero ignorado de ${params.senderName} (${params.senderPhone}): permissão atual é "Somente meu número". Altere em Central WhatsApp → Assistente IA se quiser liberar para a equipe.`,
+        });
         return { handled: false, reason: 'ignored_non_owner' };
       }
       if (cfg.allowedSenders === 'owner_and_team' && !isAuthorizedTeam) {
+        console.log(
+          `ℹ️ [WA @aguero] Ignorado (remetente externo): remetente=${params.senderName} (${params.senderPhone}) em ${params.groupName || params.remoteJid}`
+        );
         return { handled: false, reason: 'ignored_external_sender' };
       }
     }
+
+    const reactionKey = params.reactionMessageKey || params.quotedMessage?.key;
+    const canReact = Boolean(params.dispatchToWhatsApp !== false && reactionKey?.id && params.remoteJid);
+    if (canReact && reactionKey) {
+      // Immediate acknowledgement ("joia") + typing indicator as soon as @aguero picks up the message
+      await sendReactionViaWhatsAppBridge({
+        toJidOrPhone: params.remoteJid,
+        messageKey: reactionKey,
+        emoji: '👍',
+      }).catch(() => undefined);
+      sendPresenceViaWhatsAppBridge(params.remoteJid, 'composing').catch(() => undefined);
+    }
+
+    try {
 
     // Resolve attached, quoted, or latest-in-chat image/audio media
     const wantsAudioHelp =
@@ -6284,9 +7139,18 @@ INSTRUÇÕES:
       );
     }
 
-    const asksAboutHistory = /\b(resumo|custos?|gastos?|nds?|hoje|ontem|di[aá]ri[oa]|hist[oó]rico|offline|mandaram|enviaram|valores?|relat[oó]rio|nota de d[eé]bito)\b/i.test(
-      userQuestion
-    );
+    // Detect ND revision commands BEFORE history sync so revisions stay instant and never pull stale history snapshots
+    const looksLikeNdRevisionCommandEarly =
+      /\b(refa[çc]a|refazer|refaz|revis[ae]r?|revist[ae]r?|corrij[ae]|corrigir|corrige|atualiz[ae]r?|reemit[ae]r?|reemitir|reenvi[ae]r?|regere|regerar|gere?\s+novamente|gerar\s+novamente|mand[ae]r?\s+(?:novamente|de\s+novo|o\s+fluxo))\b/i.test(
+        userQuestion
+      ) &&
+      /\b(nd|nota\s+de\s+d[eé]bito|proj\s*\d{3,6})\b/i.test(userQuestion);
+
+    const asksAboutHistory =
+      !looksLikeNdRevisionCommandEarly &&
+      /\b(resumo|custos?|gastos?|nds?|hoje|ontem|di[aá]ri[oa]|hist[oó]rico|offline|mandaram|enviaram|valores?|relat[oó]rio|nota de d[eé]bito)\b/i.test(
+        userQuestion
+      );
     if (
       asksAboutHistory &&
       params.remoteJid &&
@@ -6394,8 +7258,334 @@ INSTRUÇÕES:
     const brClock = getBrazilNowParts();
     const nowTimeBr = `${String(brClock.hh).padStart(2, '0')}:${String(brClock.mm).padStart(2, '0')}`;
 
+    // Fast-path 0: Resolve a paused ND that was held due to a retroactive payment date
+    let didHandlePausedRetroactiveNd = false;
+    const findPausedRetroactiveNd = (): PausedRetroactiveNd | undefined => {
+      if (pausedRetroactiveNdByMsgId.size === 0) return undefined;
+      const nowPausedMs = Date.now();
+      const allActive = Array.from(pausedRetroactiveNdByMsgId.values())
+        .filter((p) => nowPausedMs - p.createdAtMs <= 2 * 60 * 60 * 1000)
+        .sort((a, b) => b.createdAtMs - a.createdAtMs);
+      if (allActive.length === 0) return undefined;
+      if (params.quotedMessageId) {
+        const direct = allActive.find(
+          (p) => p.msgId === params.quotedMessageId || p.warningMessageId === params.quotedMessageId
+        );
+        if (direct) return direct;
+      }
+      const inSameGroup = allActive.find((p) => p.groupJid === params.remoteJid);
+      if (inSameGroup && nowPausedMs - inSameGroup.createdAtMs <= 45 * 60 * 1000) {
+        return inSameGroup;
+      }
+      return undefined;
+    };
+
+    const candidatePausedRetro = findPausedRetroactiveNd();
+    const repliedDirectlyToPaused = Boolean(
+      candidatePausedRetro &&
+        params.quotedMessageId &&
+        (params.quotedMessageId === candidatePausedRetro.msgId ||
+          params.quotedMessageId === candidatePausedRetro.warningMessageId)
+    );
+    const looksLikeUnrelatedAgueroTask = /\b(resumo|custos?|gastos?|relat[oó]rio|hist[oó]rico|todo\s+dia|todos\s+os\s+dias|agend[ae]|piada|transcrev|revis[ae]r?\s+a?\s*nd\s*\d{3,6}|proj\s*\d{3,6})\b/i.test(
+      userQuestion
+    );
+    const wantsResolvePausedRetro =
+      Boolean(candidatePausedRetro) &&
+      (repliedDirectlyToPaused
+        ? explicitlyAllowsRetroactiveDate(userQuestion) ||
+          /\b(\d{1,2}\/\d{1,2}|mud[ae]r?|alter[ae]r?|corrij[ae]|corrigir|troc[ae]r?|ajust[ae]r?|coloc[ae]r?|data|pagto|pagamento|hoje|amanh[aã]|confirm|liber|ger[ae]r?|envi[ae]r?|mand[ae]r?)\b/i.test(
+            userQuestion
+          )
+        : !looksLikeUnrelatedAgueroTask &&
+          (explicitlyAllowsRetroactiveDate(userQuestion) ||
+            (/\b(data|pagto|pagamento|retroativ[oa]|nd)\b/i.test(userQuestion) &&
+              /\b(\d{1,2}\/\d{1,2}|hoje|amanh[aã]|mud[ae]r?|alter[ae]r?|corrij[ae]|corrigir|confirm|liber)\b/i.test(
+                userQuestion
+              ))));
+
+    if (candidatePausedRetro && wantsResolvePausedRetro) {
+      const ruleForPaused =
+        whatsAppNdRules.find((r) => r.id === candidatePausedRetro.ruleId) ||
+        whatsAppNdRules.find((r) => r.groupJid === candidatePausedRetro.groupJid) ||
+        createDefaultNdRuleForGroup({
+          groupJid: candidatePausedRetro.groupJid,
+          groupName: candidatePausedRetro.groupName,
+        });
+      const projYearPaused = Number(ruleForPaused.projYear) || new Date().getFullYear();
+      const resolvedExtracted: ExtractedNdPayload = { ...candidatePausedRetro.extracted };
+
+      // Check if user provided a new payment date ("DD/MM(/YYYY)", "hoje", "amanhã")
+      const explicitNewDate = userQuestion.match(/\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/);
+      if (explicitNewDate) {
+        resolvedExtracted.paymentDate = normalizeNdDateBr(explicitNewDate[1], projYearPaused);
+      } else if (/\bamanh[aã]\b/i.test(userQuestion)) {
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        resolvedExtracted.paymentDate = new Intl.DateTimeFormat('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }).format(tomorrow);
+      } else if (/\bhoje\b/i.test(userQuestion)) {
+        const [tY, tM, tD] = getBrazilNowParts().dateBr.split('-');
+        resolvedExtracted.paymentDate = `${tD}/${tM}/${tY}`;
+      }
+
+      const recheckRetro = checkNdRetroactiveDate(resolvedExtracted.paymentDate);
+      if (recheckRetro.isRetroactive && !explicitlyAllowsRetroactiveDate(userQuestion)) {
+        didHandlePausedRetroactiveNd = true;
+        aiResult = {
+          intent: 'nd_retroactive_warning',
+          replyText:
+            `⚠️ A data informada (*${recheckRetro.paymentDateBr}*) continua retroativa em relação a hoje (*${recheckRetro.todayBrFormatted}*).\n` +
+            `Informe uma data a partir de hoje (ex.: \`@aguero mudar data para ${recheckRetro.todayBrFormatted}\`) ou responda \`@aguero confirmar ND com data retroativa\` para liberar mesmo assim.`,
+        };
+      } else {
+        didHandlePausedRetroactiveNd = true;
+        pausedRetroactiveNdByMsgId.delete(candidatePausedRetro.msgId);
+        const wantsEmailPaused = !/\b(sem e-?mail|n[aã]o mand[ae]r? e-?mail|s[oó] no whatsapp|apenas no grupo)\b/i.test(
+          userQuestion
+        );
+        const genOut = await processNdRequestAndDispatch({
+          rule: ruleForPaused,
+          extracted: resolvedExtracted,
+          rawText: candidatePausedRetro.rawText,
+          sourceMessageId: candidatePausedRetro.msgId,
+          quotedMessage: candidatePausedRetro.rawMessage || params.quotedMessage,
+          dispatchWhatsApp: true,
+          dispatchEmail: wantsEmailPaused,
+          senderName: params.senderName || candidatePausedRetro.senderName,
+        });
+        const recGen = genOut.record;
+        const emailStatusLine = !wantsEmailPaused
+          ? 'ℹ️ Envio de e-mail dispensado conforme solicitado'
+          : genOut.emailResult?.success
+          ? `✅ E-mail enviado para: ${(recGen.emailTo || []).join(', ')}`
+          : `⚠️ E-mail (${recGen.emailStatus}): ${genOut.emailResult?.error || recGen.emailError || 'verifique configuração'}`;
+        aiResult = {
+          intent: 'nd_retroactive_resolved',
+          replyText:
+            `✅ *ND Nº PROJ ${recGen.projNumber}/${recGen.projYear} liberada e enviada acima!*\n` +
+            `• *Data de Pagto:* ${recGen.paymentDate}${recheckRetro.isRetroactive ? ' _(retroativa confirmada)_' : ''}\n` +
+            `${emailStatusLine}`,
+        };
+      }
+    }
+
+    // Fast-path: @aguero ND revision / re-emission command (keeps the SAME PROJ number marked as REVISADA)
+    const looksLikeNdRevisionCommand = !didHandlePausedRetroactiveNd && looksLikeNdRevisionCommandEarly;
+
+    if (looksLikeNdRevisionCommand) {
+      const findTargetNdForRevision = (): WhatsAppNdRecord | undefined => {
+        if (whatsAppNdRecords.length === 0) return undefined;
+
+        // 1. Explicit ND / PROJ number mentioned in the command (ONLY when prefixed with ND/PROJ/Nº — NEVER match bare values or cost centers!)
+        const explicitNumMatches = [
+          ...userQuestion.matchAll(/\b(?:nd|nota\s+de\s+d[eé]bito|proj|n[º°])\s*(?:proj\s*)?(\d{3,6})(?:\/\d{4})?\b/gi),
+        ];
+        for (const m of explicitNumMatches) {
+          const num = Number(m[1]);
+          if (!Number.isFinite(num)) continue;
+          const byNum = whatsAppNdRecords.find((r) => Number(r.projNumber) === num);
+          if (byNum) return byNum;
+        }
+
+        // 2. Quoted/replied message (either the original ND request OR the bot's own generated ND message)
+        if (params.quotedMessageId) {
+          const bySourceId = whatsAppNdRecords.find((r) => r.sourceMessageId === params.quotedMessageId);
+          if (bySourceId) return bySourceId;
+
+          const quotedArchived = whatsAppMessages.find((m) => m.externalMessageId === params.quotedMessageId);
+          const botProjMatch = String(quotedArchived?.text || '').match(/PROJ\s*(\d{3,6})/i);
+          if (botProjMatch) {
+            const byBotNum = whatsAppNdRecords.find((r) => Number(r.projNumber) === Number(botProjMatch[1]));
+            if (byBotNum) return byBotNum;
+          }
+        }
+        if (params.quotedText) {
+          const qProjMatch = params.quotedText.match(/PROJ\s*(\d{3,6})/i);
+          if (qProjMatch) {
+            const byQNum = whatsAppNdRecords.find((r) => Number(r.projNumber) === Number(qProjMatch[1]));
+            if (byQNum) return byQNum;
+          }
+          const qLower = normalizeSearchStr(params.quotedText);
+          const byQuotedReceiver = whatsAppNdRecords.find(
+            (r) =>
+              (!params.isGroup || r.sourceGroupJid === params.remoteJid) &&
+              r.receiverName &&
+              r.receiverName.length >= 3 &&
+              qLower.includes(normalizeSearchStr(r.receiverName))
+          );
+          if (byQuotedReceiver) return byQuotedReceiver;
+        }
+
+        // 3. Mentioned receiver name in the command (prefer same group first, then all groups)
+        const qNorm = normalizeSearchStr(userQuestion);
+        const bySameGroupReceiver = whatsAppNdRecords.find(
+          (r) =>
+            r.sourceGroupJid === params.remoteJid &&
+            r.receiverName &&
+            r.receiverName.length >= 4 &&
+            qNorm.includes(normalizeSearchStr(r.receiverName))
+        );
+        if (bySameGroupReceiver) return bySameGroupReceiver;
+
+        const byAnyReceiver = whatsAppNdRecords.find(
+          (r) =>
+            r.receiverName &&
+            r.receiverName.length >= 4 &&
+            qNorm.includes(normalizeSearchStr(r.receiverName))
+        );
+        if (byAnyReceiver) return byAnyReceiver;
+
+        // 4. Most recent ND emitted in this same WhatsApp group
+        const inThisGroup = whatsAppNdRecords
+          .filter((r) => r.sourceGroupJid === params.remoteJid)
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt || b.createdAt || 0).getTime() -
+              new Date(a.updatedAt || a.createdAt || 0).getTime()
+          );
+        if (inThisGroup.length > 0) return inThisGroup[0];
+
+        // 5. Fallback to the most recent ND overall
+        return whatsAppNdRecords[0];
+      };
+
+      const targetRecord = findTargetNdForRevision();
+      if (!targetRecord) {
+        aiResult = {
+          intent: 'revise_nd',
+          replyText:
+            '⚠️ Não encontrei nenhuma Nota de Débito emitida para revisar neste grupo. Informe o número da ND (ex.: `@aguero revise a ND 4931`) ou responda diretamente à mensagem da ND editada.',
+        };
+      } else {
+        const matchedRule =
+          whatsAppNdRules.find((r) => r.id === targetRecord.ruleId) ||
+          whatsAppNdRules.find((r) => r.groupJid === targetRecord.sourceGroupJid) ||
+          createDefaultNdRuleForGroup({
+            groupJid: targetRecord.sourceGroupJid || params.remoteJid,
+            groupName: targetRecord.sourceGroupName || params.groupName || 'Grupo ND',
+            organizationId: targetRecord.organizationId,
+          });
+        if ((!matchedRule.outlookTo || matchedRule.outlookTo.length === 0) && targetRecord.emailTo?.length) {
+          matchedRule.outlookTo = [...targetRecord.emailTo];
+        }
+        if ((!matchedRule.outlookCc || matchedRule.outlookCc.length === 0) && targetRecord.emailCc?.length) {
+          matchedRule.outlookCc = [...targetRecord.emailCc];
+        }
+
+        // Grab latest edited text — prioritizing LIVE quotedText when edited, then archived in-place edit!
+        const origRecordedText = String(targetRecord.sourceMessageText || '').trim();
+        const archivedOriginal = targetRecord.sourceMessageId
+          ? whatsAppMessages.find((m) => m.externalMessageId === targetRecord.sourceMessageId)
+          : undefined;
+        const archivedQuoted = params.quotedMessageId
+          ? whatsAppMessages.find((m) => m.externalMessageId === params.quotedMessageId)
+          : undefined;
+
+        const cleanQuotedNonBot =
+          params.quotedText && !params.quotedText.trim().startsWith('📄 *Nota de Débito')
+            ? params.quotedText.trim()
+            : undefined;
+        const archivedOriginalText = archivedOriginal?.text ? String(archivedOriginal.text).trim() : undefined;
+        const archivedQuotedText =
+          archivedQuoted?.text && !String(archivedQuoted.text).trim().startsWith('📄 *Nota de Débito')
+            ? String(archivedQuoted.text).trim()
+            : undefined;
+
+        // Pick whichever text ACTUALLY changed compared to the original 1st-emission text!
+        // Never label stale/unchanged original text as "edited" (which tricked Gemini into ignoring user edits).
+        const latestSourceText =
+          (cleanQuotedNonBot && cleanQuotedNonBot !== origRecordedText ? cleanQuotedNonBot : undefined) ||
+          (archivedOriginalText && archivedOriginalText !== origRecordedText ? archivedOriginalText : undefined) ||
+          (archivedQuotedText && archivedQuotedText !== origRecordedText ? archivedQuotedText : undefined) ||
+          undefined;
+
+        // Also include recent non-bot messages posted after the original ND in case of follow-up corrections
+        const recCreatedMs = new Date(targetRecord.createdAt || 0).getTime();
+        const recentFollowUps = threadMessages
+          .filter((m) => {
+            const mTs = new Date(m.createdAt || 0).getTime();
+            const txt = String(m.text || '').trim();
+            if (!txt || txt.startsWith('📄 *Nota de Débito') || txt.startsWith('🤖 *AgueroFlow')) return false;
+            if (m.externalMessageId && m.externalMessageId === targetRecord.sourceMessageId) return false;
+            if (/@aguero/i.test(txt)) return false;
+            return !Number.isFinite(recCreatedMs) || mTs >= recCreatedMs - 10_000;
+          })
+          .slice(-6)
+          .map((m) => `[${formatBrazilDateTimeShort(m.createdAt)}] ${m.participantName || m.contactName}: ${m.text}`)
+          .join('\n');
+
+        const revisedExtracted = await extractRevisedNdWithAi({
+          existingRecord: targetRecord,
+          rule: matchedRule,
+          userInstruction: userQuestion,
+          latestSourceText,
+          quotedText: cleanQuotedNonBot,
+          recentFollowUpText: recentFollowUps || undefined,
+          media: effectiveImageBase64
+            ? { base64: effectiveImageBase64, mimeType: effectiveImageMime || 'image/jpeg' }
+            : undefined,
+        });
+
+        const wantsEmail = !/\b(sem e-?mail|n[aã]o mand[ae]r? e-?mail|s[oó] no whatsapp|apenas no grupo)\b/i.test(
+          userQuestion
+        );
+
+        const revRes = await reviseNdRecordAndDispatch({
+          existingRecord: targetRecord,
+          rule: matchedRule,
+          extracted: revisedExtracted,
+          updatedRawText: latestSourceText || targetRecord.sourceMessageText,
+          revisedBy: params.senderName || 'Gustavo Aguero',
+          quotedMessage: params.quotedMessage,
+          dispatchWhatsApp: true,
+          dispatchEmail: wantsEmail,
+        });
+
+        const r = revRes.record;
+        const revTag = (r.revisionNumber || 1) > 1 ? `REVISADA (REV. ${r.revisionNumber})` : 'REVISADA';
+        const sentPdfToSameChat = Boolean(
+          revRes.whatsappResult?.success &&
+            (matchedRule.groupJid || r.sourceGroupJid) === params.remoteJid
+        );
+        const waLine = revRes.whatsappResult?.success
+          ? `✅ PDF *${revTag}* enviado no grupo *${r.sourceGroupName}*`
+          : `⚠️ WhatsApp: ${revRes.whatsappResult?.error || 'não enviado'}`;
+        const emailLine = !wantsEmail
+          ? 'ℹ️ Envio de e-mail dispensado conforme solicitado'
+          : revRes.emailResult?.success
+          ? `✅ E-mail *${revTag}* reenviado para: ${(r.emailTo || []).join(', ')}`
+          : `⚠️ E-mail (${r.emailStatus}): ${revRes.emailResult?.error || r.emailError || 'verifique destinatários/configuração'}`;
+
+        const revRetroCheck = checkNdRetroactiveDate(r.paymentDate);
+        const revRetroNotice =
+          revRetroCheck.isRetroactive && !explicitlyAllowsRetroactiveDate(userQuestion)
+            ? `\n\n⚠️ *Atenção — Data Retroativa:* a data de pagamento desta ND (*${revRetroCheck.paymentDateBr}*) é anterior a hoje (*${revRetroCheck.todayBrFormatted}*). Se estiver errada, responda \`@aguero revise a ND ${r.projNumber} com data ${revRetroCheck.todayBrFormatted}\`.`
+            : '';
+
+        aiResult = {
+          intent: 'revise_nd',
+          // When the revised PDF with full details was ALREADY sent into this exact same group, keep the follow-up concise
+          replyText:
+            (sentPdfToSameChat
+              ? `✅ *ND Nº PROJ ${r.projNumber}/${r.projYear} — ${revTag} concluída!* (PDF atualizado enviado acima)\n${emailLine}`
+              : `✅ *ND Nº PROJ ${r.projNumber}/${r.projYear} — ${revTag} concluída!*\n` +
+                `• *Recebedor:* ${r.receiverName}\n` +
+                `• *Natureza:* ${r.natureza}\n` +
+                `• *Valor:* ${formatCurrencyBrl(r.amount)} · *Pagto:* ${r.paymentDate}\n` +
+                `• *Centro de Custos:* ${r.costCenter}\n` +
+                `${waLine}\n${emailLine}`) + revRetroNotice,
+        };
+      }
+    }
+
     // Check if the user is giving a structured operational/cross-chat/scheduled/rule command
     const looksLikeOperationalCommand =
+      !didHandlePausedRetroactiveNd &&
+      !looksLikeNdRevisionCommand &&
       !effectiveImageBase64 &&
       !effectiveAudioBase64 &&
       (Boolean(detectedDelayMinutes) ||
@@ -6413,7 +7603,15 @@ INSTRUÇÕES:
           userQuestion
         ));
 
-    if (process.env.GEMINI_API_KEY) {
+    let lastAiErrorMessage = '';
+    let usedAiErrorFallback = false;
+
+    if (!didHandlePausedRetroactiveNd && !looksLikeNdRevisionCommand && !process.env.GEMINI_API_KEY) {
+      lastAiErrorMessage = 'GEMINI_API_KEY não configurada no servidor';
+      console.warn('⚠️ [WA @aguero] GEMINI_API_KEY não configurada no processo do servidor.');
+    }
+
+    if (!didHandlePausedRetroactiveNd && !looksLikeNdRevisionCommand && process.env.GEMINI_API_KEY) {
       if (looksLikeOperationalCommand) {
         try {
           const opsPrompt = `Você é o roteador inteligente de comandos do @aguero no WhatsApp.
@@ -6463,7 +7661,8 @@ Classifique e extraia em JSON estrito:
 
           const { response } = await generateContentWithFallback({
             models: ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'],
-            maxRetriesPerModel: 0,
+            maxRetriesPerModel: 1,
+            timeoutMs: 25_000,
             contents: opsPrompt,
             config: {
               thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
@@ -6493,9 +7692,10 @@ Classifique e extraia em JSON estrito:
               },
             },
           });
-          aiResult = JSON.parse(response.text || '{}');
+          aiResult = JSON.parse(extractGeminiResponseText(response) || '{}');
         } catch (opsErr: any) {
-          console.warn('⚠️ [WA @aguero Ops Router Gemini]:', opsErr?.message || opsErr);
+          lastAiErrorMessage = String(opsErr?.message || opsErr || '');
+          console.warn('⚠️ [WA @aguero Ops Router Gemini]:', lastAiErrorMessage);
         }
       }
 
@@ -6675,10 +7875,11 @@ Classifique e extraia em JSON estrito:
             canUseErpTools({ isOwner, senderDigits, authorizedPhones: (whatsAppReceiptsConfig.authorizedPhones || []).map((p: string) => normalizeWhatsAppPhone(p)) }) &&
             ERP_QUESTION.test(userQuestion)) {
           try {
-            const text = await answerWithTools(erpH, effectiveOrg(undefined), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 0 })).response);
+            const text = await answerWithTools(erpH, effectiveOrg(undefined), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 1, timeoutMs: 25_000 })).response);
             if (text) { aiResult = { intent: 'answer', replyText: text }; erpAnswered = true; }
           } catch (e: any) {
-            console.warn('⚠️ [WA @aguero ERP tools]:', e?.message || e);
+            lastAiErrorMessage = String(e?.message || e || '');
+            console.warn('⚠️ [WA @aguero ERP tools]:', lastAiErrorMessage);
           }
         }
       }
@@ -6743,7 +7944,8 @@ DIRETRIZES ESSENCIAIS:
           try {
             const { response } = await generateContentWithFallback({
               models: ['gemini-4-hydrogen'],
-              maxRetriesPerModel: 0,
+              maxRetriesPerModel: 1,
+              timeoutMs: 30_000,
               contents,
               config: {
                 systemInstruction,
@@ -6751,15 +7953,13 @@ DIRETRIZES ESSENCIAIS:
                 tools: [{ googleSearch: {} }],
               },
             });
-            const answerText = (response.text || '').trim();
+            const answerText = extractGeminiResponseText(response);
             if (answerText) {
               aiResult = { intent: 'answer', replyText: answerText };
             }
           } catch (searchAiErr: any) {
-            console.warn(
-              '⚠️ [WA @aguero Mention Gemini+Search fallback]:',
-              searchAiErr?.message || searchAiErr
-            );
+            lastAiErrorMessage = String(searchAiErr?.message || searchAiErr || '');
+            console.warn('⚠️ [WA @aguero Mention Gemini+Search fallback]:', lastAiErrorMessage);
           }
         }
 
@@ -6767,19 +7967,43 @@ DIRETRIZES ESSENCIAIS:
           try {
             const { response } = await generateContentWithFallback({
               models: ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'],
-              maxRetriesPerModel: 0,
+              maxRetriesPerModel: 1,
+              timeoutMs: 30_000,
               contents,
               config: {
                 systemInstruction,
                 thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               },
             });
-            const answerText = (response.text || '').trim();
+            const answerText = extractGeminiResponseText(response);
             if (answerText) {
               aiResult = { intent: 'answer', replyText: answerText };
             }
           } catch (fallbackErr: any) {
-            console.warn('⚠️ [WA @aguero Mention Gemini]:', fallbackErr?.message || fallbackErr);
+            lastAiErrorMessage = String(fallbackErr?.message || fallbackErr || '');
+            console.warn('⚠️ [WA @aguero Mention Gemini]:', lastAiErrorMessage);
+          }
+        }
+
+        if (!aiResult.replyText) {
+          try {
+            // Last-resort minimal call without thinkingConfig in case a deployment/model rejects thinking parameters
+            const { response } = await generateContentWithFallback({
+              models: ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'],
+              maxRetriesPerModel: 0,
+              timeoutMs: 25_000,
+              contents,
+              config: {
+                systemInstruction,
+              },
+            });
+            const answerText = extractGeminiResponseText(response);
+            if (answerText) {
+              aiResult = { intent: 'answer', replyText: answerText };
+            }
+          } catch (bareErr: any) {
+            lastAiErrorMessage = String(bareErr?.message || bareErr || lastAiErrorMessage || '');
+            console.warn('⚠️ [WA @aguero Mention Gemini bare fallback]:', lastAiErrorMessage);
           }
         }
 
@@ -6800,10 +8024,39 @@ DIRETRIZES ESSENCIAIS:
           replyText: 'Regras de resposta automática pausadas conforme solicitado.',
         };
       } else {
+        usedAiErrorFallback = true;
+        const errLower = lastAiErrorMessage.toLowerCase();
+        let diagHint = 'oscilação temporária do serviço de IA';
+        if (!process.env.GEMINI_API_KEY || errLower.includes('gemini_api_key')) {
+          diagHint = 'chave de IA (GEMINI_API_KEY) não configurada neste servidor';
+        } else if (errLower.includes('api_key_invalid') || errLower.includes('api key not valid') || errLower.includes('permission_denied') || errLower.includes('403')) {
+          diagHint = 'chave da API Gemini inválida ou sem permissão (verifique Settings > Secrets)';
+        } else if (errLower.includes('resource_exhausted') || errLower.includes('429') || errLower.includes('quota')) {
+          diagHint = 'limite de cota da API Gemini atingido no momento (429)';
+        } else if (errLower.includes('not_found') || errLower.includes('404')) {
+          diagHint = 'modelo de IA indisponível na chave configurada (404)';
+        } else if (errLower.includes('deadline_exceeded') || errLower.includes('timeout')) {
+          diagHint = 'tempo limite excedido ao aguardar resposta da IA';
+        } else if (errLower.includes('503') || errLower.includes('unavailable') || errLower.includes('overloaded')) {
+          diagHint = 'serviço da IA temporariamente sobrecarregado (503)';
+        } else if (lastAiErrorMessage) {
+          const sanitized = lastAiErrorMessage.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[REDACTED]').slice(0, 140);
+          diagHint = sanitized;
+        }
+        addWebhookLog({
+          method: 'WA_AGUERO_MENTION',
+          event: 'aguero_mention_ai_error',
+          senderPhone: params.senderPhone,
+          senderName: params.senderName,
+          groupName: params.groupName || 'Privado',
+          groupJid: params.remoteJid,
+          hasMedia: Boolean(params.mediaBase64 || params.audioBase64),
+          status: 'erro',
+          summary: `Falha IA no @aguero (${diagHint}) | Pergunta: "${userQuestion.slice(0, 70)}"`,
+        });
         aiResult = {
           intent: 'answer',
-          replyText:
-            'Não consegui processar sua solicitação com a IA neste instante. Tente reenviar sua pergunta com *@aguero* em alguns segundos.',
+          replyText: `Não consegui processar sua solicitação com a IA neste instante (${diagHint}). Tente reenviar com *@aguero* em alguns segundos.`,
         };
       }
     }
@@ -6891,6 +8144,16 @@ DIRETRIZES ESSENCIAIS:
           sentByUserName: 'AgueroFlow IA (@aguero)',
         });
       }
+
+      if (canReact && reactionKey) {
+        sendPresenceViaWhatsAppBridge(params.remoteJid, 'paused').catch(() => undefined);
+        // Replace 👍 with ✅ ("verificado") on successful completion, or ⚠️ if AI/dispatch failed
+        await sendReactionViaWhatsAppBridge({
+          toJidOrPhone: params.remoteJid,
+          messageKey: reactionKey,
+          emoji: dispatched && !usedAiErrorFallback ? '✅' : '⚠️',
+        }).catch(() => undefined);
+      }
     }
 
     pushAiChatEntry({
@@ -6900,6 +8163,18 @@ DIRETRIZES ESSENCIAIS:
       relatedContactPhone: params.senderPhone,
       relatedContactJid: params.remoteJid,
       relatedContactName: params.groupName || params.senderName,
+    });
+
+    addWebhookLog({
+      method: 'WA_AGUERO_MENTION',
+      event: 'aguero_mention_handled',
+      senderPhone: params.senderPhone,
+      senderName: params.senderName,
+      groupName: params.groupName || 'Privado',
+      groupJid: params.remoteJid,
+      hasMedia: Boolean(params.mediaBase64 || params.audioBase64),
+      status: dispatched || params.dispatchToWhatsApp === false ? 'sucesso' : 'erro',
+      summary: `@aguero (${aiResult.intent || 'answer'}) em "${params.groupName || params.senderName}": "${userQuestion.slice(0, 70)}"${sendError ? ` | Erro envio: ${sendError}` : ''}`,
     });
 
     return {
@@ -6912,10 +8187,40 @@ DIRETRIZES ESSENCIAIS:
       scheduledJobs: whatsAppScheduledJobs,
       error: sendError,
     };
+    } catch (mentionErr: any) {
+      console.error('❌ [WA @aguero] Erro inesperado ao processar menção:', mentionErr?.message || mentionErr);
+      if (canReact && reactionKey) {
+        sendPresenceViaWhatsAppBridge(params.remoteJid, 'paused').catch(() => undefined);
+        await sendReactionViaWhatsAppBridge({
+          toJidOrPhone: params.remoteJid,
+          messageKey: reactionKey,
+          emoji: '⚠️',
+        }).catch(() => undefined);
+      }
+      addWebhookLog({
+        method: 'WA_AGUERO_MENTION',
+        event: 'aguero_mention_error',
+        senderPhone: params.senderPhone,
+        senderName: params.senderName,
+        groupName: params.groupName || 'Privado',
+        groupJid: params.remoteJid,
+        hasMedia: Boolean(params.mediaBase64 || params.audioBase64),
+        status: 'erro',
+        summary: `Erro ao processar @aguero em "${params.groupName || params.senderName}": ${mentionErr?.message || mentionErr}`,
+      });
+      return {
+        handled: false,
+        dispatched: false,
+        error: mentionErr?.message || 'Erro ao processar solicitação @aguero.',
+      };
+    }
   };
 
   const inFlightNdMessageIds = new Set<string>();
   const evaluatedNonNdMessageIds = new Set<string>();
+  const inFlightAgueroMessageIds = new Set<string>();
+  const processedAgueroMessageTextById = new Map<string, { normText: string; ts: number }>();
+  const recentAgueroChatPromptTs = new Map<string, number>();
   let ndPendingScanInFlight = false;
   let debouncedNdHistoryScanTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -6982,9 +8287,10 @@ DIRETRIZES ESSENCIAIS:
           const text = String(m.text || '').trim();
           if (!text || text.length < 8) return false;
           if (
-            text.startsWith('📄 *Nota de Débito Gerada') ||
+            text.startsWith('📄 *Nota de Débito') ||
             text.startsWith('✅ *AgueroFlow') ||
             text.startsWith('🤖 *AgueroFlow') ||
+            text.startsWith('⚠️ *AgueroFlow') ||
             text.startsWith('[Foto') ||
             text.startsWith('[Áudio')
           ) {
@@ -6993,6 +8299,11 @@ DIRETRIZES ESSENCIAIS:
           if (parseAgueroMention(text)) return false;
           const extId = String(m.externalMessageId || '').trim();
           if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) return false;
+          if (extId) {
+            const pausedRetro = pausedRetroactiveNdByMsgId.get(extId);
+            const normCandidateText = text.replace(/\s+/g, ' ').trim().toLowerCase();
+            if (pausedRetro && pausedRetro.normText === normCandidateText) return false;
+          }
           if (extId && !opts?.includePreviouslyIgnored && evaluatedNonNdMessageIds.has(extId)) return false;
           const matchedRule = findMatchingActiveNdRule(
             String(m.chatJid || m.contactPhone || ''),
@@ -7024,12 +8335,29 @@ DIRETRIZES ESSENCIAIS:
         if (extId && (processedIds.has(extId) || inFlightNdMessageIds.has(extId))) continue;
         if (extId) inFlightNdMessageIds.add(extId);
         try {
-          const extracted = await extractNdFromGroupMessageWithAi(String(msg.text || ''), matchedRule);
+          const msgRawText = String(msg.text || '');
+          const extracted = await extractNdFromGroupMessageWithAi(msgRawText, matchedRule);
           if (extracted.isNdRequest) {
+            const retroCheck = checkNdRetroactiveDate(extracted.paymentDate);
+            if (retroCheck.isRetroactive && !explicitlyAllowsRetroactiveDate(msgRawText)) {
+              const msgAgeMs = Date.now() - new Date(msg.createdAt || 0).getTime();
+              if (Number.isFinite(msgAgeMs) && msgAgeMs <= 2 * 60 * 60 * 1000) {
+                await notifyRetroactiveNdDateWarning({
+                  msgId: extId,
+                  rule: matchedRule,
+                  extracted,
+                  rawText: msgRawText,
+                  senderName: msg.participantName || msg.contactName || 'WhatsApp',
+                  retro: retroCheck,
+                });
+              }
+              continue;
+            }
+            if (extId) pausedRetroactiveNdByMsgId.delete(extId);
             const out = await processNdRequestAndDispatch({
               rule: matchedRule,
               extracted,
-              rawText: String(msg.text || ''),
+              rawText: msgRawText,
               sourceMessageId: extId || undefined,
               dispatchWhatsApp: true,
               dispatchEmail: true,
@@ -7037,7 +8365,7 @@ DIRETRIZES ESSENCIAIS:
             });
             generatedRecords.push(out.record);
             if (extId) processedIds.add(extId);
-            processedFingerprints.add(`${matchedRule.groupJid}|${String(msg.text || '').trim().toLowerCase()}`);
+            processedFingerprints.add(`${matchedRule.groupJid}|${msgRawText.trim().toLowerCase()}`);
           } else if (extId) {
             rememberNonNdMessageId(extId);
           }
@@ -7343,10 +8671,12 @@ DIRETRIZES ESSENCIAIS:
         Number.isFinite(msgTsMs) &&
         Date.now() - msgTsMs <= 4 * 60 * 60 * 1000 &&
         txt.length >= 8 &&
-        !txt.startsWith('📄 *Nota de Débito Gerada') &&
+        !txt.startsWith('📄 *Nota de Débito') &&
         !txt.startsWith('✅ *AgueroFlow') &&
         !txt.startsWith('🤖 *AgueroFlow') &&
+        !txt.startsWith('⚠️ *AgueroFlow') &&
         !evaluatedNonNdMessageIds.has(histEvt.messageId) &&
+        !pausedRetroactiveNdByMsgId.has(histEvt.messageId) &&
         !whatsAppNdRecords.some((r) => r.sourceMessageId === histEvt.messageId) &&
         findMatchingActiveNdRule(histEvt.remoteJid, histEvt.senderPhone, histEvt.groupName, histEvt.isGroup)
       ) {
@@ -7533,41 +8863,82 @@ DIRETRIZES ESSENCIAIS:
       const mentionParsed = parseAgueroMention(evt.text);
       let didHandleMention = false;
       if (mentionParsed && !didSendOcrConfirmation) {
-        const mentionRes = await executeAgueroMentionPrompt({
-          remoteJid: evt.remoteJid,
-          isGroup: evt.isGroup,
-          groupName: evt.groupName,
-          senderPhone: evt.senderPhone,
-          senderName: evt.senderName,
-          fromMe: evt.fromMe,
-          promptText: mentionParsed.promptText,
-          forcePrivateDm: mentionParsed.forcePrivateDm,
-          quotedMessage: evt.rawMessage,
-          dispatchToWhatsApp: true,
-          mediaBase64: evt.mediaBase64,
-          mediaMimeType: evt.mediaMimeType,
-          audioBase64: evt.audioBase64,
-          audioMimeType: evt.audioMimeType,
-          quotedText: evt.quotedText,
-          quotedMediaBase64: evt.quotedMediaBase64,
-          quotedMediaMimeType: evt.quotedMediaMimeType,
-          quotedAudioBase64: evt.quotedAudioBase64,
-          quotedAudioMimeType: evt.quotedAudioMimeType,
-          isCatchUp: evt.isCatchUp,
-        });
-        didHandleMention = Boolean(mentionRes.handled);
-        if (evt.isCatchUp && didHandleMention) {
-          addWebhookLog({
-            method: 'WA_CATCHUP',
-            event: 'catchup_aguero_mention',
-            senderPhone: evt.senderPhone,
-            senderName: evt.senderName,
-            groupName: evt.groupName || 'Privado',
-            groupJid: evt.remoteJid,
-            hasMedia: Boolean(evt.mediaBase64 || evt.audioBase64),
-            status: 'sucesso',
-            summary: `♻️ Catch-up pós-reconexão processou chamada @aguero de ${evt.senderName}.`,
-          });
+        const agueroMsgId = String(evt.editedTargetMessageId || evt.messageId || '').trim();
+        const agueroNormText = String(evt.text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const agueroChatPromptSig = `${evt.remoteJid}|${agueroNormText}`;
+        const nowAgMs = Date.now();
+        for (const [k, ts] of recentAgueroChatPromptTs.entries()) {
+          if (nowAgMs - ts > 25_000) recentAgueroChatPromptTs.delete(k);
+        }
+        const prevProcessed = agueroMsgId ? processedAgueroMessageTextById.get(agueroMsgId) : undefined;
+        const isDuplicateAgueroEvent =
+          Boolean(agueroMsgId && inFlightAgueroMessageIds.has(agueroMsgId)) ||
+          Boolean(prevProcessed && prevProcessed.normText === agueroNormText) ||
+          Boolean(recentAgueroChatPromptTs.has(agueroChatPromptSig));
+
+        if (isDuplicateAgueroEvent) {
+          console.log(`🛡️ [WA @aguero Dedup] Evento duplicado ignorado (msgId=${agueroMsgId || 'none'}): "${agueroNormText.slice(0, 80)}"`);
+          didHandleMention = true;
+        } else {
+          if (agueroMsgId) inFlightAgueroMessageIds.add(agueroMsgId);
+          recentAgueroChatPromptTs.set(agueroChatPromptSig, nowAgMs);
+          const reactionMessageKey = evt.rawMessage?.key
+            ? {
+                remoteJid: evt.rawMessage.key.remoteJid || evt.remoteJid,
+                id: evt.editedTargetMessageId || evt.rawMessage.key.id || evt.messageId,
+                fromMe: Boolean(evt.rawMessage.key.fromMe ?? evt.fromMe),
+                participant: evt.rawMessage.key.participant || undefined,
+              }
+            : undefined;
+          try {
+            const mentionRes = await executeAgueroMentionPrompt({
+              remoteJid: evt.remoteJid,
+              isGroup: evt.isGroup,
+              groupName: evt.groupName,
+              senderPhone: evt.senderPhone,
+              senderName: evt.senderName,
+              fromMe: evt.fromMe,
+              promptText: mentionParsed.promptText,
+              forcePrivateDm: mentionParsed.forcePrivateDm,
+              quotedMessage: evt.rawMessage,
+              reactionMessageKey,
+              dispatchToWhatsApp: true,
+              mediaBase64: evt.mediaBase64,
+              mediaMimeType: evt.mediaMimeType,
+              audioBase64: evt.audioBase64,
+              audioMimeType: evt.audioMimeType,
+              quotedText: evt.quotedText,
+              quotedMessageId: evt.quotedMessageId,
+              quotedMediaBase64: evt.quotedMediaBase64,
+              quotedMediaMimeType: evt.quotedMediaMimeType,
+              quotedAudioBase64: evt.quotedAudioBase64,
+              quotedAudioMimeType: evt.quotedAudioMimeType,
+              isCatchUp: evt.isCatchUp,
+            });
+            didHandleMention = Boolean(mentionRes.handled);
+            if (agueroMsgId) {
+              processedAgueroMessageTextById.set(agueroMsgId, { normText: agueroNormText, ts: Date.now() });
+              if (processedAgueroMessageTextById.size > 1500) {
+                const oldestKey = processedAgueroMessageTextById.keys().next().value;
+                if (oldestKey) processedAgueroMessageTextById.delete(oldestKey);
+              }
+            }
+            if (evt.isCatchUp && didHandleMention) {
+              addWebhookLog({
+                method: 'WA_CATCHUP',
+                event: 'catchup_aguero_mention',
+                senderPhone: evt.senderPhone,
+                senderName: evt.senderName,
+                groupName: evt.groupName || 'Privado',
+                groupJid: evt.remoteJid,
+                hasMedia: Boolean(evt.mediaBase64 || evt.audioBase64),
+                status: 'sucesso',
+                summary: `♻️ Catch-up pós-reconexão processou chamada @aguero de ${evt.senderName}.`,
+              });
+            }
+          } finally {
+            if (agueroMsgId) inFlightAgueroMessageIds.delete(agueroMsgId);
+          }
         }
       }
 
@@ -7577,9 +8948,10 @@ DIRETRIZES ESSENCIAIS:
       const cleanEvtText = String(evt.text || '').trim();
       const hasNdInput = Boolean(
         (cleanEvtText &&
-          !cleanEvtText.startsWith('📄 *Nota de Débito Gerada') &&
+          !cleanEvtText.startsWith('📄 *Nota de Débito') &&
           !cleanEvtText.startsWith('✅ *AgueroFlow') &&
-          !cleanEvtText.startsWith('🤖 *AgueroFlow')) ||
+          !cleanEvtText.startsWith('🤖 *AgueroFlow') &&
+          !cleanEvtText.startsWith('⚠️ *AgueroFlow')) ||
           evt.mediaBase64
       );
       if (hasNdInput && !linkedReceiptId && !didSendOcrConfirmation && !didHandleMention) {
@@ -7590,10 +8962,16 @@ DIRETRIZES ESSENCIAIS:
           evt.isGroup
         );
         const msgIdKey = String(evt.messageId || '').trim();
-        const alreadyProcessedNd = Boolean(
+        const normEvtNdText = cleanEvtText.replace(/\s+/g, ' ').trim().toLowerCase();
+        const alreadyWarnedRetroSameText = Boolean(
           msgIdKey &&
-            (inFlightNdMessageIds.has(msgIdKey) ||
-              whatsAppNdRecords.some((rec) => rec.sourceMessageId === msgIdKey))
+            pausedRetroactiveNdByMsgId.get(msgIdKey)?.normText === normEvtNdText
+        );
+        const alreadyProcessedNd = Boolean(
+          alreadyWarnedRetroSameText ||
+            (msgIdKey &&
+              (inFlightNdMessageIds.has(msgIdKey) ||
+                whatsAppNdRecords.some((rec) => rec.sourceMessageId === msgIdKey)))
         );
         if (matchedNdRule && !alreadyProcessedNd) {
           if (msgIdKey) inFlightNdMessageIds.add(msgIdKey);
@@ -7606,17 +8984,32 @@ DIRETRIZES ESSENCIAIS:
                 : undefined
             );
             if (extractedNd.isNdRequest) {
-              await processNdRequestAndDispatch({
-                rule: matchedNdRule,
-                extracted: extractedNd,
-                rawText: cleanEvtText || '[Imagem/Print de ND]',
-                sourceMessageId: msgIdKey || undefined,
-                quotedMessage: evt.rawMessage,
-                dispatchWhatsApp: true,
-                dispatchEmail: true,
-                senderName: evt.senderName,
-              });
-              didHandleNd = true;
+              const retroCheck = checkNdRetroactiveDate(extractedNd.paymentDate);
+              if (retroCheck.isRetroactive && !explicitlyAllowsRetroactiveDate(cleanEvtText)) {
+                await notifyRetroactiveNdDateWarning({
+                  msgId: msgIdKey,
+                  rule: matchedNdRule,
+                  extracted: extractedNd,
+                  rawText: cleanEvtText || '[Imagem/Print de ND]',
+                  senderName: evt.senderName,
+                  rawMessage: evt.rawMessage,
+                  retro: retroCheck,
+                });
+                didHandleNd = true;
+              } else {
+                if (msgIdKey) pausedRetroactiveNdByMsgId.delete(msgIdKey);
+                await processNdRequestAndDispatch({
+                  rule: matchedNdRule,
+                  extracted: extractedNd,
+                  rawText: cleanEvtText || '[Imagem/Print de ND]',
+                  sourceMessageId: msgIdKey || undefined,
+                  quotedMessage: evt.rawMessage,
+                  dispatchWhatsApp: true,
+                  dispatchEmail: true,
+                  senderName: evt.senderName,
+                });
+                didHandleNd = true;
+              }
             } else if (cleanEvtText && !cleanEvtText.startsWith('[Foto') && !cleanEvtText.startsWith('[Áudio')) {
               if (msgIdKey) rememberNonNdMessageId(msgIdKey);
               addWebhookLog({
@@ -8922,19 +10315,26 @@ DIRETRIZES ESSENCIAIS:
     const rule = whatsAppNdRules.find((r) => r.id === record.ruleId);
     const to = parseEmailListInput(req.body?.to || rule?.outlookTo || record.emailTo || []);
     const cc = parseEmailListInput(req.body?.cc || rule?.outlookCc || record.emailCc || []);
-    const subject = renderNdTemplate(
+    const isRev = Boolean(record.isRevised || (Number(record.revisionNumber) || 0) > 0);
+    const revTag = (Number(record.revisionNumber) || 1) > 1 ? `REVISADA (REV. ${record.revisionNumber})` : 'REVISADA';
+    const rawSubject = renderNdTemplate(
       req.body?.subject ||
         rule?.outlookSubjectTemplate ||
         record.emailSubject ||
         'ND Nº PROJ {projNumber}/{year} - {natureza} - {recebedor}',
       record
     );
-    const bodyText = renderNdTemplate(
+    const subject = isRev && !/revisada/i.test(rawSubject) ? `[${revTag}] ${rawSubject}` : rawSubject;
+    const rawBody = renderNdTemplate(
       req.body?.body ||
         rule?.outlookBodyTemplate ||
         'Segue em anexo a Nota de Débito Nº PROJ {projNumber}/{year} ({natureza} — {recebedor} — {valor}).',
       record
     );
+    const bodyText =
+      isRev && !/revisada/i.test(rawBody)
+        ? `ATENÇÃO — NOTA DE DÉBITO ${revTag} (Nº PROJ ${record.projNumber}/${record.projYear})\nEsta versão revisada substitui o envio anterior da mesma Nota de Débito.\n\n${rawBody}`
+        : rawBody;
 
     const pdfBuffer = getOrGenerateNdPdfBuffer(record);
     const mailRes = await sendNdEmailViaOutlook({
@@ -8985,8 +10385,11 @@ DIRETRIZES ESSENCIAIS:
       return res.status(400).json({ success: false, error: 'Grupo de destino não identificado.' });
     }
     const pdfBuffer = getOrGenerateNdPdfBuffer(record);
+    const isRev = Boolean(record.isRevised || (Number(record.revisionNumber) || 0) > 0);
+    const revTag = (Number(record.revisionNumber) || 1) > 1 ? `REVISADA (REV. ${record.revisionNumber})` : 'REVISADA';
     const caption =
-      `📄 *Nota de Débito Gerada — Nº PROJ ${record.projNumber}/${record.projYear}*\n\n` +
+      `📄 *Nota de Débito ${isRev ? revTag : 'Gerada'} — Nº PROJ ${record.projNumber}/${record.projYear}*\n\n` +
+      (isRev ? `• *Status:* ${revTag} (mesmo número — substitui envio anterior)\n` : '') +
       `• *Natureza:* ${record.natureza}\n` +
       `• *Recebedor:* ${record.receiverName}\n` +
       `• *Valor:* ${formatCurrencyBrl(record.amount)}\n` +

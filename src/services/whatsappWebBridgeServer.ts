@@ -41,6 +41,9 @@ export interface BridgeIncomingMessageEvent {
   quotedAudioBase64?: string;
   quotedAudioMimeType?: string;
   isCatchUp?: boolean;
+  isEdited?: boolean;
+  editedTargetMessageId?: string;
+  mentionedJids?: string[];
   timestampIso: string;
   rawMessage: WAMessage;
 }
@@ -117,6 +120,7 @@ let currentPairingCode: string | null = null;
 let connectedNumber = '';
 let connectedName = '';
 let connectedJid = '';
+let connectedLid = '';
 let connectedAt = '';
 let lastActivityAt = '';
 let lastOnlineAt = '';
@@ -606,6 +610,10 @@ export function getDiscoveredBridgeContacts() {
   return Array.from(contactsCache.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
+export function getWhatsAppBridgeConnectedLid(): string {
+  return connectedLid || '';
+}
+
 export function getWhatsAppBridgeStatus(): WhatsAppBridgeStatus {
   const groups = Array.from(groupsCache.values()).sort((a, b) =>
     a.subject.localeCompare(b.subject, 'pt-BR')
@@ -1025,7 +1033,7 @@ async function processSingleWAMessage(
     return;
   }
 
-  const { normalized } = unwrapNormalizedMessageContent(msg.message);
+  const { normalized, editedTargetMsgId } = unwrapNormalizedMessageContent(msg.message);
   if (!normalized) return;
 
   const nowMs = Date.now();
@@ -1257,6 +1265,10 @@ async function processSingleWAMessage(
     }
   }
 
+  const mentionedJids: string[] | undefined = Array.isArray(contextInfo?.mentionedJid)
+    ? contextInfo.mentionedJid.map((j: any) => String(j || '')).filter(Boolean)
+    : undefined;
+
   // Only mark as processed if media download succeeded (so failed image downloads can be retried on next catch-up/sync!)
   if (msgId && !imageDownloadFailed) {
     rememberBounded(processedMessageIds, msgId);
@@ -1269,7 +1281,7 @@ async function processSingleWAMessage(
   schedulePersistBridgeState();
 
   await hooks.onIncomingMessage?.({
-    messageId: msgId || `waweb_${Date.now()}`,
+    messageId: editedTargetMsgId || msgId || `waweb_${Date.now()}`,
     remoteJid,
     isGroup,
     groupName,
@@ -1289,6 +1301,9 @@ async function processSingleWAMessage(
     quotedAudioBase64,
     quotedAudioMimeType,
     isCatchUp,
+    isEdited: Boolean(editedTargetMsgId),
+    editedTargetMessageId: editedTargetMsgId,
+    mentionedJids,
     timestampIso,
     rawMessage: msg,
   });
@@ -1678,15 +1693,12 @@ export async function startWhatsAppBridgeSession(options?: {
       browser: Browsers.ubuntu('Chrome'),
       printQRInTerminal: false,
       markOnlineOnConnect: false,
-      // CRITICAL: drop status@broadcast, @newsletter, @broadcast AND known unmonitored high-noise personal/promo groups
-      // BEFORE Baileys' sequential offlineNodeProcessor so monitored ND/OCR/corporate groups drain in <2 seconds!
+      // Drop only status broadcasts, newsletters and broadcast lists at socket level.
+      // Regular groups MUST remain receivable so @aguero works in ANY group regardless of group name!
+      // Per-chat queues (chatEventQueues) + history_sync filtering already keep ND/OCR groups instant.
       shouldIgnoreJid: (jid: string) => {
         if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter') || jid.endsWith('@broadcast')) {
           return true;
-        }
-        if (jid.endsWith('@g.us') && hooks.shouldIgnoreGroupJid) {
-          const knownName = groupsCache.get(jid)?.subject || persistedGroupNamesByJid.get(jid);
-          return Boolean(hooks.shouldIgnoreGroupJid(jid, knownName));
         }
         return false;
       },
@@ -1871,6 +1883,7 @@ export async function startWhatsAppBridgeSession(options?: {
         const rawJid = sock.user?.id || '';
         const digits = extractPhoneDigitsFromJid(rawJid);
         connectedJid = rawJid;
+        connectedLid = String((sock.user as any)?.lid || '');
         connectedNumber = digits ? formatWhatsAppPhoneDisplay(digits) : rawJid;
         connectedName = sock.user?.name || 'WhatsApp Conectado';
 
@@ -1937,6 +1950,7 @@ export async function startWhatsAppBridgeSession(options?: {
           connectedNumber = '';
           connectedName = '';
           connectedJid = '';
+          connectedLid = '';
           groupsCache.clear();
           lastError =
             statusCode === DisconnectReason.loggedOut
@@ -2088,7 +2102,17 @@ export async function startWhatsAppBridgeSession(options?: {
         .catch(() => undefined);
 
       // Enqueue into active automation pipeline (strictly gated by catchUpSinceMs for OCR/@aguero/ND)
+      // Skip bulk history_sync for unmonitored noisy groups UNLESS the message mentions @aguero so ND/OCR stay instant!
       for (const msg of sorted) {
+        const rJid = msg.key?.remoteJid || '';
+        if (rJid.endsWith('@g.us') && hooks.shouldIgnoreGroupJid) {
+          const knownName = groupsCache.get(rJid)?.subject || persistedGroupNamesByJid.get(rJid);
+          if (hooks.shouldIgnoreGroupJid(rJid, knownName)) {
+            const { normalized } = unwrapNormalizedMessageContent(msg.message);
+            const txt = normalized ? extractTextAndMediaFromNormalized(normalized).text : '';
+            if (!/@agu[eéü]ro/i.test(txt)) continue;
+          }
+        }
         enqueueIncomingMessage(sock, msg, 'history_sync');
       }
     });
@@ -2102,6 +2126,16 @@ export async function startWhatsAppBridgeSession(options?: {
         if (!key?.remoteJid || !key?.id) continue;
         if (upd?.message) {
           const prev = rawMessageByKeyId.get(key.id);
+          const prevNorm = prev?.message ? unwrapNormalizedMessageContent(prev.message).normalized : null;
+          const prevText = prevNorm ? extractTextAndMediaFromNormalized(prevNorm).text.trim() : '';
+
+          const newUnwrapped = unwrapNormalizedMessageContent(upd.message);
+          const newExtracted = newUnwrapped.normalized
+            ? extractTextAndMediaFromNormalized(newUnwrapped.normalized)
+            : { text: '', hasImage: false, hasAudio: false, hasDocument: false, hasVideo: false };
+          const newText = String(newExtracted.text || '').trim();
+          const hasUsefulContent = Boolean(newText || newExtracted.hasImage || newExtracted.hasAudio);
+
           const merged: WAMessage = {
             ...(prev || {}),
             key,
@@ -2109,13 +2143,26 @@ export async function startWhatsAppBridgeSession(options?: {
             messageTimestamp: upd.messageTimestamp || prev?.messageTimestamp || Math.floor(Date.now() / 1000),
             pushName: upd.pushName || prev?.pushName,
           } as WAMessage;
-          archiveRawWAMessageForHistory(sock, merged, 'append', { allowUpdate: true }).catch(() => undefined);
 
-          // If this was a late-decrypted CIPHERTEXT group message or recent edit (last 6h), trigger live pipeline!
+          if (hasUsefulContent) {
+            archiveRawWAMessageForHistory(sock, merged, 'append', { allowUpdate: true }).catch(() => undefined);
+          }
+
+          // Only re-enter live pipeline if:
+          // (a) message was NEVER processed before (late-decrypted CIPHERTEXT placeholder), OR
+          // (b) it is a genuine text edit where the unwrapped text actually changed!
+          // NEVER blindly re-run already-processed messages on Baileys ACK/metadata updates (prevents 2x sends).
+          const alreadyProcessed = processedMessageIds.has(key.id);
+          const textActuallyChanged = Boolean(newText && newText !== prevText);
           const msgTsSec = extractTimestampSec(merged.messageTimestamp);
           const msgTsMs = msgTsSec > 0 ? msgTsSec * 1000 : Date.now();
-          if (!sentMessageIds.has(key.id) && Date.now() - msgTsMs <= 6 * 60 * 60 * 1000) {
-            enqueueIncomingMessage(sock, merged, 'notify', { forceNdRetry: true });
+          if (
+            hasUsefulContent &&
+            !sentMessageIds.has(key.id) &&
+            Date.now() - msgTsMs <= 6 * 60 * 60 * 1000 &&
+            (!alreadyProcessed || textActuallyChanged)
+          ) {
+            enqueueIncomingMessage(sock, merged, 'notify', { forceNdRetry: !alreadyProcessed || textActuallyChanged });
           }
         }
       }
@@ -2132,12 +2179,15 @@ export async function startWhatsAppBridgeSession(options?: {
       const mode = upsert.type === 'notify' ? 'notify' : 'append';
       for (const msg of sorted) {
         const rJid = msg.key?.remoteJid || '';
-        if (rJid && hooks.isPriorityMonitoredJid?.(rJid)) {
+        const { normalized } = unwrapNormalizedMessageContent(msg.message);
+        const extractedPreview = normalized ? extractTextAndMediaFromNormalized(normalized).text : '';
+        const isPriority = Boolean(rJid && hooks.isPriorityMonitoredJid?.(rJid));
+        const hasAgueroTag = /@agu[eéü]ro/i.test(extractedPreview);
+        if (isPriority || hasAgueroTag) {
           const tsSec = extractTimestampSec(msg.messageTimestamp);
-          const { normalized } = unwrapNormalizedMessageContent(msg.message);
-          const preview = normalized ? extractTextAndMediaFromNormalized(normalized).text.slice(0, 60) : '(sem conteúdo/ciphertext)';
+          const preview = extractedPreview ? extractedPreview.slice(0, 80) : '(sem conteúdo/ciphertext)';
           console.log(
-            `📨 [WA Monitorado] mode=${mode} fromMe=${Boolean(msg.key?.fromMe)} jid=${rJid} id=${msg.key?.id} ts=${tsSec ? new Date(tsSec * 1000).toISOString() : 'now'} text=${JSON.stringify(preview)}`
+            `📨 [${hasAgueroTag ? 'WA @aguero' : 'WA Monitorado'}] mode=${mode} fromMe=${Boolean(msg.key?.fromMe)} jid=${rJid} id=${msg.key?.id} ts=${tsSec ? new Date(tsSec * 1000).toISOString() : 'now'} text=${JSON.stringify(preview)}`
           );
         }
         enqueueIncomingMessage(sock, msg, mode);
@@ -2180,6 +2230,7 @@ export async function stopWhatsAppBridgeSession(logout = false): Promise<WhatsAp
     connectedNumber = '';
     connectedName = '';
     connectedJid = '';
+    connectedLid = '';
     connectedAt = '';
     sessionWasRegistered = false;
     lastDisconnectWasFatalLogout = true;
@@ -2360,4 +2411,84 @@ export async function sendDocumentViaWhatsAppBridge(params: {
     };
   }
 }
+
+export async function sendReactionViaWhatsAppBridge(params: {
+  toJidOrPhone: string;
+  messageKey: {
+    remoteJid?: string | null;
+    id?: string | null;
+    fromMe?: boolean | null;
+    participant?: string | null;
+  };
+  emoji: string;
+}): Promise<{ success: boolean; error?: string }> {
+  if (!activeSocket || bridgeState !== 'conectado') {
+    return { success: false, error: 'WhatsApp Web não está conectado.' };
+  }
+  const msgId = String(params.messageKey?.id || '').trim();
+  if (!msgId) {
+    return { success: false, error: 'Chave da mensagem ausente para reação.' };
+  }
+
+  const rawTarget = String(params.toJidOrPhone || params.messageKey?.remoteJid || '').trim();
+  if (!rawTarget) {
+    return { success: false, error: 'Chat de destino ausente para reação.' };
+  }
+
+  let targetJid = rawTarget;
+  if (!targetJid.includes('@')) {
+    const normalized = normalizeWhatsAppPhone(targetJid);
+    if (!normalized || normalized.length < 10) {
+      return { success: false, error: 'Destino inválido para reação.' };
+    }
+    targetJid = `${normalized}@s.whatsapp.net`;
+  }
+
+  const cleanKey: {
+    remoteJid: string;
+    id: string;
+    fromMe: boolean;
+    participant?: string;
+  } = {
+    remoteJid: String(params.messageKey.remoteJid || targetJid),
+    id: msgId,
+    fromMe: Boolean(params.messageKey.fromMe),
+  };
+  if (params.messageKey.participant) {
+    cleanKey.participant = String(params.messageKey.participant);
+  }
+
+  try {
+    const sent = await activeSocket.sendMessage(targetJid, {
+      react: {
+        text: params.emoji,
+        key: cleanKey,
+      },
+    });
+    if (sent?.key?.id) {
+      rememberBounded(sentMessageIds, sent.key.id);
+    }
+    lastActivityAt = new Date().toISOString();
+    return { success: true };
+  } catch (err: any) {
+    console.warn(`⚠️ [WhatsApp Web Bridge] Falha ao reagir (${params.emoji}) em ${targetJid}:`, err?.message || err);
+    return { success: false, error: err?.message || 'Erro ao enviar reação no WhatsApp.' };
+  }
+}
+
+export async function sendPresenceViaWhatsAppBridge(
+  toJidOrPhone: string,
+  presence: 'composing' | 'paused'
+): Promise<void> {
+  if (!activeSocket || bridgeState !== 'conectado') return;
+  const rawTarget = String(toJidOrPhone || '').trim();
+  if (!rawTarget) return;
+  const targetJid = rawTarget.includes('@') ? rawTarget : `${normalizeWhatsAppPhone(rawTarget)}@s.whatsapp.net`;
+  try {
+    await activeSocket.sendPresenceUpdate(presence, targetJid);
+  } catch {
+    // Non-critical presence update
+  }
+}
+
 

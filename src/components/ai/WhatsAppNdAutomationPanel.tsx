@@ -1630,7 +1630,23 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
                       className="hover:bg-[#F9F9FB] dark:hover:bg-slate-900/50 transition"
                     >
                       <td className="py-3 px-3.5 font-bold text-[#C41C28] dark:text-red-400 whitespace-nowrap tabular-nums">
-                        {rec.projNumber}/{rec.projYear}
+                        <div className="flex items-center gap-1.5">
+                          <span>
+                            {rec.projNumber}/{rec.projYear}
+                          </span>
+                          {(rec.isRevised || (rec.revisionNumber || 0) > 0) && (
+                            <span
+                              title={
+                                rec.revisedAt
+                                  ? `Revisada em ${new Date(rec.revisedAt).toLocaleString('pt-BR')}${rec.revisedBy ? ` por ${rec.revisedBy}` : ''}`
+                                  : 'Nota de Débito revisada'
+                              }
+                              className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#FFECEF] dark:bg-red-950/80 border border-[#C41C28]/30 dark:border-red-700 text-[#C41C28] dark:text-red-300"
+                            >
+                              {(rec.revisionNumber || 1) > 1 ? `REV. ${rec.revisionNumber}` : 'REVISADA'}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] font-normal text-[#86868B] dark:text-slate-500">
                           {rec.emissionDateTime}
                         </div>
@@ -1744,8 +1760,20 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
           <div className="bg-white dark:bg-[#121826] border border-black/[0.1] dark:border-slate-700 rounded-2xl w-full max-w-4xl h-[88vh] flex flex-col overflow-hidden shadow-2xl">
             <div className="px-4 py-3 border-b border-black/[0.08] dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <h4 className="text-xs font-bold text-[#1D1D1F] dark:text-white">
-                  ND Nº PROJ {previewRecord.projNumber}/{previewRecord.projYear} — {previewRecord.natureza} ({previewRecord.receiverName})
+                <h4 className="text-xs font-bold text-[#1D1D1F] dark:text-white flex flex-wrap items-center gap-1.5">
+                  <span>
+                    ND Nº PROJ {previewRecord.projNumber}/{previewRecord.projYear}
+                  </span>
+                  {(previewRecord.isRevised || (previewRecord.revisionNumber || 0) > 0) && (
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#FFECEF] dark:bg-red-950/80 border border-[#C41C28]/30 dark:border-red-700 text-[#C41C28] dark:text-red-300">
+                      {(previewRecord.revisionNumber || 1) > 1
+                        ? `REVISADA (REV. ${previewRecord.revisionNumber})`
+                        : 'REVISADA'}
+                    </span>
+                  )}
+                  <span>
+                    — {previewRecord.natureza} ({previewRecord.receiverName})
+                  </span>
                 </h4>
                 <p className="text-[11px] text-[#6E6E73] dark:text-slate-400 truncate">
                   {previewRecord.fileName}
