@@ -58,7 +58,7 @@ export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.a
       // Distinct from "no token" so a host misconfiguration (e.g. missing IAM role) is diagnosable.
       const code = typeof (e as { code?: unknown })?.code === 'string' ? (e as { code: string }).code : 'unknown';
       if (!process.env.NODE_TEST_CONTEXT) console.warn(`[auth] token rejeitado (${code}): ${e instanceof Error ? e.message : String(e)}`);
-      return res.status(401).json({ error: 'invalid_token', code });
+      return res.status(401).json({ error: `invalid_token: o servidor não conseguiu verificar o login (${code})`, code });
     }
     next();
   };

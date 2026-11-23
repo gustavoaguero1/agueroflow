@@ -130,7 +130,7 @@ test('webhook secret missing 403', async () => {
 test('rejected token reports invalid_token with the Firebase error code', async () => {
   const err = Object.assign(new Error('Caller lacks permission'), { code: 'auth/insufficient-permission' });
   const out = await run(createRequireAuth(verifier(err)), { headers: { authorization: 'Bearer good' } });
-  assert.deepEqual(out, { status: 401, body: { error: 'invalid_token', code: 'auth/insufficient-permission' }, nexted: false });
+  assert.deepEqual(out, { status: 401, body: { error: 'invalid_token: o servidor não conseguiu verificar o login (auth/insufficient-permission)', code: 'auth/insufficient-permission' }, nexted: false });
 });
 
 test('accepts the token from X-Firebase-Auth when Authorization was stripped', async () => {
