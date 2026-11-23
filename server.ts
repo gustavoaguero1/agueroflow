@@ -61,7 +61,7 @@ import { requireAuth, requireRole, requireWebhookSecret } from './server/authMid
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
-import { getAdmin, adminStatus } from './server/firebaseAdmin';
+import { getAdmin, adminStatus, runtimeServiceAccount } from './server/firebaseAdmin';
 import { effectiveOrg } from './server/orgDefaults';
 import { answerWithTools, canUseErpTools, canQueryErp, ERP_QUESTION } from './server/agentTools';
 import type {
@@ -505,7 +505,10 @@ async function main() {
       timestamp: new Date().toISOString(),
       aiConfigured: Boolean(process.env.GEMINI_API_KEY),
       // Public, no secrets: which credential the server runs with (diagnoses a mis-pasted FIREBASE_SERVICE_ACCOUNT).
-      credencialServidor: (({ enabled, credential, reason, warning }) => ({ ativa: enabled, tipo: credential ?? 'nenhuma', ...(reason && { motivo: reason }), ...(warning && { aviso: warning }) }))(adminStatus()),
+      credencialServidor: await (async ({ enabled, credential, reason, warning }) => {
+        const contaDoAmbiente = credential === 'adc' ? await runtimeServiceAccount() : undefined;
+        return { ativa: enabled, tipo: credential ?? 'nenhuma', ...(reason && { motivo: reason }), ...(warning && { aviso: warning }), ...(contaDoAmbiente && { contaDoAmbiente }) };
+      })(adminStatus()),
       databases: {
         firestore: {
           configured: true,

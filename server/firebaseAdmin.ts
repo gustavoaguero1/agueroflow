@@ -39,6 +39,13 @@ export function parseServiceAccount(raw: string): { project_id?: string; client_
   throw new Error('FIREBASE_SERVICE_ACCOUNT não é um JSON de conta de serviço');
 }
 
+/** Describes a secret's form (never its content) so a mis-pasted value can be diagnosed from /api/health. */
+export function secretShape(raw: string): string {
+  const first = raw.trimStart()[0] ?? '', last = raw.trimEnd().slice(-1);
+  const safe = (c: string) => (/[{}"'\[\]]/.test(c) ? c : c ? 'outro' : 'vazio');
+  return `tamanho ${raw.length}, linhas ${raw.split(/\r?\n/).length}, começa com '${safe(first)}', termina com '${safe(last)}', private_key: ${raw.includes('private_key') ? 'sim' : 'não'}`;
+}
+
 function init(): State {
   const emulator = !!process.env.FIRESTORE_EMULATOR_HOST;
   let credential;
@@ -48,7 +55,15 @@ function init(): State {
     // Explicit FIREBASE_SERVICE_ACCOUNT wins: on Cloud Run K_SERVICE is always set, so ADC would otherwise shadow it.
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       try { credential = cert(parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT) as Parameters<typeof cert>[0]); kind = 'service-account'; }
-      catch { saError = 'FIREBASE_SERVICE_ACCOUNT inválido (JSON malformado)'; }
+      catch { saError = `FIREBASE_SERVICE_ACCOUNT inválido (JSON malformado; ${secretShape(process.env.FIREBASE_SERVICE_ACCOUNT)})`; }
+    }
+    // Shorter alternative for secrets UIs that mangle long JSON: two separate values.
+    if (!credential && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      try {
+        credential = cert({ projectId: cfg.projectId, clientEmail: process.env.FIREBASE_CLIENT_EMAIL.trim(),
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.trim().replace(/^["']|["']$/g, '').replace(/\\n/g, '\n') });
+        kind = 'service-account'; saError = undefined;
+      } catch (e) { saError = `FIREBASE_PRIVATE_KEY inválido (${e instanceof Error ? e.message : String(e)}; ${secretShape(process.env.FIREBASE_PRIVATE_KEY)})`; }
     }
     const adcOn = process.env.FIREBASE_ADMIN_DISABLE_ADC !== '1' &&
       !!(process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || existsSync(gcloudAdcFile()));
@@ -87,3 +102,12 @@ export function adminStatus(): { enabled: boolean; reason?: string; warning?: st
 }
 
 export function resetAdminForTests(): void { memo = undefined; }
+
+let runtimeSa: Promise<string | undefined> | undefined;
+/** Email of the host's default service account (Cloud Run metadata server); granting it roles is an alternative to a key. */
+export function runtimeServiceAccount(): Promise<string | undefined> {
+  if (!process.env.K_SERVICE) return Promise.resolve(undefined);
+  return (runtimeSa ??= fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email', {
+    headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(1500),
+  }).then((r) => (r.ok ? r.text() : undefined)).catch(() => undefined));
+}
