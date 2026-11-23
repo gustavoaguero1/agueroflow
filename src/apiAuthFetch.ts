@@ -13,13 +13,14 @@ export function createApiFetch(getToken: () => Promise<string | null>, target: F
     let bearer = headers.get('Authorization');
     if (!bearer) {
       const token = await getToken().catch(() => null);
-      if (!token) return orig(input, init);
-      bearer = `Bearer ${token}`;
-      headers.set('Authorization', bearer);
+      if (token) headers.set('Authorization', (bearer = `Bearer ${token}`));
     }
-    // Hosting proxies (Cloud Run behind Google AI Studio) can consume/strip Authorization: mirror it in our own header.
-    if (!headers.has('X-Firebase-Auth')) headers.set('X-Firebase-Auth', bearer);
-    return orig(input, { ...init, headers });
+    // shortcut: token in the URL can land in request logs (1h ID token); drop once headers are confirmed to arrive.
+    // Hosting proxies (Google AI Studio preview) may drop request headers: also carry the token in the query
+    // string (`_fbt`, or 'none' when no user is signed in, so the server can tell the two cases apart).
+    if (bearer && !headers.has('X-Firebase-Auth')) headers.set('X-Firebase-Auth', bearer);
+    url.searchParams.set('_fbt', bearer ? bearer.replace(/^Bearer /, '') : 'none');
+    return orig(isReq ? new Request(url, input as Request) : url.href, { ...init, headers });
   };
 }
 
