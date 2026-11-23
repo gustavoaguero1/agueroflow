@@ -61,6 +61,7 @@ import {
   sendNdEmailViaOutlook,
 } from './src/services/ndGeneratorServer';
 import { protheusProbeRouter } from './server/protheusProbe';
+import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -3543,48 +3544,10 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     return Math.max(floor, Number(ruleNextProj) || 4925);
   };
 
-  type RetroactiveDateCheck = {
-    isRetroactive: boolean;
-    paymentDateBr: string;
-    todayBrFormatted: string;
-    daysAgo: number;
-  };
-
-  const checkNdRetroactiveDate = (paymentDateBr: string): RetroactiveDateCheck => {
-    const { dateBr: todayIso } = getBrazilNowParts(); // YYYY-MM-DD in America/Sao_Paulo
-    const [tY, tM, tD] = todayIso.split('-');
-    const todayBrFormatted = `${tD}/${tM}/${tY}`;
-    const clean = String(paymentDateBr || '').trim();
-    const m = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (!m) {
-      return { isRetroactive: false, paymentDateBr: clean, todayBrFormatted, daysAgo: 0 };
-    }
-    const dd = Number(m[1]);
-    const mm = Number(m[2]);
-    let yyyy = Number(m[3]);
-    if (yyyy < 100) yyyy += 2000;
-    if (mm < 1 || mm > 12 || dd < 1 || dd > 31 || yyyy < 2000 || yyyy > 2100) {
-      return { isRetroactive: false, paymentDateBr: clean, todayBrFormatted, daysAgo: 0 };
-    }
-    const normalizedBr = `${String(dd).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
-    const paymentIso = `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-    if (paymentIso < todayIso) {
-      const daysAgo = Math.max(
-        1,
-        Math.round(
-          (new Date(`${todayIso}T12:00:00Z`).getTime() - new Date(`${paymentIso}T12:00:00Z`).getTime()) /
-            86_400_000
-        )
-      );
-      return { isRetroactive: true, paymentDateBr: normalizedBr, todayBrFormatted, daysAgo };
-    }
-    return { isRetroactive: false, paymentDateBr: normalizedBr, todayBrFormatted, daysAgo: 0 };
-  };
-
-  const explicitlyAllowsRetroactiveDate = (text: string): boolean =>
-    /\b(retroativ[oa]s?|j[aá]\s+foi\s+pag[oa]|pag[oa]\s+antecipad[oa]|confirmar\s+(?:a\s+)?nd|pode\s+(?:gerar|enviar|mandar|emitir)\s+(?:mesmo\s+assim|com\s+(?:essa\s+)?data|retroativ[oa])|manter\s+(?:a\s+|essa\s+)?data|mesmo\s+com\s+data\s+retroativa)\b/i.test(
-      String(text || '')
-    );
+  const checkNdRetroactiveDate = (paymentDateBr: string): RetroactiveDateCheck =>
+    checkNdRetroactiveDateAt(paymentDateBr, getBrazilNowParts().dateBr); // YYYY-MM-DD in America/Sao_Paulo
+  // Replies to the warning may release the past date; the ND message itself only with explicit wording.
+  const explicitlyAllowsRetroactiveDate = replyAllowsRetroactive;
 
   type PausedRetroactiveNd = {
     msgId: string;
@@ -3600,7 +3563,10 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     createdAtMs: number;
   };
 
-  const pausedRetroactiveNdByMsgId = new Map<string, PausedRetroactiveNd>();
+  const pausedRetroactiveNdByMsgId = new FileBackedMap<PausedRetroactiveNd>(
+    path.join(__dirname, 'data_whatsapp_nd_paused.json'),
+    (v) => ({ ...v, rawMessage: undefined })
+  );
 
   async function notifyRetroactiveNdDateWarning(params: {
     msgId: string;
@@ -7262,6 +7228,7 @@ INSTRUÇÕES:
 
     // Fast-path 0: Resolve a paused ND that was held due to a retroactive payment date
     let didHandlePausedRetroactiveNd = false;
+    let ambiguousPausedInGroup = 0;
     const findPausedRetroactiveNd = (): PausedRetroactiveNd | undefined => {
       if (pausedRetroactiveNdByMsgId.size === 0) return undefined;
       const nowPausedMs = Date.now();
@@ -7275,11 +7242,15 @@ INSTRUÇÕES:
         );
         if (direct) return direct;
       }
-      const inSameGroup = allActive.find((p) => p.groupJid === params.remoteJid);
-      if (inSameGroup && nowPausedMs - inSameGroup.createdAtMs <= 45 * 60 * 1000) {
-        return inSameGroup;
+      const inSameGroup = allActive.filter(
+        (p) => p.groupJid === params.remoteJid && nowPausedMs - p.createdAtMs <= 45 * 60 * 1000
+      );
+      // Several paused NDs in this group: never guess which one a loose "@aguero confirmar" means.
+      if (inSameGroup.length > 1) {
+        ambiguousPausedInGroup = inSameGroup.length;
+        return undefined;
       }
-      return undefined;
+      return inSameGroup[0];
     };
 
     const candidatePausedRetro = findPausedRetroactiveNd();
@@ -7305,6 +7276,22 @@ INSTRUÇÕES:
               /\b(\d{1,2}\/\d{1,2}|hoje|amanh[aã]|mud[ae]r?|alter[ae]r?|corrij[ae]|corrigir|confirm|liber)\b/i.test(
                 userQuestion
               ))));
+
+    if (
+      !candidatePausedRetro &&
+      ambiguousPausedInGroup > 1 &&
+      (explicitlyAllowsRetroactiveDate(userQuestion) ||
+        (/\b(data|pagto|pagamento|nd)\b/i.test(userQuestion) &&
+          /\b(\d{1,2}\/\d{1,2}|hoje|amanh[aã]|mud[ae]r?|alter[ae]r?|corrij[ae]|corrigir|confirm|liber)/i.test(userQuestion)))
+    ) {
+      didHandlePausedRetroactiveNd = true;
+      aiResult = {
+        intent: 'nd_retroactive_warning',
+        replyText:
+          `⚠️ Há *${ambiguousPausedInGroup} NDs pausadas* por data retroativa neste grupo.\n` +
+          `Para não liberar a ND errada, responda *em cima da mensagem de aviso* da ND que você quer corrigir ou confirmar.`,
+      };
+    }
 
     if (candidatePausedRetro && wantsResolvePausedRetro) {
       const ruleForPaused =
@@ -8341,9 +8328,9 @@ DIRETRIZES ESSENCIAIS:
           const extracted = await extractNdFromGroupMessageWithAi(msgRawText, matchedRule);
           if (extracted.isNdRequest) {
             const retroCheck = checkNdRetroactiveDate(extracted.paymentDate);
-            if (retroCheck.isRetroactive && !explicitlyAllowsRetroactiveDate(msgRawText)) {
+            if (retroCheck.isRetroactive && !originalMessageAllowsRetroactive(msgRawText)) {
               const msgAgeMs = Date.now() - new Date(msg.createdAt || 0).getTime();
-              if (Number.isFinite(msgAgeMs) && msgAgeMs <= 2 * 60 * 60 * 1000) {
+              if (Number.isFinite(msgAgeMs) && msgAgeMs <= 24 * 60 * 60 * 1000) {
                 await notifyRetroactiveNdDateWarning({
                   msgId: extId,
                   rule: matchedRule,
@@ -8351,6 +8338,17 @@ DIRETRIZES ESSENCIAIS:
                   rawText: msgRawText,
                   senderName: msg.participantName || msg.contactName || 'WhatsApp',
                   retro: retroCheck,
+                });
+              } else {
+                addWebhookLog({
+                  method: 'WA_ND_AUTOMATION',
+                  event: 'nd_data_retroativa_ignorada',
+                  senderName: msg.participantName || msg.contactName || 'WhatsApp',
+                  groupName: matchedRule.groupName,
+                  groupJid: matchedRule.groupJid,
+                  hasMedia: false,
+                  status: 'aviso',
+                  summary: `⚠️ ND antiga (+24h) com data retroativa ${retroCheck.paymentDateBr} não foi gerada nem avisada no grupo (${extracted.receiverName}, ${formatCurrencyBrl(extracted.amount)}). Reenvie a mensagem com a data correta.`,
                 });
               }
               continue;
@@ -8987,7 +8985,7 @@ DIRETRIZES ESSENCIAIS:
             );
             if (extractedNd.isNdRequest) {
               const retroCheck = checkNdRetroactiveDate(extractedNd.paymentDate);
-              if (retroCheck.isRetroactive && !explicitlyAllowsRetroactiveDate(cleanEvtText)) {
+              if (retroCheck.isRetroactive && !originalMessageAllowsRetroactive(cleanEvtText)) {
                 await notifyRetroactiveNdDateWarning({
                   msgId: msgIdKey,
                   rule: matchedNdRule,
