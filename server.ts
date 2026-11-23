@@ -61,6 +61,7 @@ import {
   sendNdEmailViaOutlook,
 } from './src/services/ndGeneratorServer';
 import { protheusProbeRouter } from './server/protheusProbe';
+import { createNdExportRouter } from './server/ndFolderExport';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
@@ -544,6 +545,20 @@ async function main() {
   app.use('/api/nfe', nfeRouter);
   app.use('/api/nfe', nfeSyncRouter);
   app.use('/api/protheus', protheusProbeRouter);
+  // NDs for the finance network share: pulled by an agent on a company PC with ND_EXPORT_TOKEN (see docs/nd-pasta-rede.md).
+  const ndExportSinceFile = path.join(__dirname, 'data_nd_export_since.json');
+  app.use('/api/nd-export', createNdExportRouter({
+    token: () => process.env.ND_EXPORT_TOKEN,
+    since: () => {
+      try { return JSON.parse(fs.readFileSync(ndExportSinceFile, 'utf-8')).since; } catch { /* first use */ }
+      const since = new Date().toISOString(); // only NDs from now on go to the share
+      fs.writeFileSync(ndExportSinceFile, JSON.stringify({ since }), 'utf-8');
+      return since;
+    },
+    records: () => whatsAppNdRecords,
+    pdf: (r) => getOrGenerateNdPdfBuffer(r as WhatsAppNdRecord),
+    persist: () => persistWaNdRecords(),
+  }));
 
   // Health and Database Status endpoint
   const firestoreDatabaseId = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8')).firestoreDatabaseId;

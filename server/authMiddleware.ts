@@ -23,6 +23,7 @@ export const PUBLIC_API_PATTERNS: RegExp[] = [
   /^\/api\/outlook\/oauth\/callback\/?$/,
   /^\/api\/composio\/whatsapp\/webhook\/?$/,
   /^\/api\/webhooks\/whatsapp-receipts\/?$/,
+  /^\/api\/nd-export\//, // ND_EXPORT_TOKEN checked by its router
 ];
 
 export const isPublicPath = (originalUrl: string) => {

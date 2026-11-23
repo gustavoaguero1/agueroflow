@@ -9,3 +9,4 @@ coverage/
 
 # NDs pausadas por data retroativa (estado do servidor; salvo no Storage, não no git)
 data_whatsapp_nd_paused.json
+data_nd_export_since.json

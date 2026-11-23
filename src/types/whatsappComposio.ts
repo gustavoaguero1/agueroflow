@@ -402,6 +402,8 @@ export interface WhatsAppNdRecord {
   revisionNumber?: number;
   revisedAt?: string;
   revisedBy?: string;
+  /** Revision already saved to the finance network share by the ND export agent. */
+  folderExportedRev?: number;
   createdAt: string;
   updatedAt: string;
 }
