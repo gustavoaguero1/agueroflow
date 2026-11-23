@@ -57,6 +57,7 @@ import {
   saveNdPdfToDisk,
   sendNdEmailViaOutlook,
 } from './src/services/ndGeneratorServer';
+import { protheusProbeRouter } from './server/protheusProbe';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -465,6 +466,7 @@ async function main() {
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
   app.use('/api/nfe', nfeRouter);
   app.use('/api/nfe', nfeSyncRouter);
+  app.use('/api/protheus', protheusProbeRouter);
 
   // Health and Database Status endpoint
   const firestoreDatabaseId = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf-8')).firestoreDatabaseId;
