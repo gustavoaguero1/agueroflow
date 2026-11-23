@@ -62,7 +62,7 @@ import {
 } from './src/services/ndGeneratorServer';
 import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
-import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck } from './server/reembolsos';
+import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
@@ -12320,8 +12320,8 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
         receipts: reimbursementReceipts,
         ownerPhone: process.env.OWNER_PHONE,
         connected: getWhatsAppBridgeStatus().state === 'conectado',
-        lastSent: () => { try { return JSON.parse(fs.readFileSync(reembolsoMarker, 'utf-8')).inicio; } catch { return undefined; } },
-        markSent: (inicio) => fs.writeFileSync(reembolsoMarker, JSON.stringify({ inicio, enviadoEm: new Date().toISOString() }), 'utf-8'),
+        lastSent: () => summaryMarker(getAdmin()?.db, effectiveOrg(undefined), reembolsoMarker).get(),
+        markSent: (inicio) => summaryMarker(getAdmin()?.db, effectiveOrg(undefined), reembolsoMarker).set(inicio),
         send: (to, text) => sendMessageViaWhatsAppBridge({ toJidOrPhone: to, text }),
         skipped: (why) => { if (!reembolsoSkipLogged.has(why)) { reembolsoSkipLogged.add(why); console.warn(`[Reembolsos] resumo semanal não enviado: ${why}`); } },
       }).catch((err) => console.warn('[Reembolsos] resumo semanal falhou:', err)).finally(() => { reembolsoChecking = false; });

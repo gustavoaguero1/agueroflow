@@ -1,7 +1,7 @@
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { getAdmin, type AdminHandles } from '../../server/firebaseAdmin.ts';
-import { enrichReceipt, saveReceiptImage, MAX_IMAGE_BASE64 } from '../../server/reembolsos.ts';
+import { enrichReceipt, saveReceiptImage, MAX_IMAGE_BASE64, summaryMarker, weeklyCheck } from '../../server/reembolsos.ts';
 
 const h = getAdmin() as AdminHandles;
 assert.ok(h);
@@ -43,4 +43,19 @@ test('enrichReceipt: default org also finds docs still on the legacy org id', as
   } finally {
     if (prev === undefined) delete process.env.DEFAULT_ORG_ID; else process.env.DEFAULT_ORG_ID = prev;
   }
+});
+
+test('summaryMarker: Firestore marker survives a restart, so the summary is not resent', async () => {
+  const sent: string[] = [];
+  const run = () => {
+    const m = summaryMarker(h.db, 'o', '/nonexistent/should-not-be-used.json'); // new instance = restarted server
+    return weeklyCheck({
+      now: new Date('2026-11-24T12:00:00Z'), org: 'o', receipts: [], ownerPhone: '5519900000000', connected: true,
+      lastSent: m.get, markSent: m.set, send: async (_to, t) => { sent.push(t); return { success: true }; }, skipped: () => {},
+    });
+  };
+  assert.equal(await run(), true);
+  assert.equal((await h.db.doc('server_state/reembolso_resumo_o').get()).data()?.lastSentWeek, '2026-11-16');
+  assert.equal(await run(), false);
+  assert.equal(sent.length, 1);
 });

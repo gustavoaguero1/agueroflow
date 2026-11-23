@@ -1,4 +1,5 @@
 // Reembolsos v1: who spent, on which obra, weekly summary per employee (docs/superpowers/specs/2026-11-23-reembolsos-v1-design.md).
+import { readFileSync, writeFileSync } from 'node:fs';
 import { Router, type Request } from 'express';
 import type { Firestore } from 'firebase-admin/firestore';
 import * as XLSX from 'xlsx';
@@ -283,18 +284,34 @@ export async function weeklyCheck(deps: {
   receipts: Rec[];
   ownerPhone: string | undefined;
   connected: boolean;
-  lastSent: () => string | undefined;
-  markSent: (inicio: string) => void;
+  lastSent: () => Promise<string | undefined> | string | undefined;
+  markSent: (inicio: string) => Promise<void> | void;
   send: (to: string, text: string) => Promise<{ success: boolean }>;
   skipped: (why: string) => void;
 }): Promise<boolean> {
-  const inicio = weeklyDue(deps.now, deps.lastSent());
+  const inicio = weeklyDue(deps.now, await deps.lastSent());
   if (!inicio) return false;
   if (!deps.ownerPhone) { deps.skipped('OWNER_PHONE não configurado'); return false; }
   if (!deps.connected) { deps.skipped('WhatsApp desconectado'); return false; }
   const w = weekRange(inicio);
   const text = weeklyMessage(weeklySummary(deps.receipts.filter((r) => effectiveOrg(r.organizationId) === deps.org), w));
   if (!(await deps.send(deps.ownerPhone, text)).success) return false;
-  deps.markSent(inicio);
+  await deps.markSent(inicio);
   return true;
+}
+
+/** Weekly-summary marker: Firestore `server_state/reembolso_resumo_{org}` (the host disk is ephemeral); the file only without Admin SDK. */
+export function summaryMarker(db: Firestore | null | undefined, org: string, fallbackFile: string) {
+  const ref = db?.collection('server_state').doc(`reembolso_resumo_${org}`);
+  return {
+    get: async (): Promise<string | undefined> => {
+      if (ref) return (await ref.get()).data()?.lastSentWeek;
+      try { return JSON.parse(readFileSync(fallbackFile, 'utf-8')).lastSentWeek; } catch { return undefined; }
+    },
+    set: async (lastSentWeek: string) => {
+      const doc = { lastSentWeek, sentAt: new Date().toISOString() };
+      if (ref) await ref.set(doc);
+      else writeFileSync(fallbackFile, JSON.stringify(doc), 'utf-8');
+    },
+  };
 }

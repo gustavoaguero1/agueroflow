@@ -4,7 +4,7 @@ import express from 'express';
 import * as XLSX from 'xlsx';
 import {
   weekRange, spDate, phonesMatch, resolveWorker, enrichmentFor, weeklySummary, weeklyMessage, weeklyDue,
-  isoDate, createReembolsosRouter, weekWorkbookBuffer, weeklyCheck, validYmd,
+  isoDate, createReembolsosRouter, weekWorkbookBuffer, weeklyCheck, validYmd, summaryMarker,
 } from '../server/reembolsos.ts';
 
 test('weekRange: previous full week in São Paulo, Sunday-night edge', () => {
@@ -186,4 +186,14 @@ test('weeklyCheck: skips without phone/connection, marks only on success, once p
   assert.match(sent[1], /Total aprovado: R\$ 5,30/);
   assert.equal(await run(), false); // already sent this week
   assert.equal(sent.length, 2);
+});
+
+test('summaryMarker: file fallback without Admin SDK, read back by a new instance', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const file = join(mkdtempSync(join(tmpdir(), 'reemb-')), 'marker.json');
+  assert.equal(await summaryMarker(null, 'o', file).get(), undefined);
+  await summaryMarker(null, 'o', file).set('2026-11-16');
+  assert.equal(await summaryMarker(null, 'o', file).get(), '2026-11-16');
 });
