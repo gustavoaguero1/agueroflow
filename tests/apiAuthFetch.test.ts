@@ -70,3 +70,13 @@ test('mirrors the token in X-Firebase-Auth (proxies may strip Authorization)', a
   assert.equal(h(0).get('x-firebase-auth'), 'Bearer tok');
   assert.equal(h(1).get('x-firebase-auth'), 'Bearer mine');
 });
+
+test('carries the token in the _fbt query param (and none when signed out)', async () => {
+  const { target, calls } = setup('tok');
+  await target.fetch('/api/x?a=1');
+  assert.equal(new URL(String(calls[0].input)).searchParams.get('_fbt'), 'tok');
+  assert.equal(new URL(String(calls[0].input)).searchParams.get('a'), '1');
+  const out = setup(null);
+  await out.target.fetch('/api/x');
+  assert.equal(new URL(String(out.calls[0].input)).searchParams.get('_fbt'), 'none');
+});

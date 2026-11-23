@@ -40,8 +40,14 @@ export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.a
     if (!auth) return res.status(503).json({ error: 'auth_unavailable' });
     // X-Firebase-Auth first: proxies in front of Cloud Run (Google AI Studio) can consume/strip Authorization.
     const raw = req.headers['x-firebase-auth'];
-    const token = /^Bearer (.+)$/.exec((typeof raw === 'string' && raw) || req.headers.authorization || '')?.[1];
-    if (!token) return res.status(401).json({ error: 'unauthenticated' });
+    const q = typeof req.query?._fbt === 'string' ? req.query._fbt : undefined;
+    const token = /^Bearer (.+)$/.exec((typeof raw === 'string' && raw) || req.headers.authorization || '')?.[1]
+      ?? (q && q !== 'none' ? q : undefined);
+    if (!token) {
+      // Say which channel arrived, so the screen itself shows where the login is lost.
+      const seen = `authorization=${req.headers.authorization ? 'sim' : 'não'}, x-firebase-auth=${raw ? 'sim' : 'não'}, url=${q === 'none' ? 'sem usuário logado' : q ? 'sim' : 'não'}`;
+      return res.status(401).json({ error: `unauthenticated: login não chegou ao servidor (${seen}; versão ${process.env.K_REVISION ?? 'local'})` });
+    }
     try {
       const d = await auth.verifyIdToken(token, true);
       req.user = {

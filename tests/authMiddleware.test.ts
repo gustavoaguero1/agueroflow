@@ -40,7 +40,9 @@ test('public path passes without token', async () => {
 
 test('missing token 401', async () => {
   const auth = createRequireAuth(verifier({}));
-  assert.deepEqual(await run(auth, {}), { status: 401, body: { error: 'unauthenticated' }, nexted: false });
+  const none = await run(auth, {});
+  assert.equal(none.status, 401);
+  assert.match((none.body as { error: string }).error, /^unauthenticated: .*authorization=não, x-firebase-auth=não, url=não/);
   const bad = await run(auth, { headers: { authorization: 'Bearer nope' } });
   assert.equal(bad.status, 401);
 });
@@ -134,4 +136,11 @@ test('rejected token reports invalid_token with the Firebase error code', async 
 test('accepts the token from X-Firebase-Auth when Authorization was stripped', async () => {
   const out = await run(createRequireAuth(verifier({})), { headers: { 'x-firebase-auth': 'Bearer good' } });
   assert.equal(out.nexted, true);
+});
+
+test('accepts the token from the _fbt query param when headers were dropped', async () => {
+  const out = await run(createRequireAuth(verifier({})), { query: { _fbt: 'good' } } as never);
+  assert.equal(out.nexted, true);
+  const none = await run(createRequireAuth(verifier({})), { query: { _fbt: 'none' } } as never);
+  assert.match((none.body as { error: string }).error, /url=sem usuário logado/);
 });
