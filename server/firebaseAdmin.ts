@@ -33,7 +33,13 @@ export function parseServiceAccount(raw: string): { project_id?: string; client_
   if (!v.startsWith('{')) { try { candidates.push(Buffer.from(v, 'base64').toString('utf8').trim()); } catch { /* not base64 */ } }
   for (const c of candidates) {
     for (const text of [c, c.replace(/("private_key"\s*:\s*")([^"]*)(")/, (_m, a, b, z) => a + b.replace(/\r?\n/g, '\\n') + z)]) {
-      try { const o = JSON.parse(text); if (o && typeof o === 'object') return o; } catch { /* try next form */ }
+      try {
+        const o = JSON.parse(text);
+        if (!o || typeof o !== 'object') continue;
+        // Secrets UIs sometimes escape the key's \n twice: a PEM never contains a literal backslash, so restore line breaks.
+        if (typeof o.private_key === 'string') o.private_key = o.private_key.replace(/(?:\\r)?\\n/g, "\n").replace(/\\(?=\n|$)/g, '');
+        return o;
+      } catch { /* try next form */ }
     }
   }
   throw new Error('FIREBASE_SERVICE_ACCOUNT não é um JSON de conta de serviço');

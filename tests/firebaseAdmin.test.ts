@@ -57,6 +57,8 @@ test('service account accepted in pasted formats (base64, raw newlines, wrapping
   ok(Buffer.from(json).toString('base64'));
   ok(JSON.stringify(sa, null, 2).replace(/\\n/g, '\n')); // editor turned \n escapes into real line breaks
   ok(`'${json}'`);
+  ok(json.replace(/\\n/g, '\\\\n')); // private key's \n escaped twice by the secrets UI
+  ok(JSON.stringify(json.replace(/\\n/g, '\\\\n')));
   ok(`"${json.replace(/"/g, '\\"')}"`);
   assert.throws(() => parseServiceAccount('{not json'));
 });
