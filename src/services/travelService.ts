@@ -28,6 +28,7 @@ import {
   TravelVerificationReliabilityLevel,
   TravelPriceStatus,
 } from '../types/travel';
+import { apiFetch } from '../apiAuthFetch';
 
 // ---------------------------------------------------------------------------
 // COMPREHENSIVE TERMINAL & CITY CATALOG (50+ TERMINALS ACROSS BRAZIL)
@@ -831,7 +832,7 @@ export class QueroPassagemConnector implements ITravelConnector {
     const queriedAt = new Date().toISOString();
 
     try {
-      const response = await fetch('/api/travel/search', {
+      const response = await apiFetch('/api/travel/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source: 'queropassagem', criteria }),

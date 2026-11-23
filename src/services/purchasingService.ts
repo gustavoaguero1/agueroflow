@@ -21,6 +21,7 @@ import {
   MaterialReceiptRecord,
   MonthlySavingsReport,
 } from '../types/purchasing';
+import { apiFetch } from '../apiAuthFetch';
 
 // Helper to remove undefined fields for Firestore
 function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
@@ -372,7 +373,7 @@ export async function fetchAiMarketBenchmark(
   totalSpend?: number
 ): Promise<MonthlySavingsReport> {
   try {
-    const res = await fetch('/api/ai/market-benchmark', {
+    const res = await apiFetch('/api/ai/market-benchmark', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items, totalSpend }),

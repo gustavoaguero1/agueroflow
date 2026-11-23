@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../firebase';
-import { postJson } from '../apiAuthFetch';
+import { postJson, apiFetch } from '../apiAuthFetch';
 import { GatLogo } from '../components/common/GatLogo';
 
 export const FirstAccessPage: React.FC<{ token: string }> = ({ token }) => {
@@ -13,7 +13,7 @@ export const FirstAccessPage: React.FC<{ token: string }> = ({ token }) => {
   const [confirm, setConfirm] = useState('');
 
   useEffect(() => {
-    fetch(`/api/auth/first-access/check/${encodeURIComponent(token)}`)
+    apiFetch(`/api/auth/first-access/check/${encodeURIComponent(token)}`)
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         if (r.ok && !d.error) return setInfo(d);

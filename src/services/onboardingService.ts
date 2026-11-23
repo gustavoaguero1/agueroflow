@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { EmployeeOnboarding, OnboardingSubmittedData } from '../types/onboarding';
+import { apiFetch } from '../apiAuthFetch';
 
 function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
   const cleaned: Record<string, any> = {};
@@ -54,7 +55,7 @@ export async function generateOnboardingLink(params: GenerateLinkParams): Promis
   linkUrl: string;
   message?: string;
 }> {
-  const res = await fetch('/api/hr/onboarding/generate-link', {
+  const res = await apiFetch('/api/hr/onboarding/generate-link', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -89,7 +90,7 @@ export async function checkOnboardingToken(token: string): Promise<{
   };
   error?: string;
 }> {
-  const res = await fetch(`/api/hr/onboarding/check/${encodeURIComponent(token)}`);
+  const res = await apiFetch(`/api/hr/onboarding/check/${encodeURIComponent(token)}`);
   return res.json();
 }
 
@@ -102,7 +103,7 @@ export async function submitOnboardingForm(
   protocol: string;
   submittedAt?: string;
 }> {
-  const res = await fetch('/api/hr/onboarding/submit', {
+  const res = await apiFetch('/api/hr/onboarding/submit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, submittedData }),
@@ -121,7 +122,7 @@ export async function listOnboardings(orgId: string = 'org_aguero_default'): Pro
 
   // 1. Load from server gateway (includes public candidate submissions)
   try {
-    const res = await fetch(`/api/hr/onboarding/list?orgId=${encodeURIComponent(orgId)}`);
+    const res = await apiFetch(`/api/hr/onboarding/list?orgId=${encodeURIComponent(orgId)}`);
     const data = await res.json();
     if (data.success && Array.isArray(data.data)) {
       for (const item of data.data as EmployeeOnboarding[]) {
@@ -165,7 +166,7 @@ export async function updateOnboardingStatus(
   reviewedBy?: string,
   resultingEmployeeId?: string
 ): Promise<void> {
-  const res = await fetch(`/api/hr/onboarding/${encodeURIComponent(id)}/status`, {
+  const res = await apiFetch(`/api/hr/onboarding/${encodeURIComponent(id)}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, reviewNotes, reviewedBy, resultingEmployeeId }),
@@ -197,7 +198,7 @@ export async function updateOnboardingStatus(
 }
 
 export async function deleteOnboarding(id: string): Promise<void> {
-  const res = await fetch(`/api/hr/onboarding/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/hr/onboarding/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
 

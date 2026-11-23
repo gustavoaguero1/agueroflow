@@ -38,6 +38,7 @@ import {
   WhatsAppWebhookLog,
 } from '../../types/travel';
 import { WhatsAppConfigModal } from './WhatsAppConfigModal';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface ReceiptReimbursementsViewProps {
   currentUser: {
@@ -88,7 +89,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
   const handleSyncWhatsAppMessages = async () => {
     setIsSyncingWhatsapp(true);
     try {
-      const res = await fetch('/api/whatsapp/sync-active', {
+      const res = await apiFetch('/api/whatsapp/sync-active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -112,7 +113,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
   const handleQuickTestWhatsApp = async () => {
     setTestingWhatsApp(true);
     try {
-      const res = await fetch('/api/whatsapp/test-sample-receipt', { method: 'POST' });
+      const res = await apiFetch('/api/whatsapp/test-sample-receipt', { method: 'POST' });
       const data = await res.json();
       if (data.success && data.receipt) {
         setReceipts((prev) => [data.receipt, ...prev]);
@@ -133,8 +134,8 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
     if (showLoadingSpinner) setLoading(true);
     try {
       const [resReceipts, resConfig] = await Promise.all([
-        fetch('/api/reimbursements/list').then((r) => r.json()),
-        fetch('/api/whatsapp/config').then((r) => r.json()),
+        apiFetch('/api/reimbursements/list').then((r) => r.json()),
+        apiFetch('/api/whatsapp/config').then((r) => r.json()),
       ]);
 
       if (resReceipts.success && Array.isArray(resReceipts.receipts)) {
@@ -168,7 +169,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await fetch('/api/whatsapp/logs');
+      const res = await apiFetch('/api/whatsapp/logs');
       const data = await res.json();
       if (data.success && Array.isArray(data.logs)) {
         setWebhookLogs(data.logs);
@@ -192,7 +193,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
     }
     setClearingMock(true);
     try {
-      const res = await fetch('/api/reimbursements/clear-mock', { method: 'POST' });
+      const res = await apiFetch('/api/reimbursements/clear-mock', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showToast(data.message || 'Cupons de exemplo removidos com sucesso!');
@@ -210,7 +211,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
     e.stopPropagation();
     if (!window.confirm('Deseja excluir este comprovante?')) return;
     try {
-      const res = await fetch(`/api/reimbursements/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/reimbursements/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setReceipts((prev) => prev.filter((r) => r.id !== id));
@@ -226,7 +227,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
   // Update status handler
   const handleUpdateStatus = async (id: string, status: ReimbursementStatus, notes?: string) => {
     try {
-      const res = await fetch('/api/reimbursements/update-status', {
+      const res = await apiFetch('/api/reimbursements/update-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status, approvedBy: currentUser.name, notes }),
@@ -265,7 +266,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
 
     setIsProcessingOcr(true);
     try {
-      const res = await fetch('/api/reimbursements/parse-receipt', {
+      const res = await apiFetch('/api/reimbursements/parse-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -936,7 +937,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
           config={config}
           onSyncSuccess={() => loadData(false)}
           onSaveConfig={async (updated) => {
-            const res = await fetch('/api/whatsapp/config', {
+            const res = await apiFetch('/api/whatsapp/config', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(updated),

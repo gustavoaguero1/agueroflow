@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { installApiAuthFetch } from '../src/apiAuthFetch.ts';
+import { createApiFetch } from '../src/apiAuthFetch.ts';
 
 function setup(token: string | null) {
   const calls: { input: unknown; init?: RequestInit }[] = [];
@@ -11,13 +11,13 @@ function setup(token: string | null) {
       return new Response('ok');
     },
   };
-  installApiAuthFetch(async () => token, target);
+  const fetchFn = createApiFetch(async () => token, target);
   const auth = (i = 0) => {
     const c = calls[i];
     const h = new Headers(c.init?.headers ?? (c.input instanceof Request ? c.input.headers : undefined));
     return h.get('authorization');
   };
-  return { target, calls, auth };
+  return { target: { fetch: fetchFn }, calls, auth };
 }
 
 test('adds bearer to /api calls', async () => {
@@ -51,4 +51,13 @@ test('no token → no header', async () => {
   const { target, auth } = setup(null);
   await target.fetch('/api/x');
   assert.equal(auth(0), null);
+});
+
+test('works when the global fetch is a read-only getter (AI Studio)', async () => {
+  const calls: unknown[] = [];
+  const target = { location: { origin: 'http://app.test' } } as any;
+  Object.defineProperty(target, 'fetch', { get: () => async (i: unknown) => { calls.push(i); return new Response('ok'); } });
+  const f = createApiFetch(async () => 'tok', target);
+  await f('/api/x');
+  assert.equal(calls.length, 1);
 });

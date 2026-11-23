@@ -1,3 +1,4 @@
+import { apiFetch } from '../apiAuthFetch';
 export interface ParsedDocumentData {
   nrCode: string;
   title: string;
@@ -164,7 +165,7 @@ export async function parseRegulatoryDocumentWithAI(
       ? await optimizeImageForAi(fileBase64)
       : fileBase64;
 
-    const res = await fetch('/api/ai/parse-nr-document', {
+    const res = await apiFetch('/api/ai/parse-nr-document', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

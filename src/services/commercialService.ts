@@ -31,6 +31,7 @@ import {
   MaterialPreviousSnapshot,
   ImportedItemAuditRecord,
 } from '../types/commercial';
+import { apiFetch } from '../apiAuthFetch';
 
 // Helper to remove undefined fields for Firestore
 function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
@@ -2605,7 +2606,7 @@ export async function callParseSupplierQuotePdfApi(
   }));
 
   try {
-    const response = await fetch('/api/ai/parse-supplier-quote-pdf', {
+    const response = await apiFetch('/api/ai/parse-supplier-quote-pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

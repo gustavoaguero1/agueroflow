@@ -24,6 +24,7 @@ import {
   WhatsAppScheduledJobType,
   WhatsAppScheduledRecurrence,
 } from '../types/whatsappComposio';
+import { apiFetch } from '../apiAuthFetch';
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
   const out: Record<string, any> = {};
@@ -72,7 +73,7 @@ async function fetchApiJson<T extends { success?: boolean; error?: string | null
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25_000);
     try {
-      const res = await fetch(input, {
+      const res = await apiFetch(input, {
         ...init,
         signal: init?.signal || controller.signal,
         headers: {

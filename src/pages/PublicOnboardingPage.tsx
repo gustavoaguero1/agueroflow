@@ -25,6 +25,7 @@ import {
 import { checkOnboardingToken, submitOnboardingForm } from '../services/onboardingService';
 import { OnboardingSubmittedData, OnboardingDocumentAttachment } from '../types/onboarding';
 import { GatLogo } from '../components/common/GatLogo';
+import { apiFetch } from '../apiAuthFetch';
 
 interface PublicOnboardingPageProps {
   token: string;
@@ -134,7 +135,7 @@ export const PublicOnboardingPage: React.FC<PublicOnboardingPageProps> = ({
     if (cleanCep.length === 8) {
       setLoadingCep(true);
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const res = await apiFetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
         const data = await res.json();
         if (!data.erro) {
           if (data.logradouro) setStreet(data.logradouro);

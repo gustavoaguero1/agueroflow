@@ -39,6 +39,7 @@ import { GatLogo } from './components/common/GatLogo';
 import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
 import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
+import { apiFetch } from './apiAuthFetch';
 
 function MainRouter() {
   const { user, loading, organization, role, isMaster, clearActiveOrganization, signOut } = useAuth();
@@ -93,7 +94,7 @@ function MainRouter() {
     let active = true;
     const pingKeepAlive = () => {
       if (!active) return;
-      fetch('/api/whatsapp/bridge/keepalive', { method: 'GET', cache: 'no-store' }).catch(() => undefined);
+      apiFetch('/api/whatsapp/bridge/keepalive', { method: 'GET', cache: 'no-store' }).catch(() => undefined);
     };
     pingKeepAlive();
     const timer = window.setInterval(pingKeepAlive, 25_000);

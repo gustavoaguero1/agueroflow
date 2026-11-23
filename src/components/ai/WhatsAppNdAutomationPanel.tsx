@@ -44,7 +44,7 @@ import {
   testOutlookBridgeConnection,
   updateWhatsAppNdRule,
 } from '../../services/composioWhatsAppClient';
-import { downloadApi } from '../../apiAuthFetch';
+import { downloadApi, apiFetch } from '../../apiAuthFetch';
 
 interface Props {
   organizationId: string;
@@ -252,7 +252,7 @@ export const WhatsAppNdAutomationPanel: React.FC<Props> = ({ organizationId, onL
 
     setLoadingPreviewPdf(true);
     setPreviewBlobUrl(null);
-    fetch(`/api/whatsapp/nd/records/${encodeURIComponent(previewRecord.id)}/pdf`)
+    apiFetch(`/api/whatsapp/nd/records/${encodeURIComponent(previewRecord.id)}/pdf`)
       .then((r) => {
         if (!r.ok) throw new Error('Falha ao carregar arquivo PDF.');
         return r.blob();
