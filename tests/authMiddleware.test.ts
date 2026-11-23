@@ -124,3 +124,9 @@ test('webhook secret missing 403', async () => {
     if (prev === undefined) delete process.env.WEBHOOK_SECRET; else process.env.WEBHOOK_SECRET = prev;
   }
 });
+
+test('rejected token reports invalid_token with the Firebase error code', async () => {
+  const err = Object.assign(new Error('Caller lacks permission'), { code: 'auth/insufficient-permission' });
+  const out = await run(createRequireAuth(verifier(err)), { headers: { authorization: 'Bearer good' } });
+  assert.deepEqual(out, { status: 401, body: { error: 'invalid_token', code: 'auth/insufficient-permission' }, nexted: false });
+});

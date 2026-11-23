@@ -46,8 +46,11 @@ export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.a
         uid: d.uid, email: d.email, emailVerified: d.email_verified === true,
         master: d.master === true, orgs: d.orgs && typeof d.orgs === 'object' ? d.orgs : {},
       };
-    } catch {
-      return res.status(401).json({ error: 'unauthenticated' });
+    } catch (e) {
+      // Distinct from "no token" so a host misconfiguration (e.g. missing IAM role) is diagnosable.
+      const code = typeof (e as { code?: unknown })?.code === 'string' ? (e as { code: string }).code : 'unknown';
+      if (!process.env.NODE_TEST_CONTEXT) console.warn(`[auth] token rejeitado (${code}): ${e instanceof Error ? e.message : String(e)}`);
+      return res.status(401).json({ error: 'invalid_token', code });
     }
     next();
   };
