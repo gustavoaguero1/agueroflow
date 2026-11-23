@@ -304,7 +304,12 @@ function MainRouter() {
         />
       )}
       {currentNavSection === 'obras' && <ConstructionModule />}
-      {currentNavSection === 'operacoes' && <OperationsModule />}
+      {(currentNavSection === 'operacoes' || currentNavSection.startsWith('ops-')) && (
+        <OperationsModule
+          route={currentNavSection === 'operacoes' ? 'inicio' : currentNavSection.slice(4)}
+          onRouteChange={(r) => setCurrentNavSection(`ops-${r}` as NavSection)}
+        />
+      )}
       {currentNavSection.startsWith('bens') && (
         <CollectiveAssetsModule
           currentOrganizationId={organization?.id}
