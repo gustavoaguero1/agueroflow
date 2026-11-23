@@ -45,3 +45,18 @@ test('malformed FIREBASE_SERVICE_ACCOUNT falls back to ADC', () => {
   delete process.env.FIREBASE_ADMIN_DISABLE_ADC;
   assert.equal(adminStatus().credential, 'adc');
 });
+
+test('service account accepted in pasted formats (base64, raw newlines, wrapping quotes)', async () => {
+  const { parseServiceAccount } = await import('../server/firebaseAdmin.ts');
+  const { generateKeyPairSync } = await import('node:crypto');
+  const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+  const sa = { project_id: 'demo', client_email: 'sa@demo.iam.gserviceaccount.com', private_key: pem };
+  const json = JSON.stringify(sa);
+  const ok = (raw: string) => assert.equal(parseServiceAccount(raw).private_key, pem, raw.slice(0, 30));
+  ok(json);
+  ok(Buffer.from(json).toString('base64'));
+  ok(JSON.stringify(sa, null, 2).replace(/\\n/g, '\n')); // editor turned \n escapes into real line breaks
+  ok(`'${json}'`);
+  ok(`"${json.replace(/"/g, '\\"')}"`);
+  assert.throws(() => parseServiceAccount('{not json'));
+});
