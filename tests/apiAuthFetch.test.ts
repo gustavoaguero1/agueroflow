@@ -61,3 +61,12 @@ test('works when the global fetch is a read-only getter (AI Studio)', async () =
   await f('/api/x');
   assert.equal(calls.length, 1);
 });
+
+test('mirrors the token in X-Firebase-Auth (proxies may strip Authorization)', async () => {
+  const { target, calls } = setup('tok');
+  await target.fetch('/api/x');
+  await target.fetch('/api/y', { headers: { Authorization: 'Bearer mine' } });
+  const h = (i: number) => new Headers(calls[i].init?.headers);
+  assert.equal(h(0).get('x-firebase-auth'), 'Bearer tok');
+  assert.equal(h(1).get('x-firebase-auth'), 'Bearer mine');
+});

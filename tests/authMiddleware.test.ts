@@ -130,3 +130,8 @@ test('rejected token reports invalid_token with the Firebase error code', async 
   const out = await run(createRequireAuth(verifier(err)), { headers: { authorization: 'Bearer good' } });
   assert.deepEqual(out, { status: 401, body: { error: 'invalid_token', code: 'auth/insufficient-permission' }, nexted: false });
 });
+
+test('accepts the token from X-Firebase-Auth when Authorization was stripped', async () => {
+  const out = await run(createRequireAuth(verifier({})), { headers: { 'x-firebase-auth': 'Bearer good' } });
+  assert.equal(out.nexted, true);
+});
