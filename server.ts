@@ -504,6 +504,8 @@ async function main() {
       service: 'AgueroFlow — Gestão Operacional',
       timestamp: new Date().toISOString(),
       aiConfigured: Boolean(process.env.GEMINI_API_KEY),
+      // Public, no secrets: which credential the server runs with (diagnoses a mis-pasted FIREBASE_SERVICE_ACCOUNT).
+      credencialServidor: (({ enabled, credential, reason, warning }) => ({ ativa: enabled, tipo: credential ?? 'nenhuma', ...(reason && { motivo: reason }), ...(warning && { aviso: warning }) }))(adminStatus()),
       databases: {
         firestore: {
           configured: true,
