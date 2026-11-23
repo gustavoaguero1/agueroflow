@@ -831,7 +831,7 @@ const LOTES=[['historico.json','faturas aéreas FT 13817 e 14092 e extratos rodo
 let PEND=null,pendBusy=false;const LOTE_CACHE={};
 async function checarLotes(){if(pendBusy||S.loaded.pass!==true||S.me.canWrite===false)return;pendBusy=true;
   try{const have=new Set(S.pass.map(p=>p.id));const out={docs:{},desc:[]};
-    for(const [f,desc] of LOTES){try{const j=LOTE_CACHE[f]||(LOTE_CACHE[f]=await (await fetch(f)).json());let n=0;for(const k in j)if(!have.has(k)){out.docs[k]=j[k];n++}if(n)out.desc.push(n+' de '+desc)}catch(e){}}
+    for(const [f,desc] of LOTES){try{const j=LOTE_CACHE[f]||(LOTE_CACHE[f]=await opsArquivo(f));let n=0;for(const k in j)if(!have.has(k)){out.docs[k]=j[k];n++}if(n)out.desc.push(n+' de '+desc)}catch(e){}}
     PEND=Object.keys(out.docs).length?out:null;if(PEND&&(S.route==='inicio'||S.route==='base'))render()}finally{pendBusy=false}}
 function seedBox(){if(S.prog)return progBox();if(!PEND||S.me.canWrite===false)return '';const n=Object.keys(PEND.docs).length;
   return `<div class="card" style="display:grid;gap:8px"><h3>${n} passagens novas para entrar na base</h3><div class="muted">${esc(PEND.desc.join('; '))}. Repetidas já foram tiradas. Leva cerca de ${Math.max(1,Math.round(n*0.15/60))} minuto(s); deixe a página aberta.</div><div><button class="btn pri" data-act="seed">Carregar na base</button></div></div>`}
@@ -1036,7 +1036,7 @@ function vEscala(modo='folgas'){
 let FAT_SEED_RUN=false;
 async function seedFat(){if(FAT_SEED_RUN||!S.me.isG||!db||S.me.canWrite===false||BUSY)return;FAT_SEED_RUN=true;
   try{const f=await db.doc('config/fatSeed').get();if(f.exists&&f.data().ok)return;
-    const j=await (await fetch('fat_seed.json')).json();let tot=0;
+    const j=await opsArquivo('fat_seed.json');let tot=0;
     for(const [col,key] of [['fat_nfs','fatn'],['fat_cobrancas','fatc']]){const have=new Set(S[key].map(x=>x.id));const miss={};for(const id in j[col])if(!have.has(id))miss[id]=j[col][id];
       if(Object.keys(miss).length){const n=await writeMany(miss,'Carregando o histórico de NFs das planilhas',col);tot+=n;if(n<Object.keys(miss).length)return}}
     await db.doc('config/fatSeed').set({ok:true,em:new Date().toISOString()});if(tot){setProg('');S.prog=null;toast('Histórico de NFs carregado ('+tot+' lançamentos).');render()}}

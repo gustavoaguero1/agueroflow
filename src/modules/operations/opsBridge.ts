@@ -20,15 +20,19 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type DocumentSnapshot,
   type QuerySnapshot,
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getBytes, getDownloadURL, ref, uploadBytes, uploadString } from 'firebase/storage';
 import type { User } from 'firebase/auth';
 import { db, storage } from '../../firebase';
 import { apiFetch } from '../../apiAuthFetch';
 import type { UserRole } from '../../types';
+import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
+
+export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
 export interface OpsContext {
   orgId: string;
@@ -184,8 +188,73 @@ export function createOpsBridge(ctx: OpsContext) {
     },
   };
 
+  /** Arquivos de apoio do Inox (historico.json, lote2.json, fat_seed.json) guardados pelo importador. */
+  const fileCache = new Map<string, Promise<unknown>>();
+  const filesApi = {
+    get: (name: string) => {
+      if (!/^[\w.-]+\.json$/.test(name)) return Promise.resolve(null);
+      if (!fileCache.has(name)) {
+        fileCache.set(name, getBytes(ref(storage, `operacoes/${ctx.orgId}/arquivos_${name}`))
+          .then((b) => JSON.parse(new TextDecoder().decode(b)))
+          .catch(() => null));
+      }
+      return fileCache.get(name)!;
+    },
+  };
+
   return {
-    api: { db: { collection: collectionApi, doc: docApi }, user: userApi, assets: assetsApi, sample: sampleApi, downloads: null },
+    api: { db: { collection: collectionApi, doc: docApi }, user: userApi, assets: assetsApi, sample: sampleApi, files: filesApi, downloads: null },
     dispose: () => { subs.forEach((u) => u()); subs.clear(); },
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Importação do backup do "Aguero Inox 2.0" (gerado por tools/exportar-inox.js).
+
+/**
+ * Grava o backup na base da empresa (ops_orgs/{orgId}). Mantém os ids originais, então importar
+ * de novo atualiza em vez de duplicar. Anexos vão para o Storage e os links são trocados.
+ */
+export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress: (msg: string) => void) {
+  const urlMap = new Map<string, string>();
+  const anexos = Object.entries(b.anexos || {});
+  let n = 0;
+  for (const [oldUrl, dataUrl] of anexos) {
+    n++;
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) continue;
+    const mime = dataUrl.slice(5, dataUrl.indexOf(';')) || 'application/octet-stream';
+    const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+    const id = `inox_${n}_${Date.now().toString(36)}.${ext}`;
+    const r = ref(storage, `operacoes/${orgId}/${id}`);
+    await uploadString(r, dataUrl, 'data_url', { contentType: mime });
+    urlMap.set(oldUrl, await getDownloadURL(r));
+    if (n % 5 === 0 || n === anexos.length) onProgress(`Anexos: ${n} de ${anexos.length}`);
+  }
+
+  for (const [name, json] of Object.entries(b.arquivos || {})) {
+    if (!/^[\w.-]+\.json$/.test(name)) continue;
+    await uploadString(ref(storage, `operacoes/${orgId}/arquivos_${name}`), JSON.stringify(json), 'raw', { contentType: 'application/json' });
+    onProgress(`Arquivo de apoio: ${name}`);
+  }
+
+  const writes: Array<{ path: string; data: DocumentData }> = [];
+  for (const [col, rows] of Object.entries(b.colecoes)) {
+    if (!(INOX_COLLECTIONS as readonly string[]).includes(col) || !Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const { id, ...data } = row;
+      if (!id) continue;
+      writes.push({ path: `ops_orgs/${orgId}/${col}/${id}`, data: rewriteUrls(stripUndefined(data), urlMap) });
+    }
+  }
+  for (const [p, data] of Object.entries(b.docs || {})) {
+    if (data && /^config\/[\w-]+$/.test(p)) writes.push({ path: `ops_orgs/${orgId}/${p}`, data: stripUndefined(data) });
+  }
+
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), w.data);
+    await batch.commit();
+    onProgress(`Registros: ${Math.min(i + 400, writes.length)} de ${writes.length}`);
+  }
+  return { registros: writes.length, anexos: urlMap.size };
 }

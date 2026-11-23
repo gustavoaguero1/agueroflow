@@ -24,3 +24,16 @@
     },
   };
 })();
+
+/* Arquivos de apoio (historico.json, lote2.json, fat_seed.json): vêm do backup importado do Inox,
+ * guardado no Storage da empresa; sem backup, tenta o arquivo estático ao lado da página. */
+async function opsArquivo(nome) {
+  var files = await window.claude.use('files');
+  if (files) {
+    var j = await files.get(nome);
+    if (j != null) return j;
+  }
+  var r = await fetch(nome);
+  if (!r.ok) throw new Error('arquivo ausente: ' + nome);
+  return r.json();
+}

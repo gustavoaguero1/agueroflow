@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { DatabaseBackup } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { createOpsBridge } from './operations/opsBridge';
+import { InoxImportModal } from './operations/InoxImportModal';
 
 declare global {
   interface Window {
@@ -19,6 +21,9 @@ export const OperationsModule: React.FC = () => {
   const { user, organization, member, role, isMaster, isManagerOrAbove } = useAuth();
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const canImport = isMaster || isManagerOrAbove;
   const orgId = organization?.id || '';
 
   const bridge = useMemo(() => {
@@ -53,14 +58,29 @@ export const OperationsModule: React.FC = () => {
   }
 
   return (
+    <div className="space-y-2">
+      {canImport && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-blue-500"
+          >
+            <DatabaseBackup className="w-4 h-4" /> Importar dados do Inox
+          </button>
+        </div>
+      )}
     <iframe
-      key={orgId}
+      key={`${orgId}:${reloadKey}`}
       ref={frame}
       src="/operacoes/index.html"
       title="Operações"
       onLoad={applyTheme}
       className="w-full border-0 rounded-lg bg-transparent"
-      style={{ height: 'calc(100vh - 96px)' }}
+      style={{ height: 'calc(100vh - 140px)' }}
     />
+      {importOpen && (
+        <InoxImportModal orgId={orgId} onClose={() => setImportOpen(false)} onDone={() => setReloadKey((k) => k + 1)} />
+      )}
+    </div>
   );
 };
