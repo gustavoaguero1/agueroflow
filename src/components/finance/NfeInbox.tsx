@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { FileText, RefreshCw, Upload, Inbox } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { postJson } from '../../apiAuthFetch';
+import { postJson, apiFetch } from '../../apiAuthFetch';
 import { brl, releaseStuckNfe, STUCK_MS } from '../../services/financeService';
 import type { CostCenter } from '../../types';
 import type { FinanceCategory, NfeDocument, NfeStatus } from '../../types/finance';
@@ -39,7 +39,7 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
     (e) => setMsgs([{ ok: false, text: `Falha ao carregar notas: ${e.message}` }]),
   ), [orgId]);
 
-  const loadSync = () => fetch(`/api/nfe/sync-status?orgId=${encodeURIComponent(orgId)}`)
+  const loadSync = () => apiFetch(`/api/nfe/sync-status?orgId=${encodeURIComponent(orgId)}`)
     .then((r) => r.json()).then(setSync).catch(() => setSync(null));
   useEffect(() => { loadSync(); }, [orgId]);
 

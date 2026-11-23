@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { GatLogo } from "../components/common/GatLogo";
 import { useTheme } from "../contexts/ThemeContext";
+import { apiFetch } from '../apiAuthFetch';
 
 interface PublicLandingPageProps {
   onNavigateLogin: () => void;
@@ -61,7 +62,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
     setFormSubmitting(true);
 
     try {
-      const res = await fetch("/api/leads/demo", {
+      const res = await apiFetch("/api/leads/demo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

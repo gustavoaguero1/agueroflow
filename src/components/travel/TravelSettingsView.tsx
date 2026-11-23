@@ -17,6 +17,7 @@ import {
   Building,
 } from 'lucide-react';
 import { TravelSourceConfig } from '../../types/travel';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface TravelSettingsViewProps {
   sources: TravelSourceConfig[];
@@ -61,7 +62,7 @@ export const TravelSettingsView: React.FC<TravelSettingsViewProps> = ({
     setStatusMessage(null);
 
     try {
-      const res = await fetch('/api/travel/sources/status');
+      const res = await apiFetch('/api/travel/sources/status');
       const data = await res.json();
       if (data.success) {
         setStatusMessage(`Conexão com a fonte validada com sucesso via backend.`);

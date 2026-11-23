@@ -17,6 +17,7 @@ import {
   FileText,
   ArrowUpRight,
 } from 'lucide-react';
+import { apiFetch } from '../apiAuthFetch';
 
 interface ChatMessage {
   id: string;
@@ -160,7 +161,7 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
     try {
       const context = await fetchOrganizationContext();
 
-      const res = await fetch('/api/ai/chat', {
+      const res = await apiFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

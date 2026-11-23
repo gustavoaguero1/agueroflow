@@ -25,6 +25,7 @@ import {
   CampaignTask,
 } from '../../types/marketing';
 import { MarketingService } from '../../services/marketingService';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface MarketingCampaignsViewProps {
   campaigns: MarketingCampaign[];
@@ -123,7 +124,7 @@ export const MarketingCampaignsView: React.FC<MarketingCampaignsViewProps> = ({
 
     setIsGeneratingAi(true);
     try {
-      const res = await fetch('/api/marketing/generate-ideas', {
+      const res = await apiFetch('/api/marketing/generate-ideas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

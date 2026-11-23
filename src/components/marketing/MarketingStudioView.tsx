@@ -38,6 +38,7 @@ import {
   BrandIdentityConfig,
 } from '../../types/marketing';
 import { MarketingService } from '../../services/marketingService';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface MarketingStudioViewProps {
   assets: CreativeAsset[];
@@ -335,7 +336,7 @@ export const MarketingStudioView: React.FC<MarketingStudioViewProps> = ({
     setIsGenerating(true);
 
     try {
-      const res = await fetch('/api/marketing/generate-ideas', {
+      const res = await apiFetch('/api/marketing/generate-ideas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -416,7 +417,7 @@ export const MarketingStudioView: React.FC<MarketingStudioViewProps> = ({
     setIsGeneratingPresentation(true);
 
     try {
-      const res = await fetch('/api/marketing/generate-presentation', {
+      const res = await apiFetch('/api/marketing/generate-presentation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

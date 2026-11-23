@@ -26,6 +26,7 @@ import {
   fetchWhatsAppBridgeStatus,
   selectWhatsAppBridgeGroup,
 } from '../../services/composioWhatsAppClient';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface WhatsAppConfigModalProps {
   isOpen: boolean;
@@ -177,7 +178,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
             headers['apikey'] = apiKey;
             headers['Authorization'] = `Bearer ${apiKey}`;
           }
-          const browserRes = await fetch(`${cleanUrl}/instance/connectionState/${instanceName || 'meuteste'}`, {
+          const browserRes = await apiFetch(`${cleanUrl}/instance/connectionState/${instanceName || 'meuteste'}`, {
             headers,
           });
           if (browserRes.ok) {
@@ -194,7 +195,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
         }
       }
 
-      const res = await fetch('/api/whatsapp/test-connection', {
+      const res = await apiFetch('/api/whatsapp/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,7 +250,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
             headers['Authorization'] = `Bearer ${apiKey}`;
           }
 
-          const localRes = await fetch(`${cleanUrl}/chat/findMessages/${instanceName || 'meuteste'}`, {
+          const localRes = await apiFetch(`${cleanUrl}/chat/findMessages/${instanceName || 'meuteste'}`, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -263,7 +264,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
             const list = Array.isArray(rawMessages) ? rawMessages : (rawMessages?.messages?.records || rawMessages?.records || rawMessages?.messages || []);
             
             // Forward fetched messages to AgueroFlow Gemini OCR processor
-            const importRes = await fetch('/api/whatsapp/import-payload', {
+            const importRes = await apiFetch('/api/whatsapp/import-payload', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ payload: list }),
@@ -284,7 +285,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
         }
       }
 
-      const res = await fetch('/api/whatsapp/sync-active', {
+      const res = await apiFetch('/api/whatsapp/sync-active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,7 +325,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
     setIsImportingPayload(true);
     setImportResult(null);
     try {
-      const res = await fetch('/api/whatsapp/import-payload', {
+      const res = await apiFetch('/api/whatsapp/import-payload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payload: rawPayloadText }),
@@ -361,7 +362,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
     setIsValidatingComposio(true);
     setComposioConnectResult(null);
     try {
-      const res = await fetch('/api/composio/whatsapp/connect', {
+      const res = await apiFetch('/api/composio/whatsapp/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

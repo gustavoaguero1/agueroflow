@@ -23,6 +23,7 @@ import {
   ProjectToContentRequest,
   ToneOfVoice,
 } from '../../types/marketing';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface ThemedSlide {
   slide: number;
@@ -67,7 +68,7 @@ export const MarketingProjectContentView: React.FC = () => {
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
 
-      const res = await fetch('/api/marketing/project-to-content', {
+      const res = await apiFetch('/api/marketing/project-to-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

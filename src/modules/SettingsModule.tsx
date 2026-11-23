@@ -36,6 +36,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { apiFetch } from '../apiAuthFetch';
 
 interface SettingsModuleProps {
   onNavigate?: (section: any) => void;
@@ -108,7 +109,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     const fetchWaConfig = async () => {
       setLoadingWaConfig(true);
       try {
-        const res = await fetch('/api/whatsapp/config');
+        const res = await apiFetch('/api/whatsapp/config');
         if (res.ok) {
           const data = await res.json();
           if (data?.config) {
@@ -136,7 +137,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     if (e) e.preventDefault();
     setIsSavingWaConfig(true);
     try {
-      const res = await fetch('/api/whatsapp/config', {
+      const res = await apiFetch('/api/whatsapp/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(waConfig),
@@ -171,7 +172,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   const handleTestHandshake = async () => {
     setWaTestStatus({ running: true });
     try {
-      const res = await fetch('/api/webhooks/whatsapp-receipts');
+      const res = await apiFetch('/api/webhooks/whatsapp-receipts');
       const data = await res.json().catch(() => ({}));
       setWaTestStatus({
         running: false,
@@ -192,7 +193,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   const handleQuickSetup = async (phone: string, group: string) => {
     setIsSavingWaConfig(true);
     try {
-      const res = await fetch('/api/whatsapp/quick-setup', {
+      const res = await apiFetch('/api/whatsapp/quick-setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,7 +231,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   const handleRunSampleReceiptTest = async () => {
     setWaTestStatus({ running: true });
     try {
-      const res = await fetch('/api/whatsapp/test-sample-receipt', {
+      const res = await apiFetch('/api/whatsapp/test-sample-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
