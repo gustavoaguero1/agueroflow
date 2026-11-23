@@ -169,7 +169,7 @@ test('revoked token rejected', async () => {
   assert.equal((await post('session', {}, tok)).status, 200);
   await new Promise((r) => setTimeout(r, 1100)); // tokensValidAfterTime has 1s resolution
   await h.auth.revokeRefreshTokens('g1');
-  assert.deepEqual(await post('session', {}, tok), { status: 401, body: { error: 'invalid_token', code: 'auth/id-token-revoked' } });
+  assert.deepEqual(await post('session', {}, tok), { status: 401, body: { error: 'invalid_token: o servidor não conseguiu verificar o login (auth/id-token-revoked)', code: 'auth/id-token-revoked' } });
 });
 
 test('refresh-claims by admin of other org 403', async () => {
