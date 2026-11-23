@@ -32,6 +32,7 @@ import {
   Bus,
   MessageSquare,
   LayoutGrid,
+  Workflow,
 } from 'lucide-react';
 import { GatLogo } from '../common/GatLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
@@ -63,6 +64,7 @@ export type NavSection =
   | 'contratos'
   | 'auditoria'
   | 'obras'
+  | 'operacoes'
   | 'bens-coletivos'
   | 'bens-painel'
   | 'bens-lista'
@@ -310,6 +312,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       icon: HardHat,
     },
     {
+      id: 'operacoes' as NavSection,
+      label: 'Operações',
+      icon: Workflow,
+    },
+    {
       id: 'bens-coletivos' as NavSection,
       label: 'Bens Coletivos',
       icon: PackageCheck,
@@ -474,6 +481,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Auditoria & Governança';
       case 'obras':
         return 'Obras & Diário de Campo (RDO)';
+      case 'operacoes':
+        return 'Operações — Equipes, Viagens e Reembolsos';
       case 'bens-coletivos':
       case 'bens-painel':
         return 'Bens Coletivos — Painel';

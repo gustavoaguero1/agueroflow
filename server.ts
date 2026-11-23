@@ -4620,6 +4620,44 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Direct parse endpoint (web upload or simulator)
+  // Operações: leitura de imagens por IA (CTPS, notas de reembolso, prints de NF, listas do diário).
+  // A página manda o prompt e as imagens; devolve o JSON que o prompt pede.
+  app.post('/api/operacoes/ai-json', async (req: Request, res: Response) => {
+    const who = req.user?.uid ?? req.ip ?? 'unknown';
+    if (!checkRateLimit(`ops_ai_${who}`, 30, 60 * 1000)) {
+      return res.status(429).json({ error: 'Muitas leituras seguidas. Aguarde um instante.' });
+    }
+    const { prompt, images } = req.body || {};
+    if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 6000) {
+      return res.status(400).json({ error: 'Pedido de leitura inválido.' });
+    }
+    const imgs = Array.isArray(images) ? images.slice(0, 8) : [];
+    if (imgs.some((i: any) => !i || typeof i.data !== 'string' || !/^image\/(png|jpe?g|webp|heic|heif)$/i.test(String(i.mimeType || '')))) {
+      return res.status(400).json({ error: 'Envie apenas imagens (JPG, PNG ou WEBP).' });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'Leitura por IA indisponível: GEMINI_API_KEY não configurada.' });
+    }
+    try {
+      const { response } = await generateContentWithFallback({
+        contents: [{
+          role: 'user',
+          parts: [
+            ...imgs.map((i: any) => ({ inlineData: { mimeType: String(i.mimeType), data: i.data } })),
+            { text: prompt },
+          ],
+        }],
+        config: { responseMimeType: 'application/json' },
+        timeoutMs: 60_000,
+      });
+      const raw = String(response.text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+      return res.json({ result: JSON.parse(raw) });
+    } catch (err: any) {
+      console.error('[operacoes/ai-json]', err?.message || err);
+      return res.status(502).json({ error: 'Não consegui ler a imagem agora.' });
+    }
+  });
+
   app.post('/api/reimbursements/parse-receipt', async (req: Request, res: Response) => {
     const { fileBase64, fileName, mimeType, employeeName, employeePhone, workOrderNumber, saveRecord } = req.body;
     if (!fileBase64) {

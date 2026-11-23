@@ -47,6 +47,7 @@ Owner kinds:
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
+| ops_orgs/{orgId}/{coll}/{doc} | path (orgId) | full collection listeners | módulo Operações (`public/operacoes`, ponte `src/modules/operations/opsBridge.ts`). Membros leem/escrevem; Visualizador só lê; `salarios` só Admin/Gerente; `membros` e `config/params` escrita Admin/Gerente |
 | order_events | orgId (immutable) | `orgId ==` + `orderId ==` | timeline |
 | order_messages | orgId | `orgId ==` + `orderId ==` | |
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |

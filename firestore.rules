@@ -94,6 +94,18 @@ service cloud.firestore {
         && (request.method == 'delete' || (sameOwner() && request.resource.data.get('userId', '') == resource.data.get('userId', '')));
     }
 
+    // ---- Operações (public/operacoes, ponte em src/modules/operations/opsBridge.ts) ----
+    // Cada empresa tem a própria base em ops_orgs/{orgId}/<coleção>/<doc>.
+    // Salários: só Admin/Gerente. Equipe (membros) e parâmetros (config): escrita só Admin/Gerente.
+    // Visualizador só lê. Demais perfis da empresa leem e escrevem.
+    match /ops_orgs/{orgId}/{coll}/{docId} {
+      function opsManager() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente']); }
+      function opsWriter() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente', 'Supervisor', 'Operacional']); }
+      function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
+      allow read: if coll == 'salarios' ? opsManager() : (isMaster() || isMemberOf(orgId));
+      allow write: if coll == 'salarios' || managerOnlyWrite() ? opsManager() : opsWriter();
+    }
+
     // ---- Org-scoped by orgId / organizationId field ----------------------------
     match /{coll}/{docId} {
       function orgScoped() {
