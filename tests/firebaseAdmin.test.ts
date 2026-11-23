@@ -60,3 +60,24 @@ test('service account accepted in pasted formats (base64, raw newlines, wrapping
   ok(`"${json.replace(/"/g, '\\"')}"`);
   assert.throws(() => parseServiceAccount('{not json'));
 });
+
+test('secretShape describes a value without revealing it', async () => {
+  const { secretShape } = await import('../server/firebaseAdmin.ts');
+  const s = secretShape('{"type":"service_account","private_key":"SECRETVALUE"}');
+  assert.match(s, /tamanho 54/);
+  assert.match(s, /começa com '\{'/);
+  assert.match(s, /private_key: sim/);
+  assert.doesNotMatch(s, /SECRETVALUE/);
+});
+
+test('split FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY (\\n escaped) is used', async () => {
+  const { generateKeyPairSync } = await import('node:crypto');
+  const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+  delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_CLIENT_EMAIL = 'sa@demo.iam.gserviceaccount.com';
+  process.env.FIREBASE_PRIVATE_KEY = pem.replace(/\n/g, '\\n');
+  process.env.K_SERVICE = 'svc';
+  try {
+    assert.equal(adminStatus().credential, 'service-account');
+  } finally { delete process.env.FIREBASE_CLIENT_EMAIL; delete process.env.FIREBASE_PRIVATE_KEY; }
+});
