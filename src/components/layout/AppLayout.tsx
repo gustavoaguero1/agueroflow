@@ -65,6 +65,16 @@ export type NavSection =
   | 'auditoria'
   | 'obras'
   | 'operacoes'
+  | 'ops-inicio'
+  | 'ops-direcionar'
+  | 'ops-diario'
+  | 'ops-viagem'
+  | 'ops-reembolso'
+  | 'ops-contratacao'
+  | 'ops-tarefas'
+  | 'ops-gases'
+  | 'ops-base'
+  | 'ops-config'
   | 'bens-coletivos'
   | 'bens-painel'
   | 'bens-lista'
@@ -137,6 +147,10 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+/** Telas que pertencem ao grupo Operações no menu (inclui Obras/RDO e Viagens). */
+export const isOpsSection = (s: string) =>
+  s === 'operacoes' || s === 'obras' || s.startsWith('ops-') || s.startsWith('viagens');
+
 export const AppLayout: React.FC<AppLayoutProps> = ({
   currentSection,
   onNavigate,
@@ -182,7 +196,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   );
   const [comprasSubmenuOpen, setComprasSubmenuOpen] = useState(currentSection.startsWith('compras'));
   const [financeiroSubmenuOpen, setFinanceiroSubmenuOpen] = useState(currentSection.startsWith('financeiro'));
-  const [viagensSubmenuOpen, setViagensSubmenuOpen] = useState(currentSection.startsWith('viagens'));
+  const [viagensSubmenuOpen, setViagensSubmenuOpen] = useState(isOpsSection(currentSection));
   const [marketingSubmenuOpen, setMarketingSubmenuOpen] = useState(
     currentSection.startsWith('marketing')
   );
@@ -307,14 +321,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       ],
     },
     {
-      id: 'obras' as NavSection,
-      label: 'Obras & Diário (RDO)',
-      icon: HardHat,
-    },
-    {
       id: 'operacoes' as NavSection,
       label: 'Operações',
       icon: Workflow,
+      hasSubmenu: true,
+      subItems: [
+        { id: 'ops-inicio' as NavSection, label: 'Painel' },
+        { id: 'ops-direcionar' as NavSection, label: 'Gerenciamento de operações' },
+        { id: 'obras' as NavSection, label: 'Obras e RDO' },
+        { id: 'ops-diario' as NavSection, label: 'Diário de obras' },
+        { id: 'ops-viagem' as NavSection, label: 'Hora viagem' },
+        { id: 'viagens-painel' as NavSection, label: 'Passagens e solicitações' },
+        { id: 'ops-reembolso' as NavSection, label: 'Reembolso' },
+        { id: 'viagens-reembolsos' as NavSection, label: 'Recibos do WhatsApp' },
+        { id: 'ops-contratacao' as NavSection, label: 'Contratação' },
+        { id: 'ops-tarefas' as NavSection, label: 'Auxiliares' },
+        { id: 'ops-gases' as NavSection, label: 'Controle de gases' },
+        { id: 'ops-base' as NavSection, label: 'Base de dados' },
+        ...(isManagerOrAbove ? [{ id: 'ops-config' as NavSection, label: 'Configurações' }] : []),
+      ],
     },
     {
       id: 'bens-coletivos' as NavSection,
@@ -397,21 +422,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       ],
     },
     {
-      id: 'viagens' as NavSection,
-      label: 'Gestão de Viagens',
-      icon: Bus,
-      hasSubmenu: true,
-      subItems: [
-        { id: 'viagens-painel' as NavSection, label: 'Painel Geral' },
-        { id: 'viagens-busca' as NavSection, label: 'Nova Busca' },
-        { id: 'viagens-resultados' as NavSection, label: 'Resultados & Comparativo' },
-        { id: 'viagens-historico' as NavSection, label: 'Histórico & Reconsulta' },
-        { id: 'viagens-solicitacoes' as NavSection, label: 'Solicitações Corporativas' },
-        { id: 'viagens-reembolsos' as NavSection, label: 'Reembolsos WhatsApp (OCR)' },
-        ...(isAdmin ? [{ id: 'viagens-configuracoes' as NavSection, label: 'Fontes & Configurações' }] : []),
-      ],
-    },
-    {
       id: 'marketing' as NavSection,
       label: 'Marketing & Eventos',
       icon: Sparkles,
@@ -480,9 +490,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       case 'auditoria':
         return 'Auditoria & Governança';
       case 'obras':
-        return 'Obras & Diário de Campo (RDO)';
+        return 'Operações — Obras e RDO';
       case 'operacoes':
-        return 'Operações — Equipes, Viagens e Reembolsos';
+      case 'ops-inicio':
+        return 'Operações — Painel';
+      case 'ops-direcionar':
+        return 'Operações — Gerenciamento de operações';
+      case 'ops-diario':
+        return 'Operações — Diário de obras';
+      case 'ops-viagem':
+        return 'Operações — Hora viagem';
+      case 'ops-reembolso':
+        return 'Operações — Reembolso';
+      case 'ops-contratacao':
+        return 'Operações — Contratação';
+      case 'ops-tarefas':
+        return 'Operações — Auxiliares';
+      case 'ops-gases':
+        return 'Operações — Controle de gases';
+      case 'ops-base':
+        return 'Operações — Base de dados';
+      case 'ops-config':
+        return 'Operações — Configurações';
       case 'bens-coletivos':
       case 'bens-painel':
         return 'Bens Coletivos — Painel';
@@ -725,7 +754,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               const isCommercial = item.id === 'comercial';
               const isCompras = item.id === 'compras';
               const isFinanceiro = item.id === 'financeiro';
-              const isViagens = item.id === 'viagens';
+              const isViagens = item.id === 'operacoes';
               const isMarketing = item.id === 'marketing';
               const isWhatsAppAuto = item.id === 'whatsapp-automacao';
 
@@ -770,7 +799,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 (isCommercial && currentSection.startsWith('comercial')) ||
                 (isCompras && currentSection.startsWith('compras')) ||
                 (isFinanceiro && currentSection.startsWith('financeiro')) ||
-                (isViagens && currentSection.startsWith('viagens')) ||
+                (isViagens && isOpsSection(currentSection)) ||
                 (isMarketing && currentSection.startsWith('marketing')) ||
                 (isWhatsAppAuto && currentSection.startsWith('whatsapp-'));
 
@@ -805,7 +834,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                         onNavigate('financeiro-notas');
                       } else if (isViagens) {
                         setViagensSubmenuOpen(!viagensSubmenuOpen);
-                        onNavigate('viagens-painel');
+                        onNavigate('ops-inicio');
                       } else if (isMarketing) {
                         setMarketingSubmenuOpen(!marketingSubmenuOpen);
                         onNavigate('marketing-painel');

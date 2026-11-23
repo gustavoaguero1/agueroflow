@@ -8,8 +8,16 @@ import { InoxImportModal } from './operations/InoxImportModal';
 declare global {
   interface Window {
     __agueroOps?: unknown;
+    __agueroOpsNav?: (route: string) => void;
   }
 }
+
+export const OPS_ROUTES = ['inicio', 'direcionar', 'diario', 'viagem', 'reembolso', 'contratacao', 'tarefas', 'gases', 'base', 'config'] as const;
+export type OpsRoute = (typeof OPS_ROUTES)[number];
+const normalizeRoute = (r: string): OpsRoute => {
+  const x = r === 'coord' ? 'direcionar' : r;
+  return (OPS_ROUTES as readonly string[]).includes(x) ? (x as OpsRoute) : 'inicio';
+};
 
 /**
  * Operações: Início, Contratação, Auxiliares, Diário de obras, Hora viagem, Reembolso,
@@ -17,7 +25,10 @@ declare global {
  * A tela roda em public/operacoes/index.html (iframe da mesma origem) e fala com o Firebase
  * do AgueroFlow pela ponte em ./operations/opsBridge.
  */
-export const OperationsModule: React.FC = () => {
+export const OperationsModule: React.FC<{ route?: string; onRouteChange?: (r: OpsRoute) => void }> = ({
+  route = 'inicio',
+  onRouteChange,
+}) => {
   const { user, organization, member, role, isMaster, isManagerOrAbove } = useAuth();
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
@@ -43,6 +54,27 @@ export const OperationsModule: React.FC = () => {
     bridge?.dispose();
     if (window.__agueroOps === bridge?.api) delete window.__agueroOps;
   }, [bridge]);
+
+  // Menu lateral -> tela da página; link interno da página -> menu lateral.
+  const current = normalizeRoute(route);
+  const initialRoute = useRef(current);
+  useEffect(() => {
+    try {
+      const w = frame.current?.contentWindow;
+      if (w && (w.location.hash || '#inicio').slice(1) !== current) w.location.hash = current;
+    } catch {
+      /* mesma origem */
+    }
+  }, [current]);
+  useEffect(() => {
+    window.__agueroOpsNav = (r) => {
+      const n = normalizeRoute(r);
+      if (n !== current) onRouteChange?.(n);
+    };
+    return () => {
+      delete window.__agueroOpsNav;
+    };
+  }, [current, onRouteChange]);
 
   const applyTheme = () => {
     try {
@@ -72,7 +104,7 @@ export const OperationsModule: React.FC = () => {
     <iframe
       key={`${orgId}:${reloadKey}`}
       ref={frame}
-      src="/operacoes/index.html"
+      src={`/operacoes/index.html#${initialRoute.current}`}
       title="Operações"
       onLoad={applyTheme}
       className="w-full border-0 rounded-lg bg-transparent"

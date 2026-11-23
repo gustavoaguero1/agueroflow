@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Operações · AgueroFlow</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try{if(window.parent!==window&&window.parent.location.origin===location.origin)document.documentElement.classList.add("embedded")}catch(e){}</script>
 <style>
 /* Layout: barra superior fixa com navegação; conteúdo em largura de ferramenta (máx. 1280px); editor em painel lateral. */
 :root{
@@ -95,6 +94,45 @@ td.r,th.r{text-align:right} tr.click{cursor:pointer} tr.click:hover td{backgroun
 fieldset{border:1px solid var(--line);border-radius:8px;padding:12px;margin:0;background:var(--surface);display:grid;gap:12px}
 legend{font-family:var(--display);font-weight:600;padding:0 6px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<style id="agueroflow-theme">
+/* Visual do AgueroFlow: mesma fonte, cores, cantos e modo escuro do app. Vem depois do estilo original e só troca aparência. */
+:root{
+  --bg:#F5F5F7; --surface:#FFFFFF; --ink:#1D1D1F; --muted:#6E6E73; --line:#E5E5EA;
+  --accent:#0071E3; --accent-ink:#FFFFFF; --accent-soft:#E8F1FC;
+  --good:#248A3D; --good-bg:#E3F5E8; --warn:#B25000; --warn-bg:#FFF2E0; --bad:#D70015; --bad-bg:#FDE7E9; --idle:#6E6E73; --idle-bg:#EFEFF4;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Plus Jakarta Sans","Helvetica Neue",sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Plus Jakarta Sans","Helvetica Neue",sans-serif;
+  --r-card:12px; --r-ctl:8px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B0C10; --surface:#161618; --ink:#F5F5F7; --muted:#98989D; --line:#2C2C2E;
+  --accent:#0A84FF; --accent-ink:#FFFFFF; --accent-soft:#0B2742;
+  --good:#30D158; --good-bg:#0F2E19; --warn:#FF9F0A; --warn-bg:#3A2A0D; --bad:#FF453A; --bad-bg:#3B1416; --idle:#AEAEB2; --idle-bg:#232326;}}
+:root[data-theme="dark"]{
+  --bg:#0B0C10; --surface:#161618; --ink:#F5F5F7; --muted:#98989D; --line:#2C2C2E;
+  --accent:#0A84FF; --accent-ink:#FFFFFF; --accent-soft:#0B2742;
+  --good:#30D158; --good-bg:#0F2E19; --warn:#FF9F0A; --warn-bg:#3A2A0D; --bad:#FF453A; --bad-bg:#3B1416; --idle:#AEAEB2; --idle-bg:#232326;}
+html,body{font:14px/1.47 var(--body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.015em}
+h1{font-size:24px} h2{font-size:19px} h3{font-size:15px}
+.card,.tile,.tw,fieldset{border-radius:var(--r-card)}
+.card{border-color:var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.btn,input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{border-radius:var(--r-ctl)}
+.btn{font-weight:500;transition:border-color .15s,background-color .15s}
+.btn.pri{box-shadow:0 1px 3px rgba(0,113,227,.28)}
+.btn.pri:hover{filter:brightness(1.06)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tabs button.on{font-weight:600}
+th{letter-spacing:0}
+/* Dentro do AgueroFlow: o menu lateral do app faz a navegação. */
+html.embedded header.top{display:none}
+html.embedded main{max-width:none;padding:4px 4px 48px}
+html.embedded #main > .tabs:first-child:has(> a){display:none}
+input[type=file]{font-size:13px;color:var(--muted)}
+input[type=file]::file-selector-button{font:inherit;font-weight:500;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctl);padding:6px 12px;margin-right:10px;cursor:pointer}
+input[type=file]::file-selector-button:hover{border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.btn{transition:none}}
 </style>
 </head>
 <body>

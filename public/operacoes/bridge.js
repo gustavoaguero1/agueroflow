@@ -37,3 +37,11 @@ async function opsArquivo(nome) {
   if (!r.ok) throw new Error('arquivo ausente: ' + nome);
   return r.json();
 }
+
+/* Avisa o AgueroFlow quando a tela muda por um link interno, para o menu lateral acompanhar. */
+window.addEventListener('hashchange', function () {
+  try {
+    var nav = window.parent && window.parent !== window ? window.parent.__agueroOpsNav : null;
+    if (typeof nav === 'function') nav((location.hash || '#inicio').slice(1));
+  } catch (e) {}
+});
