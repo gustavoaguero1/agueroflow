@@ -404,15 +404,21 @@ test('nonconformities and punch items require severity, responsible person and d
   assert.equal(state.data()?.status, 'open');
 });
 
-test('only Supervisor, Manager or Admin can approve a conforming technical inspection', async () => {
+test('only Supervisor, Manager or Admin can move a conforming inspection to approved state', async () => {
   await seedReferences();
   await createQualityRecord('inspector_1');
 
   const operator = dbFor('inspector_1', 'Operacional');
-  await assertFails(setDoc(
-    doc(operator, 'quality_record_events/operator_approval'),
-    validQualityEvent('inspector_1', 'approved'),
+  // A direct immutable event without the matching state update is an orphan and cannot change status.
+  await assertSucceeds(setDoc(
+    doc(operator, 'quality_record_events/operator_approval_orphan'),
+    validQualityEvent('inspector_1', 'approved', {
+      previousEventId: initialEventId,
+    }),
   ));
+  const unchanged = await assertSucceeds(getDoc(doc(operator, 'quality_record_states', recordId)));
+  assert.equal(unchanged.data()?.status, 'review_pending');
+  assert.equal(unchanged.data()?.latestEventId, initialEventId);
 
   await transitionQualityRecord('supervisor_1', 'Supervisor', 'approved', 'supervisor_approval');
   const state = await assertSucceeds(getDoc(doc(dbFor('supervisor_1', 'Supervisor'), 'quality_record_states', recordId)));
