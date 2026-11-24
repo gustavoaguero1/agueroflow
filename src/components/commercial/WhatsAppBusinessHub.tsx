@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { WhatsAppSessionsPanel } from './WhatsAppSessionsPanel';
 import {
   MessageSquare,
   Send,
@@ -1701,6 +1702,10 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
       {/* TAB 2: CONEXÃO (DISPOSITIVOS CONECTADOS QR + COMPOSIO API OFICIAL) */}
       {subTab === 'conexao' && (
         <div className="space-y-6">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Este é o <strong>seu</strong> WhatsApp: cada pessoa conecta o próprio número lendo o QR Code abaixo.
+          </p>
+          <WhatsAppSessionsPanel />
           {/* Channel Switcher */}
           <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-2 inline-flex flex-wrap gap-1.5">
             <button

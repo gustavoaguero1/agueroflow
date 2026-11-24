@@ -2538,34 +2538,3 @@ return {
 
 export type WhatsAppBridge = ReturnType<typeof createWhatsAppBridge>;
 
-/**
- * Instância padrão (a conexão única de antes), com as mesmas pastas de sempre. Os atalhos abaixo
- * mantêm os nomes antigos funcionando enquanto o servidor passa a usar uma sessão por usuário.
- */
-export const defaultBridge = createWhatsAppBridge({
-  key: 'default',
-  authDir: path.resolve(process.cwd(), 'data_whatsapp_auth'),
-  stateFile: path.resolve(process.cwd(), 'data_whatsapp_bridge_state.json'),
-  migrateLegacyDir: true,
-});
-
-export const getLastDisconnectedAtMs: WhatsAppBridge['getLastDisconnectedAtMs'] = (...a) => defaultBridge.getLastDisconnectedAtMs(...a);
-export const getLatestChatMedia: WhatsAppBridge['getLatestChatMedia'] = (...a) => defaultBridge.getLatestChatMedia(...a);
-export const hasPersistedBridgeSession: WhatsAppBridge['hasPersistedBridgeSession'] = (...a) => defaultBridge.hasPersistedBridgeSession(...a);
-export const registerWhatsAppBridgeHooks: WhatsAppBridge['registerWhatsAppBridgeHooks'] = (...a) => defaultBridge.registerWhatsAppBridgeHooks(...a);
-export const refreshBridgeGroups: WhatsAppBridge['refreshBridgeGroups'] = (...a) => defaultBridge.refreshBridgeGroups(...a);
-export const getDiscoveredBridgeContacts: WhatsAppBridge['getDiscoveredBridgeContacts'] = (...a) => defaultBridge.getDiscoveredBridgeContacts(...a);
-export const getWhatsAppBridgeConnectedLid: WhatsAppBridge['getWhatsAppBridgeConnectedLid'] = (...a) => defaultBridge.getWhatsAppBridgeConnectedLid(...a);
-export const getWhatsAppBridgeStatus: WhatsAppBridge['getWhatsAppBridgeStatus'] = (...a) => defaultBridge.getWhatsAppBridgeStatus(...a);
-export const ensureWhatsAppBridgeResumed: WhatsAppBridge['ensureWhatsAppBridgeResumed'] = (...a) => defaultBridge.ensureWhatsAppBridgeResumed(...a);
-export const downloadCachedRawMessageMedia: WhatsAppBridge['downloadCachedRawMessageMedia'] = (...a) => defaultBridge.downloadCachedRawMessageMedia(...a);
-export const recoverMissingMessagesByKeys: WhatsAppBridge['recoverMissingMessagesByKeys'] = (...a) => defaultBridge.recoverMissingMessagesByKeys(...a);
-export const getKnownRecentMessageKeysForChat: WhatsAppBridge['getKnownRecentMessageKeysForChat'] = (...a) => defaultBridge.getKnownRecentMessageKeysForChat(...a);
-export const scanAndCatchUpChannels: WhatsAppBridge['scanAndCatchUpChannels'] = (...a) => defaultBridge.scanAndCatchUpChannels(...a);
-export const syncChatHistoryOnDemand: WhatsAppBridge['syncChatHistoryOnDemand'] = (...a) => defaultBridge.syncChatHistoryOnDemand(...a);
-export const startWhatsAppBridgeSession: WhatsAppBridge['startWhatsAppBridgeSession'] = (...a) => defaultBridge.startWhatsAppBridgeSession(...a);
-export const stopWhatsAppBridgeSession: WhatsAppBridge['stopWhatsAppBridgeSession'] = (...a) => defaultBridge.stopWhatsAppBridgeSession(...a);
-export const sendMessageViaWhatsAppBridge: WhatsAppBridge['sendMessageViaWhatsAppBridge'] = (...a) => defaultBridge.sendMessageViaWhatsAppBridge(...a);
-export const sendDocumentViaWhatsAppBridge: WhatsAppBridge['sendDocumentViaWhatsAppBridge'] = (...a) => defaultBridge.sendDocumentViaWhatsAppBridge(...a);
-export const sendReactionViaWhatsAppBridge: WhatsAppBridge['sendReactionViaWhatsAppBridge'] = (...a) => defaultBridge.sendReactionViaWhatsAppBridge(...a);
-export const sendPresenceViaWhatsAppBridge: WhatsAppBridge['sendPresenceViaWhatsAppBridge'] = (...a) => defaultBridge.sendPresenceViaWhatsAppBridge(...a);

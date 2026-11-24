@@ -287,6 +287,41 @@ export async function disconnectWhatsAppBridge(logout = false): Promise<{
   });
 }
 
+export interface WhatsAppSessionSummary {
+  key: string;
+  uid: string | null;
+  legacy: boolean;
+  state: string;
+  connectedNumber: string;
+  connectedName: string;
+  official: boolean;
+}
+
+/** WhatsApps conectados da empresa (Admin/Gerente). */
+export async function fetchWhatsAppSessions(): Promise<{
+  success: boolean;
+  sessions?: WhatsAppSessionSummary[];
+  officialKey?: string;
+  mySessionKey?: string;
+  error?: string;
+}> {
+  return fetchApiJson('/api/whatsapp/bridge/sessions');
+}
+
+/** Define o número oficial da empresa (Admin). Sem chave: o WhatsApp de quem chama. */
+export async function setOfficialWhatsAppSession(key?: string): Promise<{ success: boolean; officialKey?: string; error?: string }> {
+  return fetchApiJson('/api/whatsapp/bridge/official', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(key ? { key } : {}),
+  });
+}
+
+/** Admin assume o WhatsApp antigo (o número que era único para todos) como o seu. */
+export async function claimLegacyWhatsAppSession(): Promise<{ success: boolean; message?: string; error?: string }> {
+  return fetchApiJson('/api/whatsapp/bridge/sessions/legacy/claim', { method: 'POST' });
+}
+
 export async function fetchWhatsAppBridgeGroups(): Promise<{
   success: boolean;
   groups: WhatsAppGroupSummary[];

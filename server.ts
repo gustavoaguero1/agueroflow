@@ -43,7 +43,16 @@ import {
   startWhatsAppBridgeSession,
   stopWhatsAppBridgeSession,
   syncChatHistoryOnDemand,
-} from './src/services/whatsappWebBridgeServer';
+  resumeSavedWhatsAppSessions,
+  runInWhatsAppSession,
+  runAsOrgWhatsAppSender,
+  currentWhatsAppSession,
+  waRegistry,
+  getOfficialSessionKey,
+  setOfficialSessionKey,
+} from './server/whatsappRuntime';
+import { sessionForRequest } from './server/whatsappRouting';
+import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
   buildOutlookOAuthAuthorizationUrl,
   createDefaultNdRuleForGroup,
@@ -543,6 +552,18 @@ async function main() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
+
+  // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
+  // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
+  app.use('/api', (req: Request, _res: Response, next: any) => {
+    if (!req.orgId) return next();
+    runAsOrgWhatsAppSender(effectiveOrg(req.orgId), next);
+  });
+  app.use('/api/whatsapp/bridge', (req: Request, _res: Response, next: any) => {
+    const s = sessionForRequest({ user: req.user, orgId: req.orgId });
+    if (!('key' in s)) return next();
+    runInWhatsAppSession(s, next);
+  });
   app.use('/api/nfe', nfeRouter);
   app.use('/api/nfe', nfeSyncRouter);
   app.use('/api/protheus', protheusProbeRouter);
@@ -9138,12 +9159,8 @@ DIRETRIZES ESSENCIAIS:
     },
   });
 
-  // Auto-resume existing Linked Device session silently if already paired
-  if (hasPersistedBridgeSession()) {
-    startWhatsAppBridgeSession().catch((err) => {
-      console.warn('⚠️ [WhatsApp Web Bridge] Falha ao retomar sessão salva:', err?.message || err);
-    });
-  }
+  // Cada WhatsApp conectado (um por usuário) volta sozinho, cada um na própria sessão.
+  resumeSavedWhatsAppSessions();
 
   // Lightweight 45-second background safety net: checks in-memory archived messages from the last 4h
   // for active ND rule groups (<1ms when idle; skips already-processed and non-ND chatter IDs)
@@ -9186,7 +9203,10 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Connect (QR Code or 8-digit Pairing Code)
-  app.post('/api/whatsapp/bridge/connect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  // Cada usuário conecta o próprio WhatsApp (QR ou código), na empresa selecionada.
+  app.post('/api/whatsapp/bridge/connect', async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const { phoneNumberForPairing, forceFreshQr } = req.body || {};
       const status = await startWhatsAppBridgeSession({
@@ -9204,18 +9224,21 @@ DIRETRIZES ESSENCIAIS:
             : 'Iniciando conexão WhatsApp Web para gerar o QR Code...',
       });
     } catch (err: any) {
-      res.status(500).json({
+      res.status(err?.status === 429 ? 429 : 500).json({
         success: false,
         error: err?.message || 'Erro ao iniciar conexão WhatsApp Web.',
       });
     }
   });
 
-  // Bridge Disconnect / Logout
-  app.post('/api/whatsapp/bridge/disconnect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  // Desconectar o PRÓPRIO WhatsApp (desvincular apaga as credenciais desta sessão).
+  app.post('/api/whatsapp/bridge/disconnect', async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const logout = Boolean(req.body?.logout);
       const status = await stopWhatsAppBridgeSession(logout);
+      if (logout && waRegistry.get(who.key)) await waRegistry.remove(who.key);
       if (whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
         whatsAppReceiptsConfig.status = 'desconectado';
         persistWaConfig();
@@ -9229,6 +9252,54 @@ DIRETRIZES ESSENCIAIS:
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Erro ao desconectar ponte.' });
+    }
+  });
+
+  // WhatsApps conectados da empresa (Admin/Gerente): número, nome, quem conectou e qual é o oficial.
+  app.get('/api/whatsapp/bridge/sessions', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
+    const orgId = effectiveOrg(req.orgId);
+    const official = getOfficialSessionKey(orgId) || '';
+    const sessions = waRegistry
+      .list()
+      .filter((s) => req.user!.master || s.orgId === orgId)
+      .map((s) => {
+        const st = waRegistry.get(s.key)?.getWhatsAppBridgeStatus();
+        return {
+          key: s.key,
+          uid: s.uid,
+          legacy: s.key === LEGACY_SESSION_KEY,
+          state: st?.state || 'desconectado',
+          connectedNumber: st?.connectedNumber || '',
+          connectedName: (st as { connectedName?: string } | undefined)?.connectedName || '',
+          official: s.key === official,
+        };
+      });
+    res.json({ success: true, sessions, officialKey: official, mySessionKey: currentWhatsAppSession()?.key || '' });
+  });
+
+  // Número oficial da empresa para avisos e automações (Admin). Sem `key`: usa o WhatsApp de quem chama.
+  app.post('/api/whatsapp/bridge/official', requireRole('Admin'), (req: Request, res: Response) => {
+    const orgId = effectiveOrg(req.orgId);
+    const key = String(req.body?.key || currentWhatsAppSession()?.key || '');
+    const m = key ? waRegistry.meta(key) : undefined;
+    if (!m || m.orgId !== orgId) return res.status(400).json({ success: false, error: 'Escolha um WhatsApp conectado desta empresa.' });
+    setOfficialSessionKey(orgId, key);
+    res.json({ success: true, officialKey: key });
+  });
+
+  // Admin assume a sessão antiga (o número que era único para todos) como o próprio WhatsApp.
+  app.post('/api/whatsapp/bridge/sessions/legacy/claim', requireRole('Admin'), async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
+    const legacy = waRegistry.meta(LEGACY_SESSION_KEY);
+    if (!legacy || legacy.orgId !== who.orgId) return res.status(404).json({ success: false, error: 'Não há sessão antiga nesta empresa.' });
+    try {
+      const b = await waRegistry.rename(LEGACY_SESSION_KEY, who.key, { orgId: who.orgId, uid: who.uid });
+      if (getOfficialSessionKey(who.orgId) === LEGACY_SESSION_KEY) setOfficialSessionKey(who.orgId, who.key);
+      const status = b ? await runInWhatsAppSession(who, () => startWhatsAppBridgeSession()) : undefined;
+      res.json({ success: true, bridge: status, message: 'O WhatsApp antigo agora é o seu.' });
+    } catch (err: any) {
+      res.status(409).json({ success: false, error: err?.message || 'Não foi possível assumir a sessão antiga.' });
     }
   });
 

@@ -25,6 +25,18 @@ test('restore writes remote files locally', async () => {
   assert.equal(fs.readFileSync(path.join(dir, 'data_a.json'), 'utf8'), '{"a":1}');
 });
 
+test('sessões de WhatsApp por usuário (credenciais e estado) vão para o bucket', async () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'data_whatsapp_auth', 'u_a'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'data_whatsapp_auth', 'u_a', 'creds.json'), 'C');
+  fs.mkdirSync(path.join(dir, 'data_whatsapp_bridge_state'));
+  fs.writeFileSync(path.join(dir, 'data_whatsapp_bridge_state', 'u_a.json'), 'S');
+  const { m, store } = memStore();
+  await restoreState(store, dir, STATE_PATHS);
+  assert.ok(m.has('server-state/data_whatsapp_auth/u_a/creds.json'));
+  assert.ok(m.has('server-state/data_whatsapp_bridge_state/u_a.json'));
+});
+
 test('seeds bucket from local when remote empty', async () => {
   const dir = tmp();
   fs.writeFileSync(path.join(dir, 'data_b.json'), 'B');

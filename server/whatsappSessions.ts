@@ -90,12 +90,24 @@ export function createSessionRegistry(opts: {
       writeMeta(opts.baseDir, meta);
     },
 
-    /** Transfere a sessão (ex.: Admin assume a sessão antiga). */
-    reassign(key: string, m: SessionMeta) {
-      if (!meta[key]) return false;
-      meta = { ...meta, [key]: m };
+    /**
+     * Passa uma sessão para outra chave (ex.: Admin assume a sessão antiga como sua): para a conexão,
+     * move credenciais e estado e recria a instância com a nova chave (é preciso iniciá-la de novo).
+     */
+    async rename(from: string, to: string, m: SessionMeta): Promise<WhatsAppBridge | undefined> {
+      if (!meta[from]) return undefined;
+      if (meta[to]) throw new Error('Este usuário já tem um WhatsApp conectado. Desconecte-o antes.');
+      const b = open.get(from);
+      if (b) await b.stopWhatsAppBridgeSession(false).catch(() => undefined);
+      open.delete(from);
+      const fromDir = path.join(opts.baseDir, from);
+      if (fs.existsSync(fromDir)) fs.renameSync(fromDir, path.join(opts.baseDir, to));
+      const fromState = path.join(stateDir(opts.baseDir), `${from}.json`);
+      if (fs.existsSync(fromState)) fs.renameSync(fromState, path.join(stateDir(opts.baseDir), `${to}.json`));
+      const { [from]: _old, ...rest } = meta;
+      meta = { ...rest, [to]: m };
       writeMeta(opts.baseDir, meta);
-      return true;
+      return create(to);
     },
 
     /** Depois de reiniciar: recria as instâncias de todas as sessões salvas. */

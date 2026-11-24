@@ -71,6 +71,30 @@ test('remove para a sessão, apaga as credenciais e esquece os dados', async () 
   assert.deepEqual(reg.list(), []);
 });
 
+test('rename leva credenciais, estado e dados da sessão antiga para a chave do usuário', async () => {
+  const base = tmp();
+  const f = fakeFactory();
+  const reg = createSessionRegistry({ baseDir: base, maxSessions: 5, factory: f.factory });
+  reg.ensure('legacy', { orgId: 'o', uid: null });
+  fs.mkdirSync(path.join(base, 'legacy'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'legacy', 'creds.json'), '{"registered":true}');
+  const b = await reg.rename('legacy', 'u_ana', { orgId: 'o', uid: 'ana' });
+  assert.equal(b?.key, 'u_ana');
+  assert.deepEqual(f.stopped, ['legacy']);
+  assert.equal(fs.existsSync(path.join(base, 'u_ana', 'creds.json')), true);
+  assert.equal(fs.existsSync(path.join(base, 'legacy')), false);
+  assert.equal(reg.get('legacy'), undefined);
+  assert.deepEqual(reg.meta('u_ana'), { orgId: 'o', uid: 'ana' });
+});
+
+test('rename não sobrescreve uma sessão que o usuário já tem', async () => {
+  const f = fakeFactory();
+  const reg = createSessionRegistry({ baseDir: tmp(), maxSessions: 5, factory: f.factory });
+  reg.ensure('legacy', { orgId: 'o', uid: null });
+  reg.ensure('u_ana', { orgId: 'o', uid: 'ana' });
+  await assert.rejects(() => reg.rename('legacy', 'u_ana', { orgId: 'o', uid: 'ana' }), /já tem/);
+});
+
 test('migrateLegacyAuth move a sessão antiga da raiz para legacy/ uma vez só', () => {
   const base = tmp();
   fs.writeFileSync(path.join(base, 'creds.json'), '{"registered":true}');
