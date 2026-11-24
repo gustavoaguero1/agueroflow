@@ -165,7 +165,7 @@ service cloud.firestore {
           'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
-          'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events',
+          'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
@@ -187,7 +187,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events'] ? A_OPS()
+          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -401,7 +401,8 @@ service cloud.firestore {
               && request.resource.data.get('holdDurationMinutes', null) is int
               && request.resource.data.get('holdDurationMinutes', 0) >= 1)
             : true)
-          && (request.resource.data.get('recordType', '') in ['nonconformity', 'punch_item']
+          && ((request.resource.data.get('recordType', '') in ['nonconformity', 'punch_item']
+              || request.resource.data.get('result', '') == 'nao_conforme')
             ? (request.resource.data.get('result', '') == 'nao_conforme'
               && request.resource.data.get('severity', '') in ['baixa', 'media', 'alta', 'critica']
               && request.resource.data.get('responsibleName', '') is string
@@ -411,14 +412,90 @@ service cloud.firestore {
               && request.resource.data.get('dueDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
             : (request.resource.data.get('acceptanceCriteria', '') is string
               && request.resource.data.get('acceptanceCriteria', '').size() > 0))
+          && existsAfter(/databases/$(database)/documents/quality_record_states/$(docId))
+          && getAfter(/databases/$(database)/documents/quality_record_states/$(docId)).data.get('recordId', '') == docId
+        );
+      }
+      function qualityInitialEventType(record) {
+        return (record.get('recordType', '') in ['nonconformity', 'punch_item'] || record.get('result', '') == 'nao_conforme')
+          ? 'opened' : 'submitted_for_review';
+      }
+      function qualityInitialStatus(record) {
+        return qualityInitialEventType(record) == 'opened' ? 'open' : 'review_pending';
+      }
+      function qualityStatusAfter(currentStatus, eventType) {
+        return eventType == 'approved' && currentStatus == 'review_pending' ? 'approved'
+          : (eventType == 'rejected' && currentStatus == 'review_pending' ? 'rejected'
+            : (eventType == 'corrective_action_submitted' && currentStatus in ['open', 'rejected', 'reopened'] ? 'correction_pending_verification'
+              : (eventType == 'verified' && currentStatus == 'correction_pending_verification' ? 'verified'
+                : (eventType == 'closed' && currentStatus == 'verified' ? 'closed'
+                  : (eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
+                    : (eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus : '')))));
+      }
+      function validQualityStateCreate() {
+        let recordPath = /databases/$(database)/documents/quality_records/$(docId);
+        let recordData = getAfter(recordPath).data;
+        let eventId = request.resource.data.get('latestEventId', '');
+        let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
+        let eventData = getAfter(eventPath).data;
+        return coll != 'quality_record_states' || (
+          signedIn()
+          && request.resource.data.get('id', '') == docId
+          && request.resource.data.get('recordId', '') == docId
+          && existsAfter(recordPath)
+          && orgOf(recordData) == orgOf(request.resource.data)
+          && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
+          && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
+          && existsAfter(eventPath)
+          && eventData.get('recordId', '') == docId
+          && eventData.get('actorUid', '') == request.auth.uid
+          && eventData.get('eventType', '') == qualityInitialEventType(recordData)
+          && request.resource.data.get('status', '') == qualityInitialStatus(recordData)
+          && request.resource.data.get('latestEventId', '') is string
+          && request.resource.data.get('updatedByUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time
+        );
+      }
+      function validQualityStateUpdate() {
+        let eventId = request.resource.data.get('latestEventId', '');
+        let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
+        let eventData = getAfter(eventPath).data;
+        return coll != 'quality_record_states' || (
+          signedIn()
+          && request.resource.data.get('id', '') == docId
+          && request.resource.data.get('recordId', '') == resource.data.get('recordId', '')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'latestEventId', 'updatedByUid', 'updatedByName', 'updatedAt'])
+          && request.resource.data.get('latestEventId', '') is string
+          && request.resource.data.get('latestEventId', '') != resource.data.get('latestEventId', '')
+          && request.resource.data.get('updatedByUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time
+          && existsAfter(eventPath)
+          && eventData.get('recordId', '') == resource.data.get('recordId', '')
+          && eventData.get('previousEventId', '') == resource.data.get('latestEventId', '')
+          && eventData.get('actorUid', '') == request.auth.uid
+          && request.resource.data.get('status', '') == qualityStatusAfter(resource.data.get('status', ''), eventData.get('eventType', ''))
+          && request.resource.data.get('status', '') != ''
         );
       }
       function validQualityEventCreate() {
         let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
+        let statePath = /databases/$(database)/documents/quality_record_states/$(request.resource.data.get('recordId', ''));
         let eventType = request.resource.data.get('eventType', '');
         let recordExists = existsAfter(recordPath);
         let recordData = recordExists ? getAfter(recordPath).data : {};
-        let recordType = recordData.get('recordType', '');
+        let stateExistsBefore = exists(statePath);
+        let stateBefore = stateExistsBefore ? get(statePath).data : {};
+        let stateAfterExists = existsAfter(statePath);
+        let stateAfter = stateAfterExists ? getAfter(statePath).data : {};
+        let isInitial = recordData.get('createdAt', null) == request.time;
+        let currentStatus = isInitial ? 'new' : stateBefore.get('status', 'unknown');
+        let nextStatus = isInitial ? qualityInitialStatus(recordData) : qualityStatusAfter(currentStatus, eventType);
+        let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
+          || recordData.get('result', '') == 'nao_conforme' || currentStatus == 'rejected';
         return coll != 'quality_record_events' || (
           signedIn()
           && request.resource.data.get('recordId', '') is string
@@ -433,24 +510,26 @@ service cloud.firestore {
           && request.resource.data.get('actorName', '') is string
           && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
-          && (eventType == 'submitted_for_review'
-            ? (recordData.get('createdAt', null) == request.time
-              && recordType in ['visual_inspection', 'weld_inspection', 'dimensional_inspection', 'material_receipt', 'hydrostatic_test', 'leak_test', 'functional_test', 'commissioning'])
-            : true)
-          && (eventType == 'opened'
-            ? (recordData.get('createdAt', null) == request.time
-              && recordType in ['nonconformity', 'punch_item'])
-            : true)
+          && stateAfterExists
+          && stateAfter.get('latestEventId', '') == docId
+          && stateAfter.get('status', '') == nextStatus
+          && stateAfter.get('updatedByUid', '') == request.auth.uid
+          && (isInitial
+            ? (!stateExistsBefore
+              && request.resource.data.get('eventType', '') == qualityInitialEventType(recordData)
+              && !request.resource.data.keys().hasAny(['previousEventId']))
+            : (stateExistsBefore
+              && request.resource.data.get('previousEventId', '') == stateBefore.get('latestEventId', '')
+              && nextStatus != ''))
           && (eventType in ['approved', 'rejected']
             ? (hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
-              && !(recordType in ['nonconformity', 'punch_item']))
-            : true)
-          && (eventType in ['verified', 'closed', 'reopened', 'corrective_action_submitted']
-            ? recordType in ['nonconformity', 'punch_item']
+              && !finding
+              && recordData.get('result', '') != 'pendente')
             : true)
           && (eventType in ['verified', 'closed', 'reopened']
-            ? hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+            ? (hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']) && finding)
             : true)
+          && (eventType == 'corrective_action_submitted' ? finding : true)
           && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
             ? (request.resource.data.get('comment', '') is string
               && request.resource.data.get('comment', '').size() > 0
@@ -458,7 +537,7 @@ service cloud.firestore {
             : true)
         );
       }
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+            allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
         && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
         && validQualityRecordCreate() && validQualityEventCreate()
         && areaWrite(request.resource.data);
