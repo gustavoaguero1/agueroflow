@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { QualityCommissioningPanel } from '../components/quality/QualityCommissioningPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -24,7 +25,8 @@ import {
 } from 'lucide-react';
 
 export const InspectionsModule: React.FC = () => {
-  const { user, organization, logAudit } = useAuth();
+  const { user, organization, logAudit, contracts, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
+  const [activeTab, setActiveTab] = useState<'inspecoes' | 'qualidade'>('inspecoes');
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -136,6 +138,37 @@ export const InspectionsModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab('inspecoes')}
+          className={`rounded-lg px-4 py-2 text-xs font-semibold transition-all ${activeTab === 'inspecoes' ? 'bg-blue-600 text-white' : 'border border-slate-800 bg-[#121826] text-slate-400 hover:text-white'}`}
+        >
+          Inspeções & Vistorias
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('qualidade')}
+          className={`rounded-lg px-4 py-2 text-xs font-semibold transition-all ${activeTab === 'qualidade' ? 'bg-cyan-600 text-white' : 'border border-slate-800 bg-[#121826] text-slate-400 hover:text-white'}`}
+        >
+          Qualidade & Comissionamento
+        </button>
+      </div>
+      {activeTab === 'qualidade' ? (
+        organization && (
+          <QualityCommissioningPanel
+            organizationId={organization.id}
+            units={units}
+            contracts={contracts}
+            currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
+            currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Inspetor Técnico'}
+            canEdit={areaLevel('operacoes') >= 2}
+            canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
+            logAudit={logAudit}
+          />
+        )
+      ) : (
+        <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
         <div>
@@ -371,6 +404,8 @@ export const InspectionsModule: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

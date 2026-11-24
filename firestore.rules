@@ -165,7 +165,7 @@ service cloud.firestore {
           'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
-          'engineering_documents', 'engineering_document_events',
+          'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
@@ -179,7 +179,7 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -187,7 +187,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events'] ? A_OPS()
+          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -319,11 +319,230 @@ service cloud.firestore {
             || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
         );
       }
+      // Optional engineering/checklist links are validated server-side when supplied.
+      // Unit and contract IDs are required on the record and are selected from the active organization's lists in the client.
+      function qualityOptionalReferencesBelongToOrg(d) {
+        let engineeringId = d.get('engineeringDocumentId', '');
+        let checklistId = d.get('checklistRunId', '');
+        let engineeringPath = /databases/$(database)/documents/engineering_documents/$(engineeringId);
+        let checklistPath = /databases/$(database)/documents/checklist_runs/$(checklistId);
+        let engineeringValid = engineeringId == '' || (
+          exists(engineeringPath)
+          && get(engineeringPath).data.get('orgId', '') == orgOf(d)
+          && get(engineeringPath).data.get('unitId', '') == d.get('unitId', '')
+          && get(engineeringPath).data.get('contractId', '') == d.get('contractId', '')
+        );
+        let checklistValid = checklistId == '' || (
+          exists(checklistPath)
+          && get(checklistPath).data.get('orgId', '') == orgOf(d)
+          && (get(checklistPath).data.get('unitId', null) == null
+            || get(checklistPath).data.get('unitId', '') == ''
+            || get(checklistPath).data.get('unitId', '') == d.get('unitId', ''))
+        );
+        return !(engineeringId != '' && checklistId != '')
+          && engineeringValid
+          && checklistValid;
+      }
+
+      function validQualityRecordCreate() {
+        let d = request.resource.data;
+        let recordType = d.get('recordType', '');
+        let result = d.get('result', '');
+        let isTest = recordType in ['hydrostatic_test', 'leak_test', 'functional_test'];
+        let isPressureTest = recordType in ['hydrostatic_test', 'leak_test'];
+        let needsCorrection = recordType in ['nonconformity', 'punch_item'] || result == 'nao_conforme';
+        return coll != 'quality_records' || (
+          signedIn()
+          && d.get('id', '') == docId
+          && d.get('recordCode', '') is string
+          && d.get('recordCode', '').matches('^QLD-[0-9]{4}-[A-Z0-9]{8}$')
+          && d.get('recordDate', '') is string
+          && d.get('recordDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && recordType in ['visual_inspection', 'weld_inspection', 'dimensional_inspection', 'material_receipt', 'hydrostatic_test', 'leak_test', 'functional_test', 'commissioning', 'nonconformity', 'punch_item']
+          && d.get('title', '') is string
+          && d.get('title', '').size() >= 3
+          && d.get('title', '').size() <= 180
+          && d.get('description', '') is string
+          && d.get('description', '').size() >= 3
+          && d.get('description', '').size() <= 2000
+          && result in ['conforme', 'nao_conforme', 'pendente']
+          && d.get('unitId', '') is string
+          && d.get('unitId', '').size() > 0
+          && d.get('contractId', '') is string
+          && d.get('contractId', '').size() > 0
+          && qualityOptionalReferencesBelongToOrg(d)
+          && d.get('createdByUid', '') == request.auth.uid
+          && d.get('createdByName', '') is string
+          && d.get('createdByName', '').size() > 0
+          && d.get('createdAt', null) == request.time
+          && (!isTest || (
+            d.get('measuredValue', null) is number
+            && d.get('measuredValue', 0) >= 0
+            && d.get('measuredUnit', '') is string
+            && d.get('measuredUnit', '').size() > 0
+            && d.get('acceptanceCriteria', '') is string
+            && d.get('acceptanceCriteria', '').size() > 0
+          ))
+          && (!isPressureTest || (
+            d.get('testMedium', '') is string
+            && d.get('testMedium', '').size() > 0
+            && d.get('holdDurationMinutes', null) is int
+            && d.get('holdDurationMinutes', 0) >= 1
+            && d.get('holdDurationMinutes', 0) <= 1440
+          ))
+          && (!needsCorrection || (
+            result == 'nao_conforme'
+            && d.get('severity', '') in ['baixa', 'media', 'alta', 'critica']
+            && d.get('responsibleName', '') is string
+            && d.get('responsibleName', '').size() > 0
+            && d.get('responsibleName', '').size() <= 120
+            && d.get('dueDate', '') is string
+            && d.get('dueDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          ))
+          && (needsCorrection || (d.get('acceptanceCriteria', '') is string && d.get('acceptanceCriteria', '').size() > 0))
+        );
+      }
+
+      function qualityInitialEventType(record) {
+        return (record.get('recordType', '') in ['nonconformity', 'punch_item'] || record.get('result', '') == 'nao_conforme')
+          ? 'opened' : 'submitted_for_review';
+      }
+      function qualityInitialStatus(record) {
+        return qualityInitialEventType(record) == 'opened' ? 'open' : 'review_pending';
+      }
+      function qualityStatusAfter(currentStatus, eventType) {
+        return eventType == 'approved' && currentStatus == 'review_pending' ? 'approved'
+          : eventType == 'rejected' && currentStatus == 'review_pending' ? 'rejected'
+          : eventType == 'corrective_action_submitted' && currentStatus in ['open', 'rejected', 'reopened'] ? 'correction_pending_verification'
+          : eventType == 'verified' && currentStatus == 'correction_pending_verification' ? 'verified'
+          : eventType == 'closed' && currentStatus == 'verified' ? 'closed'
+          : eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
+          : eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus
+          : '';
+      }
+
+      function validQualityStateCreateForDoc() {
+        let recordPath = /databases/$(database)/documents/quality_records/$(docId);
+        let recordData = get(recordPath).data;
+        let eventId = request.resource.data.get('latestEventId', '');
+        let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
+        return signedIn()
+          && request.resource.data.get('id', '') == docId
+          && request.resource.data.get('recordId', '') == docId
+          && exists(recordPath)
+          && orgOf(recordData) == orgOf(request.resource.data)
+          && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
+          && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
+          && eventId is string
+          && eventId.size() > 0
+          && exists(eventPath)
+          && get(eventPath).data.get('recordId', '') == docId
+          && get(eventPath).data.get('actorUid', '') == request.auth.uid
+          && get(eventPath).data.get('eventType', '') == qualityInitialEventType(recordData)
+          && request.resource.data.get('status', '') == qualityInitialStatus(recordData)
+          && request.resource.data.get('updatedByUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time;
+      }
+      function validQualityStateCreate() {
+        return coll != 'quality_record_states' || validQualityStateCreateForDoc();
+      }
+      function validQualityStateUpdateForDoc() {
+        let eventId = request.resource.data.get('latestEventId', '');
+        let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
+        let recordPath = /databases/$(database)/documents/quality_records/$(resource.data.get('recordId', ''));
+        let recordData = get(recordPath).data;
+        let eventExists = exists(eventPath);
+        let eventData = eventExists ? get(eventPath).data : {};
+        let currentStatus = resource.data.get('status', '');
+        let eventType = eventData.get('eventType', '');
+        let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
+          || recordData.get('result', '') == 'nao_conforme' || currentStatus == 'rejected';
+        let nextStatus = qualityStatusAfter(currentStatus, eventType);
+        return signedIn()
+          && request.resource.data.get('id', '') == docId
+          && request.resource.data.get('recordId', '') == resource.data.get('recordId', '')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'latestEventId', 'updatedByUid', 'updatedByName', 'updatedAt'])
+          && eventId is string
+          && eventId.size() > 0
+          && eventId != resource.data.get('latestEventId', '')
+          && request.resource.data.get('updatedByUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time
+          && eventExists
+          && eventData.get('recordId', '') == resource.data.get('recordId', '')
+          && eventData.get('orgId', '') == orgOf(resource.data)
+          && eventData.get('unitId', '') == resource.data.get('unitId', '')
+          && eventData.get('contractId', '') == resource.data.get('contractId', '')
+          && eventData.get('previousEventId', '') == resource.data.get('latestEventId', '')
+          && eventData.get('actorUid', '') == request.auth.uid
+          && eventData.get('actorName', '') is string
+          && eventData.get('actorName', '').size() > 0
+          && eventData.get('recordedAt', null) is timestamp
+          && request.resource.data.get('status', '') == nextStatus
+          && nextStatus != ''
+          && (eventType in ['approved', 'rejected']
+            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+              && !finding && recordData.get('result', '') != 'pendente')
+            : true)
+          && (eventType in ['verified', 'closed', 'reopened']
+            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']) && finding)
+            : true)
+          && (eventType == 'corrective_action_submitted' ? finding : true)
+          && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
+            ? (eventData.get('comment', '') is string
+              && eventData.get('comment', '').size() > 0
+              && eventData.get('comment', '').size() <= 1500)
+            : true);
+      }
+      function validQualityStateUpdate() {
+        return coll != 'quality_record_states' || validQualityStateUpdateForDoc();
+      }
+      function validQualityEventCreateForDoc() {
+        let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
+        let recordData = get(recordPath).data;
+        let hasPreviousEvent = request.resource.data.keys().hasAny(['previousEventId']);
+        let eventType = request.resource.data.get('eventType', '');
+        return signedIn()
+          && exists(recordPath)
+          && recordData.get('orgId', '') == orgOf(request.resource.data)
+          && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
+          && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('contractId', '') is string
+          && eventType in ['submitted_for_review', 'opened', 'approved', 'rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
+          && request.resource.data.get('actorUid', '') == request.auth.uid
+          && request.resource.data.get('actorName', '') is string
+          && request.resource.data.get('actorName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (hasPreviousEvent
+            ? (request.resource.data.get('previousEventId', '') is string
+              && request.resource.data.get('previousEventId', '').size() > 0)
+            : eventType == qualityInitialEventType(recordData))
+          && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
+            ? (request.resource.data.get('comment', '') is string
+              && request.resource.data.get('comment', '').size() > 0
+              && request.resource.data.get('comment', '').size() <= 1500)
+            : true);
+      }
+      function validQualityEventCreate() {
+        return coll != 'quality_record_events' || (
+          request.resource.data.get('recordId', '') is string
+          && request.resource.data.get('recordId', '').size() > 0
+          && validQualityEventCreateForDoc()
+        );
+      }
       allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
         && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
         && areaWrite(request.resource.data);
-      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
-      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate()
+        && (coll == 'quality_record_states'
+          ? (areaWrite(resource.data) && validQualityStateUpdate())
+          : (areaWrite(resource.data) || rhAllocation()));
+      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data);
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
