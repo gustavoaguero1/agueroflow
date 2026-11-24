@@ -37,7 +37,17 @@ jobs:
         with:
           bun-version: 1.4.5
 
-      - name: Instalar dependências pelo lockfile do repositório
+      - name: Atualizar bun.lock conforme package.json
+        run: bun install --lockfile-only
+
+      - name: Publicar lockfile gerado para revisão
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-bun-lockfile
+          path: bun.lock
+          if-no-files-found: error
+
+      - name: Instalar dependências pelo lockfile
         run: bun install --frozen-lockfile
 
       - name: Verificar TypeScript
