@@ -73,6 +73,47 @@ test('configuração: formato novo { __porEmpresa } carrega cada empresa', () =>
   assert.deepEqual(Object.keys(c.all()).sort(), ['A', 'B']);
 });
 
+// effectiveOrg de produção: o id antigo vira a empresa real (DEFAULT_ORG_ID).
+const norm = (o?: string) => (!o || o === 'org_aguero_default' ? 'REAL' : o);
+
+test('id antigo da empresa (org_aguero_default) cai na empresa real, tanto nos dados quanto no contexto', () => {
+  const s = createOrgScopedArray<{ id: string }>({ orgOf, defaultOrg: 'REAL', normalize: norm, initial: [{ id: 'm1', organizationId: 'org_aguero_default' }, { id: 'm2' }] });
+  org = 'REAL';
+  assert.deepEqual(s.view.map((x) => x.id), ['m1', 'm2']);
+  org = 'org_aguero_default';
+  assert.deepEqual(s.view.map((x) => x.id), ['m1', 'm2']);
+  assert.deepEqual(s.all().map((x) => x.organizationId), ['REAL', 'REAL']);
+});
+
+test('configuração: padrões podem depender da empresa (empresa nova não herda a identidade da padrão)', () => {
+  const c = createOrgScopedObject<{ phone: string }>({
+    orgOf, defaultOrg: 'A', defaults: (o) => ({ phone: o === 'A' ? '5511' : '' }), initial: null,
+  });
+  org = 'A';
+  assert.equal(c.view.phone, '5511');
+  org = 'NOVA';
+  assert.equal(c.view.phone, '');
+});
+
+test('registro que entra na lista ganha a empresa (push, unshift, índice, set) — e a cópia na nuvem também', () => {
+  const s = createOrgScopedArray<{ id: string; organizationId?: string }>({ orgOf, defaultOrg: 'A', initial: [] });
+  org = 'B';
+  s.view.push({ id: 'p' });
+  s.view.unshift({ id: 'u' });
+  s.view[2] = { id: 'i' };
+  assert.deepEqual(s.view.map((x) => x.organizationId), ['B', 'B', 'B']);
+  s.set([{ id: 'n' }]);
+  assert.equal(s.view[0].organizationId, 'B');
+});
+
+test('live(): os registros reais de todas as empresas (alterar um altera o depósito)', () => {
+  const s = createOrgScopedArray<{ id: string; ok?: boolean }>({ orgOf, defaultOrg: 'A', initial: [{ id: 'a' }, { id: 'b', organizationId: 'B' }] });
+  const b = s.live().find((x) => x.id === 'b')!;
+  b.ok = true;
+  org = 'B';
+  assert.equal(s.view[0].ok, true);
+});
+
 test('mapa por empresa: get/set/has/delete/size/iterar só da empresa atual', () => {
   const m = createOrgScopedMap<{ name: string }>({ orgOf, defaultOrg: 'A', initial: [['g1', { name: 'G1' }], ['g2', { name: 'G2', organizationId: 'B' }]] });
   org = 'A';

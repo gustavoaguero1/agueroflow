@@ -24,7 +24,17 @@ import {
   WhatsAppScheduledJobType,
   WhatsAppScheduledRecurrence,
 } from '../types/whatsappComposio';
-import { apiFetch } from '../apiAuthFetch';
+import { apiFetch, selectedApiOrg } from '../apiAuthFetch';
+
+/**
+ * A cópia na nuvem enxerga todas as empresas: só sincroniza o que é da empresa selecionada
+ * (registro antigo sem empresa vai junto; o servidor só aceita na empresa padrão).
+ */
+const isOfSelectedOrg = (data: unknown): boolean => {
+  const org = selectedApiOrg();
+  const own = (data as { organizationId?: string } | null)?.organizationId;
+  return !org || !own || own === org;
+};
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
   const out: Record<string, any> = {};
@@ -516,7 +526,7 @@ export async function syncWhatsAppContactsWithFirestore(
     const snap = await getDocs(collection(db, path));
     snap.forEach((d) => {
       const data = d.data() as WhatsAppManagedContact;
-      if (data && data.jidOrPhone && data.ocrEnabled) {
+      if (data && data.jidOrPhone && data.ocrEnabled && isOfSelectedOrg(data)) {
         cloudOcrContacts.push(data);
       }
     });
@@ -816,7 +826,7 @@ export async function syncScheduledJobsWithFirestore(
     firestoreSynced = true;
     snap.forEach((d) => {
       const data = d.data() as WhatsAppScheduledJob;
-      if (data && data.id) upsert(data);
+      if (data && data.id && isOfSelectedOrg(data)) upsert(data);
     });
   } catch (error) {
     try {
@@ -1521,7 +1531,10 @@ export async function syncNdDataWithFirestore(
   try {
     const snap = await getDocs(collection(db, 'whatsapp_nd_rules'));
     firestoreSynced = true;
-    snap.forEach((d) => upsertRule(d.data() as WhatsAppNdRule));
+    snap.forEach((d) => {
+      const data = d.data() as WhatsAppNdRule;
+      if (isOfSelectedOrg(data)) upsertRule(data);
+    });
   } catch (err) {
     try {
       handleFirestoreError(err, OperationType.LIST, 'whatsapp_nd_rules');
@@ -1560,7 +1573,10 @@ export async function syncNdDataWithFirestore(
   try {
     const snap = await getDocs(collection(db, 'whatsapp_nd_records'));
     firestoreSynced = true;
-    snap.forEach((d) => upsertRec(d.data() as WhatsAppNdRecord));
+    snap.forEach((d) => {
+      const data = d.data() as WhatsAppNdRecord;
+      if (isOfSelectedOrg(data)) upsertRec(data);
+    });
   } catch (err) {
     try {
       handleFirestoreError(err, OperationType.LIST, 'whatsapp_nd_records');

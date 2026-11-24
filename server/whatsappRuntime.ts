@@ -64,6 +64,7 @@ export const waContext = createWhatsAppContext({
   defaultOrgId: DEFAULT_WA_ORG,
   blank,
   officialKeyOf: getOfficialSessionKey,
+  normalizeOrg: (o) => effectiveOrg(o),
 });
 
 /** Sessões salvas voltam sozinhas (cada uma no próprio contexto). */

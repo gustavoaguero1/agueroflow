@@ -18,9 +18,17 @@ export function createWhatsAppMiddlewares(deps: {
   runAsOrgSender: <T>(orgId: string, fn: () => T) => T;
 }) {
   return {
-    companyContext(req: Request, _res: Response, next: NextFunction) {
+    companyContext(req: Request, res: Response, next: NextFunction) {
       const org = memberOrgOf(req);
-      if (!org) return next();
+      if (!org) {
+        // Dados do WhatsApp nunca caem na empresa padrão por engano: sem empresa válida, 403
+        // (master sem empresa continua vendo a padrão; webhooks públicos não têm usuário e seguem).
+        const waData = /^\/(whatsapp|composio)\//.test(req.path);
+        if (waData && req.user && !req.user.master) {
+          return res.status(403).json({ success: false, error: 'Selecione uma empresa da qual você faz parte.' });
+        }
+        return next();
+      }
       deps.runAsOrgSender(effectiveOrg(org), next);
     },
     ownSessionContext(req: Request, _res: Response, next: NextFunction) {

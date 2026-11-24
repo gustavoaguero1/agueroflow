@@ -4,7 +4,24 @@ import fs from 'node:fs';
 
 // Os dados do WhatsApp são por empresa (server/orgScopedStore.ts). Reatribuir o nome direto
 // (`x = [...]`) trocaria a visão por uma lista solta e misturaria empresas.
-const src = fs.readFileSync('server.ts', 'utf8');
+const src = fs.readFileSync(process.env.SERVER_TS || 'server.ts', 'utf8');
+
+test('exportação de NDs para a pasta da rede leva as NDs de todas as empresas', () => {
+  assert.match(src, /records: \(\) => whatsAppNdRecords\$\.live\(\)/);
+});
+
+test('rascunho de regra do assistente é por empresa (não compartilhado)', () => {
+  assert.doesNotMatch(src, /let pendingChatRuleDraft\b/);
+});
+
+test('sincronizações (sync-restore) de contatos, comandos, regras e registros de ND só aceitam a empresa atual', () => {
+  const routes = ['contacts', 'assistant/jobs', 'nd/rules', 'nd/records'];
+  const missing = routes.filter((r) => {
+    const i = src.indexOf(`'/api/whatsapp/${r}/sync-restore'`);
+    return i < 0 || !src.slice(i, i + 300).includes('filter(isOfCurrentWaOrg)');
+  });
+  assert.deepEqual(missing, []);
+});
 const STORES = [
   'whatsAppContacts', 'whatsAppMessages', 'whatsAppNdRules', 'whatsAppNdRecords', 'whatsAppScheduledJobs',
   'whatsAppAiRules', 'whatsAppQuickReplies', 'whatsAppAiChat', 'whatsAppReceiptsConfig', 'ocrEnabledLockMap',

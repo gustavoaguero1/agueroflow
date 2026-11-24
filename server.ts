@@ -56,7 +56,7 @@ import {
   setOfficialSessionKey,
 } from './server/whatsappRuntime';
 import { createOrgScopedArray, createOrgScopedMap, createOrgScopedObject } from './server/orgScopedStore';
-import { sessionForRequest, addTag } from './server/whatsappRouting';
+import { sessionForRequest, addTag, acceptForOrg } from './server/whatsappRouting';
 import { createWhatsAppMiddlewares } from './server/whatsappMiddleware';
 import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
@@ -578,7 +578,7 @@ async function main() {
       fs.writeFileSync(ndExportSinceFile, JSON.stringify({ since }), 'utf-8');
       return since;
     },
-    records: () => whatsAppNdRecords,
+    records: () => whatsAppNdRecords$.live(), // todas as empresas (registros reais: marcar "exportado" grava)
     pdf: (r) => getOrGenerateNdPdfBuffer(r as WhatsAppNdRecord),
     persist: () => persistWaNdRecords(),
   }));
@@ -2143,7 +2143,12 @@ Sua tarefa:
   const whatsAppReceiptsConfig$ = createOrgScopedObject<any>({
     orgOf: orgOfWhatsAppContext,
     defaultOrg: effectiveOrg(undefined),
-    defaults: waConfigDefaults,
+    normalize: (o) => effectiveOrg(o),
+    // Empresa nova não herda a identidade da padrão (dono, equipe autorizada, conta do Composio).
+    defaults: (org: string) =>
+      org === effectiveOrg(undefined)
+        ? waConfigDefaults()
+        : { ...waConfigDefaults(), connectedPhoneNumber: '', authorizedPhones: [], status: 'desconectado', composioEntityId: '' },
     initial: waConfigInit,
   });
   const whatsAppReceiptsConfig: any = whatsAppReceiptsConfig$.view;
@@ -2179,7 +2184,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_messages.json:', err);
   }
-  const whatsAppMessages$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppMessages__init });
+  const whatsAppMessages$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppMessages__init });
   const whatsAppMessages = whatsAppMessages$.view; // por empresa (server/orgScopedStore.ts)
 
   const MAX_WA_MESSAGES = 15000;
@@ -2279,6 +2284,7 @@ Sua tarefa:
   const ocrEnabledLockMap$ = createOrgScopedMap<OcrChannelLockEntry>({
     orgOf: orgOfWhatsAppContext,
     defaultOrg: effectiveOrg(undefined),
+    normalize: (o) => effectiveOrg(o),
     initial: [],
   });
   const ocrEnabledLockMap = ocrEnabledLockMap$.view;
@@ -2410,7 +2416,7 @@ Sua tarefa:
       // keep empty
     }
   }
-  const whatsAppContacts$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppContacts__init });
+  const whatsAppContacts$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppContacts__init });
   const whatsAppContacts = whatsAppContacts$.view; // por empresa (server/orgScopedStore.ts)
 
   // Seed lock registry from any contact currently marked ocrEnabled === true
@@ -2675,7 +2681,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_quick_replies.json:', err);
   }
-  const whatsAppQuickReplies$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppQuickReplies__init });
+  const whatsAppQuickReplies$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppQuickReplies__init });
   const whatsAppQuickReplies = whatsAppQuickReplies$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaQuickReplies = () => {
     try {
@@ -2695,7 +2701,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_ai_rules.json:', err);
   }
-  const whatsAppAiRules$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppAiRules__init });
+  const whatsAppAiRules$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppAiRules__init });
   const whatsAppAiRules = whatsAppAiRules$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaAiRules = () => {
     try {
@@ -2721,7 +2727,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_ai_chat.json:', err);
   }
-  const whatsAppAiChat$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppAiChat__init });
+  const whatsAppAiChat$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppAiChat__init });
   const whatsAppAiChat = whatsAppAiChat$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaAiChat = () => {
     try {
@@ -3114,7 +3120,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_scheduled_jobs.json:', err);
   }
-  const whatsAppScheduledJobs$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppScheduledJobs__init });
+  const whatsAppScheduledJobs$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppScheduledJobs__init });
   const whatsAppScheduledJobs = whatsAppScheduledJobs$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaScheduledJobs = () => {
@@ -3152,7 +3158,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_nd_rules.json:', err);
   }
-  const whatsAppNdRules$ = createOrgScopedArray<WhatsAppNdRule>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppNdRules__init });
+  const whatsAppNdRules$ = createOrgScopedArray<WhatsAppNdRule>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppNdRules__init });
   const whatsAppNdRules = whatsAppNdRules$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaNdRules = () => {
@@ -3188,7 +3194,7 @@ Sua tarefa:
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_nd_records.json:', err);
   }
-  const whatsAppNdRecords$ = createOrgScopedArray<WhatsAppNdRecord>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), initial: whatsAppNdRecords__init });
+  const whatsAppNdRecords$ = createOrgScopedArray<WhatsAppNdRecord>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppNdRecords__init });
   const whatsAppNdRecords = whatsAppNdRecords$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaNdRecords = () => {
@@ -9679,8 +9685,14 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Restore OCR-enabled contacts/groups from Firestore cloud mirror after container restarts
+  /**
+   * Sincronização (cópia na nuvem → servidor): só entram registros da empresa atual. Sem isso, a cópia
+   * (que enxerga todas as empresas) colaria dados de uma empresa em outra.
+   */
+  const isOfCurrentWaOrg = (item: any) => acceptForOrg(item?.organizationId, orgOfWhatsAppContext(), (o) => effectiveOrg(o));
+
   app.post('/api/whatsapp/contacts/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
+    const incoming = Array.isArray(req.body?.contacts) ? req.body.contacts.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     for (const item of incoming) {
       if (!item?.jidOrPhone || !item?.ocrEnabled) continue;
@@ -10009,7 +10021,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Bidirectional Firestore -> Server restore/merge for scheduled commands
   app.post('/api/whatsapp/assistant/jobs/sync-restore', (req: Request, res: Response) => {
-    const incoming: any[] = Array.isArray(req.body?.jobs) ? req.body.jobs : [];
+    const incoming: any[] = Array.isArray(req.body?.jobs) ? req.body.jobs.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
 
@@ -10411,7 +10423,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   app.post('/api/whatsapp/nd/rules/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.rules) ? req.body.rules : [];
+    const incoming = Array.isArray(req.body?.rules) ? req.body.rules.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
     for (const item of incoming) {
@@ -10443,7 +10455,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   app.post('/api/whatsapp/nd/records/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.records) ? req.body.records : [];
+    const incoming = Array.isArray(req.body?.records) ? req.body.records.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
     for (const item of incoming) {
@@ -10845,7 +10857,14 @@ DIRETRIZES ESSENCIAIS:
     }
   });
 
-  let pendingChatRuleDraft: WhatsAppPendingRuleDraft | null = null;
+  // Rascunho de regra do assistente: um por empresa (o chat do assistente também é por empresa).
+  const pendingDraftBox = createOrgScopedObject<{ draft: WhatsAppPendingRuleDraft | null }>({
+    orgOf: orgOfWhatsAppContext,
+    defaultOrg: effectiveOrg(undefined),
+    normalize: (o) => effectiveOrg(o),
+    defaults: () => ({ draft: null }),
+    initial: null,
+  }).view;
 
   const evaluatePendingDraft = (draft: WhatsAppPendingRuleDraft): WhatsAppPendingRuleDraft => {
     const missing: string[] = [];
@@ -10998,11 +11017,11 @@ DIRETRIZES ESSENCIAIS:
 
     // 1. Handle Cancel Draft immediately
     if (
-      pendingChatRuleDraft &&
+      pendingDraftBox.draft &&
       (actionMode === 'cancel_draft' ||
         /^(cancelar|cancela|desistir|desisto|esquece|n[aã]o criar|abortar)$/i.test(effectiveText))
     ) {
-      pendingChatRuleDraft = null;
+      pendingDraftBox.draft = null;
       const botEntry = pushAiChatEntry({
         role: 'assistant',
         text: '❌ Criação da regra/rotina cancelada. Quando quiser criar outra, é só me avisar!',
@@ -11024,8 +11043,8 @@ DIRETRIZES ESSENCIAIS:
         effectiveText
       );
 
-    if (pendingChatRuleDraft && pendingChatRuleDraft.readyToConfirm && isExplicitConfirm) {
-      const draft = pendingChatRuleDraft;
+    if (pendingDraftBox.draft && pendingDraftBox.draft.readyToConfirm && isExplicitConfirm) {
+      const draft = pendingDraftBox.draft;
       const nowIso = new Date().toISOString();
 
       if (draft.kind === 'scheduled_job') {
@@ -11074,7 +11093,7 @@ DIRETRIZES ESSENCIAIS:
         };
         whatsAppScheduledJobs$.set([newJob, ...whatsAppScheduledJobs]);
         persistWaScheduledJobs();
-        pendingChatRuleDraft = null;
+        pendingDraftBox.draft = null;
 
         const timingLabel =
           draft.delayMinutes && draft.delayMinutes > 0
@@ -11131,7 +11150,7 @@ DIRETRIZES ESSENCIAIS:
         };
         whatsAppAiRules$.set([newRule, ...whatsAppAiRules]);
         persistWaAiRules();
-        pendingChatRuleDraft = null;
+        pendingDraftBox.draft = null;
 
         const botEntry = pushAiChatEntry({
           role: 'assistant',
@@ -11157,7 +11176,7 @@ DIRETRIZES ESSENCIAIS:
     // 3. Parse user message (either updating an active draft OR classifying a brand-new command)
     const detectedDelay = parseRelativeDelayMinutes(effectiveText);
     const looksLikeCrossChatNow =
-      !pendingChatRuleDraft &&
+      !pendingDraftBox.draft &&
       !detectedDelay &&
       !/\b(todo dia|todos os dias|diariamente|sempre [aà]s|de segunda a sexta|agend[ae]|program[ae]|criar regra|nova regra|nova rotina|rotina|[aà]s \d{1,2}\s?(h|hr|hrs|horas?|:\d{2}))\b/i.test(
         effectiveText
@@ -11189,13 +11208,13 @@ DIRETRIZES ESSENCIAIS:
 
     // Owner panel: ERP questions go straight to the read-only tools (route is behind requireAuth).
     const erpPanelOrg = effectiveOrg(undefined);
-    if (process.env.GEMINI_API_KEY && !pendingChatRuleDraft && actionMode !== 'confirm_draft' && actionMode !== 'cancel_draft' &&
+    if (process.env.GEMINI_API_KEY && !pendingDraftBox.draft && actionMode !== 'confirm_draft' && actionMode !== 'cancel_draft' &&
         ERP_QUESTION.test(effectiveText) && canQueryErp(req.user, erpPanelOrg) && getAdmin()) {
       try {
         const text = await answerWithTools(getAdmin()!, erpPanelOrg, effectiveText, [], async (p) => (await generateContentWithFallback(p)).response);
         if (text) {
           const botEntry = pushAiChatEntry({ role: 'assistant', text });
-          return res.json({ success: true, reply: botEntry, rules: whatsAppAiRules, scheduledJobs: whatsAppScheduledJobs, chatHistory: whatsAppAiChat, pendingDraft: pendingChatRuleDraft });
+          return res.json({ success: true, reply: botEntry, rules: whatsAppAiRules, scheduledJobs: whatsAppScheduledJobs, chatHistory: whatsAppAiChat, pendingDraft: pendingDraftBox.draft });
         }
       } catch (e) {
         console.warn('[WA panel ERP tools] fallback:', e);
@@ -11205,9 +11224,9 @@ DIRETRIZES ESSENCIAIS:
     let aiParsed: any = null;
     if (process.env.GEMINI_API_KEY) {
       try {
-        const draftContext = pendingChatRuleDraft
+        const draftContext = pendingDraftBox.draft
           ? `HÁ UM RASCUNHO DE REGRA/ROTINA EM ANDAMENTO QUE O USUÁRIO ESTÁ PREENCHENDO OU EDITANDO:\n${JSON.stringify(
-              pendingChatRuleDraft,
+              pendingDraftBox.draft,
               null,
               2
             )}\nMantenha todos os campos já preenchidos no rascunho a menos que o usuário peça para alterar algum campo ou responda a um campo pendente!`
@@ -11280,17 +11299,17 @@ Retorne JSON estrito.`;
     // Heuristic fallback if Gemini failed or returned empty
     if (!aiParsed || !aiParsed.intent) {
       const lower = effectiveText.toLowerCase();
-      if (!pendingChatRuleDraft && (lower.includes('pausar') || lower.includes('desativar todas'))) {
+      if (!pendingDraftBox.draft && (lower.includes('pausar') || lower.includes('desativar todas'))) {
         aiParsed = { intent: 'pause_all_rules' };
       } else if (
-        pendingChatRuleDraft ||
+        pendingDraftBox.draft ||
         detectedDelay ||
         /\b(criar regra|nova regra|nova rotina|agend[ae]|program[ae]|todo dia|todos os dias|sempre que|responda por mim|pr[oó]ximas?\s+\d*\s*mensagens?|[aà]s \d{1,2}(:\d{2}|\s?h))\b/i.test(
           effectiveText
         )
       ) {
         const isAutoReply =
-          pendingChatRuleDraft?.kind === 'auto_reply_rule' ||
+          pendingDraftBox.draft?.kind === 'auto_reply_rule' ||
           /\b(sempre que|responda por mim|auto[- ]?resposta|pr[oó]ximas?\s+\d*\s*mensagens?)\b/i.test(effectiveText);
         const groupMatch = effectiveText.match(/\bno\s+grupo\s+([A-Za-zÀ-ÖØ-öø-ÿ0-9_\-\s/]{2,40}?)(?=\s+(?:dizendo|falando|escrevendo|com|às|as|em)\b|$)/i);
         const timeMatch = effectiveText.match(/\b[aà]s\s+(\d{1,2})(?::(\d{2})|\s?h(?:rs?|oras?)?)\b/i);
@@ -11298,9 +11317,9 @@ Retorne JSON estrito.`;
         aiParsed = {
           intent: isAutoReply ? 'draft_auto_reply_rule' : 'draft_scheduled_job',
           title:
-            pendingChatRuleDraft &&
-            pendingChatRuleDraft.missingFields.length === 1 &&
-            pendingChatRuleDraft.missingFields[0].toLowerCase().includes('título')
+            pendingDraftBox.draft &&
+            pendingDraftBox.draft.missingFields.length === 1 &&
+            pendingDraftBox.draft.missingFields[0].toLowerCase().includes('título')
               ? effectiveText
               : '',
           jobType: literalMsg ? 'fixed_message' : undefined,
@@ -11330,7 +11349,7 @@ Retorne JSON estrito.`;
         updatedAt: nowIso,
       })));
       persistWaAiRules();
-      pendingChatRuleDraft = null;
+      pendingDraftBox.draft = null;
       const botEntry = pushAiChatEntry({
         role: 'assistant',
         text: '⏸️ Todas as regras de resposta automática foram pausadas.',
@@ -11372,9 +11391,9 @@ Retorne JSON estrito.`;
     if (
       aiParsed.intent === 'draft_scheduled_job' ||
       aiParsed.intent === 'draft_auto_reply_rule' ||
-      pendingChatRuleDraft
+      pendingDraftBox.draft
     ) {
-      const base: WhatsAppPendingRuleDraft = pendingChatRuleDraft || {
+      const base: WhatsAppPendingRuleDraft = pendingDraftBox.draft || {
         kind: aiParsed.intent === 'draft_auto_reply_rule' ? 'auto_reply_rule' : 'scheduled_job',
         missingFields: [],
         readyToConfirm: false,
@@ -11468,7 +11487,7 @@ Retorne JSON estrito.`;
           ? String(aiParsed.actionContent).trim()
           : base.actionContent || fallbackLiteral || undefined;
 
-      pendingChatRuleDraft = evaluatePendingDraft({
+      pendingDraftBox.draft = evaluatePendingDraft({
         kind: base.kind,
         title: nextTitle,
         jobType: nextJobType,
@@ -11497,7 +11516,7 @@ Retorne JSON estrito.`;
 
       const botEntry = pushAiChatEntry({
         role: 'assistant',
-        text: formatDraftReviewMessage(pendingChatRuleDraft),
+        text: formatDraftReviewMessage(pendingDraftBox.draft),
       });
       return res.json({
         success: true,
@@ -11505,7 +11524,7 @@ Retorne JSON estrito.`;
         rules: whatsAppAiRules,
         scheduledJobs: whatsAppScheduledJobs,
         chatHistory: whatsAppAiChat,
-        pendingDraft: pendingChatRuleDraft,
+        pendingDraft: pendingDraftBox.draft,
       });
     }
 
@@ -11522,7 +11541,7 @@ Retorne JSON estrito.`;
       rules: whatsAppAiRules,
       scheduledJobs: whatsAppScheduledJobs,
       chatHistory: whatsAppAiChat,
-      pendingDraft: pendingChatRuleDraft,
+      pendingDraft: pendingDraftBox.draft,
     });
   });
 
@@ -11548,7 +11567,7 @@ Retorne JSON estrito.`;
   });
 
   app.delete('/api/whatsapp/assistant/chat', (req: Request, res: Response) => {
-    pendingChatRuleDraft = null;
+    pendingDraftBox.draft = null;
     whatsAppAiChat$.set(whatsAppAiChat.slice(0, 1));
     persistWaAiChat();
     res.json({ success: true, chatHistory: whatsAppAiChat });
