@@ -63,6 +63,14 @@ import {
   getConstructionScheduleStatus,
   validateMilestoneScheduleDates,
 } from '../services/constructionPlanning';
+import {
+  buildRdoReportNumber,
+  localDateInputValue,
+  parseOptionalRdoProgress,
+  prepareRdoFieldRecords,
+  type RdoEquipmentDraft,
+  type RdoWorkforceDraft,
+} from '../services/constructionRdo';
 
 const WEATHER_OPTIONS = [
   { id: 'ensolarado', label: 'Ensolarado', icon: Sun, color: 'text-amber-400 bg-amber-950/40 border-amber-800/50' },
@@ -80,6 +88,14 @@ const DEFAULT_MILESTONES = [
   { name: '6. Polimento Mecânico & Decapagem/Passivação Química', weight: 10 },
   { name: '7. Teste Hidrostático & Ensaio Líquido Penetrante (LP)', weight: 5 },
   { name: '8. Comissionamento, Start-up & Entrega Técnica Final', weight: 5 },
+];
+
+const createEmptyRdoWorkforceDrafts = (): RdoWorkforceDraft[] => [
+  { role: 'Caldeireiro', count: '', hours: '' },
+  { role: 'Soldador TIG / Inox', count: '', hours: '' },
+  { role: 'Montador Mecânico / Inox', count: '', hours: '' },
+  { role: 'Ajudante Geral', count: '', hours: '' },
+  { role: 'Supervisor / Encarregado', count: '', hours: '' },
 ];
 
 export const ConstructionModule: React.FC = () => {
@@ -100,21 +116,18 @@ export const ConstructionModule: React.FC = () => {
   const [showShiftConfigModal, setShowShiftConfigModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // RDO Form State
-  const [rdoDate, setRdoDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // RDO Form State: blank means "not informed"; nothing is assumed about the field team or equipment.
+  const [rdoDate, setRdoDate] = useState<string>(localDateInputValue());
   const [rdoUnitId, setRdoUnitId] = useState<string>('');
   const [rdoContractId, setRdoContractId] = useState<string>('');
-  const [rdoWeather, setRdoWeather] = useState<ConstructionDailyReport['weather']>('ensolarado');
-  const [rdoCaldeireiros, setRdoCaldeireiros] = useState<number>(2);
-  const [rdoSoldadores, setRdoSoldadores] = useState<number>(3);
-  const [rdoMontadores, setRdoMontadores] = useState<number>(4);
-  const [rdoAjudantes, setRdoAjudantes] = useState<number>(2);
-  const [rdoSupervisores, setRdoSupervisores] = useState<number>(1);
-  const [rdoEquipamentos, setRdoEquipamentos] = useState<string>('2 Inversoras TIG Miller, 1 Andaime Tubular 6m, 1 Lixadeira Angular');
+  const [rdoWeather, setRdoWeather] = useState<ConstructionDailyReport['weather'] | ''>('');
+  const [rdoWorkforceDrafts, setRdoWorkforceDrafts] = useState<RdoWorkforceDraft[]>(createEmptyRdoWorkforceDrafts);
+  const [rdoEquipmentDrafts, setRdoEquipmentDrafts] = useState<RdoEquipmentDraft[]>([]);
   const [rdoActivities, setRdoActivities] = useState<string>('');
   const [rdoImpediments, setRdoImpediments] = useState<string>('');
-  const [rdoProgress, setRdoProgress] = useState<number>(0);
+  const [rdoProgress, setRdoProgress] = useState<string>('');
   const [rdoPhotos, setRdoPhotos] = useState<string[]>([]);
+  const [rdoConfirmationChecked, setRdoConfirmationChecked] = useState(false);
 
   // Load Firestore data
   useEffect(() => {
@@ -140,16 +153,38 @@ export const ConstructionModule: React.FC = () => {
     };
   }, [organization]);
 
-  // Set default contract and unit
+  // Default the page filter only. The RDO form requires the user to choose the actual work location.
   useEffect(() => {
     if (contracts.length > 0 && !selectedContractId) {
       setSelectedContractId(contracts[0].id);
-      setRdoContractId(contracts[0].id);
     }
-    if (units.length > 0 && !rdoUnitId) {
-      setRdoUnitId(units[0].id);
-    }
-  }, [contracts, units]);
+  }, [contracts, selectedContractId]);
+
+  const resetRdoForm = () => {
+    setRdoDate(localDateInputValue());
+    setRdoUnitId('');
+    setRdoContractId('');
+    setRdoWeather('');
+    setRdoWorkforceDrafts(createEmptyRdoWorkforceDrafts());
+    setRdoEquipmentDrafts([]);
+    setRdoActivities('');
+    setRdoImpediments('');
+    setRdoProgress('');
+    setRdoPhotos([]);
+    setRdoConfirmationChecked(false);
+  };
+
+  const updateRdoWorkforceDraft = (role: string, patch: Partial<RdoWorkforceDraft>) => {
+    setRdoWorkforceDrafts((current) =>
+      current.map((draft) => draft.role === role ? { ...draft, ...patch } : draft)
+    );
+  };
+
+  const updateRdoEquipmentDraft = (index: number, patch: Partial<RdoEquipmentDraft>) => {
+    setRdoEquipmentDrafts((current) =>
+      current.map((draft, currentIndex) => currentIndex === index ? { ...draft, ...patch } : draft)
+    );
+  };
 
   // Create only missing template milestones. Existing progress and dates are never overwritten.
   const handleSeedDefaultMilestones = async () => {
@@ -206,58 +241,85 @@ export const ConstructionModule: React.FC = () => {
     }
   };
 
-  // Handle Create RDO
+  // Handle Create RDO using only values explicitly supplied by the field reporter.
   const handleCreateRdo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (!rdoDate || !rdoUnitId || !rdoContractId || !rdoWeather) {
+      alert('Informe a data, unidade/local, contrato/obra e condição climática do RDO.');
+      return;
+    }
+    if (!units.some((unit) => unit.id === rdoUnitId)) {
+      alert('A unidade selecionada não pertence à empresa ativa. Atualize a página e selecione novamente.');
+      return;
+    }
+    if (!contracts.some((contract) => contract.id === rdoContractId)) {
+      alert('O contrato selecionado não pertence à empresa ativa. Atualize a página e selecione novamente.');
+      return;
+    }
     if (!rdoActivities.trim()) {
       alert('Por favor, informe as atividades executadas no dia.');
+      return;
+    }
+    if (!rdoConfirmationChecked) {
+      alert('Confirme que as informações deste RDO foram conferidas em campo.');
+      return;
+    }
+
+    const fieldRecords = prepareRdoFieldRecords(rdoWorkforceDrafts, rdoEquipmentDrafts);
+    if (!fieldRecords.valid) {
+      alert(fieldRecords.errors.join('\\n'));
+      return;
+    }
+
+    const progressResult = parseOptionalRdoProgress(rdoProgress);
+    if (progressResult.error) {
+      alert(progressResult.error);
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const rdoId = `rdo_${Date.now()}`;
-      const reportNum = `RDO-${new Date().getFullYear()}/${String(reports.length + 1).padStart(3, '0')}`;
-      
+      const reportRef = doc(collection(db, 'construction_reports'));
+      const rdoId = reportRef.id;
+      const reportNum = buildRdoReportNumber(rdoDate, rdoId);
+      const recordedAt = new Date().toISOString();
+      const preparedBy = user.displayName || user.email || user.uid;
       const newReport: ConstructionDailyReport = {
         id: rdoId,
         orgId: organization.id,
-        unitId: rdoUnitId || (units[0]?.id ?? 'default_unit'),
-        contractId: rdoContractId || undefined,
+        unitId: rdoUnitId,
+        contractId: rdoContractId,
         reportNumber: reportNum,
         date: rdoDate,
         weather: rdoWeather,
-        workforce: [
-          { role: 'Caldeireiro', count: Number(rdoCaldeireiros), hours: 8.8 },
-          { role: 'Soldador TIG / Inox', count: Number(rdoSoldadores), hours: 8.8 },
-          { role: 'Montador Mecânico / Inox', count: Number(rdoMontadores), hours: 8.8 },
-          { role: 'Ajudante Geral', count: Number(rdoAjudantes), hours: 8.8 },
-          { role: 'Supervisor / Encarregado', count: Number(rdoSupervisores), hours: 8.8 },
-        ],
-        equipment: [
-          { name: rdoEquipamentos || 'Equipamentos gerais de caldeiraria e montagem', quantity: 1, operationalHours: 8 },
-        ],
+        workforce: fieldRecords.workforce,
+        equipment: fieldRecords.equipment,
         activitiesCompleted: rdoActivities.trim(),
         impedimentsOrStoppages: rdoImpediments.trim() || undefined,
-        progressPercentage: Number(rdoProgress) || 0,
+        ...(progressResult.value !== undefined ? { progressPercentage: progressResult.value } : {}),
         photos: rdoPhotos,
-        preparedBy: user.displayName || user.email || 'Supervisor Técnico',
-        supervisorSignature: `Assinado digitalmente por ${user.displayName || user.email} em ${new Date().toLocaleDateString('pt-BR')}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        preparedBy,
+        confirmedByUid: user.uid,
+        confirmedByName: preparedBy,
+        confirmedAt: recordedAt,
+        createdAt: recordedAt,
+        updatedAt: recordedAt,
       };
 
-      await setDoc(doc(db, 'construction_reports', rdoId), newReport);
-      await logAudit('Obras', 'Registrar RDO', `Diário de Obra ${reportNum} emitido na data ${rdoDate}`, rdoId);
+      await setDoc(reportRef, newReport);
+      await logAudit(
+        'Obras',
+        'Registrar RDO',
+        `Diário de Obra ${reportNum} emitido por ${preparedBy}; ${fieldRecords.totalPersonHours} horas-homem informadas.`,
+        rdoId,
+      );
 
       setShowRdoModal(false);
-      setRdoActivities('');
-      setRdoImpediments('');
-      setRdoPhotos([]);
+      resetRdoForm();
     } catch (err) {
       console.error('Erro ao salvar RDO:', err);
-      alert('Erro ao salvar RDO.');
+      alert('Não foi possível concluir o registro do RDO. Confira a conexão e tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
