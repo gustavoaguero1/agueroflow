@@ -6,7 +6,6 @@ import {
   parseOptionalRdoProgress,
   prepareRdoFieldRecords,
   type RdoEquipmentDraft,
-  type RdoWorkforceDraft,
 } from '../src/services/constructionRdo';
 
 test('ignora linhas de equipe em branco sem criar profissionais', () => {
