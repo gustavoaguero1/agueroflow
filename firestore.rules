@@ -165,6 +165,7 @@ service cloud.firestore {
           'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
+          'engineering_documents', 'engineering_document_events',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
@@ -178,15 +179,15 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
-      // Área da coleção: RH, Estoque/Compras e Comercial exigem acesso (ver lê, editar grava).
+      // Área da coleção: RH, Estoque/Compras, Comercial e Engenharia exigem nível de acesso.
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll == 'construction_reports' ? A_OPS()
+          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -238,8 +239,89 @@ service cloud.firestore {
               && request.resource.data.get('progressPercentage', 0) <= 100))
         );
       }
+      function engineeringReferencesBelongToOrg(d) {
+        let unitPath = /databases/$(database)/documents/units/$(d.get('unitId', ''));
+        let contractPath = /databases/$(database)/documents/contracts/$(d.get('contractId', ''));
+        return exists(unitPath) && exists(contractPath)
+          && get(unitPath).data.get('orgId', '') == orgOf(d)
+          && get(contractPath).data.get('orgId', '') == orgOf(d);
+      }
+      function validEngineeringDocumentCreate() {
+        return coll != 'engineering_documents' || (
+          signedIn()
+          && request.resource.data.get('id', '') == docId
+          && orgOf(request.resource.data) is string
+          && orgOf(request.resource.data).matches('^[A-Za-z0-9_-]{1,80}$')
+          && request.resource.data.get('documentCode', '') is string
+          && request.resource.data.get('documentCode', '').matches('^[A-Z0-9][A-Z0-9_-]{0,39}$')
+          && request.resource.data.get('revision', '') is string
+          && request.resource.data.get('revision', '').matches('^[A-Z0-9][A-Z0-9_-]{0,11}$')
+          && docId == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '') + '_' + request.resource.data.get('revision', '')
+          && request.resource.data.get('documentGroupId', '') == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 2
+          && request.resource.data.get('title', '').size() <= 180
+          && request.resource.data.get('documentType', '') in ['desenho', 'isometrico', 'pid', 'especificacao', 'mapa_solda', 'wps_pqr', 'certificado_material', 'relatorio_ensaios', 'procedimento', 'as_built', 'outro']
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('unitId', '').size() > 0
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('contractId', '').size() > 0
+          && engineeringReferencesBelongToOrg(request.resource.data)
+          && request.resource.data.get('filePath', '') is string
+          && request.resource.data.get('filePath', '').matches('^engineering-documents/' + orgOf(request.resource.data) + '/' + docId + '/[A-Za-z0-9_-]{8,80}$')
+          && request.resource.data.get('fileName', '') is string
+          && request.resource.data.get('fileName', '').size() > 0
+          && request.resource.data.get('fileName', '').size() <= 180
+          && request.resource.data.get('contentType', '') in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+          && request.resource.data.get('fileSize', 0) is number
+          && request.resource.data.get('fileSize', 0) > 0
+          && request.resource.data.get('fileSize', 0) <= 20 * 1024 * 1024
+          && request.resource.data.get('createdByUid', '') == request.auth.uid
+          && request.resource.data.get('createdByName', '') is string
+          && request.resource.data.get('createdByName', '').size() > 0
+          && request.resource.data.get('createdAt', null) == request.time
+          && (request.resource.data.get('documentDate', null) == null
+            || (request.resource.data.get('documentDate', null) is string
+              && request.resource.data.get('documentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+          && (request.resource.data.get('notes', null) == null
+            || (request.resource.data.get('notes', null) is string
+              && request.resource.data.get('notes', '').size() <= 1500))
+        );
+      }
+      function validEngineeringEventCreate() {
+        return coll != 'engineering_document_events' || (
+          signedIn()
+          && request.resource.data.get('orgId', '') is string
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('documentId', '') is string
+          && existsAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', '')))
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('orgId', '') == orgOf(request.resource.data)
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('unitId', '') == request.resource.data.get('unitId', '')
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('contractId', '') == request.resource.data.get('contractId', '')
+          && request.resource.data.get('eventType', '') in ['submitted_internal', 'approved_internal', 'rejected_internal', 'submitted_client', 'approved_client', 'rejected_client', 'marked_as_built']
+          && request.resource.data.get('recordedByUid', '') == request.auth.uid
+          && request.resource.data.get('recordedByName', '') is string
+          && request.resource.data.get('recordedByName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (request.resource.data.get('eventType', '') == 'submitted_internal'
+            ? getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('createdAt', null) == request.time
+            : hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']))
+          && (request.resource.data.get('eventType', '') != 'rejected_internal'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+          && (request.resource.data.get('eventType', '') in ['submitted_client', 'approved_client', 'rejected_client']
+            ? (request.resource.data.get('clientName', '') is string
+              && request.resource.data.get('clientName', '').size() > 0
+              && request.resource.data.get('clientReference', '') is string
+              && request.resource.data.get('clientReference', '').size() > 0)
+            : true)
+          && (request.resource.data.get('eventType', '') != 'rejected_client'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+        );
+      }
       allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-        && validRdoCreate() && areaWrite(request.resource.data);
+        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && areaWrite(request.resource.data);
       allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
       allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
 

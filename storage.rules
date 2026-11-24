@@ -1,7 +1,35 @@
 rules_version = '2';
-// Photos of work orders: org members (custom claims set by the server) or master. Everything else denied.
+// Private engineering files: tenant membership + Operações level (view=1, write=2).
 service firebase.storage {
   match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isMaster() { return signedIn() && request.auth.token.get('master', false) == true; }
+    function roleAreas(role) {
+      return {
+        'Admin': '22222222222',
+        'Gerente': '22222122212',
+        'Supervisor': '12212021112',
+        'Operacional': '12100010112',
+        'Visualizador': '11110011112'
+      }.get(role, '10000000011');
+    }
+    function isMember(orgId) {
+      return signedIn() && orgId in request.auth.token.get('orgs', {});
+    }
+    function areaCode(orgId) {
+      return request.auth.token.get('areas', {}).get(
+        orgId,
+        roleAreas(request.auth.token.get('orgs', {}).get(orgId, ''))
+      );
+    }
+    function engineeringCanRead(orgId) {
+      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 1);
+    }
+    function engineeringCanWrite(orgId) {
+      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2);
+    }
+
+    // Photos of work orders: org members (custom claims set by the server) or master.
     match /work-orders/{orgId}/{allPaths=**} {
       function member() {
         return request.auth != null &&
@@ -10,6 +38,7 @@ service firebase.storage {
       allow read: if member();
       allow write: if member() && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
+
     // Anexos do módulo Operações (CTPS, notas de reembolso, prints de NF) e arquivos de apoio importados do Inox.
     match /operacoes/{orgId}/{fileId} {
       function opsMember() {
@@ -20,6 +49,19 @@ service firebase.storage {
       allow create, update: if opsMember() && request.resource.size < 15 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf|application/json|application/octet-stream');
     }
+
+    // Desenhos, isométricos, P&IDs, certificados e documentos As Built.
+    // A revisão publicada é imutável; uma nova revisão usa novo caminho.
+    match /engineering-documents/{orgId}/{documentId}/{fileId} {
+      allow read: if engineeringCanRead(orgId);
+      allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp)$');
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

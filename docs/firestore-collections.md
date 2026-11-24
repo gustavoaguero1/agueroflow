@@ -31,6 +31,8 @@ Owner kinds:
 | commercial_proposals | organizationId | `organizationId ==`, getDoc | |
 | construction_milestones | orgId | `orgId ==` | Marcos do cronograma por contrato/obra; guarda peso, avanço físico, início e término previstos, início e conclusão reais e responsável. O template cria etapas zeradas e não sobrescreve medições existentes. |
 | construction_reports | orgId (append-only) | `orgId ==` | RDO com unidade, contrato e clima escolhidos explicitamente; equipe registra quantidade e horas por profissional (`hours`), equipamentos registram quantidade e horas em operação; avanço diário é opcional. Criação exige `confirmedByUid == request.auth.uid`, nome, horário, local, contrato, clima e atividades. A área Operações nível 2 pode criar; nível 1 pode ler. Atualização e exclusão pelo cliente são bloqueadas. RDOs antigos continuam legíveis; `supervisorSignature` é apenas campo legado e não é interpretado como assinatura certificada. |
+| engineering_documents | orgId (append-only) | `orgId ==` | Cadastro privado de documentos técnicos por código/revisão, unidade e contrato; o ID é determinístico (`eng_{orgId}_{codigo}_{revisao}`), impede duplicar uma revisão e preserva versões anteriores. Firestore valida identidade de quem cadastrou, vínculo dos registros à mesma empresa, tipo, MIME, tamanho (até 20 MB) e caminho privado no Storage. Operações nível 2 cria; nível 1 lê. Sem atualização/exclusão pelo cliente. Arquivos PDF/JPEG/PNG/WEBP. | 
+| engineering_document_events | orgId (append-only) | `orgId ==` | Histórico imutável de envio para revisão, aprovação/reprovação interna, registro de envio ao cliente, retorno informado por contato/referência e marcação As Built. Supervisor/Gerente/Admin com Operações nível 2 podem registrar movimentações; cadastro inicial é feito no mesmo batch do documento. O retorno do cliente é lançado por usuário interno, não autentica o cliente nem equivale a assinatura eletrônica. |
 | constructions | orgId | `orgId ==` | |
 | contracts | orgId | `orgId ==` | |
 | cost_centers | orgId | `orgId ==` | |
@@ -106,6 +108,10 @@ A tela de conciliação OC × NF-e é uma visão derivada, somente leitura, calc
 
 
 A classificação da NF-e pode ser vinculada à OC do mesmo fornecedor. A OC continua sendo compromisso de compra; o título a pagar nasce das duplicatas da NF-e, evitando gerar uma segunda obrigação financeira. Quando existe OC vinculada, a classificação não movimenta estoque: a entrada física fica exclusivamente no fluxo de Recebimento. Se o recebimento já existe, a conciliação usa o recibo e não repete as entradas; o título preserva OC, OS vinculada e recibo para rastreabilidade. Financeiro tem leitura das OCs/recibos, mas somente Estoque pode alterá-los.
+
+## Documentos de engenharia
+
+Os metadados são armazenados em `engineering_documents`; cada movimentação fica como evento separado em `engineering_document_events`. Ambos são escopados por `orgId`, vinculados a unidade e contrato da mesma empresa e append-only para o cliente. Os arquivos ficam em `engineering-documents/{orgId}/{documentId}/{fileId}` no Firebase Storage, sem URL pública, com leitura por Operações nível 1 e criação por Operações nível 2; formatos aceitos: PDF, JPEG, PNG e WEBP, até 20 MB. Novas revisões criam novos documentos e caminhos. O fluxo de aprovação do cliente registra a referência informada pelo responsável interno, sem autenticação externa ou assinatura digital certificada.
 
 ## WhatsApp mirror
 
