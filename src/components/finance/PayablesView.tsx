@@ -154,7 +154,14 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
           {shown.map((p) => {
             const late = p.status === 'aberto' && p.vencimento < t;
             const authorization = authorizations.find((entry) => entry.payableId === p.id);
-            const changedAfterAuthorization = !!authorization && (p.valor !== authorization.authorizedValue || p.vencimento !== authorization.dueDate || p.fornecedor.nome !== authorization.fornecedorNome);
+            const currentSupplierCnpj = String(p.fornecedor.cnpj || '').replace(/\D/g, '');
+            const authorizedSupplierCnpj = String(authorization?.fornecedorCnpj || '').replace(/\D/g, '');
+            const changedAfterAuthorization = !!authorization && (
+              p.valor !== authorization.authorizedValue
+              || p.vencimento !== authorization.dueDate
+              || p.fornecedor.nome.trim().toLocaleLowerCase('pt-BR') !== authorization.fornecedorNome.trim().toLocaleLowerCase('pt-BR')
+              || currentSupplierCnpj !== authorizedSupplierCnpj
+            );
             return (
               <div key={p.id} className={`${card} space-y-2`} data-testid="payable-card">
                 <div className="flex items-start justify-between gap-2">

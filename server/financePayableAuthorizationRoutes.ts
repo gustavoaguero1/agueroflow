@@ -42,8 +42,9 @@ export function createFinancePayableAuthorizationRouter(getH: () => AdminHandles
         if (!payableSnap.exists) throw new RouteError(404, 'Título de Contas a Pagar não encontrado.');
         if (authorizationSnap.exists) throw new RouteError(409, 'Este título já possui uma autorização registrada. Não será criada uma segunda autorização.');
 
-        const reconciliationCase = { id: caseSnap.id, ...(caseSnap.data() || {}) } as FinanceReconciliationCase;
-        const payable = { id: payableSnap.id, ...(payableSnap.data() || {}) } as FinancePayable;
+        // The Firestore path is authoritative; never trust an embedded `id` field from the document payload.
+        const reconciliationCase = { ...(caseSnap.data() || {}), id: caseSnap.id } as FinanceReconciliationCase;
+        const payable = { ...(payableSnap.data() || {}), id: payableSnap.id } as FinancePayable;
         const invalid = validateFinancePayableAuthorizationEligibility(reconciliationCase, payable, orgId);
         if (invalid) throw new RouteError(409, invalid);
 

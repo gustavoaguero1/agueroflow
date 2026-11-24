@@ -386,9 +386,11 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
                     : <div className="space-y-2">
                       {entryCases.map((item) => {
                         const invoiceKeys = item.snapshot?.invoiceKeys || [];
+                        const caseSupplierCnpj = digits(item.supplierCnpj);
                         const linkedPayables = payables.filter((payable) =>
-                          payable.purchaseOrderId === item.purchaseOrderId
-                          && digits(payable.fornecedor.cnpj) === digits(item.supplierCnpj)
+                          caseSupplierCnpj.length === 14
+                          && payable.purchaseOrderId === item.purchaseOrderId
+                          && digits(payable.fornecedor.cnpj) === caseSupplierCnpj
                           && !!payable.nfeChave
                           && invoiceKeys.some((key) => digits(key) === digits(payable.nfeChave)),
                         );

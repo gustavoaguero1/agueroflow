@@ -22,8 +22,10 @@ export function validateFinancePayableAuthorizationEligibility(
   if (!payable.purchaseOrderId || payable.purchaseOrderId !== reconciliationCase.purchaseOrderId) {
     return 'O título não pertence à Ordem de Compra da ocorrência.';
   }
-  if (String(payable.fornecedor.cnpj || '').replace(/\D/g, '') !== String(reconciliationCase.supplierCnpj || '').replace(/\D/g, '')) {
-    return 'O fornecedor do título não corresponde ao fornecedor da ocorrência.';
+  const caseCnpj = String(reconciliationCase.supplierCnpj || '').replace(/\D/g, '');
+  const payableCnpj = String(payable.fornecedor.cnpj || '').replace(/\D/g, '');
+  if (caseCnpj.length !== 14 || payableCnpj.length !== 14 || caseCnpj !== payableCnpj) {
+    return 'O CNPJ do fornecedor do título não corresponde a um CNPJ válido da ocorrência.';
   }
   const invoiceKeys = reconciliationCase.snapshot?.invoiceKeys || [];
   if (!invoiceKeys.includes(payable.nfeChave)) {

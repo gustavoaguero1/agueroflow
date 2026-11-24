@@ -114,6 +114,22 @@ test('backend creates one authorization with server-derived actor and leaves pay
   });
 });
 
+test('backend takes case and payable identifiers from Firestore paths, not embedded id fields', async () => {
+  await withApi('Gerente', {
+    'finance_reconciliation_cases/rcase_org_a_1': { ...caseRecord, id: 'forged_case_id' },
+    'finance_payables/pay_org_a_K1_001': { ...payable, id: 'forged_payable_id' },
+  }, async (base, docs) => {
+    const response = await fetch(base + '/api/finance/payable-authorizations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json() as { authorizationId: string };
+    const stored = docs.get('finance_payable_authorizations/' + body.authorizationId) as Record<string, any>;
+    assert.equal(stored.payableId, 'pay_org_a_K1_001');
+    assert.equal(stored.caseId, 'rcase_org_a_1');
+  });
+});
+
 test('backend rejects duplicate authorization and preserves the first record', async () => {
   const id = financePayableAuthorizationId('org_a', 'pay_org_a_K1_001');
   await withApi('Gerente', {

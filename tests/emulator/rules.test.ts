@@ -481,6 +481,7 @@ test('finance_payable_authorizations: only Admin/Gerente can create one per appr
   await assertFails(setDoc(doc(gerente(), authPath), authorization)); // browsers cannot write this collection
   await seedAs((db) => setDoc(doc(db, authPath), authorization)); // backend Admin SDK is the only writer
   await assertSucceeds(getDoc(doc(member(), authPath)));
+  await assertFails(getDoc(doc(as('other', { org_b: 'Gerente' }), authPath)));
   await assertSucceeds(getDocs(query(collection(member(), 'finance_payable_authorizations'), where('orgId', '==', 'org_a'))));
   assert.equal((await getDoc(doc(gerente(), payablePath))).data()?.status, 'aberto', 'authorization must not mark the title as paid');
   await assertFails(setDoc(doc(gerente(), authPath), authorization)); // deterministic duplicate -> update denied

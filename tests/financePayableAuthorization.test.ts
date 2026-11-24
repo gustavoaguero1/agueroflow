@@ -64,6 +64,7 @@ test('only an approved case can authorize an open NF-e title linked to the same 
   assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, { ...payable, status: 'pago' }, 'org_a') || '', /títulos em aberto/);
   assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, { ...payable, purchaseOrderId: 'po2' }, 'org_a') || '', /não pertence à Ordem de Compra/);
   assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, { ...payable, fornecedor: { cnpj: '22222222000122', nome: 'Outro' } }, 'org_a') || '', /fornecedor/);
+  assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, { ...payable, fornecedor: { cnpj: '', nome: 'Fornecedor A' } }, 'org_a') || '', /CNPJ/);
   assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, { ...payable, nfeChave: 'K2' }, 'org_a') || '', /snapshot aprovado/);
   assert.match(validateFinancePayableAuthorizationEligibility(reconciliationCase, payable, 'org_b') || '', /Empresa diferente/);
   assert.match(validateFinancePayableAuthorizationEligibility({ ...reconciliationCase, reviewedBy: undefined, resolutionNotes: '' }, payable, 'org_a') || '', /responsável e justificativa/);
