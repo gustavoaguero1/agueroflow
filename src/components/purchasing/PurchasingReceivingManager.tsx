@@ -43,7 +43,7 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
   currentUserName,
   onRefresh,
 }) => {
-  const { user } = useAuth();
+  const { user, logAudit } = useAuth();
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -190,6 +190,16 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
 
       setIsReceivingModalOpen(false);
       onRefresh();
+      try {
+        await logAudit(
+          'Compras & Estoque',
+          'Recebimento de materiais',
+          `NF-e ${invoiceNumber.trim()} vinculada à OC ${selectedOrder.code}; ${result.stockLines} linha(s) lançada(s) no estoque; ${result.quantityAddedToStock} unidade(s) movimentada(s).`,
+          result.receiptId,
+        );
+      } catch (auditError) {
+        console.warn('Recebimento concluído, mas o log de auditoria não foi gravado:', auditError);
+      }
       const stockMessage = result.quantityAddedToStock > 0
         ? ` ${result.quantityAddedToStock} unidade(s) lançada(s) no estoque.`
         : ' Nenhum item foi liberado para o estoque.';
