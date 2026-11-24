@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  AREA_IDS, ROLE_DEFAULTS, resolveAreas, areaOfSection, canSeeSection, visibleNav, effectiveLevels, encodeAreas, needsTokenRefresh,
+  AREAS, AREA_IDS, ROLE_DEFAULTS, resolveAreas, areaOfSection, canSeeSection, visibleNav, effectiveLevels, encodeAreas, needsTokenRefresh,
 } from '../src/permissions/areas';
 
 test('padrões por perfil: RH fechado para a maioria, Admin edita tudo', () => {
@@ -29,6 +29,27 @@ test('Painel e Suporte: todo mundo vê, mesmo que alguém tente tirar', () => {
   const r = resolveAreas('Visualizador', { Visualizador: { painel: 0 } }, { suporte: 0 });
   assert.equal(r.painel, 1);
   assert.equal(r.suporte, 1);
+});
+
+test('Configurações: todo mundo abre (tema, dispositivos); mudar a empresa exige editar', () => {
+  for (const role of ['Supervisor', 'Operacional', 'Visualizador'] as const) {
+    assert.equal(ROLE_DEFAULTS[role].configuracoes, 1, role);
+  }
+  assert.equal(resolveAreas('Operacional', null, { configuracoes: 0 }).configuracoes, 1);
+});
+
+test('perfil desconhecido: nada além do mínimo (igual às regras do banco)', () => {
+  const r = resolveAreas('Chefe' as never);
+  assert.deepEqual(AREA_IDS.filter((a) => r[a] > 0), ['painel', 'configuracoes', 'suporte']);
+  assert.ok(AREA_IDS.every((a) => r[a] <= 1));
+});
+
+test('cada área diz se o banco também bloqueia ou se é só o menu', () => {
+  const byId = Object.fromEntries(AREAS.map((a) => [a.id, a.enforcedInDatabase]));
+  assert.deepEqual(byId, {
+    painel: false, operacoes: true, estoque: false, comercial: true, financeiro: true, rh: true,
+    whatsapp: false, relatorios: false, estrutura: false, configuracoes: true, suporte: false,
+  });
 });
 
 test('Admin nunca perde Configurações (não se tranca para fora)', () => {

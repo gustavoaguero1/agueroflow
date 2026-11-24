@@ -25,7 +25,7 @@ import {
 } from '../types/rhPayroll';
 
 import { calculateProgressiveInss } from './inss';
-import { toDirectoryEntry } from './rhDirectory';
+import { directoryChanges, toDirectoryEntry } from './rhDirectory';
 import { PAY_COLLECTION } from './fieldWorkerPay';
 import { saveFieldWorker } from './fieldWorkerPayStore';
 export * from './inss';
@@ -746,16 +746,18 @@ export async function syncRhDirectory(orgId: string): Promise<number> {
     getDocs(query(collection(db, 'rh_employees'), where('orgId', '==', orgId))),
     getDocs(query(collection(db, 'rh_directory'), where('orgId', '==', orgId))),
   ]);
-  const ids = new Set(emps.docs.map((d) => d.id));
-  const ops: Array<(b: ReturnType<typeof writeBatch>) => void> = [];
-  for (const d of emps.docs) {
-    const entry = cleanFirestoreData(toDirectoryEntry({ ...(d.data() as RhEmployee), id: d.id }));
-    ops.push((b) => b.set(doc(db, 'rh_directory', d.id), entry));
-  }
-  for (const d of dir.docs) if (!ids.has(d.id)) ops.push((b) => b.delete(d.ref));
+  // Só o que mudou: regravar tudo a cada abertura do RH dispararia todas as telas de Operações.
+  const ops = directoryChanges(
+    emps.docs.map((d) => ({ ...(d.data() as RhEmployee), id: d.id })),
+    dir.docs.map((d) => ({ id: d.id, data: d.data() })),
+  );
   for (let i = 0; i < ops.length; i += 400) {
     const b = writeBatch(db);
-    ops.slice(i, i + 400).forEach((op) => op(b));
+    for (const op of ops.slice(i, i + 400)) {
+      const ref = doc(db, 'rh_directory', op.id);
+      if (op.kind === 'delete') b.delete(ref);
+      else b.set(ref, cleanFirestoreData(op.data));
+    }
     await b.commit();
   }
   return emps.size;

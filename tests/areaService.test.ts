@@ -87,6 +87,36 @@ test('renovar o login de todos: uma falha não para os outros e é informada', a
   if (r.ok) assert.deepEqual(r.data, { refreshFailed: 1 });
 });
 
+test('tirar acesso derruba o login antigo da pessoa; liberar não', async () => {
+  const s = memStore([{ id: 'm1', orgId: 'a', role: 'Supervisor', userName: 'Ana', active: true }]);
+  const revoked: string[] = [];
+  s.store.revokeTokens = async (id) => { revoked.push(id); };
+  const svc = createAreaService(s.store);
+  await svc.setMemberOverrides(admin('a'), 'm1', { rh: 1 });
+  assert.deepEqual(revoked, []);
+  await svc.setMemberOverrides(admin('a'), 'm1', { rh: 1, operacoes: 0 });
+  assert.deepEqual(revoked, ['m1']);
+});
+
+test('padrão da empresa que tira acesso derruba o login só de quem perdeu', async () => {
+  const s = memStore([
+    { id: 'm1', orgId: 'a', role: 'Supervisor', userName: 'Ana', active: true },
+    { id: 'm2', orgId: 'a', role: 'Operacional', userName: 'Bia', active: true },
+  ]);
+  const revoked: string[] = [];
+  s.store.revokeTokens = async (id) => { revoked.push(id); };
+  await createAreaService(s.store).setOrgDefaults(admin('a'), 'a', { Supervisor: { estoque: 0 } });
+  assert.deepEqual(revoked, ['m1']);
+});
+
+test('ver a tela de acessos: Admin, Gerente ou quem edita Configurações', async () => {
+  const s = memStore([{ id: 'm1', orgId: 'a', role: 'Supervisor', userName: 'Ana', active: true }]);
+  const svc = createAreaService(s.store);
+  assert.equal((await svc.read(gerente('a'), 'a')).ok, true);
+  const sup = { uid: 's', master: false, orgs: { a: 'Supervisor' } } as never;
+  assert.equal((await svc.read(sup, 'a')).ok, false); // Supervisor abre Configurações, mas não vê os acessos
+});
+
 test('pessoa inexistente: erro claro, nada gravado', async () => {
   const s = memStore([]);
   const r = await createAreaService(s.store).setMemberOverrides(admin('a'), 'zz', { rh: 1 });

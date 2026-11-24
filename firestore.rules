@@ -39,10 +39,10 @@ service cloud.firestore {
       return {
         'Admin': '22222222222',
         'Gerente': '22222122212',
-        'Supervisor': '12212021102',
-        'Operacional': '12100010102',
-        'Visualizador': '11110011102'
-      }.get(role, '00000000000');
+        'Supervisor': '12212021112',
+        'Operacional': '12100010112',
+        'Visualizador': '11110011112'
+      }.get(role, '10000000011'); // perfil desconhecido: só os mínimos
     }
     function areaCode(org) { return request.auth.token.get('areas', {}).get(org, roleAreas(orgClaims()[org])); }
     function areaLevel(org, i) { return isMaster() ? 2 : (isMemberOf(org) ? int(areaCode(org)[i:i + 1]) : 0); }

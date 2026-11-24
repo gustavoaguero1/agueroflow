@@ -48,8 +48,33 @@ test('token: cada empresa leva perfil e áreas (padrão da empresa + ajuste da p
 
 test('ninguém ajustado: o token fica como era (sem áreas)', () => {
   assert.deepEqual(claimsFromMembers([{ orgId: 'a', role: 'Gerente' }], {}), { master: false, orgs: { a: 'Gerente' } });
-  // ajuste igual ao padrão também não ocupa o token
-  assert.deepEqual(claimsFromMembers([{ orgId: 'a', role: 'Gerente', areaOverrides: { rh: 1 } }], {}), { master: false, orgs: { a: 'Gerente' } });
+});
+
+test('ajuste fixado igual ao padrão continua no token (se o padrão do sistema mudar, o ajuste vale)', () => {
+  const c = claimsFromMembers([{ orgId: 'a', role: 'Gerente', areaOverrides: { rh: 1 } }], {});
+  assert.equal(decodeAreas(c.areas!.a)!.rh, 1);
+  const d = claimsFromMembers([{ orgId: 'a', role: 'Gerente' }], { a: { Gerente: { rh: 1 } } });
+  assert.ok(d.areas?.a);
+  // padrão da empresa para OUTRO perfil não afeta este
+  assert.deepEqual(claimsFromMembers([{ orgId: 'a', role: 'Gerente' }], { a: { Supervisor: { rh: 1 } } }), { master: false, orgs: { a: 'Gerente' } });
+});
+
+test('token grande demais: tira primeiro as liberações extras (nunca dá acesso a mais)', () => {
+  const orgs = Array.from({ length: 30 }, (_, i) => `o${String(i).padStart(2, "0")}`);
+  // metade com acesso a mais (RH liberado), metade com acesso a menos (sem Operações)
+  const members = orgs.map((o, i) => ({ orgId: o, role: 'Operacional' as const, areaOverrides: i % 2 ? { rh: 1 } : { operacoes: 0 } }));
+  const c = claimsFromMembers(members, {});
+  assert.ok(JSON.stringify(c).length <= 1000, String(JSON.stringify(c).length));
+  for (const [o, code] of Object.entries(c.areas || {})) {
+    const lv = decodeAreas(code)!;
+    assert.equal(lv.rh, 0, `${o} manteve liberação`);
+  }
+});
+
+test('nem tirando liberações cabe: erro claro', () => {
+  const orgs = Array.from({ length: 30 }, (_, i) => `o${String(i).padStart(2, "0")}`);
+  const members = orgs.map((o) => ({ orgId: o, role: 'Operacional' as const, areaOverrides: { operacoes: 0 } }));
+  assert.throws(() => claimsFromMembers(members, {}), /empresas demais/);
 });
 
 type Out = { status?: number; nexted: boolean };

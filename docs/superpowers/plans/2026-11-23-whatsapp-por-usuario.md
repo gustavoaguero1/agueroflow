@@ -107,7 +107,7 @@
 - Modify: `.gitignore`; `git rm --cached` dos `data_whatsapp_*` e `.whatsapp_auth`
 - Test: `tests/noHardcodedPhone.test.ts`
 
-- [ ] Step 1: teste que varre `src/` e `server*` e falha se achar `917897747` ou `91789-7747`.
+- [ ] Step 1: teste que varre `src/` e `server*` e falha se achar o número do dono.
 - [ ] Step 2: RED (4 arquivos).
 - [ ] Step 3: trocar padrões por placeholder genérico e o número exibido pelo número conectado do usuário/empresa (status da sessão); botão "Usar +55…" sai.
 - [ ] Step 4: GREEN; `git ls-files | grep data_whatsapp` vazio.
