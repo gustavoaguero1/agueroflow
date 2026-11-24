@@ -188,6 +188,9 @@ export const PurchasingQuotationsMap: React.FC<PurchasingQuotationsMapProps> = (
         title: newMapTitle.trim(),
         requisitionId: linkedReq?.id,
         requisitionCode: linkedReq?.code,
+        linkedWorkOrderId: linkedReq?.linkedWorkOrderId,
+        linkedWorkOrderNumber: linkedReq?.linkedWorkOrderNumber,
+        linkedWorkOrderTitle: linkedReq?.linkedWorkOrderTitle,
         items: linkedReq ? [...linkedReq.items] : [
           {
             id: `item_${Date.now()}_1`,
@@ -281,6 +284,9 @@ export const PurchasingQuotationsMap: React.FC<PurchasingQuotationsMapProps> = (
         organizationId: currentOrgId,
         code: orderCode,
         requisitionCode: selectedMap.requisitionCode,
+        linkedWorkOrderId: selectedMap.linkedWorkOrderId,
+        linkedWorkOrderNumber: selectedMap.linkedWorkOrderNumber,
+        linkedWorkOrderTitle: selectedMap.linkedWorkOrderTitle,
         quotationMapCode: selectedMap.code,
         supplierId: winningBid.supplierId,
         supplierName: winningBid.supplierName,
