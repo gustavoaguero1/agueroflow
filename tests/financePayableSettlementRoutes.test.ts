@@ -9,9 +9,9 @@ import { financePayableAuthorizationId } from '../src/services/financePayableAut
 
 const payable = {
   id: 'pay_org_a_K1_001', orgId: 'org_a', origem: 'nfe',
-  fornecedor: { nome: 'Fornecedor A', cnpj: '11111111000111' }, documento: 'NF-e 123', parcela: '001',
-  valor: 5400, vencimento: '2026-12-10', status: 'aberto', categoriaId: 'cat_mat',
-  nfeChave: 'K1', purchaseOrderId: 'po_a', purchaseOrderCode: 'OC-2026-001',
+  fornecedor: { nome: 'Fornecedor A', cnpj: '11111111000111' },
+  documento: 'NF-e 123', parcela: '001', valor: 5400, vencimento: '2026-12-10',
+  status: 'aberto', categoriaId: 'cat_mat', nfeChave: 'K1', purchaseOrderId: 'po_a', purchaseOrderCode: 'OC-2026-001',
 };
 const authorization = {
   id: financePayableAuthorizationId('org_a', payable.id), orgId: 'org_a', payableId: payable.id, caseId: 'rcase_org_a_1',
@@ -41,7 +41,12 @@ function mockAdmin(seed: Record<string, unknown>) {
   return { handles: { db } as unknown as AdminHandles, docs };
 }
 
-async function withApi(role: string, seed: Record<string, unknown>, action: (base: string, docs: Map<string, unknown>) => Promise<void>, areas?: Record<string, string>) {
+async function withApi(
+  role: string,
+  seed: Record<string, unknown>,
+  action: (base: string, docs: Map<string, unknown>) => Promise<void>,
+  areas?: Record<string, string>,
+) {
   const mocked = mockAdmin(seed);
   const app = express();
   app.use(express.json());
@@ -57,76 +62,152 @@ async function withApi(role: string, seed: Record<string, unknown>, action: (bas
   finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 }
 
-const request = { orgId: 'org_a', payableId: payable.id, paymentDate: '2026-11-24', paymentMethod: 'pix', paymentReference: 'E2E-123', proofReference: 'https://docs.empresa.com/comprovante/123', notes: 'Pagamento conferido no extrato.' };
+const request = {
+  orgId: 'org_a', payableId: payable.id, idempotencyKey: 'operation_0001',
+  paymentDate: '2026-11-24', paymentAmount: 5400, discountAmount: 0, paymentMethod: 'pix',
+  paymentReference: 'E2E-123', proofReference: 'https://docs.empresa.com/comprovante/123', notes: 'Pagamento conferido no extrato.',
+};
 
-test('backend records immutable settlement and marks the existing payable paid in one transaction', async () => {
+async function post(base: string, body: unknown) {
+  return fetch(base + '/api/finance/payable-settlements', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+}
+
+test('full payment records one immutable event and pays the existing title atomically', async () => {
   await withApi('Supervisor', {
     ['finance_payables/' + payable.id]: { ...payable, id: 'forged_id' },
     ['finance_payable_authorizations/' + authorization.id]: authorization,
   }, async (base, docs) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+    const response = await post(base, request);
     assert.equal(response.status, 201);
-    const body = await response.json() as { ok: boolean; settlementId: string };
-    const settlementId = financePayableSettlementId('org_a', payable.id);
-    assert.equal(body.ok, true); assert.equal(body.settlementId, settlementId);
+    const body = await response.json() as { ok: boolean; settlementId: string; status: string };
+    const settlementId = financePayableSettlementId('org_a', payable.id, request.idempotencyKey);
+    assert.equal(body.ok, true); assert.equal(body.settlementId, settlementId); assert.equal(body.status, 'pago');
     const saved = docs.get('finance_payable_settlements/' + settlementId) as Record<string, any>;
     const updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
-    assert.equal(saved.payableId, payable.id); assert.equal(saved.settledValue, 5400);
+    assert.equal(saved.payableId, payable.id); assert.equal(saved.paymentAmount, 5400); assert.equal(saved.discountAmount, 0);
+    assert.equal(saved.settledValue, 5400); assert.equal(saved.remainingBefore, 5400); assert.equal(saved.remainingAfter, 0);
     assert.equal(saved.settledBy, 'settler1'); assert.equal(saved.settledByEmail, 'settler@empresa.com');
     assert.equal(saved.paymentReference, 'E2E-123'); assert.equal(saved.proofReference, request.proofReference);
     assert.equal(saved.authorizationId, authorization.id);
     assert.equal(updated.status, 'pago'); assert.equal(updated.pagoEm, request.paymentDate);
     assert.equal(updated.pagoPor, 'settler1'); assert.equal(updated.settlementId, settlementId);
+    assert.equal(updated.valorPago, 5400); assert.equal(updated.valorAbatido, 0); assert.equal(updated.saldoAberto, 0);
   });
 });
 
-test('backend rejects a second settlement for the same payable', async () => {
-  const settlementId = financePayableSettlementId('org_a', payable.id);
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable, ['finance_payable_settlements/' + settlementId]: { id: settlementId, orgId: 'org_a', payableId: payable.id } }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 409);
+test('multiple partial payments reduce the balance and only the final payment marks the title paid', async () => {
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+    const first = { ...request, idempotencyKey: 'partial_0001', paymentAmount: 1500, paymentReference: 'PIX-1' };
+    const r1 = await post(base, first);
+    assert.equal(r1.status, 201);
+    let updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
+    assert.equal(updated.valor, 5400, 'original amount is immutable');
+    assert.equal(updated.valorPago, 1500); assert.equal(updated.valorAbatido, 0);
+    assert.equal(updated.saldoAberto, 3900); assert.equal(updated.status, 'aberto');
+    assert.equal(updated.pagoEm, undefined);
+
+    const second = { ...request, idempotencyKey: 'partial_0002', paymentAmount: 3900, paymentReference: 'PIX-2' };
+    const r2 = await post(base, second);
+    assert.equal(r2.status, 201);
+    updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
+    assert.equal(updated.valor, 5400);
+    assert.equal(updated.valorPago, 5400); assert.equal(updated.saldoAberto, 0);
+    assert.equal(updated.status, 'pago'); assert.equal(updated.pagoEm, request.paymentDate);
+    assert.equal(updated.settlementCount, 2);
+    assert.ok(docs.has('finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id, 'partial_0001')));
+    assert.ok(docs.has('finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id, 'partial_0002')));
   });
 });
 
-test('backend requires acknowledgement when the payable changed after authorization', async () => {
-  const changed = { ...payable, valor: 5450, vencimento: '2026-12-15' };
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: changed, ['finance_payable_authorizations/' + authorization.id]: authorization }, async (base, docs) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 409);
-    const response2 = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, confirmAuthorizationDivergence: true }) });
-    assert.equal(response2.status, 201);
-    const id = financePayableSettlementId('org_a', payable.id);
-    const saved = docs.get('finance_payable_settlements/' + id) as Record<string, any>;
-    assert.deepEqual(saved.authorizationDifferences, ['valor', 'vencimento']); assert.equal(saved.settledValue, 5450);
-  });
-});
-
-test('backend rejects paid or foreign-company title and malformed date', async () => {
-  await withApi('Supervisor', { ['finance_payables/' + payable.id]: { ...payable, status: 'pago' } }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 409);
-  });
-  await withApi('Supervisor', { ['finance_payables/' + payable.id]: { ...payable, orgId: 'org_b' } }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 409);
-  });
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, paymentDate: '2026-02-30' }) });
-    assert.equal(response.status, 400);
-  });
-});
-
-test('Admin/Gerente require Financeiro level 2; Supervisor may settle with level 1', async () => {
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+test('approved discount requires a reason and is allowed only to Admin/Gerente Financeiro level 2', async () => {
+  const discountRequest = { ...request, paymentAmount: 1000, discountAmount: 100, discountReason: 'Crédito negociado com fornecedor.' };
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base) => {
+    const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0001' });
     assert.equal(response.status, 403);
+  });
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+    const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0002' });
+    assert.equal(response.status, 201);
+    const eventId = financePayableSettlementId('org_a', payable.id, 'discount_0002');
+    const event = docs.get('finance_payable_settlements/' + eventId) as Record<string, any>;
+    const updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
+    assert.equal(event.paymentAmount, 1000); assert.equal(event.discountAmount, 100);
+    assert.equal(event.discountReason, discountRequest.discountReason);
+    assert.equal(event.settledValue, 1100); assert.equal(updated.valorPago, 1000);
+    assert.equal(updated.valorAbatido, 100); assert.equal(updated.saldoAberto, 4300);
+    assert.equal(updated.status, 'aberto');
+  });
+});
+
+test('discount-only settlement can close the balance without inventing a bank payment', async () => {
+  const discountOnly = { ...request, idempotencyKey: 'writeoff_0001', paymentAmount: 0, discountAmount: 5400, paymentMethod: undefined, discountReason: 'Crédito integral aprovado pela gerência.' };
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+    const response = await post(base, discountOnly);
+    assert.equal(response.status, 201);
+    const event = docs.get('finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id, 'writeoff_0001')) as Record<string, any>;
+    const updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
+    assert.equal(event.paymentAmount, 0); assert.equal(event.discountAmount, 5400);
+    assert.equal(event.paymentMethod, undefined);
+    assert.equal(updated.status, 'pago'); assert.equal(updated.valorPago, 0);
+    assert.equal(updated.valorAbatido, 5400); assert.equal(updated.saldoAberto, 0);
+  });
+});
+
+test('retrying the same idempotency key does not double debit; reusing it with different values is rejected', async () => {
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+    const first = { ...request, idempotencyKey: 'retry_0001', paymentAmount: 500 };
+    assert.equal((await post(base, first)).status, 201);
+    assert.equal((await post(base, first)).status, 200);
+    const conflict = await post(base, { ...first, paymentAmount: 700 });
+    assert.equal(conflict.status, 409);
+    const updated = docs.get('finance_payables/' + payable.id) as Record<string, any>;
+    assert.equal(updated.valorPago, 500); assert.equal(updated.saldoAberto, 4900);
+    assert.equal(updated.settlementCount, 1);
+  });
+});
+
+test('backend rejects overpayment, legacy duplicate, paid/foreign title and malformed dates', async () => {
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+    const over = await post(base, { ...request, idempotencyKey: 'overpay_0001', paymentAmount: 5400.01 });
+    assert.equal(over.status, 409);
+    assert.equal(docs.get('finance_payables/' + payable.id) && (docs.get('finance_payables/' + payable.id) as any).valorPago, undefined);
+  });
+  await withApi('Supervisor', {
+    ['finance_payables/' + payable.id]: payable,
+    ['finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id)]: { id: 'legacy', orgId: 'org_a', payableId: payable.id },
+  }, async (base) => assert.equal((await post(base, { ...request, idempotencyKey: 'legacy_0001' })).status, 409));
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: { ...payable, status: 'pago' } }, async (base) => assert.equal((await post(base, request)).status, 409));
+  await withApi('Supervisor', { ['finance_payables/' + payable.id]: { ...payable, orgId: 'org_b' } }, async (base) => assert.equal((await post(base, request)).status, 409));
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => assert.equal((await post(base, { ...request, paymentDate: '2026-02-30' })).status, 400));
+});
+
+test('authorization changes still require explicit acknowledgement before any partial/full movement', async () => {
+  const changed = { ...payable, valor: 5450, vencimento: '2026-12-15' };
+  await withApi('Gerente', {
+    ['finance_payables/' + payable.id]: changed,
+    ['finance_payable_authorizations/' + authorization.id]: authorization,
+  }, async (base, docs) => {
+    const key = 'authchange_0001';
+    const first = await post(base, { ...request, idempotencyKey: key, paymentAmount: 500 });
+    assert.equal(first.status, 409);
+    const second = await post(base, { ...request, idempotencyKey: key, paymentAmount: 500, confirmAuthorizationDivergence: true });
+    assert.equal(second.status, 201);
+    const event = docs.get('finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id, key)) as Record<string, any>;
+    assert.deepEqual(event.authorizationDifferences, ['valor', 'vencimento']);
+    assert.equal(event.settledValue, 500);
+  });
+});
+
+test('Admin/Gerente require Financeiro level 2; Supervisor may pay partial with level 1', async () => {
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => {
+    assert.equal((await post(base, request)).status, 403);
   }, { org_a: '22221222222' });
   await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 201);
+    assert.equal((await post(base, request)).status, 201);
   });
   await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base) => {
-    const response = await fetch(base + '/api/finance/payable-settlements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
-    assert.equal(response.status, 201);
+    assert.equal((await post(base, request)).status, 201);
   }, { org_a: '12211021112' });
 });
