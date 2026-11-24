@@ -277,14 +277,11 @@ test('a failed inspection/test opens a corrective-action workflow instead of app
     responsibleName: 'Encarregado',
     dueDate: '2026-11-28',
   });
-  console.log('quality-debug: failed hydrostatic record create');
   await assertSucceeds(setDoc(doc(db, 'quality_records', recordId), failedRecord));
-  console.log('quality-debug: failed hydrostatic initial event create');
   await assertSucceeds(setDoc(
     doc(db, 'quality_record_events', initialEventId),
     validQualityEvent('inspector_1', 'opened'),
   ));
-  console.log('quality-debug: failed hydrostatic state create');
   await assertSucceeds(setDoc(doc(db, 'quality_record_states', recordId), {
     id: recordId,
     orgId: 'org_a',
@@ -297,7 +294,6 @@ test('a failed inspection/test opens a corrective-action workflow instead of app
     updatedByName: 'Inspetor',
     updatedAt: serverTimestamp(),
   }));
-  console.log('quality-debug: failed hydrostatic created');
   const state = await assertSucceeds(getDoc(doc(db, 'quality_record_states', recordId)));
   assert.equal(state.data()?.status, 'open');
   await assertFails(setDoc(
@@ -387,7 +383,7 @@ test('quality records enforce test measurements and hydrostatic test details', a
       measuredValue: 10,
       measuredUnit: 'bar',
       testMedium: 'Água',
-      holdDurationMinutes: 60,
+      holdDurationMinutes: 0,
       acceptanceCriteria: 'Sem queda de pressão.',
     }),
   ));
