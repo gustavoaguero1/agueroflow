@@ -393,8 +393,14 @@ export const EngineeringDocumentsPanel: React.FC<EngineeringDocumentsPanelProps>
     }
     if (action === 'submitted_client') {
       if (status !== 'internal_approved') return;
+      const clientName = window.prompt('Nome do contato/destinatário do cliente para quem o documento foi enviado:')?.trim() || '';
+      if (!clientName) return;
       const reference = window.prompt('Informe a referência do envio ao cliente (e-mail, protocolo ou outro registro):')?.trim() || '';
-      if (reference) await recordEvent(item, action, { clientReference: reference, comment: 'Envio ao cliente realizado fora do AgueroFlow e registrado para rastreabilidade.' });
+      if (reference) await recordEvent(item, action, {
+        clientName,
+        clientReference: reference,
+        comment: 'Envio ao cliente realizado fora do AgueroFlow e registrado para rastreabilidade.',
+      });
       return;
     }
     if (action === 'approved_client' || action === 'rejected_client') {
