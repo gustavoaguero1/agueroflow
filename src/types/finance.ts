@@ -33,6 +33,16 @@ export interface FinancePayable {
   vencimento: string; // YYYY-MM-DD
   status: 'aberto' | 'pago' | 'cancelado';
   pagoEm?: string;
+  pagoPor?: string;
+  /** Valores acumulados pela rota transacional de baixas; títulos antigos começam em zero. */
+  valorPago?: number;
+  valorAbatido?: number;
+  saldoAberto?: number;
+  settlementCount?: number;
+  lastSettlementId?: string;
+  lastSettlementAt?: unknown;
+  lastSettlementBy?: string;
+  settlementId?: string;
   categoriaId: string;
   centroCustoId?: string;
   contractId?: string;
@@ -136,8 +146,13 @@ export type FinancePayableAuthorizationDifference = 'valor' | 'vencimento' | 'fo
 export interface FinancePayableSettlementRequest {
   orgId: string;
   payableId: string;
+  /** Idempotency key for safe retries; every user-confirmed operation gets a new key. */
+  idempotencyKey: string;
   paymentDate: string;
-  paymentMethod: FinancePaymentMethod;
+  paymentAmount: number;
+  discountAmount: number;
+  paymentMethod?: FinancePaymentMethod;
+  discountReason?: string;
   paymentReference?: string;
   proofReference?: string;
   notes?: string;
@@ -149,11 +164,22 @@ export interface FinancePayableSettlement {
   orgId: string;
   payableId: string;
   paymentDate: string;
-  paymentMethod: FinancePaymentMethod;
+  paymentMethod?: FinancePaymentMethod;
   paymentReference?: string;
   proofReference?: string;
   notes?: string;
+  /** Cash actually paid. Optional on legacy single-settlement events. */
+  paymentAmount?: number;
+  /** Amount removed from the debt as an approved discount/write-off. */
+  discountAmount?: number;
+  discountReason?: string;
+  /** Total reduction of the payable balance (paymentAmount + discountAmount). */
   settledValue: number;
+  remainingBefore?: number;
+  remainingAfter?: number;
+  paymentSequence?: number;
+  idempotencyKey?: string;
+  authorizationDivergenceConfirmed?: boolean;
   payableSnapshot: {
     origem: FinancePayable['origem'];
     documento: string;
