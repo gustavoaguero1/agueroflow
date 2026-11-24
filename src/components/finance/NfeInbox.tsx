@@ -8,6 +8,7 @@ import { brl, releaseStuckNfe, STUCK_MS } from '../../services/financeService';
 import type { CostCenter } from '../../types';
 import type { FinanceCategory, NfeDocument, NfeStatus } from '../../types/finance';
 import { NfeClassifyModal, NfeTaxSummary } from './NfeClassifyModal';
+import { PurchaseReconciliationView } from './PurchaseReconciliationView';
 import { btnGhost, btnPrimary, card, fmtDate, msgErr, msgOk } from './ui';
 
 const STATUS: Record<NfeStatus, { label: string; cls: string }> = {
@@ -31,6 +32,7 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
   const [msgs, setMsgs] = useState<{ ok: boolean; text: string }[]>([]);
   const [sync, setSync] = useState<SyncStatus | null>(null);
   const [classifying, setClassifying] = useState<NfeDocument | null>(null);
+  const [view, setView] = useState<'caixa' | 'conciliacao'>('caixa');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onSnapshot(
@@ -123,6 +125,12 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
       {msgs.length > 0 && <div className="space-y-1">{msgs.map((m, i) => <p key={i} className={m.ok ? msgOk : msgErr}>{m.text}</p>)}</div>}
 
       <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setView('caixa')} aria-pressed={view === 'caixa'} className={'px-3 py-1.5 rounded-lg text-[11px] font-semibold border ' + (view === 'caixa' ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-900 text-slate-300 border-slate-700')}>Caixa de notas</button>
+        <button type="button" onClick={() => setView('conciliacao')} aria-pressed={view === 'conciliacao'} className={'px-3 py-1.5 rounded-lg text-[11px] font-semibold border ' + (view === 'conciliacao' ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-900 text-slate-300 border-slate-700')}>Conciliação OC × NF-e</button>
+      </div>
+
+      {view === 'conciliacao' ? <PurchaseReconciliationView orgId={orgId} invoices={docs} /> : <>
+      <div className="flex flex-wrap gap-2">
         {(['todas', 'aguardando_classificacao', 'erro_classificacao', 'classificada', 'resumo'] as const).map((s) => (
           <button key={s} type="button" onClick={() => setFilter(s)}
             className={`px-3 py-1 rounded-full text-[11px] font-semibold border cursor-pointer ${filter === s ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-900 text-slate-300 border-slate-700'}`}>
@@ -184,6 +192,7 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
           onClose={() => setClassifying(null)}
           onDone={() => { setClassifying(null); setMsgs([{ ok: true, text: 'Nota classificada: contas a pagar atualizadas; entrada de materiais controlada pelo vínculo com a OC/recebimento.' }]); }} />
       )}
+      </>}
     </div>
   );
 };
