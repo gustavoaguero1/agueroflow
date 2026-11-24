@@ -348,12 +348,16 @@ test('finance_payables: createdBy is caller; payment state can only change throu
   await assertFails(setDoc(doc(member(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'member_m_op' }));
   await assertFails(setDoc(doc(supervisor(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'someone' }));
   await assertSucceeds(setDoc(doc(supervisor(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'member_m_sup', status: 'aberto' }));
+  await assertFails(setDoc(doc(supervisor(), `${c}/pay_org_a_forged_totals`), { orgId: 'org_a', createdBy: 'member_m_sup', status: 'aberto', valorPago: 1, saldoAberto: 9 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'cancelado' }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_sup', updatedAt: 'x' }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_ger', updatedAt: 'x' }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { settlementId: 'forged' }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { valorPago: 5 }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { valorAbatido: 5, saldoAberto: 0 }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { settlementCount: 1, lastSettlementId: 'fake' }));
   await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { valor: 12 }));
   await assertFails(updateDoc(doc(gerente(), `${c}/paid`), { valor: 99 }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));

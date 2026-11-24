@@ -180,6 +180,7 @@ export interface FinancePayableSettlement {
   paymentSequence?: number;
   idempotencyKey?: string;
   authorizationDivergenceConfirmed?: boolean;
+  payableStatusAfter?: 'aberto' | 'pago';
   payableSnapshot: {
     origem: FinancePayable['origem'];
     documento: string;
@@ -188,6 +189,7 @@ export interface FinancePayableSettlement {
     supplierCnpj: string;
     value: number;
     dueDate: string;
+    balanceBefore?: number;
     nfeChave?: string;
     purchaseOrderId?: string;
     purchaseOrderCode?: string;

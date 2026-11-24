@@ -220,7 +220,12 @@ service cloud.firestore {
       function payableClientUpdate() {
         return resource.data.get('status', '') == 'aberto'
           && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId']);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy']);
+      }
+      function payableClientCreate() {
+        return request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberto'
+          && !request.resource.data.keys().hasAny(['pagoEm', 'pagoPor', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy', 'settlementId']);
       }
       function reconciliationCaseUpdate() {
         let oldStatus = resource.data.get('status', '');
@@ -242,7 +247,7 @@ service cloud.firestore {
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
       allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
-        && (!isPayable() || request.resource.data.get('createdBy', '') == request.auth.uid)
+        && (!isPayable() || payableClientCreate())
         && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
           && request.resource.data.get('createdBy', '') == request.auth.uid
           && request.resource.data.get('status', '') == 'aberta'
