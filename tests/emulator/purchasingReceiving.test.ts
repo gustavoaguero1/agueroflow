@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { registerPurchaseReceipt, type RegisterPurchaseReceiptInput } from '../../src/services/purchasingReceivingService.ts';
+import { purchaseReceiptId, registerPurchaseReceipt, type RegisterPurchaseReceiptInput } from '../../src/services/purchasingReceivingService.ts';
 
 let env: RulesTestEnvironment;
 
@@ -136,7 +136,7 @@ test('impede recebimento acima da quantidade pendente sem gravar parcialmente', 
     /excede o saldo pendente/,
   );
   assert.equal(await readDoc('stock_balances', 'bal_unit_main_item_1'), undefined);
-  assert.equal(await readDoc('purchasing_receipts', 'rec_org_a_po_1_12345678000199_NF-0001'), undefined);
+  assert.equal(await readDoc('purchasing_receipts', purchaseReceiptId(receiptInput(), '12345678000199')), undefined);
   const order = await readDoc('purchasing_orders', 'po_1');
   assert.equal(order?.items[0].quantityReceived, 0);
 });
