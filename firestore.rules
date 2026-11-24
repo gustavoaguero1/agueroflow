@@ -432,74 +432,90 @@ service cloud.firestore {
                   : (eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
                     : (eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus : '')))));
       }
-      function validQualityStateCreate() {
+      function qualityInitialEventType(record) {
+        return (record.get('recordType', '') in ['nonconformity', 'punch_item'] || record.get('result', '') == 'nao_conforme')
+          ? 'opened' : 'submitted_for_review';
+      }
+      function qualityInitialStatus(record) {
+        return qualityInitialEventType(record) == 'opened' ? 'open' : 'review_pending';
+      }
+      function qualityStatusAfter(currentStatus, eventType) {
+        return eventType == 'approved' && currentStatus == 'review_pending' ? 'approved'
+          : (eventType == 'rejected' && currentStatus == 'review_pending' ? 'rejected'
+            : (eventType == 'corrective_action_submitted' && currentStatus in ['open', 'rejected', 'reopened'] ? 'correction_pending_verification'
+              : (eventType == 'verified' && currentStatus == 'correction_pending_verification' ? 'verified'
+                : (eventType == 'closed' && currentStatus == 'verified' ? 'closed'
+                  : (eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
+                    : (eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus : '')))));
+      }
+      function validQualityStateCreateForDoc() {
         let recordPath = /databases/$(database)/documents/quality_records/$(docId);
         let recordData = getAfter(recordPath).data;
         let eventId = request.resource.data.get('latestEventId', '');
         let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
-        let eventData = getAfter(eventPath).data;
-        return coll != 'quality_record_states' || (
-          signedIn()
+        return signedIn()
           && request.resource.data.get('id', '') == docId
           && request.resource.data.get('recordId', '') == docId
           && existsAfter(recordPath)
           && orgOf(recordData) == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
+          && eventId is string
+          && eventId.size() > 0
           && existsAfter(eventPath)
-          && eventData.get('recordId', '') == docId
-          && eventData.get('actorUid', '') == request.auth.uid
-          && eventData.get('eventType', '') == qualityInitialEventType(recordData)
+          && getAfter(eventPath).data.get('recordId', '') == docId
+          && getAfter(eventPath).data.get('actorUid', '') == request.auth.uid
+          && getAfter(eventPath).data.get('eventType', '') == qualityInitialEventType(recordData)
           && request.resource.data.get('status', '') == qualityInitialStatus(recordData)
-          && request.resource.data.get('latestEventId', '') is string
           && request.resource.data.get('updatedByUid', '') == request.auth.uid
           && request.resource.data.get('updatedByName', '') is string
           && request.resource.data.get('updatedByName', '').size() > 0
-          && request.resource.data.get('updatedAt', null) == request.time
-        );
+          && request.resource.data.get('updatedAt', null) == request.time;
       }
-      function validQualityStateUpdate() {
+      function validQualityStateCreate() {
+        return coll != 'quality_record_states' || validQualityStateCreateForDoc();
+      }
+      function validQualityStateUpdateForDoc() {
         let eventId = request.resource.data.get('latestEventId', '');
         let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
-        let eventData = getAfter(eventPath).data;
-        return coll != 'quality_record_states' || (
-          signedIn()
+        return signedIn()
           && request.resource.data.get('id', '') == docId
           && request.resource.data.get('recordId', '') == resource.data.get('recordId', '')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'latestEventId', 'updatedByUid', 'updatedByName', 'updatedAt'])
-          && request.resource.data.get('latestEventId', '') is string
-          && request.resource.data.get('latestEventId', '') != resource.data.get('latestEventId', '')
+          && eventId is string
+          && eventId.size() > 0
+          && eventId != resource.data.get('latestEventId', '')
           && request.resource.data.get('updatedByUid', '') == request.auth.uid
           && request.resource.data.get('updatedByName', '') is string
           && request.resource.data.get('updatedByName', '').size() > 0
           && request.resource.data.get('updatedAt', null) == request.time
           && existsAfter(eventPath)
-          && eventData.get('recordId', '') == resource.data.get('recordId', '')
-          && eventData.get('previousEventId', '') == resource.data.get('latestEventId', '')
-          && eventData.get('actorUid', '') == request.auth.uid
-          && request.resource.data.get('status', '') == qualityStatusAfter(resource.data.get('status', ''), eventData.get('eventType', ''))
-          && request.resource.data.get('status', '') != ''
-        );
+          && getAfter(eventPath).data.get('recordId', '') == resource.data.get('recordId', '')
+          && getAfter(eventPath).data.get('previousEventId', '') == resource.data.get('latestEventId', '')
+          && getAfter(eventPath).data.get('actorUid', '') == request.auth.uid
+          && request.resource.data.get('status', '') == qualityStatusAfter(resource.data.get('status', ''), getAfter(eventPath).data.get('eventType', ''))
+          && request.resource.data.get('status', '') != '';
       }
-      function validQualityEventCreate() {
-        let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
-        let statePath = /databases/$(database)/documents/quality_record_states/$(request.resource.data.get('recordId', ''));
-        let eventType = request.resource.data.get('eventType', '');
-        let recordExists = existsAfter(recordPath);
-        let recordData = recordExists ? getAfter(recordPath).data : {};
+      function validQualityStateUpdate() {
+        return coll != 'quality_record_states' || validQualityStateUpdateForDoc();
+      }
+      function validQualityEventCreateForDoc() {
+        let recordId = request.resource.data.get('recordId', '');
+        let statePath = /databases/$(database)/documents/quality_record_states/$(recordId);
         let stateExistsBefore = exists(statePath);
         let stateBefore = stateExistsBefore ? get(statePath).data : {};
         let stateAfterExists = existsAfter(statePath);
         let stateAfter = stateAfterExists ? getAfter(statePath).data : {};
+        let recordData = getAfter(/databases/$(database)/documents/quality_records/$(recordId)).data;
         let isInitial = recordData.get('createdAt', null) == request.time;
         let currentStatus = isInitial ? 'new' : stateBefore.get('status', 'unknown');
+        let eventType = request.resource.data.get('eventType', '');
         let nextStatus = isInitial ? qualityInitialStatus(recordData) : qualityStatusAfter(currentStatus, eventType);
         let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
           || recordData.get('result', '') == 'nao_conforme' || currentStatus == 'rejected';
-        return coll != 'quality_record_events' || (
-          signedIn()
-          && request.resource.data.get('recordId', '') is string
-          && recordExists
+        return signedIn()
+          && recordId is string
+          && recordId.size() > 0
           && recordData.get('orgId', '') == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
@@ -516,7 +532,7 @@ service cloud.firestore {
           && stateAfter.get('updatedByUid', '') == request.auth.uid
           && (isInitial
             ? (!stateExistsBefore
-              && request.resource.data.get('eventType', '') == qualityInitialEventType(recordData)
+              && eventType == qualityInitialEventType(recordData)
               && !request.resource.data.keys().hasAny(['previousEventId']))
             : (stateExistsBefore
               && request.resource.data.get('previousEventId', '') == stateBefore.get('latestEventId', '')
@@ -534,15 +550,24 @@ service cloud.firestore {
             ? (request.resource.data.get('comment', '') is string
               && request.resource.data.get('comment', '').size() > 0
               && request.resource.data.get('comment', '').size() <= 1500)
-            : true)
+            : true);
+      }
+      function validQualityEventCreate() {
+        return coll != 'quality_record_events' || (
+          request.resource.data.get('recordId', '') is string
+          && request.resource.data.get('recordId', '').size() > 0
+          && validQualityEventCreateForDoc()
         );
       }
             allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
         && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
         && validQualityRecordCreate() && validQualityEventCreate()
         && areaWrite(request.resource.data);
-      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
-      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate()
+        && (coll == 'quality_record_states'
+          ? (areaWrite(resource.data) && validQualityStateUpdate())
+          : (areaWrite(resource.data) || rhAllocation()));
+      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data);
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
