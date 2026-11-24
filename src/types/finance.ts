@@ -209,6 +209,76 @@ export interface FinancePayableSettlement {
   createdAt: unknown;
 }
 
+export interface FinanceReceivable {
+  id: string;
+  orgId: string;
+  origem: 'manual';
+  cliente: { nome: string; cnpj?: string };
+  documento: string;
+  parcela?: string;
+  valor: number;
+  vencimento: string;
+  status: 'aberto' | 'recebido' | 'cancelado';
+  valorRecebido?: number;
+  saldoAberto?: number;
+  receiptCount?: number;
+  lastReceiptId?: string;
+  lastReceiptAt?: unknown;
+  lastReceiptBy?: string;
+  recebidoEm?: string;
+  recebidoPor?: string;
+  contractId?: string;
+  commercialProposalId?: string;
+  workOrderId?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface FinanceReceivableReceiptRequest {
+  orgId: string;
+  receivableId: string;
+  idempotencyKey: string;
+  receiptDate: string;
+  receiptAmount: number;
+  paymentMethod: FinancePaymentMethod;
+  paymentReference?: string;
+  proofReference?: string;
+  notes?: string;
+}
+
+export interface FinanceReceivableReceipt {
+  id: string;
+  orgId: string;
+  receivableId: string;
+  idempotencyKey: string;
+  receiptDate: string;
+  receiptAmount: number;
+  paymentMethod: FinancePaymentMethod;
+  paymentReference?: string;
+  proofReference?: string;
+  notes?: string;
+  remainingBefore: number;
+  remainingAfter: number;
+  receiptSequence: number;
+  receivableStatusAfter: 'aberto' | 'recebido';
+  receivableSnapshot: {
+    documento: string;
+    parcela?: string;
+    clientName: string;
+    clientCnpj: string;
+    value: number;
+    dueDate: string;
+    commercialProposalId?: string;
+    workOrderId?: string;
+    balanceBefore: number;
+  };
+  receivedBy: string;
+  receivedByEmail: string;
+  receivedAt: unknown;
+  createdAt: unknown;
+}
+
 export interface NfeItem {
   n: number;
   codigo: string;
