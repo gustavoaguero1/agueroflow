@@ -246,7 +246,7 @@ test('entrada em estoque exige unidade pertencente à empresa e item de catálog
         catalogItemId: 'missing_item',
       }],
     })),
-    /material vinculado não existe/,
+    /materiais vinculados não existe mais no catálogo/,
   );
   const order = await readDoc('purchasing_orders', 'po_1');
   assert.equal(order?.items[0].quantityReceived, 0);
