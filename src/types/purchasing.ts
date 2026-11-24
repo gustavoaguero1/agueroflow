@@ -211,7 +211,18 @@ export interface MaterialReceiptRecord {
     heatNumber?: string; // Corrida de usina
     isConform: boolean;
     nonConformityNotes?: string;
+    purchaseOrderItemId?: string;
+    catalogItemId?: string;
+    catalogItemSku?: string;
+    stockUnitId?: string;
+    unitCost?: number;
+    quantityAccepted?: number;
+    quantityInStock?: number;
+    stockMovementId?: string;
+    stockStatus?: 'entrada_registrada' | 'nao_estocavel' | 'bloqueado_qualidade';
   }[];
+  stockUnitId?: string;
+  stockMovementIds?: string[];
   certificatePdfAttached?: boolean;
   notes?: string;
   status: 'conforme' | 'conforme_com_ressalva' | 'rejeitado';

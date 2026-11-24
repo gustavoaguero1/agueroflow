@@ -189,46 +189,7 @@ export async function getMaterialReceipts(organizationId: string): Promise<Mater
   }
 }
 
-export async function saveMaterialReceipt(receipt: MaterialReceiptRecord): Promise<void> {
-  const docRef = doc(db, 'purchasing_receipts', receipt.id);
-  await setDoc(docRef, cleanFirestoreData(receipt), { merge: true });
-
-  // Update associated purchase order item quantities
-  try {
-    const orderDocRef = doc(db, 'purchasing_orders', receipt.purchaseOrderId);
-    const orderDoc = await getDoc(orderDocRef);
-    if (orderDoc.exists()) {
-      const orderData = orderDoc.data() as PurchaseOrder;
-      let allDelivered = true;
-      const updatedItems = orderData.items.map((it) => {
-        const matchingReceipt = receipt.itemsReceived.find((r) => r.itemId === it.id);
-        const newReceived = matchingReceipt
-          ? (it.quantityReceived || 0) + matchingReceipt.quantityReceived
-          : it.quantityReceived || 0;
-
-        if (newReceived < it.quantityOrdered) {
-          allDelivered = false;
-        }
-
-        return {
-          ...it,
-          quantityReceived: newReceived,
-          heatNumber: matchingReceipt?.heatNumber || it.heatNumber,
-        };
-      });
-
-      await updateDoc(orderDocRef, {
-        items: updatedItems,
-        status: allDelivered ? 'recebida_total' : 'recebida_parcial',
-        receiptDate: receipt.receiptDate,
-        invoiceNumber: receipt.invoiceNumber || orderData.invoiceNumber,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-  } catch (err) {
-    console.warn('Aviso ao atualizar ordem de compra após recebimento:', err);
-  }
-}
+/** Legacy receipt save removed: use registerPurchaseReceipt() so stock and OC updates are atomic. */
 
 // ---------------------------------------------------------------------------
 // 6. EXPORT FORMAL PURCHASE ORDER PDF (OC)

@@ -515,6 +515,14 @@ export interface StockMovement {
   reason: string;
   orderId?: string;
   orderNumber?: string;
+  unitCost?: number;
+  totalCost?: number;
+  purchaseOrderId?: string;
+  purchaseOrderCode?: string;
+  receiptId?: string;
+  invoiceNumber?: string;
+  supplierName?: string;
+  sourceRef?: string;
   createdBy: string;
   userName: string;
   createdAt: string;

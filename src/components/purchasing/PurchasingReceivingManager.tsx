@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   PackageCheck,
   CheckCircle2,
   AlertTriangle,
   FileText,
   Calendar,
-  Building,
-  Hash,
   Plus,
   ShieldAlert,
   ClipboardList,
@@ -16,7 +14,19 @@ import {
   MaterialReceiptRecord,
   PurchaseOrder
 } from '../../types/purchasing';
-import { saveMaterialReceipt } from '../../services/purchasingService';
+import { useAuth } from '../../contexts/AuthContext';
+import { db } from '../../firebase';
+import { getReceivingInventorySetup, registerPurchaseReceipt } from '../../services/purchasingReceivingService';
+import type { Item, Unit } from '../../types';
+
+type ItemReceiptFormState = {
+  quantity: number;
+  heatNumber: string;
+  isConform: boolean;
+  notes: string;
+  stockDisposition: 'estoque' | 'nao_estocavel';
+  catalogItemId: string;
+};
 
 interface PurchasingReceivingManagerProps {
   receipts: MaterialReceiptRecord[];
@@ -33,26 +43,59 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
   currentUserName,
   onRefresh,
 }) => {
+  const { user, logAudit } = useAuth();
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceKey, setInvoiceKey] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
+  const [stockUnitId, setStockUnitId] = useState('');
   const [status, setStatus] = useState<MaterialReceiptRecord['status']>('conforme');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<Item[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [itemReceiptState, setItemReceiptState] = useState<Record<string, ItemReceiptFormState>>({});
 
-  // Per-item receipt state: item.id -> { quantity, heatNumber, isConform, notes }
-  const [itemReceiptState, setItemReceiptState] = useState<
-    Record<
-      string,
-      {
-        quantity: number;
-        heatNumber: string;
-        isConform: boolean;
-        notes: string;
-      }
-    >
-  >({});
+  useEffect(() => {
+    let active = true;
+    setInventoryLoading(true);
+    getReceivingInventorySetup(db, currentOrgId)
+      .then(({ items, units: loadedUnits }) => {
+        if (!active) return;
+        setCatalogItems(items);
+        setUnits(loadedUnits);
+        setStockUnitId((previous) => previous || loadedUnits[0]?.id || '');
+      })
+      .catch((error) => {
+        if (active) setFormError(error instanceof Error ? error.message : 'Falha ao carregar catálogo e unidades.');
+      })
+      .finally(() => {
+        if (active) setInventoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [currentOrgId]);
+
+  const initializeOrderLines = (order: PurchaseOrder) => {
+    const initial: Record<string, ItemReceiptFormState> = {};
+    order.items.forEach((orderItem) => {
+      const matched = catalogItems.find((item) =>
+        (orderItem.internalCode && [item.sku, item.code].some((code) => code?.trim().toLowerCase() === orderItem.internalCode?.trim().toLowerCase()))
+        || (orderItem.manufacturerCode && [item.sku, item.code].some((code) => code?.trim().toLowerCase() === orderItem.manufacturerCode?.trim().toLowerCase()))
+      );
+      initial[orderItem.id] = {
+        quantity: Math.max(0, orderItem.quantityOrdered - (orderItem.quantityReceived || 0)),
+        heatNumber: orderItem.heatNumber || '',
+        isConform: true,
+        notes: '',
+        stockDisposition: 'estoque',
+        catalogItemId: matched?.id || '',
+      };
+    });
+    setItemReceiptState(initial);
+  };
 
   // Eligible orders for receipt (not fully received yet and not cancelled)
   const openOrders = orders.filter(
@@ -65,94 +108,105 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
     const targetOrder = order || openOrders[0];
     if (targetOrder) {
       setSelectedOrderId(targetOrder.id);
-      const init: Record<string, any> = {};
-      targetOrder.items.forEach((it) => {
-        const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
-        init[it.id] = {
-          quantity: remaining,
-          heatNumber: it.heatNumber || '',
-          isConform: true,
-          notes: '',
-        };
-      });
-      setItemReceiptState(init);
+      initializeOrderLines(targetOrder);
     }
     setInvoiceNumber('');
+    setInvoiceKey('');
     setReceiptDate(new Date().toISOString().split('T')[0]);
     setStatus('conforme');
     setNotes('');
+    setFormError(null);
     setIsReceivingModalOpen(true);
   };
 
   const handleOrderChange = (orderId: string) => {
     setSelectedOrderId(orderId);
-    const ord = orders.find((o) => o.id === orderId);
-    if (ord) {
-      const init: Record<string, any> = {};
-      ord.items.forEach((it) => {
-        const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
-        init[it.id] = {
-          quantity: remaining,
-          heatNumber: it.heatNumber || '',
-          isConform: true,
-          notes: '',
-        };
-      });
-      setItemReceiptState(init);
-    }
+    const order = orders.find((candidate) => candidate.id === orderId);
+    if (order) initializeOrderLines(order);
+  };
+
+  const updateReceiptLine = (itemId: string, patch: Partial<ItemReceiptFormState>) => {
+    setItemReceiptState((previous) => ({
+      ...previous,
+      [itemId]: { ...previous[itemId], ...patch },
+    }));
   };
 
   const handleSubmitReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder) return;
+    if (!selectedOrder || !user) {
+      setFormError('Não foi possível identificar a Ordem de Compra ou o usuário responsável.');
+      return;
+    }
     if (!invoiceNumber.trim()) {
-      alert('Informe o número da NF-e de entrada.');
+      setFormError('Informe o número da NF-e de entrada.');
+      return;
+    }
+    if (invoiceKey.trim() && !/^\\d{44}$/.test(invoiceKey.trim())) {
+      setFormError('A chave de acesso deve conter exatamente 44 dígitos.');
       return;
     }
 
     setSubmitting(true);
+    setFormError(null);
     try {
-      const itemsReceived = selectedOrder.items.map((it) => {
-        const state = itemReceiptState[it.id] || {
+      const lines = selectedOrder.items.map((orderItem) => {
+        const state = itemReceiptState[orderItem.id] || {
           quantity: 0,
           heatNumber: '',
           isConform: true,
           notes: '',
+          stockDisposition: 'estoque' as const,
+          catalogItemId: '',
         };
         return {
-          itemId: it.id,
-          description: it.description,
+          purchaseOrderItemId: orderItem.id,
           quantityReceived: Number(state.quantity) || 0,
-          unit: it.unit,
           heatNumber: state.heatNumber.trim() || undefined,
           isConform: state.isConform,
           nonConformityNotes: state.notes.trim() || undefined,
+          stockDisposition: state.stockDisposition,
+          catalogItemId: state.stockDisposition === 'estoque' ? state.catalogItemId || undefined : undefined,
         };
-      });
+      }).filter((line) => line.quantityReceived > 0);
 
-      const receiptRecord: MaterialReceiptRecord = {
-        id: `rec_${Date.now()}`,
+      if (lines.length === 0) {
+        throw new Error('Informe a quantidade recebida em pelo menos um item.');
+      }
+
+      const result = await registerPurchaseReceipt(db, {
         organizationId: currentOrgId,
         purchaseOrderId: selectedOrder.id,
-        purchaseOrderCode: selectedOrder.code,
-        supplierName: selectedOrder.supplierName,
         invoiceNumber: invoiceNumber.trim(),
+        invoiceKey: invoiceKey.trim() || undefined,
         receiptDate,
-        receivedBy: 'buyer_active',
+        receivedBy: user.uid,
         receivedByName: currentUserName,
-        itemsReceived,
+        stockUnitId: stockUnitId || undefined,
+        itemsReceived: lines,
         status,
         notes: notes.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
+      });
 
-      await saveMaterialReceipt(receiptRecord);
       setIsReceivingModalOpen(false);
       onRefresh();
-      alert(`Recebimento da NF-e ${invoiceNumber} gravado com sucesso!`);
+      try {
+        await logAudit(
+          'Compras & Estoque',
+          'Recebimento de materiais',
+          `NF-e ${invoiceNumber.trim()} vinculada à OC ${selectedOrder.code}; ${result.stockLines} linha(s) lançada(s) no estoque; ${result.quantityAddedToStock} unidade(s) movimentada(s).`,
+          result.receiptId,
+        );
+      } catch (auditError) {
+        console.warn('Recebimento concluído, mas o log de auditoria não foi gravado:', auditError);
+      }
+      const stockMessage = result.quantityAddedToStock > 0
+        ? ` ${result.quantityAddedToStock} unidade(s) lançada(s) no estoque.`
+        : ' Nenhum item foi liberado para o estoque.';
+      alert(`Recebimento ${invoiceNumber} registrado. ${result.stockLines} linha(s) movimentada(s).${stockMessage}`);
     } catch (err) {
-      console.error(err);
-      alert('Erro ao registrar recebimento.');
+      console.error('Erro ao registrar recebimento e integrar estoque:', err);
+      setFormError(err instanceof Error ? err.message : 'Erro ao registrar recebimento.');
     } finally {
       setSubmitting(false);
     }
@@ -238,6 +292,17 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
                                 Corrida: {it.heatNumber}
                               </span>
                             )}
+                            {it.stockStatus && (
+                              <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded border ${
+                                it.stockStatus === 'entrada_registrada'
+                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                                  : it.stockStatus === 'bloqueado_qualidade'
+                                  ? 'bg-rose-950/60 text-rose-300 border-rose-800'
+                                  : 'bg-slate-800 text-slate-300 border-slate-700'
+                              }`}>
+                                {it.stockStatus === 'entrada_registrada' ? 'Estoque atualizado' : it.stockStatus === 'bloqueado_qualidade' ? 'Bloqueado pela qualidade' : 'Não estocável'}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -298,7 +363,12 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
             </div>
 
             <form onSubmit={handleSubmitReceipt} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {formError && (
+                <div className="rounded-lg border border-rose-800 bg-rose-950/50 px-3 py-2 text-xs text-rose-200">
+                  {formError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Ordem de Compra (OC) *
@@ -333,6 +403,21 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Chave de Acesso da NF-e (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={44}
+                    value={invoiceKey}
+                    onChange={(e) => setInvoiceKey(e.target.value.replace(/\D/g, '').slice(0, 44))}
+                    placeholder="44 dígitos"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Data do Recebimento Físico
                   </label>
                   <input
@@ -348,102 +433,146 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
               {/* Items Verification Table */}
               {selectedOrder && (
                 <div className="border border-slate-800 rounded-xl overflow-hidden">
-                  <div className="bg-slate-950 px-4 py-2 text-xs font-bold text-slate-300 flex justify-between">
+                  <div className="bg-slate-950 px-4 py-2 text-xs font-bold text-slate-300 flex flex-wrap justify-between gap-2">
                     <span>CONFERÊNCIA DOS ITENS</span>
                     <span className="text-slate-400">
                       Fornecedor: {selectedOrder.supplierName}
                     </span>
                   </div>
 
-                  <div className="divide-y divide-slate-800 max-h-60 overflow-y-auto">
+                  <div className="border-b border-slate-800 bg-slate-900/80 p-3">
+                    <label className="text-[10px] text-cyan-300 font-semibold block mb-1">
+                      Unidade / Almoxarifado de destino do estoque
+                    </label>
+                    <select
+                      value={stockUnitId}
+                      onChange={(e) => setStockUnitId(e.target.value)}
+                      disabled={inventoryLoading || units.length === 0}
+                      className="w-full max-w-xl bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white"
+                    >
+                      <option value="">Selecione a unidade de destino...</option>
+                      {units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.name} {unit.code ? `(${unit.code})` : ''}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      O saldo será atualizado somente para linhas aprovadas, marcadas como estocáveis e vinculadas a um material ativo do catálogo.
+                    </p>
+                    {inventoryLoading && <p className="text-[10px] text-slate-400 mt-1">Carregando catálogo e unidades...</p>}
+                    {!inventoryLoading && units.length === 0 && <p className="text-[10px] text-amber-300 mt-1">Cadastre uma unidade antes de lançar materiais no estoque.</p>}
+                  </div>
+
+                  <div className="divide-y divide-slate-800 max-h-[32rem] overflow-y-auto">
                     {selectedOrder.items.map((it) => {
                       const state = itemReceiptState[it.id] || {
                         quantity: 0,
                         heatNumber: '',
                         isConform: true,
                         notes: '',
+                        stockDisposition: 'estoque' as const,
+                        catalogItemId: '',
                       };
+                      const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
 
                       return (
-                        <div key={it.id} className="p-3 bg-slate-900/70 space-y-2">
-                          <div className="flex justify-between items-start text-xs">
+                        <div key={it.id} className="p-3 bg-slate-900/70 space-y-3">
+                          <div className="flex justify-between items-start text-xs gap-3">
                             <div>
                               <span className="font-semibold text-white">{it.description}</span>
                               <div className="text-[11px] text-slate-400">
-                                Pedido: {it.quantityOrdered} {it.unit} • Já Recebido:{' '}
-                                {it.quantityReceived || 0} {it.unit}
+                                Pedido: {it.quantityOrdered} {it.unit} • Já recebido: {it.quantityReceived || 0} {it.unit} • Pendente: {remaining} {it.unit} • Custo unit.: {Number(it.unitPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               </div>
                             </div>
+                            {remaining <= 0 && <span className="shrink-0 text-[10px] text-emerald-300">Quantidade completa</span>}
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
                             <div>
                               <label className="text-[10px] text-slate-400 block mb-0.5">
-                                Qtd Entregue Nesta NF-e ({it.unit})
+                                Quantidade física recebida ({it.unit})
                               </label>
                               <input
                                 type="number"
+                                min="0"
+                                max={remaining}
                                 step="any"
                                 value={state.quantity}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      quantity: Number(e.target.value),
-                                    },
-                                  })
-                                }
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-mono"
-                                required
+                                onChange={(e) => updateReceiptLine(it.id, { quantity: e.target.value === '' ? 0 : Number(e.target.value) })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white font-mono"
                               />
                             </div>
 
                             <div>
                               <label className="text-[10px] text-cyan-400 font-semibold block mb-0.5">
-                                Nº de Corrida Metalúrgica (Heat No.)
+                                Corrida metalúrgica (Heat No.)
                               </label>
                               <input
                                 type="text"
                                 value={state.heatNumber}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      heatNumber: e.target.value,
-                                    },
-                                  })
-                                }
-                                placeholder="Ex: C-98240-B"
-                                className="w-full bg-slate-950 border border-cyan-800/60 rounded-lg px-2.5 py-1 text-white font-mono"
+                                onChange={(e) => updateReceiptLine(it.id, { heatNumber: e.target.value })}
+                                placeholder="Ex.: C-98240-B"
+                                className="w-full bg-slate-950 border border-cyan-800/60 rounded-lg px-2.5 py-2 text-white font-mono"
                               />
                             </div>
 
-                            <div className="flex items-center gap-2 pt-3">
-                              <input
-                                type="checkbox"
-                                id={`conform_${it.id}`}
-                                checked={state.isConform}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      isConform: e.target.checked,
-                                    },
-                                  })
-                                }
-                                className="rounded accent-emerald-500"
-                              />
-                              <label
-                                htmlFor={`conform_${it.id}`}
-                                className="text-xs text-slate-300 font-medium"
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-0.5">Destino da quantidade</label>
+                              <select
+                                value={state.stockDisposition}
+                                onChange={(e) => updateReceiptLine(it.id, { stockDisposition: e.target.value as ItemReceiptFormState['stockDisposition'] })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white"
                               >
-                                Dimensional Conforme
+                                <option value="estoque">Material para estoque</option>
+                                <option value="nao_estocavel">Serviço / consumo direto / não estocável</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-end">
+                              <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 w-full">
+                                <input
+                                  type="checkbox"
+                                  checked={state.isConform}
+                                  onChange={(e) => updateReceiptLine(it.id, { isConform: e.target.checked })}
+                                  className="rounded accent-emerald-500"
+                                />
+                                <span className="text-xs text-slate-300 font-medium">Qualidade aprovada</span>
                               </label>
                             </div>
                           </div>
+
+                          {state.stockDisposition === 'estoque' && (
+                            <div>
+                              <label className="text-[10px] text-cyan-300 font-semibold block mb-0.5">
+                                Vincular ao item do catálogo (obrigatório para entrada em estoque)
+                              </label>
+                              <select
+                                value={state.catalogItemId}
+                                onChange={(e) => updateReceiptLine(it.id, { catalogItemId: e.target.value })}
+                                disabled={inventoryLoading}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white"
+                              >
+                                <option value="">Selecione o material no catálogo...</option>
+                                {catalogItems.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.sku} — {item.name} ({item.unitOfMeasure})</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {!state.isConform && (
+                            <div>
+                              <label className="text-[10px] text-rose-300 font-semibold block mb-0.5">
+                                Motivo da não conformidade (obrigatório)
+                              </label>
+                              <input
+                                type="text"
+                                value={state.notes}
+                                onChange={(e) => updateReceiptLine(it.id, { notes: e.target.value })}
+                                placeholder="Descreva a divergência dimensional, especificação ou documentação..."
+                                className="w-full bg-slate-950 border border-rose-800/60 rounded-lg px-2.5 py-2 text-xs text-white"
+                              />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -475,7 +604,8 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
                     type="text"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Ex: Certificados de qualidade arquivados na pasta da obra..."
+                    required={status === 'rejeitado'}
+                    placeholder={status === 'rejeitado' ? 'Informe o motivo da rejeição...' : 'Ex: Certificados de qualidade arquivados na pasta da obra...'}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                   />
                 </div>
