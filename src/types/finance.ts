@@ -39,6 +39,9 @@ export interface FinancePayable {
   workOrderId?: string;
   nfeChave?: string;
   purchaseOrderId?: string;
+  purchaseOrderCode?: string;
+  receiptId?: string;
+  workOrderNumber?: string;
   rateio?: Rateio[];
   createdAt: string;
   createdBy: string;
@@ -96,7 +99,7 @@ export interface NfeDocument {
   recebidaEm?: string;
   updatedAt?: string;
   erroClassificacao?: string;
-  classificacao?: { runId?: string; by?: string; startedAt?: { toMillis(): number }; lines?: ClassifyLine[]; at?: string; byName?: string; purchaseOrderId?: string };
+  classificacao?: { runId?: string; by?: string; startedAt?: { toMillis(): number }; lines?: ClassifyLine[]; at?: string; byName?: string; purchaseOrderId?: string; purchaseOrderCode?: string; receiptId?: string; stockControlledByReceipt?: boolean };
 }
 
 export interface ClassifyLine {

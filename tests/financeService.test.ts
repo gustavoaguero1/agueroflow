@@ -115,6 +115,16 @@ test('rateio carries workOrderId', () => {
   assert.deepEqual(p[0].rateio!.map((r) => r.workOrderId).sort(), ['wo0', 'wo1']);
 });
 
+test('payables preserve OC, receipt and work-order references', () => {
+  const sameWorkOrder = lines.map((line: any) => ({ ...line, workOrderId: 'wo1' }));
+  const p = buildPayables(nfe, sameWorkOrder, { ...opts, purchaseOrderId: 'po1', purchaseOrderCode: 'OC-2026-001', receiptId: 'rec_1', workOrderNumber: 'OS-2026-014' });
+  assert.equal(p[0].purchaseOrderId, 'po1');
+  assert.equal(p[0].purchaseOrderCode, 'OC-2026-001');
+  assert.equal(p[0].receiptId, 'rec_1');
+  assert.equal(p[0].workOrderNumber, 'OS-2026-014');
+  assert.equal(p[0].workOrderId, 'wo1');
+});
+
 test('stockUnitCost and rateio use the parsed custoTotal', () => {
   const n = { ...nfe, itens: [{ n: 1, quantidade: 10, valorTotal: 255, custoTotal: 260 }, { n: 2, quantidade: 2, valorTotal: 300, custoTotal: 325 }] };
   assert.equal(stockUnitCost(n, n.itens[0]), 26);

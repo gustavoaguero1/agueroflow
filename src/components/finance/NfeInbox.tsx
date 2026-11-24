@@ -182,7 +182,7 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
       {classifying && (
         <NfeClassifyModal nfe={classifying} orgId={orgId} categories={categories} costCenters={costCenters}
           onClose={() => setClassifying(null)}
-          onDone={() => { setClassifying(null); setMsgs([{ ok: true, text: 'Nota classificada: estoque e contas a pagar lançados.' }]); }} />
+          onDone={() => { setClassifying(null); setMsgs([{ ok: true, text: 'Nota classificada: contas a pagar atualizadas; entrada de materiais controlada pelo vínculo com a OC/recebimento.' }]); }} />
       )}
     </div>
   );

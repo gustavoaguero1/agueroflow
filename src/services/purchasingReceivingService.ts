@@ -54,6 +54,16 @@ export function purchaseReceiptId(input: Pick<RegisterPurchaseReceiptInput, 'org
   return `rec_${cleanIdPart(input.organizationId)}_${cleanIdPart(invoiceToken)}`;
 }
 
+/** Deterministic receipt IDs, including the legacy identity for receipts saved without an access key. */
+export function purchaseReceiptLookupIds(
+  input: Pick<RegisterPurchaseReceiptInput, 'organizationId' | 'invoiceNumber' | 'invoiceKey'>,
+  supplierCnpj: string,
+): string[] {
+  const keyed = purchaseReceiptId(input, supplierCnpj);
+  const legacy = `rec_${cleanIdPart(input.organizationId)}_${cleanIdPart(supplierCnpj || 'sem_cnpj')}_${cleanIdPart(input.invoiceNumber)}`;
+  return [...new Set([keyed, legacy])];
+}
+
 const normalizeUnit = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase('pt-BR');
 const round4 = (value: number) => Math.round(value * 10000) / 10000;
 const safe = <T>(value: T): T => {

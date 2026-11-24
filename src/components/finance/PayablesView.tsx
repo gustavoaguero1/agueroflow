@@ -159,6 +159,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
                   <div className="text-[11px] text-slate-400 min-w-0">
                     <p>Vence {fmtDate(p.vencimento)}</p>
                     <p className="truncate">{catName(p.categoriaId)}{ctName(p.contractId) ? ` · ${ctName(p.contractId)}` : ''}</p>
+                    {(p.purchaseOrderCode || p.workOrderNumber || p.receiptId) && <p className="truncate text-sky-300">{p.purchaseOrderCode ? `OC ${p.purchaseOrderCode}` : ''}{p.workOrderNumber ? ` · OS ${p.workOrderNumber}` : ''}{p.receiptId ? ` · Recibo ${p.receiptId}` : ''}</p>}
                     {p.rateio && p.rateio.length > 1 && <p className="truncate">Rateio: {p.rateio.map((r) => `${catName(r.categoriaId)} ${brl.format(r.valor)}`).join(' · ')}</p>}
                   </div>
                   <p className="text-base font-extrabold text-white font-mono shrink-0">{brl.format(p.valor)}</p>

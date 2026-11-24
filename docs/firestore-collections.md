@@ -37,7 +37,7 @@ Owner kinds:
 | counters | orgId | getDoc | `{orgId}_work_orders` sequence for OS numbers (written in a transaction by `markProposalWon`) |
 | field_workers | orgId | `orgId ==` | |
 | finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
-| finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller; Admin/Gerente update; Supervisor only aberto→pago (`status`/`pagoEm`/`pagoPor`/`updatedAt`); NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent) |
+| finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller; Admin/Gerente update; Supervisor only aberto→pago (`status`/`pagoEm`/`pagoPor`/`updatedAt`); NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent); titles preserve OC, OS and receipt references when linked |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
 | inspections | orgId | `orgId ==` | |
@@ -53,9 +53,9 @@ Owner kinds:
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
-| purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. Financeiro: leitura somente para conciliar NF-e/OC; sem escrita. |
 | purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
-| purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. Financeiro: leitura somente para conciliar NF-e/recibo; sem escrita. |
 | purchasing_requisitions | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_suppliers | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | recurring_orders | orgId | `orgId ==` | |
@@ -87,6 +87,10 @@ Owner kinds:
 
 Server-only (denied to every client, master included): `member_credentials` (master doc `_master_`),
 `first_access_tokens`, `system_security` (old master-password doc), `users` (unused).
+
+## Compras → Financeiro / NF-e
+
+A classificação da NF-e pode ser vinculada à OC do mesmo fornecedor. A OC continua sendo compromisso de compra; o título a pagar nasce das duplicatas da NF-e, evitando gerar uma segunda obrigação financeira. Quando existe OC vinculada, a classificação não movimenta estoque: a entrada física fica exclusivamente no fluxo de Recebimento. Se o recebimento já existe, a conciliação usa o recibo e não repete as entradas; o título preserva OC, OS vinculada e recibo para rastreabilidade. Financeiro tem leitura das OCs/recibos, mas somente Estoque pode alterá-los.
 
 ## WhatsApp mirror
 

@@ -4,7 +4,7 @@ import { PackagePlus, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  autoLines, brl, classifyNfe, duplicatasExcess, lineCost, parcelasOf, registeredEntries,
+  autoLines, brl, classifyNfe, duplicatasExcess, findPurchaseReceiptForNfe, lineCost, parcelasOf, registeredEntries,
 } from '../../services/financeService';
 import type { CostCenter, Item, WorkOrder } from '../../types';
 import type { PurchaseOrder } from '../../types/purchasing';
@@ -65,6 +65,9 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
   const [locked, setLocked] = useState<Map<number, { itemId: string; unitId: string }> | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [receiptMatch, setReceiptMatch] = useState<Awaited<ReturnType<typeof findPurchaseReceiptForNfe>>>(null);
+  const [receiptLookupDone, setReceiptLookupDone] = useState(false);
+  const [receiptLookupError, setReceiptLookupError] = useState<string | null>(null);
   const [lines, setLines] = useState<ClassifyLine[]>([]);
   const [obra, setObraState] = useState('');
   const [all, setAll] = useState<Partial<ClassifyLine>>({});
@@ -83,8 +86,12 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
       .catch((e) => { setError(`Falha ao carregar catálogo/regras: ${e.message}`); setItems([]); setRules([]); setLocked(new Map()); });
     byOrg('work_orders').then(setWorkOrders).catch(() => setWorkOrders([]));
     byOrg('purchasing_orders', 'organizationId')
-      .then((os: PurchaseOrder[]) => setOrders(os.filter((o) => digits(o.supplierCnpj) === digits(nfe.emitente.cnpj) && !['recebida_total', 'cancelada'].includes(o.status))))
+      .then((os: PurchaseOrder[]) => setOrders(os.filter((o) => digits(o.supplierCnpj) === digits(nfe.emitente.cnpj) && o.status !== 'cancelada')))
       .catch(() => setOrders([]));
+    findPurchaseReceiptForNfe(db, orgId, nfe)
+      .then((match) => { setReceiptMatch(match); setReceiptLookupError(null); if (match) setPurchaseOrderId(match.purchaseOrder.id); })
+      .catch((e) => setReceiptLookupError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setReceiptLookupDone(true));
   }, [orgId, nfe.id]);
 
   // Everything but the obra is classified automatically; lines already in stock (earlier attempt) stay as registered.
@@ -101,22 +108,34 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
   const setObra = (v: string) => {
     setObraState(v);
     const [kind, id] = v.split(':');
-    const patch = kind === 'ct' ? { contractId: id, centroCustoId: undefined } : kind === 'cc' ? { centroCustoId: id, contractId: undefined }
-      : { contractId: undefined, centroCustoId: undefined };
+    const patch = kind === 'ct' ? { contractId: id, centroCustoId: undefined, workOrderId: undefined } : kind === 'cc' ? { centroCustoId: id, contractId: undefined, workOrderId: undefined }
+      : { contractId: undefined, centroCustoId: undefined, workOrderId: undefined };
     setLines((ls) => ls.map((l) => ({ ...l, ...patch })));
   };
+
+  const handlePurchaseOrderChange = (id: string) => {
+    setPurchaseOrderId(id);
+    const linked = orders.find((order) => order.id === id)?.linkedWorkOrderId;
+    if (linked) setLines((current) => current.map((line) => ({ ...line, workOrderId: line.workOrderId || linked })));
+  };
+
+  useEffect(() => {
+    const linked = orders.find((order) => order.id === purchaseOrderId)?.linkedWorkOrderId;
+    if (linked) setLines((current) => current.map((line) => line.workOrderId ? line : { ...line, workOrderId: linked }));
+  }, [purchaseOrderId, orders]);
   const applyAll = () => {
     const patch = Object.fromEntries(Object.entries(all).filter(([, v]) => v)) as Partial<ClassifyLine>;
     setLines((ls) => ls.map((l) => (locked?.has(l.n) ? { ...l, ...patch, destino: 'estoque' } : { ...l, ...patch })));
   };
-  const ready = lines.length > 0 && (obra === NONE || lines.every((l) => l.contractId || l.centroCustoId));
+  const ready = lines.length > 0 && receiptLookupDone && !receiptLookupError && (obra === NONE || lines.every((l) => l.contractId || l.centroCustoId || l.workOrderId));
 
   const submit = async () => {
     setError(null);
     setBusy(true);
     try {
       // Stock lines without a catalog match: classifyNfe creates the item inside the run.
-      const final = lines.map((l) => (l.destino === 'estoque' ? l : { ...l, itemId: undefined, unitId: undefined }));
+      const linkedWorkOrderId = orders.find((order) => order.id === purchaseOrderId)?.linkedWorkOrderId;
+      const final = lines.map((l) => ({ ...(l.destino === 'estoque' ? l : { ...l, itemId: undefined, unitId: undefined }), workOrderId: l.workOrderId || linkedWorkOrderId }));
       await classifyNfe(db, {
         orgId, nfeId: nfe.id, lines: final, vencimentos: venc, purchaseOrderId: purchaseOrderId || undefined, rememberRules: remember,
         user: { uid: user?.uid ?? '', name: member?.userName || user?.displayName || user?.email || 'Usuário' },
@@ -162,6 +181,13 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
 
         <div className="p-4 space-y-4">
           <NfeTaxSummary nfe={nfe} />
+          {receiptMatch && (
+            <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-3 space-y-1" data-testid="matched-purchase-receipt">
+              <p className="text-xs font-semibold text-emerald-300">Recebimento físico já registrado</p>
+              <p className="text-xs text-slate-200">OC {receiptMatch.purchaseOrder.code} · recibo {receiptMatch.receipt.id} · data {fmtDate(receiptMatch.receipt.receiptDate)}</p>
+              <p className="text-[11px] text-slate-400">As quantidades aceitas já foram tratadas por Compras & Estoque. Esta classificação não lançará o estoque novamente; ela vinculará a NF-e às parcelas a pagar.</p>
+            </div>
+          )}
           {excess > 0 && (
             <p className={msgErr}>As duplicatas somam {brl.format(excess)} a mais que o total da nota. Corrija com o fornecedor (carta de correção / nova nota) antes de classificar.</p>
           )}
@@ -250,9 +276,10 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
                     ))}
                     {orders.length > 0 && (
                       <div><span className={label}>Vincular à ordem de compra (mesmo fornecedor)</span>
-                        {sel(purchaseOrderId, setPurchaseOrderId, orders.map((o) => ({ v: o.id, l: `${o.code} — ${brl.format(o.totalValue ?? 0)}` })), 'Sem vínculo')}
+                        {receiptMatch ? <p className="text-xs text-emerald-300">{receiptMatch.purchaseOrder.code} — vínculo identificado pelo recebimento físico</p> : sel(purchaseOrderId, handlePurchaseOrderChange, orders.map((o) => ({ v: o.id, l: `${o.code} — ${brl.format(o.totalValue ?? 0)}` })), 'Sem vínculo')}
                       </div>
                     )}
+                    {purchaseOrderId && !receiptMatch && <p className="text-[11px] text-sky-300">NF-e vinculada a uma OC: as parcelas serão criadas no Financeiro, mas a quantidade só entrará no estoque após a conferência física em Compras & Estoque → Recebimento.</p>}
                   </div>
 
                   <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
@@ -263,13 +290,15 @@ export const NfeClassifyModal: React.FC<Props> = ({ nfe, orgId, categories, cost
               </details>
             </>
           )}
+          {!receiptLookupDone && <p className="text-[11px] text-slate-400">Conferindo se a NF-e já possui recebimento físico…</p>}
+          {receiptLookupError && <p className={msgErr}>Não foi possível conferir se esta NF-e já teve recebimento: {receiptLookupError}</p>}
           {error && <p className={msgErr}>{error}</p>}
         </div>
 
         <div className="sticky bottom-0 bg-[#0F1420] border-t border-slate-800 px-4 py-3 flex flex-col-reverse sm:flex-row justify-end items-stretch sm:items-center gap-2">
           {!ready && lines.length > 0 && <span className="text-[11px] text-amber-300 sm:mr-auto">Informe a obra / centro de custo para confirmar.</span>}
           <button type="button" className={btnGhost} onClick={onClose} disabled={busy}>Cancelar</button>
-          <button type="button" className={btnPrimary} onClick={submit} disabled={busy || !ready || excess > 0}>
+          <button type="button" className={btnPrimary} onClick={submit} disabled={busy || !ready || excess > 0 || Boolean(receiptLookupError)}>
             {busy ? 'Classificando…' : 'Confirmar'}
           </button>
         </div>
