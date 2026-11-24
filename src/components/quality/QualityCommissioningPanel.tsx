@@ -371,8 +371,9 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
       const eventType: QualityEventType = qualityInitialEvent(recordType, input.result);
       const initialStatus = qualityInitialStatus(recordType, input.result);
       const stateRef = doc(db, 'quality_record_states', recordRef.id);
-      const batch = writeBatch(db);
-      batch.set(recordRef, {
+
+      // Keep the initial writes separate so Firebase Rules evaluate each large record validation independently.
+      await setDoc(recordRef, {
         id: recordRef.id,
         orgId: organizationId,
         unitId,
@@ -399,7 +400,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
         createdByName: actorName,
         createdAt: serverTimestamp(),
       });
-      batch.set(eventRef, {
+      await setDoc(eventRef, {
         orgId: organizationId,
         unitId,
         contractId,
@@ -412,7 +413,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
           ? 'Apontamento de qualidade aberto para tratamento.'
           : 'Registro enviado para aprovação técnica.',
       });
-      batch.set(stateRef, {
+      await setDoc(stateRef, {
         id: recordRef.id,
         orgId: organizationId,
         unitId,
@@ -424,7 +425,6 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
         updatedByName: actorName,
         updatedAt: serverTimestamp(),
       });
-      await batch.commit();
 
       setSuccess(`${recordCode} registrado. ${eventType === 'opened' ? 'O apontamento está aberto para correção.' : 'Aguardando aprovação técnica.'}`);
       setShowForm(false);
