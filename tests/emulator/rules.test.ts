@@ -479,7 +479,7 @@ test('finance bank statement and reconciliation collections are company-scoped a
   await assertSucceeds(getDocs(query(collection(member(), transactions), where('orgId', '==', 'org_a'))));
   await assertFails(getDocs(query(collection(member(), transactions), where('orgId', '==', 'org_b'))));
   await assertSucceeds(getDoc(doc(member(), matches + '/bmatch_org_a_one')));
-  await assertFails(getDoc(doc(member(), matches + '/bmatch_org_b_one')));
+  await assertFails(getDoc(doc(member(), matches + '/bmatch_org_b_two')));
   await assertFails(setDoc(doc(gerente(), transactions + '/btxn_org_a_forged'), {
     id: 'btxn_org_a_forged', orgId: 'org_a', date: '2026-11-24', amount: 1, direction: 'debit', description: 'Forged',
   }));
