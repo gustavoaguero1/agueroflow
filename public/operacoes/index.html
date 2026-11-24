@@ -189,41 +189,8 @@ input[type=file]{font-size:13px;color:var(--muted)}
 input[type=file]::file-selector-button{font:inherit;font-weight:500;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctl);padding:6px 12px;margin-right:10px;cursor:pointer}
 input[type=file]::file-selector-button:hover{border-color:var(--accent)}
 @media (prefers-reduced-motion:reduce){.btn{transition:none}}
-/* Controle de gases */
-.gas-head{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
-.gas-head p{margin:2px 0 0;font-size:12px;color:var(--muted)}
-.gas-filtros{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end;padding:16px 20px}
-.gas-kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-/* Cards de indicador iguais aos do Painel: rótulo, número, linha de apoio e ícone à direita */
-.gas-kpi{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px}
-.gas-kpi .k-l{font-size:12px;font-weight:500;color:var(--muted)}
-.gas-kpi > div{min-width:0;flex:1}
-.gas-kpi .k-v{display:block;font-size:20px;overflow-wrap:anywhere;font-weight:700;letter-spacing:-.02em;margin-top:6px;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.15}
-.gas-kpi .k-s{display:block;font-size:11px;color:var(--muted-2);margin-top:4px}
-.gas-kpi .k-v.warn{color:var(--warn-num)} .gas-kpi .k-v.bad{color:var(--bad)}
-.gas-kpi svg{width:24px;height:24px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--muted-2);opacity:.45}
-.gas-kpi svg.warn{color:var(--warn-num);opacity:.4} .gas-kpi svg.bad{color:var(--bad);opacity:.4} .gas-kpi svg.acc{color:var(--accent);opacity:.4}
-.gas-2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
-@media (max-width:900px){.gas-2{grid-template-columns:1fr}}
-.gas-2 h3,.gas-sec h3{margin-bottom:12px}
-.gas-2 .tw{max-height:360px;overflow:auto}
-.gas-2 td a,.gas-sec td a{color:var(--link);font-weight:600;text-decoration:none}
-.gas-2 td a:hover{text-decoration:underline}
-.gas-bars{display:grid;grid-template-columns:repeat(12,1fr);gap:8px;height:200px;align-items:end;padding-top:8px}
-.gas-bar{display:grid;grid-template-rows:auto 1fr auto;height:100%;align-items:end;text-align:center;min-width:0}
-.gas-bar i{display:block;background:var(--accent);border-radius:8px 8px 4px 4px;min-height:3px;align-self:end;opacity:.9}
-.gas-bar:hover i{opacity:1}
-.gas-bar span{font-size:11px;color:var(--muted);padding-top:6px;font-weight:500}
-.gas-bar-v{font-size:10px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-bottom:4px;font-variant-numeric:tabular-nums}
-.gas-sec{display:grid;gap:12px}
-.gas-pends{display:grid;gap:10px}
-.gas-pend{display:grid;gap:8px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
-.gas-pend b{font-size:13px}
-.gas-pend .gas-acao{font-size:13px;color:var(--ink-2);line-height:1.5}
-.gas-pend.feita{background:var(--surface-2)}
-.gas-pend.feita b,.gas-pend.feita .gas-acao{color:var(--muted)}
-@media (max-width:640px){.gas-bar-v{display:none}}
 </style>
+<link rel="stylesheet" href="gases.css">
 </head>
 <body>
 <header class="top"><div class="topin">
