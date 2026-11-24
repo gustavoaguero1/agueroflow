@@ -458,6 +458,40 @@ test('finance_payable_settlements: members read only their company; client write
   await assertFails(deleteDoc(doc(admin(), path + '/pays_org_a_title1')));
 });
 
+
+test('finance bank statement and reconciliation collections are company-scoped and immutable to clients', async () => {
+  const transactions = 'finance_bank_transactions';
+  const matches = 'finance_bank_reconciliations';
+  await seedAs((db) => setDoc(doc(db, transactions + '/btxn_org_a_one'), {
+    id: 'btxn_org_a_one', orgId: 'org_a', date: '2026-11-24', amount: 500, direction: 'debit', description: 'Fornecedor A',
+  }));
+  await seedAs((db) => setDoc(doc(db, transactions + '/btxn_org_b_two'), {
+    id: 'btxn_org_b_two', orgId: 'org_b', date: '2026-11-24', amount: 700, direction: 'debit', description: 'Fornecedor B',
+  }));
+  await seedAs((db) => setDoc(doc(db, matches + '/bmatch_org_a_one'), {
+    id: 'bmatch_org_a_one', orgId: 'org_a', transactionId: 'btxn_org_a_one', settlementId: 'settlement_a',
+  }));
+  await seedAs((db) => setDoc(doc(db, matches + '/bmatch_org_b_two'), {
+    id: 'bmatch_org_b_two', orgId: 'org_b', transactionId: 'btxn_org_b_two', settlementId: 'settlement_b',
+  }));
+  await assertSucceeds(getDoc(doc(member(), transactions + '/btxn_org_a_one')));
+  await assertFails(getDoc(doc(member(), transactions + '/btxn_org_b_two')));
+  await assertSucceeds(getDocs(query(collection(member(), transactions), where('orgId', '==', 'org_a'))));
+  await assertFails(getDocs(query(collection(member(), transactions), where('orgId', '==', 'org_b'))));
+  await assertSucceeds(getDoc(doc(member(), matches + '/bmatch_org_a_one')));
+  await assertFails(getDoc(doc(member(), matches + '/bmatch_org_b_two')));
+  await assertFails(setDoc(doc(gerente(), transactions + '/btxn_org_a_forged'), {
+    id: 'btxn_org_a_forged', orgId: 'org_a', date: '2026-11-24', amount: 1, direction: 'debit', description: 'Forged',
+  }));
+  await assertFails(updateDoc(doc(gerente(), transactions + '/btxn_org_a_one'), { amount: 1 }));
+  await assertFails(deleteDoc(doc(admin(), transactions + '/btxn_org_a_one')));
+  await assertFails(setDoc(doc(gerente(), matches + '/bmatch_org_a_forged'), {
+    id: 'bmatch_org_a_forged', orgId: 'org_a', transactionId: 'btxn_org_a_one', settlementId: 'settlement_a',
+  }));
+  await assertFails(updateDoc(doc(admin(), matches + '/bmatch_org_a_one'), { settlementId: 'other' }));
+  await assertFails(deleteDoc(doc(admin(), matches + '/bmatch_org_a_one')));
+});
+
 test('finance_payable_authorizations: only Admin/Gerente can create one per approved case and open matching NF-e payable; immutable', async () => {
   const casePath = 'finance_reconciliation_cases/rcase_org_a_case1';
   const payablePath = 'finance_payables/pay_org_a_K1_001';

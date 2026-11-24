@@ -83,6 +83,7 @@ import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecre
 import { createAreaRouter } from './server/areaRoutes';
 import { createFinancePayableAuthorizationRouter } from './server/financePayableAuthorizationRoutes';
 import { createFinancePayableSettlementRouter } from './server/financePayableSettlementRoutes';
+import { createFinanceBankReconciliationRouter } from './server/financeBankReconciliationRoutes';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -566,6 +567,7 @@ async function main() {
   app.use('/api/org', createAreaRouter());
   app.use('/api/finance/payable-authorizations', createFinancePayableAuthorizationRouter());
   app.use('/api/finance/payable-settlements', createFinancePayableSettlementRouter());
+  app.use('/api/finance/bank-reconciliation', createFinanceBankReconciliationRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
