@@ -22,7 +22,7 @@ const manager = () => as('manager_a', { org_a: 'Gerente' });
 const financeViewer = () => as('finance_viewer', { org_a: 'Operacional' }, false, { org_a: '00001000000' });
 const noFinance = () => as('no_finance', { org_a: 'Gerente' }, false, { org_a: '22220000000' });
 const otherOrg = () => as('manager_b', { org_b: 'Gerente' });
-const seedAs = async (fn: (db: any) => Promise<unknown>) =>
+const seedAs = async (fn: (db: any) => Promise<void>) =>
   env.withSecurityRulesDisabled(async (ctx) => fn(ctx.firestore()));
 
 const receivable = (id = 'recv_org_a_client1', extra: Record<string, unknown> = {}) => ({
