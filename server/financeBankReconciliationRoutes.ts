@@ -28,12 +28,12 @@ function validateRow(row: any): row is FinanceBankStatementRow {
     && (row.externalId === undefined || (typeof row.externalId === 'string' && row.externalId.length <= 200));
 }
 
-function transactionIdentity(orgId: string, accountLabel: string, row: FinanceBankStatementRow): string {
+function transactionIdentity(orgId: string, accountLabel: string, sourceFileName: string, row: FinanceBankStatementRow): string {
   const external = normalize(row.externalId);
   if (external) return orgId + '|account:' + normalize(accountLabel) + '|fitid:' + external;
   return [
     orgId, normalize(accountLabel), row.date, row.direction, cents(row.amount),
-    normalize(row.reference), normalize(row.description),
+    normalize(row.reference), normalize(row.description), normalize(sourceFileName), row.rowNumber,
   ].join('|');
 }
 
@@ -60,7 +60,7 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
       const rows = body.rows as FinanceBankStatementRow[];
       const unique = new Map<string, { id: string; row: FinanceBankStatementRow }>();
       for (const row of rows) {
-        const id = 'btxn_' + orgId.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + hash(transactionIdentity(orgId, accountLabel, row)).slice(0, 36);
+        const id = 'btxn_' + orgId.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + hash(transactionIdentity(orgId, accountLabel, body.sourceFileName.trim(), row)).slice(0, 36);
         if (!unique.has(id)) unique.set(id, { id, row });
       }
       const entries = [...unique.values()];
