@@ -8,7 +8,6 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { Item, StockMovement, Unit } from '../types';
-import { db } from '../firebase';
 import type { MaterialReceiptRecord, PurchaseOrder } from '../types/purchasing';
 import { weightedAverageCost, movementIdFor } from './stockService';
 
@@ -381,10 +380,10 @@ export async function registerPurchaseReceipt(
 }
 
 /** Catalog and destination units shown in the material receipt form. */
-export async function getReceivingInventorySetup(organizationId: string): Promise<{ items: Item[]; units: Unit[] }> {
+export async function getReceivingInventorySetup(firestore: Firestore, organizationId: string): Promise<{ items: Item[]; units: Unit[] }> {
   const [itemSnap, unitSnap] = await Promise.all([
-    getDocs(query(collection(db, 'items'), where('orgId', '==', organizationId))),
-    getDocs(query(collection(db, 'units'), where('orgId', '==', organizationId))),
+    getDocs(query(collection(firestore, 'items'), where('orgId', '==', organizationId))),
+    getDocs(query(collection(firestore, 'units'), where('orgId', '==', organizationId))),
   ]);
   const items = itemSnap.docs
     .map((snapshot) => ({ id: snapshot.id, ...snapshot.data() } as Item))
