@@ -32,8 +32,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Instalar dependências
-        run: npm install --no-audit --no-fund
+      - name: Configurar Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.5
+
+      - name: Instalar dependências pelo lockfile do repositório
+        run: bun install --frozen-lockfile
 
       - name: Verificar TypeScript
         run: npm run lint
