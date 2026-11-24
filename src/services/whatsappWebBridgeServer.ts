@@ -93,11 +93,29 @@ export interface BridgeHooks {
 
 // Non-hidden directories/files (alongside data_*.json) so container snapshots preserve session & catch-up state
 const LEGACY_AUTH_DIR = path.resolve(process.cwd(), '.whatsapp_auth');
-const AUTH_DIR = path.resolve(process.cwd(), 'data_whatsapp_auth');
-const BRIDGE_STATE_FILE = path.resolve(process.cwd(), 'data_whatsapp_bridge_state.json');
 const silentLogger = pino({ level: 'silent' });
 
+export interface WhatsAppBridgeConfig {
+  /** Chave da sessão (ex.: u_<uid>, legacy). */
+  key: string;
+  /** Pasta das credenciais desta sessão. */
+  authDir: string;
+  /** Arquivo de estado desta sessão. */
+  stateFile: string;
+  /** Só a instância padrão copia a pasta antiga `.whatsapp_auth`. */
+  migrateLegacyDir?: boolean;
+}
+
+/**
+ * Uma conexão do WhatsApp Web. Cada chamada cria uma instância independente (estado, credenciais,
+ * caches e temporizadores próprios); o corpo é o mesmo código que antes era o módulo inteiro.
+ */
+export function createWhatsAppBridge(cfg: WhatsAppBridgeConfig) {
+const AUTH_DIR = cfg.authDir;
+const BRIDGE_STATE_FILE = cfg.stateFile;
+
 function migrateLegacyAuthDirIfNeeded() {
+  if (!cfg.migrateLegacyDir) return;
   try {
     if (
       fs.existsSync(path.join(LEGACY_AUTH_DIR, 'creds.json')) &&
@@ -192,7 +210,7 @@ function notifyHistorySyncWaiters(chatJid: string, receivedCount: number) {
   }
 }
 
-export function getLastDisconnectedAtMs(): number {
+function getLastDisconnectedAtMs(): number {
   if (lastDisconnectedAtMs > 0) return lastDisconnectedAtMs;
   if (lastOnlineAt) {
     const parsed = new Date(lastOnlineAt).getTime();
@@ -385,7 +403,7 @@ function cacheChatMedia(entry: CachedChatMedia) {
   }
 }
 
-export function getLatestChatMedia(chatJid: string, kind?: 'image' | 'audio'): CachedChatMedia | undefined {
+function getLatestChatMedia(chatJid: string, kind?: 'image' | 'audio'): CachedChatMedia | undefined {
   if (kind === 'image') return lastImageByChatJid.get(chatJid);
   if (kind === 'audio') return lastAudioByChatJid.get(chatJid);
   const img = lastImageByChatJid.get(chatJid);
@@ -418,7 +436,7 @@ function clearAuthDirectory() {
   }
 }
 
-export function hasPersistedBridgeSession(): boolean {
+function hasPersistedBridgeSession(): boolean {
   migrateLegacyAuthDirIfNeeded();
   try {
     const credsPath = path.join(AUTH_DIR, 'creds.json');
@@ -431,7 +449,7 @@ export function hasPersistedBridgeSession(): boolean {
   }
 }
 
-export function registerWhatsAppBridgeHooks(nextHooks: BridgeHooks) {
+function registerWhatsAppBridgeHooks(nextHooks: BridgeHooks) {
   hooks = { ...hooks, ...nextHooks };
 }
 
@@ -465,7 +483,7 @@ async function resolveGroupSubject(sock: WASocket, groupJid: string): Promise<st
   return persistedGroupNamesByJid.get(groupJid) || groupJid.replace('@g.us', '');
 }
 
-export async function refreshBridgeGroups(): Promise<WhatsAppGroupSummary[]> {
+async function refreshBridgeGroups(): Promise<WhatsAppGroupSummary[]> {
   if (!activeSocket || bridgeState !== 'conectado') {
     return Array.from(groupsCache.values());
   }
@@ -606,15 +624,15 @@ function scheduleReconnect(delayMs: number, reasonTag: string) {
   }, delayMs);
 }
 
-export function getDiscoveredBridgeContacts() {
+function getDiscoveredBridgeContacts() {
   return Array.from(contactsCache.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
-export function getWhatsAppBridgeConnectedLid(): string {
+function getWhatsAppBridgeConnectedLid(): string {
   return connectedLid || '';
 }
 
-export function getWhatsAppBridgeStatus(): WhatsAppBridgeStatus {
+function getWhatsAppBridgeStatus(): WhatsAppBridgeStatus {
   const groups = Array.from(groupsCache.values()).sort((a, b) =>
     a.subject.localeCompare(b.subject, 'pt-BR')
   );
@@ -638,7 +656,7 @@ export function getWhatsAppBridgeStatus(): WhatsAppBridgeStatus {
   };
 }
 
-export function ensureWhatsAppBridgeResumed() {
+function ensureWhatsAppBridgeResumed() {
   if (
     manualStopRequested ||
     lastDisconnectWasFatalLogout ||
@@ -934,7 +952,7 @@ async function archiveRawWAMessageForHistory(
   }
 }
 
-export async function downloadCachedRawMessageMedia(
+async function downloadCachedRawMessageMedia(
   chatJid: string,
   messageId: string
 ): Promise<{ buffer: Buffer; mimeType: string; fileName?: string; kind: 'image' | 'document' | 'audio' | 'other' } | null> {
@@ -971,7 +989,7 @@ export async function downloadCachedRawMessageMedia(
  * Given a list of message keys (or raw message IDs + candidate chatJids), asks the primary phone to resend
  * the full decrypted WebMessageInfo, which automatically feeds into archiveRawWAMessageForHistory.
  */
-export async function recoverMissingMessagesByKeys(params: {
+async function recoverMissingMessagesByKeys(params: {
   keys: Array<{ remoteJid: string; id: string; fromMe?: boolean; participant?: string }>;
   waitMs?: number;
 }): Promise<{ requested: number; errors: string[] }> {
@@ -1003,7 +1021,7 @@ export async function recoverMissingMessagesByKeys(params: {
   return { requested, errors };
 }
 
-export function getKnownRecentMessageKeysForChat(chatJid: string): ChatMessageAnchor[] {
+function getKnownRecentMessageKeysForChat(chatJid: string): ChatMessageAnchor[] {
   const out: ChatMessageAnchor[] = [];
   for (const item of recentMessageKeysById.values()) {
     if (item.key.remoteJid === chatJid) out.push(item);
@@ -1353,7 +1371,7 @@ async function drainActiveChatQueues(targetJids?: Set<string>) {
  * 2) Scans cached recent messages (up to lookbackHours) for active OCR/ND channels not yet processed
  * 3) Requests on-demand history pull from WhatsApp primary phone via Baileys fetchMessageHistory
  */
-export async function scanAndCatchUpChannels(params: {
+async function scanAndCatchUpChannels(params: {
   targetJids: string[];
   ndRuleJids?: Set<string>;
   alreadyProcessedReceiptIds?: Set<string>;
@@ -1475,7 +1493,7 @@ export async function scanAndCatchUpChannels(params: {
  * Pulls missed offline/historical messages from the primary WhatsApp phone via Baileys fetchMessageHistory
  * and archives them strictly read-only (via onHistoryMessage) WITHOUT triggering OCR/ND/auto-reply spam.
  */
-export async function syncChatHistoryOnDemand(params: {
+async function syncChatHistoryOnDemand(params: {
   chatJid: string;
   sinceMs?: number;
   fallbackAnchors?: Array<{
@@ -1599,7 +1617,7 @@ export async function syncChatHistoryOnDemand(params: {
   };
 }
 
-export async function startWhatsAppBridgeSession(options?: {
+async function startWhatsAppBridgeSession(options?: {
   phoneNumberForPairing?: string;
   forceFreshQr?: boolean;
   isAutoReconnect?: boolean;
@@ -2211,7 +2229,7 @@ export async function startWhatsAppBridgeSession(options?: {
   }
 }
 
-export async function stopWhatsAppBridgeSession(logout = false): Promise<WhatsAppBridgeStatus> {
+async function stopWhatsAppBridgeSession(logout = false): Promise<WhatsAppBridgeStatus> {
   manualStopRequested = true;
   if (!logout && lastDisconnectedAtMs === 0) {
     lastDisconnectedAtMs = Date.now();
@@ -2247,7 +2265,7 @@ export async function stopWhatsAppBridgeSession(logout = false): Promise<WhatsAp
   return getWhatsAppBridgeStatus();
 }
 
-export async function sendMessageViaWhatsAppBridge(params: {
+async function sendMessageViaWhatsAppBridge(params: {
   toJidOrPhone: string;
   text: string;
   quotedMessage?: WAMessage;
@@ -2323,7 +2341,7 @@ export async function sendMessageViaWhatsAppBridge(params: {
   }
 }
 
-export async function sendDocumentViaWhatsAppBridge(params: {
+async function sendDocumentViaWhatsAppBridge(params: {
   toJidOrPhone: string;
   buffer: Buffer;
   fileName: string;
@@ -2412,7 +2430,7 @@ export async function sendDocumentViaWhatsAppBridge(params: {
   }
 }
 
-export async function sendReactionViaWhatsAppBridge(params: {
+async function sendReactionViaWhatsAppBridge(params: {
   toJidOrPhone: string;
   messageKey: {
     remoteJid?: string | null;
@@ -2476,7 +2494,7 @@ export async function sendReactionViaWhatsAppBridge(params: {
   }
 }
 
-export async function sendPresenceViaWhatsAppBridge(
+async function sendPresenceViaWhatsAppBridge(
   toJidOrPhone: string,
   presence: 'composing' | 'paused'
 ): Promise<void> {
@@ -2492,3 +2510,62 @@ export async function sendPresenceViaWhatsAppBridge(
 }
 
 
+
+return {
+  key: cfg.key,
+  getLastDisconnectedAtMs,
+  getLatestChatMedia,
+  hasPersistedBridgeSession,
+  registerWhatsAppBridgeHooks,
+  refreshBridgeGroups,
+  getDiscoveredBridgeContacts,
+  getWhatsAppBridgeConnectedLid,
+  getWhatsAppBridgeStatus,
+  ensureWhatsAppBridgeResumed,
+  downloadCachedRawMessageMedia,
+  recoverMissingMessagesByKeys,
+  getKnownRecentMessageKeysForChat,
+  scanAndCatchUpChannels,
+  syncChatHistoryOnDemand,
+  startWhatsAppBridgeSession,
+  stopWhatsAppBridgeSession,
+  sendMessageViaWhatsAppBridge,
+  sendDocumentViaWhatsAppBridge,
+  sendReactionViaWhatsAppBridge,
+  sendPresenceViaWhatsAppBridge,
+};
+}
+
+export type WhatsAppBridge = ReturnType<typeof createWhatsAppBridge>;
+
+/**
+ * Instância padrão (a conexão única de antes), com as mesmas pastas de sempre. Os atalhos abaixo
+ * mantêm os nomes antigos funcionando enquanto o servidor passa a usar uma sessão por usuário.
+ */
+export const defaultBridge = createWhatsAppBridge({
+  key: 'default',
+  authDir: path.resolve(process.cwd(), 'data_whatsapp_auth'),
+  stateFile: path.resolve(process.cwd(), 'data_whatsapp_bridge_state.json'),
+  migrateLegacyDir: true,
+});
+
+export const getLastDisconnectedAtMs: WhatsAppBridge['getLastDisconnectedAtMs'] = (...a) => defaultBridge.getLastDisconnectedAtMs(...a);
+export const getLatestChatMedia: WhatsAppBridge['getLatestChatMedia'] = (...a) => defaultBridge.getLatestChatMedia(...a);
+export const hasPersistedBridgeSession: WhatsAppBridge['hasPersistedBridgeSession'] = (...a) => defaultBridge.hasPersistedBridgeSession(...a);
+export const registerWhatsAppBridgeHooks: WhatsAppBridge['registerWhatsAppBridgeHooks'] = (...a) => defaultBridge.registerWhatsAppBridgeHooks(...a);
+export const refreshBridgeGroups: WhatsAppBridge['refreshBridgeGroups'] = (...a) => defaultBridge.refreshBridgeGroups(...a);
+export const getDiscoveredBridgeContacts: WhatsAppBridge['getDiscoveredBridgeContacts'] = (...a) => defaultBridge.getDiscoveredBridgeContacts(...a);
+export const getWhatsAppBridgeConnectedLid: WhatsAppBridge['getWhatsAppBridgeConnectedLid'] = (...a) => defaultBridge.getWhatsAppBridgeConnectedLid(...a);
+export const getWhatsAppBridgeStatus: WhatsAppBridge['getWhatsAppBridgeStatus'] = (...a) => defaultBridge.getWhatsAppBridgeStatus(...a);
+export const ensureWhatsAppBridgeResumed: WhatsAppBridge['ensureWhatsAppBridgeResumed'] = (...a) => defaultBridge.ensureWhatsAppBridgeResumed(...a);
+export const downloadCachedRawMessageMedia: WhatsAppBridge['downloadCachedRawMessageMedia'] = (...a) => defaultBridge.downloadCachedRawMessageMedia(...a);
+export const recoverMissingMessagesByKeys: WhatsAppBridge['recoverMissingMessagesByKeys'] = (...a) => defaultBridge.recoverMissingMessagesByKeys(...a);
+export const getKnownRecentMessageKeysForChat: WhatsAppBridge['getKnownRecentMessageKeysForChat'] = (...a) => defaultBridge.getKnownRecentMessageKeysForChat(...a);
+export const scanAndCatchUpChannels: WhatsAppBridge['scanAndCatchUpChannels'] = (...a) => defaultBridge.scanAndCatchUpChannels(...a);
+export const syncChatHistoryOnDemand: WhatsAppBridge['syncChatHistoryOnDemand'] = (...a) => defaultBridge.syncChatHistoryOnDemand(...a);
+export const startWhatsAppBridgeSession: WhatsAppBridge['startWhatsAppBridgeSession'] = (...a) => defaultBridge.startWhatsAppBridgeSession(...a);
+export const stopWhatsAppBridgeSession: WhatsAppBridge['stopWhatsAppBridgeSession'] = (...a) => defaultBridge.stopWhatsAppBridgeSession(...a);
+export const sendMessageViaWhatsAppBridge: WhatsAppBridge['sendMessageViaWhatsAppBridge'] = (...a) => defaultBridge.sendMessageViaWhatsAppBridge(...a);
+export const sendDocumentViaWhatsAppBridge: WhatsAppBridge['sendDocumentViaWhatsAppBridge'] = (...a) => defaultBridge.sendDocumentViaWhatsAppBridge(...a);
+export const sendReactionViaWhatsAppBridge: WhatsAppBridge['sendReactionViaWhatsAppBridge'] = (...a) => defaultBridge.sendReactionViaWhatsAppBridge(...a);
+export const sendPresenceViaWhatsAppBridge: WhatsAppBridge['sendPresenceViaWhatsAppBridge'] = (...a) => defaultBridge.sendPresenceViaWhatsAppBridge(...a);
