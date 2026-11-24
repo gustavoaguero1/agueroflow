@@ -282,6 +282,17 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
                                 Corrida: {it.heatNumber}
                               </span>
                             )}
+                            {it.stockStatus && (
+                              <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded border ${
+                                it.stockStatus === 'entrada_registrada'
+                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                                  : it.stockStatus === 'bloqueado_qualidade'
+                                  ? 'bg-rose-950/60 text-rose-300 border-rose-800'
+                                  : 'bg-slate-800 text-slate-300 border-slate-700'
+                              }`}>
+                                {it.stockStatus === 'entrada_registrada' ? 'Estoque atualizado' : it.stockStatus === 'bloqueado_qualidade' ? 'Bloqueado pela qualidade' : 'Não estocável'}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -583,7 +594,8 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
                     type="text"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Ex: Certificados de qualidade arquivados na pasta da obra..."
+                    required={status === 'rejeitado'}
+                    placeholder={status === 'rejeitado' ? 'Informe o motivo da rejeição...' : 'Ex: Certificados de qualidade arquivados na pasta da obra...'}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                   />
                 </div>
