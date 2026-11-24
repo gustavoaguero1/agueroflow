@@ -102,10 +102,11 @@ test('imports bank rows idempotently and ignores duplicate identifiers', async (
   });
 });
 
-test('rejects invalid rows and cross-company imports', async () => {
+test('rejects invalid rows, missing account label and cross-company imports', async () => {
   await withApi({}, async (base) => {
-    assert.equal((await post(base, '/import', { orgId: 'org_b', importBatchId: 'batch-001', sourceFileName: 'x.csv', rows })).status, 400);
-    assert.equal((await post(base, '/import', { orgId: 'org_a', importBatchId: 'batch-001', sourceFileName: 'x.csv', rows: [{ ...rows[0], amount: -1 }] })).status, 400);
+    assert.equal((await post(base, '/import', { orgId: 'org_b', importBatchId: 'batch-001', sourceFileName: 'x.csv', accountLabel: 'Conta', rows })).status, 400);
+    assert.equal((await post(base, '/import', { orgId: 'org_a', importBatchId: 'batch-001', sourceFileName: 'x.csv', rows })).status, 400);
+    assert.equal((await post(base, '/import', { orgId: 'org_a', importBatchId: 'batch-001', sourceFileName: 'x.csv', accountLabel: 'Conta', rows: [{ ...rows[0], amount: -1 }] })).status, 400);
   });
 });
 
