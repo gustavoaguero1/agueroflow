@@ -178,6 +178,7 @@ async function transitionQualityRecord(
   const stateRef = doc(db, 'quality_record_states', recordId);
   const stateSnapshot = await getDoc(stateRef);
   assert.equal(stateSnapshot.exists(), true, 'The quality state should exist before a transition.');
+  if (!stateSnapshot.exists()) throw new Error('Quality state not found.');
   const state = stateSnapshot.data();
   const status = nextStatus(String(state.status), eventType);
   assert.ok(status, `Transition ${state.status} -> ${eventType} should be invalid in this helper.`);
