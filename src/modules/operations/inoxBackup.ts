@@ -1,4 +1,34 @@
 /** Formato do backup do "Aguero Inox 2.0" gerado por tools/exportar-inox.js (funções puras, testadas). */
+import type { RhEmployee } from '../../types/rhPayroll';
+
+const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** Casa por nome (sem acento/caixa) só quando há exatamente um candidato; homônimos → null. */
+export function matchByName<T extends { name: string }>(nome: string, candidates: T[]): T | null {
+  const k = norm(nome || '');
+  if (!k) return null;
+  const hits = candidates.filter((c) => norm(c.name || '') === k);
+  if (hits.length === 1) return hits[0];
+  return null;
+}
+
+/** Funcionário do RH criado a partir de um colaborador do Inox que não existia no RH. */
+export function rhEmployeeFromInox(
+  orgId: string,
+  inoxId: string,
+  c: Record<string, unknown>,
+  sal: { clt?: unknown; pj?: unknown } | null,
+): RhEmployee {
+  const now = new Date().toISOString();
+  const carteira = Number(c.regime === 'PJ' ? sal?.pj : sal?.clt) || Number(sal?.clt) || Number(sal?.pj) || 0;
+  return {
+    id: `rh_ops_${inoxId}`.replace(/[^\w-]/g, '_'),
+    orgId, registrationNumber: '', name: String(c.nome || ''), role: String(c.funcao || ''),
+    admissionDate: String(c.admissao || ''), active: c.status !== 'Desligado', department: 'Operações', companyName: '',
+    hourlyRateCarteira: Math.round((carteira / 220) * 100) / 100, hourlyRatePorFora: 0, monthlyHours: 220,
+    baseSalaryCarteira: carteira, baseSalaryPorFora: 0, notes: 'Importado do Aguero Inox', createdAt: now, updatedAt: now,
+  };
+}
 
 export interface InoxBackup {
   formato: 'aguero-inox-backup';

@@ -8,6 +8,7 @@ import type { RhEmployee } from '../../types/rhPayroll';
 import { saveRhEmployee, syncRhEmployeeToFieldWorker } from '../../services/rhPayrollService';
 import { joinColabs, joinSalarios, splitColabWrite } from './unifiedCollections';
 import { createVirtualCollection } from './virtualCollections';
+import { rhEmployeeFromInox } from './inoxBackup';
 
 type Unsub = () => void;
 type Overlay = Record<string, unknown> & { id: string; rhId?: string };
@@ -59,14 +60,11 @@ export function createPeopleSource(orgId: string, track: (u: Unsub) => Unsub) {
 
   /** Aprovar candidato cria o funcionário no RH (decisão do usuário, 23/11/2026). */
   const hire = async (id: string, data: Record<string, unknown>) => {
-    const now = new Date().toISOString();
-    const rhId = `rh_ops_${id}`.replace(/[^\w-]/g, '_');
     const emp: RhEmployee = {
-      id: rhId, orgId, registrationNumber: '', name: String(data.nome || ''), role: String(data.funcao || ''),
-      admissionDate: String(data.admissao || now.slice(0, 10)), active: true, department: 'Operações', companyName: '',
-      hourlyRateCarteira: 0, hourlyRatePorFora: 0, monthlyHours: 220, baseSalaryCarteira: 0, baseSalaryPorFora: 0,
-      notes: 'Criado pela Contratação de Operações', createdAt: now, updatedAt: now,
+      ...rhEmployeeFromInox(orgId, id, { ...data, admissao: data.admissao || new Date().toISOString().slice(0, 10) }, null),
+      notes: 'Criado pela Contratação de Operações',
     };
+    const rhId = emp.id;
     await saveRhEmployee(emp);
     hiredNow.add(rhId);
     await setDoc(doc(db, overlayPath, id), { ...splitColabWrite(data).overlay, rhId });

@@ -1,6 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseInoxBackup, summarizeInoxBackup, rewriteUrls } from '../src/modules/operations/inoxBackup';
+import { parseInoxBackup, summarizeInoxBackup, rewriteUrls, matchByName, rhEmployeeFromInox } from '../src/modules/operations/inoxBackup';
+
+test('matchByName ignora acento e caixa', () => {
+  const r = matchByName('JOÃO da silva', [{ id: 'e1', name: 'João da Silva' }, { id: 'e2', name: 'Maria' }]);
+  assert.equal(r?.id, 'e1');
+});
+
+test('matchByName: homônimos não casam (evita juntar duas pessoas)', () => {
+  assert.equal(matchByName('José Lima', [{ id: 'e1', name: 'José Lima' }, { id: 'e2', name: 'Jose Lima' }]), null);
+  assert.equal(matchByName('Ninguém', [{ id: 'e1', name: 'José' }]), null);
+});
+
+test('rhEmployeeFromInox: CLT leva salário para Carteira; desligado vira inativo', () => {
+  const e = rhEmployeeFromInox('org', 'c-ana', { nome: 'Ana', funcao: 'Soldadora', status: 'Desligado', admissao: '2025-01-10' }, { clt: 2200 });
+  assert.equal(e.id, 'rh_ops_c-ana');
+  assert.equal(e.name, 'Ana');
+  assert.equal(e.role, 'Soldadora');
+  assert.equal(e.active, false);
+  assert.equal(e.admissionDate, '2025-01-10');
+  assert.equal(e.baseSalaryCarteira, 2200);
+  assert.equal(e.hourlyRateCarteira, 10);
+});
+
+test('rhEmployeeFromInox: PJ leva o valor PJ para Carteira (o regime fica no complemento)', () => {
+  const e = rhEmployeeFromInox('org', 'c-bia', { nome: 'Bia', regime: 'PJ' }, { pj: 5000 });
+  assert.equal(e.baseSalaryCarteira, 5000);
+  assert.equal(e.active, true);
+});
 
 const sample = {
   formato: 'aguero-inox-backup', versao: 1, geradoEm: '2026-11-23T20:00:00Z',

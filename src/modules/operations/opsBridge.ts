@@ -29,11 +29,15 @@ import { getBytes, getDownloadURL, ref, uploadBytes, uploadString } from 'fireba
 import type { User } from 'firebase/auth';
 import { db, storage } from '../../firebase';
 import { apiFetch } from '../../apiAuthFetch';
-import type { UserRole } from '../../types';
+import type { Unit, UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
 import { createPeopleSource } from './peopleSource';
 import { createObrasSource } from './obrasSource';
 import { syncDiarioToTimeLogs } from './diarioSync';
+import { matchByName, rhEmployeeFromInox } from './inoxBackup';
+import { nextUnitCode, splitColabWrite, splitObraWrite } from './unifiedCollections';
+import { syncAllRhEmployeesToFieldWorkers } from '../../services/rhPayrollService';
+import type { RhEmployee } from '../../types/rhPayroll';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -277,8 +281,58 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
     onProgress(`Arquivo de apoio: ${name}`);
   }
 
-  const writes: Array<{ path: string; data: DocumentData }> = [];
+  const writes: Array<{ path: string; data: DocumentData; merge?: boolean }> = [];
+  const UNIFIED = ['colaboradores', 'salarios', 'obras'];
+
+  // Obras → unidades do AgueroFlow (casa por código, depois por nome; senão cria a unidade).
+  const units = (await getDocs(query(collection(db, 'units'), where('orgId', '==', orgId)))).docs
+    .map((d) => ({ ...(d.data() as Unit), id: d.id }));
+  const unitOfObra = new Map<string, Unit>();
+  const stat = { pessoasCasadas: 0, pessoasCriadas: 0, obrasCasadas: 0, obrasCriadas: 0 };
+  for (const row of b.colecoes.obras || []) {
+    const { id, ...data } = row;
+    if (!id) continue;
+    let u = units.find((x) => data.os && String(x.code) === String(data.os)) || matchByName(String(data.nome || ''), units);
+    if (u) stat.obrasCasadas++;
+    else {
+      const { unitPatch } = splitObraWrite(data);
+      const now = new Date().toISOString();
+      u = { orgId, name: unitPatch.name || 'Obra', code: unitPatch.code || nextUnitCode(units.map((x) => String(x.code))),
+        city: unitPatch.city || '', state: unitPatch.state || '', managerName: unitPatch.managerName || '',
+        createdAt: now, updatedAt: now, id: doc(collection(db, 'units')).id };
+      const { id: uid, ...unitData } = u;
+      writes.push({ path: `units/${uid}`, data: unitData });
+      units.push(u);
+      stat.obrasCriadas++;
+    }
+    unitOfObra.set(id, u);
+    writes.push({ path: `ops_orgs/${orgId}/obras/${id}`, data: { ...stripUndefined(splitObraWrite(data).overlay), unitId: u.id } });
+  }
+
+  // Colaboradores → funcionários do RH (casa por nome único; senão cria no RH com o salário do backup).
+  const rh = (await getDocs(query(collection(db, 'rh_employees'), where('orgId', '==', orgId)))).docs
+    .map((d) => ({ ...(d.data() as RhEmployee), id: d.id }));
+  const salById = new Map((b.colecoes.salarios || []).map((s) => [s.id, s as Record<string, unknown>]));
+  for (const row of b.colecoes.colaboradores || []) {
+    const { id, ...data } = row;
+    if (!id) continue;
+    let emp = matchByName(String(data.nome || ''), rh);
+    if (emp) stat.pessoasCasadas++;
+    else {
+      emp = rhEmployeeFromInox(orgId, id, data, salById.get(id) || null);
+      const { id: eid, ...empData } = emp;
+      writes.push({ path: `rh_employees/${eid}`, data: empData });
+      rh.push(emp);
+      stat.pessoasCriadas++;
+    }
+    const overlay = rewriteUrls(stripUndefined(splitColabWrite(data).overlay), urlMap);
+    writes.push({ path: `ops_orgs/${orgId}/colaboradores/${id}`, data: { ...overlay, rhId: emp.id } });
+    const u = data.obraAtual ? unitOfObra.get(String(data.obraAtual)) : undefined;
+    if (u) writes.push({ path: `rh_employees/${emp.id}`, data: { unitId: u.id, codigoObra: u.code }, merge: true });
+  }
+
   for (const [col, rows] of Object.entries(b.colecoes)) {
+    if (UNIFIED.includes(col)) continue;
     if (!(INOX_COLLECTIONS as readonly string[]).includes(col) || !Array.isArray(rows)) continue;
     for (const row of rows) {
       const { id, ...data } = row;
@@ -292,9 +346,11 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
 
   for (let i = 0; i < writes.length; i += 400) {
     const batch = writeBatch(db);
-    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), w.data);
+    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), w.data, w.merge ? { merge: true } : {});
     await batch.commit();
     onProgress(`Registros: ${Math.min(i + 400, writes.length)} de ${writes.length}`);
   }
-  return { registros: writes.length, anexos: urlMap.size };
+  onProgress('Atualizando equipes de campo…');
+  await syncAllRhEmployeesToFieldWorkers(orgId);
+  return { registros: writes.length, anexos: urlMap.size, ...stat };
 }
