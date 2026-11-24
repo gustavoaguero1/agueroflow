@@ -21,8 +21,8 @@ import {
   buildFinanceReconciliationCaseSnapshot,
   createFinanceReconciliationCase,
   transitionFinanceReconciliationCase,
-  createFinancePayableAuthorization,
 } from '../../services/financeReconciliationCases';
+import { createFinancePayableAuthorization } from '../../services/financePayableAuthorizationService';
 import { brl } from '../../services/financeService';
 import { card, msgErr, msgOk } from './ui';
 
