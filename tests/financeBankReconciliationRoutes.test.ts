@@ -6,20 +6,24 @@ import type { AdminHandles } from '../server/firebaseAdmin.ts';
 import { createFinanceBankReconciliationRouter } from '../server/financeBankReconciliationRoutes.ts';
 
 type Ref = { path: string; id: string };
-type QueryRef = { collection: string; field: string; value: unknown };
+type QueryRef = { collection: string; filters: Array<[string, unknown]>; where: (field: string, operator: string, value: unknown) => QueryRef; limit: (count: number) => QueryRef };
 function mockAdmin(seed: Record<string, unknown>) {
   const docs = new Map(Object.entries(seed));
   const ref = (collection: string, id: string): Ref => ({ path: collection + '/' + id, id });
   const queryResult = (query: QueryRef) => [...docs.entries()]
-    .filter(([path, value]) => path.startsWith(query.collection + '/') && (value as any)?.[query.field] === query.value)
+    .filter(([path, value]) => path.startsWith(query.collection + '/') && query.filters.every(([field, expected]) => (value as any)?.[field] === expected))
     .map(([path, data]) => ({ id: path.split('/').pop(), exists: true, data: () => data }));
   const db: any = {
     collection: (name: string) => ({
       doc: (id: string) => ref(name, id),
-      where: (field: string, _operator: string, value: unknown) => ({
-        collection: name, field, value,
-        limit() { return this; },
-      }),
+      where: (field: string, _operator: string, value: unknown) => {
+        const query: QueryRef = {
+          collection: name, filters: [[field, value]],
+          where(nextField: string, _nextOperator: string, nextValue: unknown) { this.filters.push([nextField, nextValue]); return this; },
+          limit(_count: number) { return this; },
+        };
+        return query;
+      },
     }),
     getAll: async (...refs: Ref[]) => refs.map((item) => {
       const data = docs.get(item.path);
