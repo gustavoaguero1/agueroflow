@@ -38,6 +38,19 @@ async function opsArquivo(nome) {
   return r.json();
 }
 
+/* Leva para outra tela do AgueroFlow (ex.: RH → Funcionários). Devolve true se levou. */
+function opsVaiPara(secao, aviso) {
+  try {
+    var go = window.parent && window.parent !== window ? window.parent.__agueroOpsGo : null;
+    if (typeof go !== 'function') return false;
+    if (aviso && typeof toast === 'function') toast(aviso);
+    go(secao);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 /* Avisa o AgueroFlow quando a tela muda por um link interno, para o menu lateral acompanhar. */
 window.addEventListener('hashchange', function () {
   try {

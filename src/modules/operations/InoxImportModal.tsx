@@ -15,7 +15,7 @@ export const InoxImportModal: React.FC<{ orgId: string; onClose: () => void; onD
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ registros: number; anexos: number } | null>(null);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof importInoxBackup>> | null>(null);
 
   const pick = async (f?: File) => {
     setError(''); setBackup(null); setResult(null);
@@ -72,11 +72,19 @@ export const InoxImportModal: React.FC<{ orgId: string; onClose: () => void; onD
 
           {progress && busy && <div className="flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> {progress}</div>}
           {result && (
-            <div className="flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> Importados {result.registros} registros e {result.anexos} anexos.</div>
+            <div className="space-y-1 text-emerald-600">
+              <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Importados {result.registros} registros e {result.anexos} anexos.</div>
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Pessoas: {result.pessoasCasadas} ligadas a funcionários do RH, {result.pessoasCriadas} criadas no RH.
+                Obras: {result.obrasCasadas} ligadas a unidades, {result.obrasCriadas} unidades criadas.
+              </div>
+            </div>
           )}
           {error && <div className="text-red-600">{error}</div>}
           <p className="text-xs text-slate-500">
-            Os papéis da equipe (coordenador, auxiliar) estavam ligados às contas do Claude; depois de importar, confira em Operações → Configurações → Equipe e papéis.
+            Pessoas viram funcionários do RH (quem já existe é ligado pelo nome; homônimos são criados à parte) e obras viram
+            unidades. Os papéis da equipe (coordenador, auxiliar) estavam ligados às contas do Claude; depois de importar,
+            confira em Operações → Configurações.
           </p>
         </div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-200 dark:border-slate-700">

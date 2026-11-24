@@ -9,6 +9,7 @@ declare global {
   interface Window {
     __agueroOps?: unknown;
     __agueroOpsNav?: (route: string) => void;
+    __agueroOpsGo?: (section: string) => void;
   }
 }
 
@@ -25,10 +26,12 @@ const normalizeRoute = (r: string): OpsRoute => {
  * A tela roda em public/operacoes/index.html (iframe da mesma origem) e fala com o Firebase
  * do AgueroFlow pela ponte em ./operations/opsBridge.
  */
-export const OperationsModule: React.FC<{ route?: string; onRouteChange?: (r: OpsRoute) => void }> = ({
-  route = 'inicio',
-  onRouteChange,
-}) => {
+export const OperationsModule: React.FC<{
+  route?: string;
+  onRouteChange?: (r: OpsRoute) => void;
+  /** Abre outra tela do AgueroFlow (ex.: 'rh-funcionarios'), pedida pela página. */
+  onNavigate?: (section: string) => void;
+}> = ({ route = 'inicio', onRouteChange, onNavigate }) => {
   const { user, organization, member, role, isMaster, isManagerOrAbove } = useAuth();
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
@@ -75,6 +78,12 @@ export const OperationsModule: React.FC<{ route?: string; onRouteChange?: (r: Op
       delete window.__agueroOpsNav;
     };
   }, [current, onRouteChange]);
+  useEffect(() => {
+    window.__agueroOpsGo = (s) => onNavigate?.(s);
+    return () => {
+      delete window.__agueroOpsGo;
+    };
+  }, [onNavigate]);
 
   const applyTheme = () => {
     try {

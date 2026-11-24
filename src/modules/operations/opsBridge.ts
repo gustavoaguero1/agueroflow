@@ -29,8 +29,15 @@ import { getBytes, getDownloadURL, ref, uploadBytes, uploadString } from 'fireba
 import type { User } from 'firebase/auth';
 import { db, storage } from '../../firebase';
 import { apiFetch } from '../../apiAuthFetch';
-import type { UserRole } from '../../types';
+import type { Unit, UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
+import { createPeopleSource } from './peopleSource';
+import { createObrasSource } from './obrasSource';
+import { syncDiarioToTimeLogs } from './diarioSync';
+import { claimMatches, rhEmployeeFromInox } from './inoxBackup';
+import { nextUnitCode, splitColabWrite, splitObraWrite } from './unifiedCollections';
+import { syncAllRhEmployeesToFieldWorkers } from '../../services/rhPayrollService';
+import type { RhEmployee } from '../../types/rhPayroll';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -66,6 +73,13 @@ function mapError(e: any): any {
 }
 const wrapErr = <T,>(p: Promise<T>) => p.catch((e) => { throw mapError(e); });
 
+/** Documento de coleção virtual: mesmos métodos que a página usa, com os erros traduzidos. */
+function wrapVirtualDoc(d: { id: string } & Record<string, any>) {
+  const w = (fn?: (...a: any[]) => Promise<unknown>) => (...a: any[]) =>
+    fn ? wrapErr(Promise.resolve().then(() => fn(...a))) : Promise.reject(Object.assign(new Error('não suportado'), { code: 'owned_elsewhere' }));
+  return { id: d.id, set: w(d.set), update: w(d.update), delete: w(d.delete) };
+}
+
 const snapDoc = (d: DocumentSnapshot<DocumentData>) => ({ id: d.id, exists: d.exists(), data: () => d.data() });
 const snapQuery = (s: QuerySnapshot<DocumentData>) => ({
   docs: s.docs.map(snapDoc),
@@ -77,7 +91,33 @@ export function createOpsBridge(ctx: OpsContext) {
   const subs = new Set<Unsub>();
   const base = (path: string) => `ops_orgs/${ctx.orgId}/${String(path).replace(/^\/+|\/+$/g, '')}`;
 
-  const docApi = (path: string) => {
+  // Pessoas e salários vêm do RH (ver peopleSource.ts); demais coleções ficam em ops_orgs/{orgId}.
+  const track = (u: Unsub) => { subs.add(u); return () => { u(); subs.delete(u); }; };
+  const people = createPeopleSource(ctx.orgId, track);
+  const obras = createObrasSource(ctx.orgId, track);
+  const split = (path: string) => {
+    const p = String(path).replace(/^\/+|\/+$/g, '');
+    const i = p.indexOf('/');
+    return i < 0 ? { col: p, id: '' } : { col: p.slice(0, i), id: p.slice(i + 1) };
+  };
+
+  const docApi = (path: string): any => {
+    const { col, id } = split(path);
+    if (col === 'colaboradores' && id) return wrapVirtualDoc(people.colabDoc(id));
+    if (col === 'salarios' && id) return wrapVirtualDoc(people.salarioDoc(id));
+    if (col === 'obras' && id) return wrapVirtualDoc(obras.obraDoc(id));
+    if (col === 'diario' && /^\d{4}-\d{2}-\d{2}$/.test(id)) return withDiarioSync(docApiRaw(path), id);
+    return docApiRaw(path);
+  };
+
+  /** Diário gravado → apontamento de jornada do dia (falha no espelho não desfaz o diário). */
+  const withDiarioSync = (d: any, iso: string) => {
+    const after = (p: Promise<unknown>) =>
+      p.then((r) => { syncDiarioToTimeLogs(ctx.orgId, iso).catch((e) => console.warn('[operacoes] apontamento do diário', e)); return r; });
+    return { ...d, set: (...a: any[]) => after(d.set(...a)), update: (...a: any[]) => after(d.update(...a)) };
+  };
+
+  const docApiRaw = (path: string): any => {
     const r = doc(db, base(path));
     return {
       id: r.id,
@@ -94,7 +134,11 @@ export function createOpsBridge(ctx: OpsContext) {
     };
   };
 
-  const collectionApi = (path: string) => {
+  const collectionApi = (path: string): any => {
+    const { col } = split(path);
+    if (col === 'colaboradores') return people.colaboradores;
+    if (col === 'salarios') return people.salarios;
+    if (col === 'obras') return obras.obras;
     const c = collection(db, base(path));
     return {
       doc: (id?: string) => docApi(`${path}/${id || doc(c).id}`),
@@ -237,8 +281,75 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
     onProgress(`Arquivo de apoio: ${name}`);
   }
 
-  const writes: Array<{ path: string; data: DocumentData }> = [];
+  const writes: Array<{ path: string; data: DocumentData; merge?: boolean }> = [];
+  const UNIFIED = ['colaboradores', 'salarios', 'obras'];
+
+  // Obras → unidades do AgueroFlow (casa por código, depois por nome; senão cria a unidade).
+  const units = (await getDocs(query(collection(db, 'units'), where('orgId', '==', orgId)))).docs
+    .map((d) => ({ ...(d.data() as Unit), id: d.id }));
+  const unitOfObra = new Map<string, Unit>();
+  const stat = { pessoasCasadas: 0, pessoasCriadas: 0, obrasCasadas: 0, obrasCriadas: 0 };
+  // Ligações de uma importação anterior (complementos já gravados) valem antes do nome/código.
+  const linkOf = async (col: string, field: string) =>
+    new Map((await getDocs(collection(db, `ops_orgs/${orgId}/${col}`))).docs.map((d) => [d.id, d.data()[field] as string | undefined]));
+  const obraLinks = await linkOf('obras', 'unitId');
+  const obraRows = (b.colecoes.obras || []).filter((r) => r.id);
+  const obraMatch = claimMatches(
+    obraRows.map((r) => ({ id: r.id, name: String(r.nome || ''), code: r.os ? String(r.os) : undefined, linkedId: obraLinks.get(r.id) })),
+    units.map((u) => ({ id: u.id, name: u.name, code: String(u.code || '') })),
+  );
+  for (const row of obraRows) {
+    const { id, ...data } = row;
+    let u = units.find((x) => x.id === obraMatch.get(id));
+    if (u) stat.obrasCasadas++;
+    else {
+      const { unitPatch } = splitObraWrite(data);
+      const now = new Date().toISOString();
+      u = { orgId, name: unitPatch.name || 'Obra', code: unitPatch.code || nextUnitCode(units.map((x) => String(x.code))),
+        city: unitPatch.city || '', state: unitPatch.state || '', managerName: unitPatch.managerName || '',
+        createdAt: now, updatedAt: now, id: doc(collection(db, 'units')).id };
+      const { id: uid, ...unitData } = u;
+      writes.push({ path: `units/${uid}`, data: unitData });
+      units.push(u);
+      stat.obrasCriadas++;
+    }
+    unitOfObra.set(id, u);
+    writes.push({ path: `ops_orgs/${orgId}/obras/${id}`, data: { ...stripUndefined(splitObraWrite(data).overlay), unitId: u.id } });
+  }
+
+  // Colaboradores → funcionários do RH (casa por nome único; senão cria no RH com o salário do backup).
+  const rh = (await getDocs(query(collection(db, 'rh_employees'), where('orgId', '==', orgId)))).docs
+    .map((d) => ({ ...(d.data() as RhEmployee), id: d.id }));
+  const salById = new Map((b.colecoes.salarios || []).map((s) => [s.id, s as Record<string, unknown>]));
+  const colabLinks = await linkOf('colaboradores', 'rhId');
+  const rhIds = new Set(rh.map((e) => e.id));
+  const colabRows = (b.colecoes.colaboradores || []).filter((r) => r.id);
+  const colabMatch = claimMatches(
+    colabRows.map((r) => {
+      const created = rhEmployeeFromInox(orgId, r.id, r, null).id; // criado numa importação anterior
+      return { id: r.id, name: String(r.nome || ''), linkedId: colabLinks.get(r.id) || (rhIds.has(created) ? created : undefined) };
+    }),
+    rh.map((e) => ({ id: e.id, name: e.name })),
+  );
+  for (const row of colabRows) {
+    const { id, ...data } = row;
+    let emp = rh.find((e) => e.id === colabMatch.get(id));
+    if (emp) stat.pessoasCasadas++;
+    else {
+      // Só cria: nunca regrava um funcionário que já existe (edições do RH ficam).
+      emp = rhEmployeeFromInox(orgId, id, data, salById.get(id) || null);
+      const { id: eid, ...empData } = emp;
+      writes.push({ path: `rh_employees/${eid}`, data: empData });
+      stat.pessoasCriadas++;
+    }
+    const overlay = rewriteUrls(stripUndefined(splitColabWrite(data).overlay), urlMap);
+    writes.push({ path: `ops_orgs/${orgId}/colaboradores/${id}`, data: { ...overlay, rhId: emp.id } });
+    const u = data.obraAtual ? unitOfObra.get(String(data.obraAtual)) : undefined;
+    if (u) writes.push({ path: `rh_employees/${emp.id}`, data: { unitId: u.id, codigoObra: u.code }, merge: true });
+  }
+
   for (const [col, rows] of Object.entries(b.colecoes)) {
+    if (UNIFIED.includes(col)) continue;
     if (!(INOX_COLLECTIONS as readonly string[]).includes(col) || !Array.isArray(rows)) continue;
     for (const row of rows) {
       const { id, ...data } = row;
@@ -252,9 +363,11 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
 
   for (let i = 0; i < writes.length; i += 400) {
     const batch = writeBatch(db);
-    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), w.data);
+    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), w.data, w.merge ? { merge: true } : {});
     await batch.commit();
     onProgress(`Registros: ${Math.min(i + 400, writes.length)} de ${writes.length}`);
   }
-  return { registros: writes.length, anexos: urlMap.size };
+  onProgress('Atualizando equipes de campo…');
+  await syncAllRhEmployeesToFieldWorkers(orgId);
+  return { registros: writes.length, anexos: urlMap.size, ...stat };
 }

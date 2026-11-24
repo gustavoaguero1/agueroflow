@@ -39,11 +39,11 @@
   - `IDENTITY_FIELDS = ['nome','funcao','status','admissao','regime'] as const` (somente leitura em Operações)
   - `mergeColab(emp: RhEmployee | null, overlay: (Record<string, unknown> & {id:string; rhId?: string}) | null): Record<string, unknown> & {id:string}` — id = `overlay.id` ou `rh_${emp.id}`; `nome←name`, `funcao←role`, `status←active?'Ativo':'Desligado'`, `admissao←admissionDate`; demais campos do complemento; complemento sem RH (órfão) volta como está com `semRh:true`.
   - `splitColabWrite(data: Record<string, unknown>): { overlay: Record<string, unknown>; ignored: string[] }` — tira `IDENTITY_FIELDS`, devolve quais foram ignorados.
-  - `salarioFromRh(emp: RhEmployee): { clt: number; pj: number; valorHora?: number }` — `clt=baseSalaryCarteira`, `pj=baseSalaryPorFora`, `valorHora=hourlyRateCarteira+hourlyRatePorFora` (se >0).
+  - `salarioFromRh(emp: RhEmployee, regime?: string): { clt: number; porFora: number; pj: number; valorHora?: number }` — CLT (padrão): `clt=baseSalaryCarteira`, `porFora=baseSalaryPorFora`, `pj=0`; `regime==='PJ'` (vem do complemento): `pj=baseSalaryCarteira+baseSalaryPorFora`, `clt=0`, `porFora=0`. `valorHora=hourlyRateCarteira+hourlyRatePorFora` (se >0). **Decisão do usuário (23/11):** CLT pode ter Carteira e Por fora juntos; o Por fora entra no custo **só pelo valor mensal** (sem 13º, férias nem encargos).
   - `mergeObra(unit: Unit | null, overlay): Record<string, unknown> & {id:string}` — id = `overlay.id` ou `un_${unit.id}`; `nome←name`, `os←code`, `cidade←city/state` ("Cidade/UF"), `coordenador←managerName`; resto do complemento.
   - `splitObraWrite(data): { unitPatch: Partial<Unit>; overlay: Record<string, unknown> }` — inverso de `mergeObra` (separa "Cidade/UF").
 
-- [ ] **Step 1: Write the failing tests** (`mergeColab` com e sem complemento; `status` 'Desligado' quando `active:false` mesmo se o complemento disser 'Ativo'; `splitColabWrite({nome:'X',obraAtual:'o1'})` → `{overlay:{obraAtual:'o1'}, ignored:['nome']}`; `salarioFromRh` com 2500/800; `mergeObra`/`splitObraWrite` ida e volta com `'Campinas/SP'`).
+- [ ] **Step 1: Write the failing tests** (`mergeColab` com e sem complemento; `status` 'Desligado' quando `active:false` mesmo se o complemento disser 'Ativo'; `splitColabWrite({nome:'X',obraAtual:'o1'})` → `{overlay:{obraAtual:'o1'}, ignored:['nome']}`; `salarioFromRh({carteira:2500, porFora:800})` → `{clt:2500, porFora:800, pj:0}` e com `regime:'PJ'` → `{clt:0, porFora:0, pj:3300}`; `mergeObra`/`splitObraWrite` ida e volta com `'Campinas/SP'`).
 - [ ] **Step 2:** `npm test` → falha (módulo inexistente).
 - [ ] **Step 3:** Implementar as funções acima.
 - [ ] **Step 4:** `npm test` → passa.
@@ -61,6 +61,7 @@
 - Consumes: Task 1.
 - Produces: `createVirtualCollection<A,B>(opts: { subscribeA: (cb:(rows:A[])=>void)=>Unsub; subscribeB: (cb:(rows:B[])=>void)=>Unsub; join: (a:A[], b:B[]) => Array<{id:string}> }): { onSnapshot(next, err): Unsub }` — só emite depois que as duas fontes responderam.
 - Ponte: `db.collection('colaboradores').onSnapshot` = junção `rh_employees(orgId==)` × `ops_orgs/{org}/colaboradores`; `db.doc('colaboradores/<id>').update|set` grava só `splitColabWrite(...).overlay` no complemento (com `rhId` quando o id é `rh_<empId>`); se `obraAtual` mudou, atualiza também `rh_employees.codigoObra` com o código da unidade e chama `syncRhEmployeeToFieldWorker`. `db.collection('colaboradores').doc()`/criação sem `rhId` → rejeita com `code:'invalid_argument'` e mensagem "Cadastre a pessoa no RH". `salarios` = leitura de `salarioFromRh` (só gerentes, como hoje); escrita rejeitada com "Salários são editados no RH".
+- Página: `remSal(s)` soma `+ (num(s.porFora)||0)` (valor mensal puro) ao custo existente de `clt` e `pj`; a tela de salário mostra a linha "Por fora".
 - Página: na Base de dados e no formulário de novo colaborador, campos de identidade/salário aparecem desabilitados com o aviso "Edite no RH → Funcionários"; o botão "Novo colaborador" leva ao RH (`window.parent.__agueroOpsGo?.('rh-funcionarios')`).
 
 - [ ] **Step 1: Failing tests** para `createVirtualCollection`: não emite antes das duas fontes; reemite quando qualquer uma muda; unsubscribe cancela as duas.

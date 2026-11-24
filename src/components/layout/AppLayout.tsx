@@ -333,7 +333,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'ops-viagem' as NavSection, label: 'Hora viagem' },
         { id: 'viagens-painel' as NavSection, label: 'Passagens e solicitações' },
         { id: 'ops-reembolso' as NavSection, label: 'Reembolso' },
-        { id: 'viagens-reembolsos' as NavSection, label: 'Recibos do WhatsApp' },
         { id: 'ops-contratacao' as NavSection, label: 'Contratação' },
         { id: 'ops-tarefas' as NavSection, label: 'Auxiliares' },
         { id: 'ops-gases' as NavSection, label: 'Controle de gases' },
