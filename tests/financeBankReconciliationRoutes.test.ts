@@ -158,3 +158,18 @@ test('rejects credit rows, amount mismatch and a second match to the same settle
     assert.equal((await post(base, '/second/match', { orgId: 'org_a', settlementId })).status, 409);
   });
 });
+
+test('keeps identical CSV rows without bank IDs distinct by source row, while repeat imports remain idempotent', async () => {
+  await withApi({}, async (base, docs) => {
+    const fallbackRows = [
+      { date: '2026-11-24', amount: 100, direction: 'debit', description: 'PIX MESMO VALOR', rowNumber: 2 },
+      { date: '2026-11-24', amount: 100, direction: 'debit', description: 'PIX MESMO VALOR', rowNumber: 3 },
+    ];
+    const body = { orgId: 'org_a', importBatchId: 'batch-fallback', sourceFileName: 'extrato.csv', accountLabel: 'Conta corrente', rows: fallbackRows };
+    const first = await post(base, '/import', body);
+    assert.deepEqual(await first.json(), { ok: true, imported: 2, duplicates: 0 });
+    const second = await post(base, '/import', { ...body, importBatchId: 'batch-fallback-2' });
+    assert.deepEqual(await second.json(), { ok: true, imported: 0, duplicates: 2 });
+    assert.equal([...docs.keys()].filter((path) => path.startsWith('finance_bank_transactions/')).length, 2);
+  });
+});

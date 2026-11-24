@@ -53,3 +53,17 @@ test('rejects unknown CSV headers, invalid rows, unsupported formats and files o
   assert.throws(() => parseFinanceBankStatement('x.txt', 'plain text'), /Formato não suportado/);
   assert.throws(() => parseFinanceBankStatement('x.csv', 'x'.repeat(10_000_001)), /10 MB/);
 });
+
+
+test('parses OFX SGML blocks without explicit closing tags', () => {
+  const ofx = [
+    '<OFX><BANKTRANLIST>',
+    '<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261124120000<TRNAMT>-99.90<FITID>SGML-1<NAME>Fornecedor A',
+    '<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261125120000<TRNAMT>120.00<FITID>SGML-2<NAME>Cliente B',
+    '</BANKTRANLIST></OFX>',
+  ].join('');
+  const rows = parseFinanceBankStatement('sgml.ofx', ofx);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].direction, 'debit');
+  assert.equal(rows[1].direction, 'credit');
+});
