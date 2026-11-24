@@ -329,7 +329,8 @@ export const ConstructionModule: React.FC = () => {
     if (!Number.isFinite(raw)) return;
     const valid = Math.min(100, Math.max(0, raw));
     const newStatus = valid === 100 ? 'concluido' : valid > 0 ? 'em_andamento' : 'nao_iniciado';
-    const today = new Date().toISOString().split('T')[0];
+    const localNow = new Date();
+    const today = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
     try {
       await updateDoc(doc(db, 'construction_milestones', id), {
         completedPercentage: valid,
