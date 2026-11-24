@@ -19,10 +19,13 @@ export interface StockMovementInput {
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 const clean = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
-function weightedAvg(oldQty: number, oldAvg: number | undefined, qty: number, cost: number) {
-  if (oldQty <= 0 || oldAvg == null) return round4(cost); // uncosted stock: incoming cost becomes the average
-  return round4((oldQty * oldAvg + qty * cost) / (oldQty + qty));
+export function weightedAverageCost(oldQty: number, oldAvg: number | undefined, incomingQty: number, incomingCost: number) {
+  if (oldQty <= 0 || oldAvg == null) return round4(incomingCost); // uncosted stock: incoming cost becomes the average
+  if (incomingQty <= 0) return round4(oldAvg);
+  return round4((oldQty * oldAvg + incomingQty * incomingCost) / (oldQty + incomingQty));
 }
+
+const weightedAvg = weightedAverageCost;
 
 /** Deterministic movement id for a sourceRef (e.g. `nfe:<chave>:<n>`); transfers append `_out`/`_in`. */
 export const movementIdFor = (orgId: string, sourceRef: string) => `mov_${orgId}_${sourceRef.replace(/[^A-Za-z0-9_-]/g, '_')}`;
