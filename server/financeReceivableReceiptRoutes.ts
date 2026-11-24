@@ -69,6 +69,7 @@ export function createFinanceReceivableReceiptRouter(getH: () => AdminHandles | 
         }
 
         const receivable = { ...(receivableSnap.data() || {}), id: receivableSnap.id } as FinanceReceivable;
+        if (receivable.orgId !== orgId) throw new RouteError(404, 'Conta a receber não encontrada.');
         const eligibilityError = validateFinanceReceivableReceiptEligibility(receivable, orgId, request);
         if (eligibilityError) throw new RouteError(409, eligibilityError);
 
