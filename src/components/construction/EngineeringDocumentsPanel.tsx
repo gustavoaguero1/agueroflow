@@ -427,8 +427,7 @@ export const EngineeringDocumentsPanel: React.FC<EngineeringDocumentsPanelProps>
   const downloadDocument = async (item: EngineeringDocument) => {
     try {
       const bytes = await getBytes(ref(storage, item.filePath), 20 * 1024 * 1024);
-      const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      const url = URL.createObjectURL(new Blob([buffer], { type: item.contentType }));
+      const url = URL.createObjectURL(new Blob([bytes], { type: item.contentType }));
       const anchor = document.createElement('a');
       anchor.href = url;
       anchor.download = item.fileName || `${item.documentCode}-rev-${item.revision}`;
