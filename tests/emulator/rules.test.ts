@@ -83,10 +83,13 @@ test('member read/write allowed', async () => {
   await assertSucceeds(getDoc(doc(db, 'work_orders/missing')));
 });
 
-test('organizationId-only docs readable by member', async () => {
-  const db = member();
-  await assertSucceeds(getDoc(doc(db, 'purchasing_orders/po_a')));
-  await assertSucceeds(setDoc(doc(db, 'purchasing_orders/new'), { organizationId: 'org_a' }));
+test('organizationId-only docs readable by member; writes require Stock edit', async () => {
+  const viewOnly = member();
+  await assertSucceeds(getDoc(doc(viewOnly, 'purchasing_orders/po_a')));
+  await assertFails(setDoc(doc(viewOnly, 'purchasing_orders/view_only_create'), { organizationId: 'org_a' }));
+
+  const editor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12221010112' });
+  await assertSucceeds(setDoc(doc(editor, 'purchasing_orders/editor_create'), { organizationId: 'org_a' }));
 });
 
 test('list query by organizationId allowed for member', async () => {
