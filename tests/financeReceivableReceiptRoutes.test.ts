@@ -128,7 +128,7 @@ test('rejects over-balance amounts, invalid requests and missing receivables', a
     assert.equal((await post(base, input({ receiptAmount: 0 }))).status, 400);
     assert.equal((await post(base, input({ receiptDate: '2026-02-30' }))).status, 400);
     assert.equal((await post(base, input({ receivableId: 'recv_org_a_missing' }))).status, 404);
-    assert.equal((await post(base, input({ orgId: 'org_b' }))).status, 400);
+    assert.equal((await post(base, input({ orgId: 'org_b' }))).status, 403);
   });
 });
 
