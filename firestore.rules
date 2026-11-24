@@ -432,22 +432,6 @@ service cloud.firestore {
                   : (eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
                     : (eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus : '')))));
       }
-      function qualityInitialEventType(record) {
-        return (record.get('recordType', '') in ['nonconformity', 'punch_item'] || record.get('result', '') == 'nao_conforme')
-          ? 'opened' : 'submitted_for_review';
-      }
-      function qualityInitialStatus(record) {
-        return qualityInitialEventType(record) == 'opened' ? 'open' : 'review_pending';
-      }
-      function qualityStatusAfter(currentStatus, eventType) {
-        return eventType == 'approved' && currentStatus == 'review_pending' ? 'approved'
-          : (eventType == 'rejected' && currentStatus == 'review_pending' ? 'rejected'
-            : (eventType == 'corrective_action_submitted' && currentStatus in ['open', 'rejected', 'reopened'] ? 'correction_pending_verification'
-              : (eventType == 'verified' && currentStatus == 'correction_pending_verification' ? 'verified'
-                : (eventType == 'closed' && currentStatus == 'verified' ? 'closed'
-                  : (eventType == 'reopened' && currentStatus == 'closed' ? 'reopened'
-                    : (eventType == 'note_added' && currentStatus != 'unknown' ? currentStatus : '')))));
-      }
       function validQualityStateCreateForDoc() {
         let recordPath = /databases/$(database)/documents/quality_records/$(docId);
         let recordData = getAfter(recordPath).data;
@@ -557,9 +541,9 @@ service cloud.firestore {
           && validQualityEventCreateForDoc()
         );
       }
-            allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
         && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-        && validQualityRecordCreate() && validQualityEventCreate()
+        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
         && areaWrite(request.resource.data);
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'quality_record_states'
