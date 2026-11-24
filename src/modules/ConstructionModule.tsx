@@ -10,6 +10,7 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -57,6 +58,11 @@ import { DailyLaborTimesheet } from '../components/construction/DailyLaborTimesh
 import { DailyLaborCostDashboard } from '../components/construction/DailyLaborCostDashboard';
 import { WorkShiftConfigModal } from '../components/construction/WorkShiftConfigModal';
 import { NRComplianceDashboard } from '../components/construction/NRComplianceDashboard';
+import {
+  calculateWeightedPhysicalProgress,
+  getConstructionScheduleStatus,
+  validateMilestoneScheduleDates,
+} from '../services/constructionPlanning';
 
 const WEATHER_OPTIONS = [
   { id: 'ensolarado', label: 'Ensolarado', icon: Sun, color: 'text-amber-400 bg-amber-950/40 border-amber-800/50' },
@@ -145,29 +151,56 @@ export const ConstructionModule: React.FC = () => {
     }
   }, [contracts, units]);
 
-  // Seed default milestones if none exist for the selected contract
+  // Create only missing template milestones. Existing progress and dates are never overwritten.
   const handleSeedDefaultMilestones = async () => {
     if (!organization || !selectedContractId) return;
     setIsSubmitting(true);
     try {
-      for (let i = 0; i < DEFAULT_MILESTONES.length; i++) {
-        const item = DEFAULT_MILESTONES[i];
-        const mId = `ms_${selectedContractId}_${i}`;
-        const newMs: ConstructionMilestone = {
-          id: mId,
-          orgId: organization.id,
-          contractId: selectedContractId,
-          unitId: rdoUnitId || (units[0]?.id ?? 'default_unit'),
-          name: item.name,
-          orderIndex: i + 1,
-          weightPercentage: item.weight,
-          completedPercentage: i < 2 ? 100 : i === 2 ? 60 : 0,
-          status: i < 2 ? 'concluido' : i === 2 ? 'em_andamento' : 'nao_iniciado',
-          notes: i < 2 ? 'Etapa concluída conforme inspeção de qualidade' : undefined,
-        };
-        await setDoc(doc(db, 'construction_milestones', mId), newMs);
+      const unitId = rdoUnitId || units[0]?.id || '';
+      if (!unitId) {
+        alert('Cadastre ou selecione uma unidade antes de gerar o cronograma.');
+        return;
       }
-      await logAudit('Obras', 'Gerar Cronograma Padrão', `Marcos gerados para o contrato ${selectedContractId}`, selectedContractId);
+
+      const milestoneRefs = DEFAULT_MILESTONES.map((_, index) =>
+        doc(db, 'construction_milestones', `ms_${selectedContractId}_${index}`)
+      );
+      const createdCount = await runTransaction(db, async (tx) => {
+        const snapshots = await Promise.all(milestoneRefs.map((ref) => tx.get(ref)));
+        let created = 0;
+        snapshots.forEach((snapshot, index) => {
+          if (snapshot.exists()) return;
+          const item = DEFAULT_MILESTONES[index];
+          const mId = milestoneRefs[index].id;
+          const now = new Date().toISOString();
+          const newMs: ConstructionMilestone = {
+            id: mId,
+            orgId: organization.id,
+            contractId: selectedContractId,
+            unitId,
+            name: item.name,
+            orderIndex: index + 1,
+            weightPercentage: item.weight,
+            completedPercentage: 0,
+            status: 'nao_iniciado',
+            createdAt: now,
+            updatedAt: now,
+          };
+          tx.set(milestoneRefs[index], newMs);
+          created += 1;
+        });
+        return created;
+      });
+
+      await logAudit(
+        'Obras',
+        'Gerar Cronograma Padrão',
+        `${createdCount} etapa(s) criada(s) para o contrato ${selectedContractId}; registros existentes preservados.`,
+        selectedContractId,
+      );
+    } catch (err) {
+      console.error('Erro ao gerar cronograma padrão:', err);
+      alert('Não foi possível gerar o cronograma. Verifique as permissões e tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -247,15 +280,63 @@ export const ConstructionModule: React.FC = () => {
     }
   };
 
-  // Update Milestone Progress
+  // Update planned dates and responsible person without losing the existing progress.
+  const handleUpdateMilestoneSchedule = async (
+    id: string,
+    patch: Partial<Pick<ConstructionMilestone, 'plannedStartDate' | 'targetDate' | 'responsibleName'>>,
+  ) => {
+    const milestone = milestones.find((item) => item.id === id);
+    if (!milestone) return;
+
+    const plannedStartDate = patch.plannedStartDate ?? milestone.plannedStartDate ?? '';
+    const targetDate = patch.targetDate ?? milestone.targetDate ?? '';
+    const dateError = validateMilestoneScheduleDates(plannedStartDate, targetDate);
+    if (dateError) {
+      alert(dateError);
+      return;
+    }
+
+    const responsibleName = patch.responsibleName?.trim();
+    if (responsibleName && responsibleName.length > 120) {
+      alert('O nome do responsável deve ter no máximo 120 caracteres.');
+      return;
+    }
+
+    const update = {
+      ...patch,
+      ...(patch.responsibleName !== undefined ? { responsibleName } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await updateDoc(doc(db, 'construction_milestones', id), update);
+      await logAudit(
+        'Obras',
+        'Atualizar planejamento da etapa',
+        `Planejamento da etapa "${milestone.name}" atualizado.`,
+        id,
+      );
+    } catch (err) {
+      console.error('Erro ao atualizar planejamento da etapa:', err);
+      alert('Não foi possível atualizar o planejamento da etapa.');
+    }
+  };
+
+  // Update actual progress and preserve the first recorded start date.
   const handleUpdateMilestoneProgress = async (id: string, newPercentage: number) => {
-    const valid = Math.min(100, Math.max(0, newPercentage));
+    const milestone = milestones.find((item) => item.id === id);
+    const raw = Number(newPercentage);
+    if (!Number.isFinite(raw)) return;
+    const valid = Math.min(100, Math.max(0, raw));
     const newStatus = valid === 100 ? 'concluido' : valid > 0 ? 'em_andamento' : 'nao_iniciado';
+    const today = new Date().toISOString().split('T')[0];
     try {
       await updateDoc(doc(db, 'construction_milestones', id), {
         completedPercentage: valid,
         status: newStatus,
-        completedDate: valid === 100 ? new Date().toISOString().split('T')[0] : null,
+        actualStartDate: valid > 0 ? (milestone?.actualStartDate || today) : (milestone?.actualStartDate || null),
+        completedDate: valid === 100 ? (milestone?.completedDate || today) : null,
+        updatedAt: new Date().toISOString(),
       });
     } catch (err) {
       console.error('Erro ao atualizar marco:', err);
@@ -268,16 +349,13 @@ export const ConstructionModule: React.FC = () => {
     return milestones.filter((m) => m.contractId === selectedContractId);
   }, [milestones, selectedContractId]);
 
-  const overallProgress = useMemo(() => {
-    if (filteredMilestones.length === 0) return 0;
-    const totalWeight = filteredMilestones.reduce((acc, m) => acc + (m.weightPercentage || 0), 0);
-    if (totalWeight === 0) return 0;
-    const weightedProgress = filteredMilestones.reduce(
-      (acc, m) => acc + ((m.weightPercentage || 0) * (m.completedPercentage || 0)),
-      0
-    );
-    return Math.round(weightedProgress / totalWeight);
-  }, [filteredMilestones]);
+  const overallProgress = useMemo(
+    () => calculateWeightedPhysicalProgress(filteredMilestones),
+    [filteredMilestones],
+  );
+
+  const currentDate = new Date();
+  const today = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
 
   const filteredReports = useMemo(() => {
     return reports.filter((r) => {
@@ -564,7 +642,7 @@ export const ConstructionModule: React.FC = () => {
                   <span>Avanço Físico Ponderado da Obra</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Medição percentual por etapa para faturamento técnico e controle de cronograma da Aguero Inox.
+                  Indicador interno de avanço físico. Não substitui boletim de medição aprovado pelo cliente.
                 </p>
               </div>
 
@@ -617,61 +695,123 @@ export const ConstructionModule: React.FC = () => {
               </div>
             ) : (
               <div className="divide-y divide-slate-800/80">
-                {filteredMilestones.map((m) => (
-                  <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-900/40 transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2.5">
+                {filteredMilestones.map((m) => {
+                  const scheduleStatus = getConstructionScheduleStatus(m, today);
+                  const scheduleStatusLabel = scheduleStatus === 'concluida'
+                    ? 'Concluída'
+                    : scheduleStatus === 'atrasada'
+                    ? 'Atrasada'
+                    : scheduleStatus === 'no_prazo'
+                    ? 'No prazo'
+                    : 'Sem prazo';
+                  const scheduleStatusClass = scheduleStatus === 'atrasada'
+                    ? 'bg-red-950/70 text-red-300 border border-red-800/50'
+                    : scheduleStatus === 'concluida'
+                    ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/50'
+                    : scheduleStatus === 'no_prazo'
+                    ? 'bg-blue-950/70 text-blue-300 border border-blue-800/50'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700';
+
+                  return (
+                    <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-900/40 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2.5">
+                          <span
+                            className={`w-2.5 h-2.5 rounded-full ${
+                              m.completedPercentage === 100
+                                ? 'bg-emerald-400'
+                                : m.completedPercentage > 0
+                                ? 'bg-amber-400 animate-pulse'
+                                : 'bg-slate-600'
+                            }`}
+                          />
+                          <span className="text-sm font-bold text-white truncate">{m.name}</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
+                            Peso: {m.weightPercentage}%
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${scheduleStatusClass}`}>
+                            {scheduleStatusLabel}
+                          </span>
+                        </div>
+                        {m.notes && (
+                          <p className="text-xs text-slate-400 mt-1 pl-5">{m.notes}</p>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 pl-5">
+                          <label className="block text-[10px] text-slate-400">
+                            Início previsto
+                            <input
+                              type="date"
+                              value={m.plannedStartDate || ''}
+                              onChange={(e) => handleUpdateMilestoneSchedule(m.id, { plannedStartDate: e.target.value })}
+                              className="mt-1 w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs"
+                            />
+                          </label>
+                          <label className="block text-[10px] text-slate-400">
+                            Prazo final previsto
+                            <input
+                              type="date"
+                              value={m.targetDate || ''}
+                              onChange={(e) => handleUpdateMilestoneSchedule(m.id, { targetDate: e.target.value })}
+                              className="mt-1 w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs"
+                            />
+                          </label>
+                          <label className="block text-[10px] text-slate-400">
+                            Responsável pela etapa
+                            <input
+                              type="text"
+                              maxLength={120}
+                              defaultValue={m.responsibleName || ''}
+                              onBlur={(e) => {
+                                const value = e.currentTarget.value.trim();
+                                if (value !== (m.responsibleName || '')) {
+                                  handleUpdateMilestoneSchedule(m.id, { responsibleName: value });
+                                }
+                              }}
+                              placeholder="Nome do responsável"
+                              className="mt-1 w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs"
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-2 pl-5 text-[10px] text-slate-500">
+                          Início real: {m.actualStartDate || 'Não registrado'}
+                          {' · '}
+                          Conclusão real: {m.completedDate || 'Não registrada'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-4 shrink-0">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={m.completedPercentage}
+                            onChange={(e) => handleUpdateMilestoneProgress(m.id, parseInt(e.target.value))}
+                            className="w-32 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                            aria-label={`Avanço físico de ${m.name}`}
+                          />
+                          <span className="w-12 text-right font-mono font-bold text-xs text-amber-400">
+                            {m.completedPercentage}%
+                          </span>
+                        </div>
+
                         <span
-                          className={`w-2.5 h-2.5 rounded-full ${
+                          className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase min-w-[90px] text-center ${
                             m.completedPercentage === 100
-                              ? 'bg-emerald-400'
+                              ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/50'
                               : m.completedPercentage > 0
-                              ? 'bg-amber-400 animate-pulse'
-                              : 'bg-slate-600'
+                              ? 'bg-amber-950/70 text-amber-300 border border-amber-800/50'
+                              : 'bg-slate-800 text-slate-400'
                           }`}
-                        />
-                        <span className="text-sm font-bold text-white truncate">{m.name}</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
-                          Peso: {m.weightPercentage}%
+                        >
+                          {m.completedPercentage === 100 ? 'Concluído' : m.completedPercentage > 0 ? 'Em Curso' : 'A Iniciar'}
                         </span>
                       </div>
-                      {m.notes && (
-                        <p className="text-xs text-slate-400 mt-1 pl-5">{m.notes}</p>
-                      )}
                     </div>
-
-                    <div className="flex items-center space-x-4 shrink-0">
-                      {/* Range slider */}
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={m.completedPercentage}
-                          onChange={(e) => handleUpdateMilestoneProgress(m.id, parseInt(e.target.value))}
-                          className="w-32 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                        />
-                        <span className="w-12 text-right font-mono font-bold text-xs text-amber-400">
-                          {m.completedPercentage}%
-                        </span>
-                      </div>
-
-                      {/* Status badge */}
-                      <span
-                        className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase min-w-[90px] text-center ${
-                          m.completedPercentage === 100
-                            ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/50'
-                            : m.completedPercentage > 0
-                            ? 'bg-amber-950/70 text-amber-300 border border-amber-800/50'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}
-                      >
-                        {m.completedPercentage === 100 ? 'Concluído' : m.completedPercentage > 0 ? 'Em Curso' : 'A Iniciar'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
