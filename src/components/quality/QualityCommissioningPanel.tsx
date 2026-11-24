@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   where,
   writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   AlertCircle,
@@ -29,11 +30,15 @@ import type {
   QualityEventType,
   QualityRecord,
   QualityRecordEvent,
+  QualityRecordState,
   QualityRecordType,
   QualitySeverity,
 } from '../../types/quality';
 import {
+  getQualityNextStatus,
   getQualityRecordStatus,
+  qualityInitialEvent,
+  qualityInitialStatus,
   localQualityDate,
   qualityEventLabel,
   qualityRecordEventTone,
@@ -117,6 +122,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
 }) => {
   const [records, setRecords] = useState<QualityRecord[]>([]);
   const [events, setEvents] = useState<QualityRecordEvent[]>([]);
+  const [states, setStates] = useState<QualityRecordState[]>([]);
   const [engineeringDocuments, setEngineeringDocuments] = useState<EngineeringDocument[]>([]);
   const [checklistRuns, setChecklistRuns] = useState<ChecklistRun[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -151,6 +157,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
   useEffect(() => {
     setRecords([]);
     setEvents([]);
+    setStates([]);
     setEngineeringDocuments([]);
     setChecklistRuns([]);
     setLoadError('');
@@ -175,6 +182,14 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
         setLoadError('Não foi possível carregar o histórico de movimentações.');
       },
     );
+    const stopStates = onSnapshot(
+      query(collection(db, 'quality_record_states'), where('orgId', '==', organizationId)),
+      (snapshot) => setStates(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as QualityRecordState))),
+      (error) => {
+        console.error('Erro ao carregar estados de qualidade:', error);
+        setLoadError('Não foi possível carregar o estado atual do fluxo de qualidade.');
+      },
+    );
     const stopDocuments = onSnapshot(
       query(collection(db, 'engineering_documents'), where('orgId', '==', organizationId)),
       (snapshot) => setEngineeringDocuments(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as EngineeringDocument))),
@@ -188,6 +203,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     return () => {
       stopRecords();
       stopEvents();
+      stopStates();
       stopDocuments();
       stopChecklists();
     };
@@ -205,6 +221,15 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     }
     return grouped;
   }, [events]);
+
+  const statesByRecord = useMemo(
+    () => new Map(states.map((item) => [item.recordId, item])),
+    [states],
+  );
+
+  const currentStatusFor = (record: QualityRecord) =>
+    statesByRecord.get(record.id)?.status
+      || getQualityRecordStatus(latestEvent(eventsByRecord.get(record.id) || [])?.eventType);
 
   const filteredRecords = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('pt-BR');
@@ -225,11 +250,12 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
   const currentStatuses = records.map((record) => ({
     record,
     latest: latestEvent(eventsByRecord.get(record.id) || []),
-    status: getQualityRecordStatus(latestEvent(eventsByRecord.get(record.id) || [])?.eventType),
+    status: currentStatusFor(record),
   }));
   const pendingReview = currentStatuses.filter((item) => item.status === 'review_pending').length;
   const openFindings = currentStatuses.filter((item) =>
-    isFinding(item.record.recordType) && ['open', 'rejected', 'reopened', 'correction_pending_verification'].includes(item.status),
+    (isFinding(item.record.recordType) || item.record.result === 'nao_conforme' || item.status === 'rejected')
+      && ['open', 'rejected', 'reopened', 'correction_pending_verification'].includes(item.status),
   ).length;
   const pendingVerification = currentStatuses.filter((item) => item.status === 'correction_pending_verification').length;
   const approvedCommissioning = currentStatuses.filter((item) =>
@@ -285,7 +311,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
       title,
       description,
       result: isFinding(recordType) ? 'nao_conforme' : result,
-      ...(isFinding(recordType) ? { severity, responsibleName, dueDate } : {}),
+      ...((isFinding(recordType) || result === 'nao_conforme') ? { severity, responsibleName, dueDate } : {}),
       ...(measuredValue.trim() ? { measuredValue: Number(measuredValue) } : {}),
       ...(measuredUnit.trim() ? { measuredUnit: measuredUnit.trim() } : {}),
       ...(acceptanceCriteria.trim() ? { acceptanceCriteria: acceptanceCriteria.trim() } : {}),
@@ -321,7 +347,9 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
       const eventRef = doc(collection(db, 'quality_record_events'));
       const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
       const recordCode = `QLD-${recordDate.slice(0, 4)}-${recordRef.id.slice(0, 8).toUpperCase()}`;
-      const eventType: QualityEventType = isFinding(recordType) ? 'opened' : 'submitted_for_review';
+      const eventType: QualityEventType = qualityInitialEvent(recordType, input.result);
+      const initialStatus = qualityInitialStatus(recordType, input.result);
+      const stateRef = doc(db, 'quality_record_states', recordRef.id);
       const batch = writeBatch(db);
       batch.set(recordRef, {
         id: recordRef.id,
@@ -359,11 +387,25 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
         actorUid: currentUser.uid,
         actorName,
         recordedAt: serverTimestamp(),
-        comment: isFinding(recordType) ? 'Apontamento de qualidade aberto para tratamento.' : 'Registro enviado para aprovação técnica.',
+        comment: eventType === 'opened'
+          ? 'Apontamento de qualidade aberto para tratamento.'
+          : 'Registro enviado para aprovação técnica.',
+      });
+      batch.set(stateRef, {
+        id: recordRef.id,
+        orgId: organizationId,
+        unitId,
+        contractId,
+        recordId: recordRef.id,
+        status: initialStatus,
+        latestEventId: eventRef.id,
+        updatedByUid: currentUser.uid,
+        updatedByName: actorName,
+        updatedAt: serverTimestamp(),
       });
       await batch.commit();
 
-      setSuccess(`${recordCode} registrado. ${isFinding(recordType) ? 'O apontamento está aberto.' : 'Aguardando aprovação técnica.'}`);
+      setSuccess(`${recordCode} registrado. ${eventType === 'opened' ? 'O apontamento está aberto para correção.' : 'Aguardando aprovação técnica.'}`);
       setShowForm(false);
       resetForm();
       try {
@@ -382,21 +424,37 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
 
   const recordEvent = async (record: QualityRecord, eventType: QualityEventType, comment = '') => {
     if (!currentUser) return;
-    const eventRef = doc(collection(db, 'quality_record_events'));
+    const stateRef = doc(db, 'quality_record_states', record.id);
     const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
     setBusyRecordId(record.id);
     setSuccess('');
     try {
-      await addDoc(collection(db, 'quality_record_events'), {
-        orgId: organizationId,
-        unitId: record.unitId,
-        contractId: record.contractId,
-        recordId: record.id,
-        eventType,
-        actorUid: currentUser.uid,
-        actorName,
-        recordedAt: serverTimestamp(),
-        ...(comment.trim() ? { comment: comment.trim().slice(0, 1500) } : {}),
+      await runTransaction(db, async (transaction) => {
+        const stateSnapshot = await transaction.get(stateRef);
+        if (!stateSnapshot.exists()) throw new Error('O estado atual do registro não foi localizado. Atualize a tela e tente novamente.');
+        const currentState = stateSnapshot.data() as QualityRecordState;
+        const nextStatus = getQualityNextStatus(currentState.status, eventType);
+        if (!nextStatus) throw new Error('Esta movimentação não é permitida a partir do estado atual do registro.');
+        const eventRef = doc(collection(db, 'quality_record_events'));
+        transaction.set(eventRef, {
+          orgId: organizationId,
+          unitId: record.unitId,
+          contractId: record.contractId,
+          recordId: record.id,
+          previousEventId: currentState.latestEventId,
+          eventType,
+          actorUid: currentUser.uid,
+          actorName,
+          recordedAt: serverTimestamp(),
+          ...(comment.trim() ? { comment: comment.trim().slice(0, 1500) } : {}),
+        });
+        transaction.update(stateRef, {
+          status: nextStatus,
+          latestEventId: eventRef.id,
+          updatedByUid: currentUser.uid,
+          updatedByName: actorName,
+          updatedAt: serverTimestamp(),
+        });
       });
       setSuccess(`${record.recordCode}: ${qualityEventLabel(eventType)}.`);
       try {
@@ -412,10 +470,9 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
       setBusyRecordId('');
     }
   };
-
   const handleAction = async (record: QualityRecord, eventType: QualityEventType) => {
     const history = eventsByRecord.get(record.id) || [];
-    const status = getQualityRecordStatus(latestEvent(history)?.eventType);
+    const status = currentStatusFor(record);
     if (['approved', 'rejected', 'verified', 'closed', 'reopened'].includes(eventType) && !canApprove) {
       alert('A aprovação, verificação e encerramento exigem Supervisor, Gerente ou Admin com Operações nível 2.');
       return;
@@ -423,6 +480,10 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     if (eventType === 'corrective_action_submitted' && !canEdit) return;
     if (eventType === 'approved' || eventType === 'rejected') {
       if (status !== 'review_pending') return;
+      if (eventType === 'approved' && record.result === 'pendente') {
+        alert('Um registro pendente/inconclusivo não pode ser aprovado. Registre o resultado definitivo após a verificação.');
+        return;
+      }
       if (eventType === 'approved') {
         if (window.confirm(`Confirmar aprovação de ${record.recordCode} — ${record.title}?`)) {
           await recordEvent(record, eventType);
@@ -464,8 +525,8 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
 
   const getActions = (record: QualityRecord) => {
     const history = eventsByRecord.get(record.id) || [];
-    const status = getQualityRecordStatus(latestEvent(history)?.eventType);
-    const finding = isFinding(record.recordType);
+    const status = currentStatusFor(record);
+    const finding = isFinding(record.recordType) || record.result === 'nao_conforme' || status === 'rejected';
     const actions: Array<{ type: QualityEventType; label: string }> = [];
     if (status === 'review_pending' && canApprove) {
       actions.push({ type: 'approved', label: 'Aprovar' }, { type: 'rejected', label: 'Reprovar / solicitar correção' });
@@ -572,7 +633,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
             <label className="space-y-1 text-[11px] text-slate-400">Identificação de equipamento / linha
               <input className={inputClass} value={equipmentTag} onChange={(e) => setEquipmentTag(e.target.value)} maxLength={80} placeholder="Ex.: LIN-015 / TK-02" />
             </label>
-            {!isFinding(recordType) ? (
+            {!(isFinding(recordType) || result === 'nao_conforme') ? (
               <label className="space-y-1 text-[11px] text-slate-400">Resultado *
                 <select className={inputClass} value={result} onChange={(e) => setResult(e.target.value as 'conforme' | 'nao_conforme' | 'pendente')}>
                   <option value="conforme">Conforme</option>
@@ -618,7 +679,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
           )}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-[11px] text-slate-400">{isFinding(recordType) ? 'Critério / requisito não atendido *' : 'Critério de aceitação / verificação *'}
+            <label className="space-y-1 text-[11px] text-slate-400">{isFinding(recordType) || result === 'nao_conforme' ? 'Critério / requisito não atendido *' : 'Critério de aceitação / verificação *'}
               <textarea className={inputClass} rows={2} value={acceptanceCriteria} onChange={(e) => setAcceptanceCriteria(e.target.value)} maxLength={500} placeholder="Informe o limite, requisito ou condição que será verificada." required />
             </label>
             <label className="space-y-1 text-[11px] text-slate-400">Norma / procedimento / especificação de referência
@@ -626,13 +687,18 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
             </label>
           </div>
 
-          {isFinding(recordType) && (
-            <div className="grid grid-cols-1 gap-3 rounded-lg border border-rose-900/50 bg-rose-950/15 p-3 md:grid-cols-2">
+          {(isFinding(recordType) || result === 'nao_conforme') && (
+            <div className="grid grid-cols-1 gap-3 rounded-lg border border-rose-900/50 bg-rose-950/15 p-3 md:grid-cols-3">
               <label className="space-y-1 text-[11px] text-slate-400">Responsável pela correção *
                 <input className={inputClass} value={responsibleName} onChange={(e) => setResponsibleName(e.target.value)} maxLength={120} required />
               </label>
               <label className="space-y-1 text-[11px] text-slate-400">Prazo para correção *
                 <input className={inputClass} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+              </label>
+              <label className="space-y-1 text-[11px] text-slate-400">Criticidade *
+                <select className={inputClass} value={severity} onChange={(e) => setSeverity(e.target.value as QualitySeverity)} required>
+                  {SEVERITIES.map((item) => <option key={item} value={item}>{item.toLocaleUpperCase('pt-BR')}</option>)}
+                </select>
               </label>
             </div>
           )}
@@ -701,7 +767,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
             {filteredRecords.map((record) => {
               const history = eventsByRecord.get(record.id) || [];
               const latest = latestEvent(history);
-              const status = getQualityRecordStatus(latest?.eventType);
+              const status = currentStatusFor(record);
               const selected = selectedRecordId === record.id;
               const actions = getActions(record);
               const unitName = units.find((item) => item.id === record.unitId)?.name || 'Unidade não localizada';
