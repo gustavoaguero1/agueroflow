@@ -89,6 +89,8 @@ Server-only (denied to every client, master included): `member_credentials` (mas
 `first_access_tokens`, `system_security` (old master-password doc), `users` (unused).
 
 ## Compras → Financeiro / NF-e
+A tela de conciliação OC × NF-e é uma visão derivada, somente leitura, calculada a partir das OCs, documentos `nfe_documents` e `purchasing_receipts`. Não cria coleção nem título paralelo. A associação automática de item exige código compatível ou descrição e unidade exatas; ambiguidade fica explicitamente sem vínculo. Compara quantidade pedida, faturada, fisicamente recebida, aceita pela qualidade e efetivamente lançada no estoque. O comparativo financeiro de produtos é separado de impostos e frete; não substitui a conferência de duplicatas, pagamento ou escrituração no Protheus.
+
 
 A classificação da NF-e pode ser vinculada à OC do mesmo fornecedor. A OC continua sendo compromisso de compra; o título a pagar nasce das duplicatas da NF-e, evitando gerar uma segunda obrigação financeira. Quando existe OC vinculada, a classificação não movimenta estoque: a entrada física fica exclusivamente no fluxo de Recebimento. Se o recebimento já existe, a conciliação usa o recibo e não repete as entradas; o título preserva OC, OS vinculada e recibo para rastreabilidade. Financeiro tem leitura das OCs/recibos, mas somente Estoque pode alterá-los.
 
