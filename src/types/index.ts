@@ -590,6 +590,11 @@ export interface ConstructionDailyReport {
   progressPercentage?: number;
   photos?: string[];
   preparedBy: string;
+  /** Authenticated user who explicitly confirmed the report contents. */
+  confirmedByUid?: string;
+  confirmedByName?: string;
+  confirmedAt?: string;
+  /** Legacy field from historical records; new RDOs do not generate a fake signature. */
   supervisorSignature?: string;
   createdAt: string;
   updatedAt: string;

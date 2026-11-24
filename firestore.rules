@@ -177,7 +177,8 @@ service cloud.firestore {
         ];
       }
       // Append-only history.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs']; }
+      // Field RDOs are append-only: a correction must be a new, separately identified report.
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -185,8 +186,9 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll.matches('commercial_.*') ? A_COM()
-            : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1));
+          : (coll == 'construction_reports' ? A_OPS()
+            : (coll.matches('commercial_.*') ? A_COM()
+              : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       function areaRead(d) {
@@ -205,9 +207,41 @@ service cloud.firestore {
       // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
       function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
       function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk() && areaWrite(request.resource.data);
-      allow update: if orgScoped() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
-      allow delete: if orgScoped() && canDelete() && areaWrite(resource.data);
+      function validRdoCreate() {
+        return coll != 'construction_reports' || (
+          signedIn()
+          && request.resource.data.get('confirmedByUid', '') == request.auth.uid
+          && request.resource.data.get('confirmedByName', '') is string
+          && request.resource.data.get('confirmedByName', '').size() > 0
+          && request.resource.data.get('preparedBy', '') == request.resource.data.get('confirmedByName', '')
+          && request.resource.data.get('confirmedAt', '') is string
+          && request.resource.data.get('confirmedAt', '').size() >= 20
+          && request.resource.data.get('createdAt', '') is string
+          && request.resource.data.get('createdAt', '').size() >= 20
+          && request.resource.data.get('reportNumber', '') is string
+          && request.resource.data.get('reportNumber', '').size() >= 12
+          && request.resource.data.get('date', '') is string
+          && request.resource.data.get('date', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('unitId', '').size() > 0
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('contractId', '').size() > 0
+          && request.resource.data.get('weather', '') in ['ensolarado', 'nublado', 'chuvoso', 'chuva_paralisante']
+          && request.resource.data.get('activitiesCompleted', '') is string
+          && request.resource.data.get('activitiesCompleted', '').size() > 0
+          && request.resource.data.get('workforce', []) is list
+          && request.resource.data.get('equipment', []) is list
+          && !request.resource.data.keys().hasAny(['supervisorSignature'])
+          && (request.resource.data.get('progressPercentage', null) == null
+            || (request.resource.data.get('progressPercentage', null) is number
+              && request.resource.data.get('progressPercentage', 0) >= 0
+              && request.resource.data.get('progressPercentage', 0) <= 100))
+        );
+      }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+        && validRdoCreate() && areaWrite(request.resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
+      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
