@@ -434,6 +434,93 @@ test('finance_reconciliation_cases: org-scoped, created by actor, manager-only d
   }));
 });
 
+
+test('finance_payable_authorizations: only Admin/Gerente can create one per approved case and open matching NF-e payable; immutable', async () => {
+  const casePath = 'finance_reconciliation_cases/rcase_org_a_case1';
+  const payablePath = 'finance_payables/pay_org_a_K1_001';
+  const authPath = 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_001';
+  const reviewedAt = Timestamp.fromMillis(1795525200000);
+  const approvedCase = {
+    id: 'rcase_org_a_case1', orgId: 'org_a', purchaseOrderId: 'po_a', purchaseOrderCode: 'OC-2026-001',
+    supplierName: 'Fornecedor A', supplierCnpj: '11111111000111',
+    issueType: 'divergencia_valor_produtos', issueTitle: 'Diferença no valor dos produtos',
+    description: 'O total dos produtos da NF-e difere da OC.',
+    snapshot: { invoiceKeys: ['K1'], sourceIssues: ['Diferença no valor'] },
+    status: 'aprovada', createdBy: 'member_m_sup', createdByName: 'Supervisor',
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    reviewedBy: 'member_m_ger', reviewedByName: 'Gerente', reviewedAt,
+    resolutionNotes: 'Diferença conferida e autorizada pela gerência.',
+  };
+  const payable = {
+    id: 'pay_org_a_K1_001', orgId: 'org_a', origem: 'nfe',
+    fornecedor: { nome: 'Fornecedor A', cnpj: '11111111000111' },
+    documento: 'NF-e 123', parcela: '001', valor: 5400, vencimento: '2026-12-10',
+    status: 'aberto', categoriaId: 'cat_mat', nfeChave: 'K1', purchaseOrderId: 'po_a',
+  };
+  const authorization = {
+    id: 'paya_org_a_pay_org_a_K1_001', orgId: 'org_a',
+    payableId: 'pay_org_a_K1_001', caseId: 'rcase_org_a_case1',
+    purchaseOrderId: 'po_a', purchaseOrderCode: 'OC-2026-001',
+    nfeChave: 'K1', documento: 'NF-e 123', parcela: '001',
+    fornecedorNome: 'Fornecedor A', fornecedorCnpj: '11111111000111',
+    authorizedValue: 5400, dueDate: '2026-12-10',
+    payableStatusAtAuthorization: 'aberto', authorizationStatus: 'registrada',
+    issueTitle: 'Diferença no valor dos produtos',
+    resolutionNotes: 'Diferença conferida e autorizada pela gerência.',
+    approvedBy: 'member_m_ger', approvedByName: 'Gerente', approvedAt: reviewedAt,
+    authorizedBy: 'member_m_ger', authorizedByName: 'Gerente',
+    authorizedAt: serverTimestamp(), createdAt: serverTimestamp(),
+  };
+
+  await seedAs(async (db) => {
+    await setDoc(doc(db, casePath), approvedCase);
+    await setDoc(doc(db, payablePath), payable);
+  });
+
+  await assertSucceeds(getDoc(doc(member(), authPath)));
+  await assertSucceeds(setDoc(doc(gerente(), authPath), authorization));
+  await assertSucceeds(getDocs(query(collection(member(), 'finance_payable_authorizations'), where('orgId', '==', 'org_a'))));
+  assert.equal((await getDoc(doc(gerente(), payablePath))).data()?.status, 'aberto', 'authorization must not mark the title as paid');
+  await assertFails(setDoc(doc(gerente(), authPath), authorization)); // deterministic duplicate -> update denied
+  await assertFails(updateDoc(doc(gerente(), authPath), { authorizedValue: 1 }));
+  await assertFails(deleteDoc(doc(admin(), authPath)));
+
+  await seedAs((db) => setDoc(doc(db, 'finance_reconciliation_cases/rcase_org_a_pending'), {
+    ...approvedCase, id: 'rcase_org_a_pending', status: 'em_analise',
+  }));
+  await assertFails(setDoc(doc(gerente(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_002'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K1_002', payableId: 'pay_org_a_K1_002', caseId: 'rcase_org_a_pending',
+  }));
+
+  await seedAs((db) => setDoc(doc(db, 'finance_payables/pay_org_a_K2_001'), { ...payable, id: 'pay_org_a_K2_001', nfeChave: 'K2' }));
+  await assertFails(setDoc(doc(gerente(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K2_001'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K2_001', payableId: 'pay_org_a_K2_001', nfeChave: 'K2',
+  }));
+
+  await seedAs((db) => setDoc(doc(db, 'finance_payables/pay_org_a_K1_paid'), {
+    ...payable, id: 'pay_org_a_K1_paid', status: 'pago',
+  }));
+  await assertFails(setDoc(doc(gerente(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_paid'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K1_paid', payableId: 'pay_org_a_K1_paid',
+  }));
+
+  await assertFails(setDoc(doc(supervisor(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_supervisor'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K1_supervisor', payableId: 'pay_org_a_K1_001',
+  }));
+  await assertFails(setDoc(doc(member(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_member'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K1_member', payableId: 'pay_org_a_K1_001',
+  }));
+  await assertFails(setDoc(doc(as('other', { org_b: 'Gerente' }), 'finance_payable_authorizations/paya_org_b_pay_org_a_K1_001'), {
+    ...authorization, id: 'paya_org_b_pay_org_a_K1_001', orgId: 'org_b',
+  }));
+  await assertFails(setDoc(doc(gerente(), 'finance_payable_authorizations/paya_org_a_spoof'), {
+    ...authorization, id: 'paya_org_a_spoof', payableId: 'pay_org_a_K1_001',
+  }));
+  await assertFails(setDoc(doc(gerente(), 'finance_payable_authorizations/paya_org_a_pay_org_a_K1_001_bad_value'), {
+    ...authorization, id: 'paya_org_a_pay_org_a_K1_001_bad_value', payableId: 'pay_org_a_K1_001', authorizedValue: 1,
+  }));
+});
+
 test('nfe_documents: read by members, server-only create/delete, guarded status transitions', async () => {
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_1'), { orgId: 'org_a', status: 'aguardando_classificacao', valorTotal: 10 }));
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_b_1'), { orgId: 'org_b', status: 'aguardando_classificacao' }));

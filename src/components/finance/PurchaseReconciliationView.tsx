@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { AlertTriangle, ClipboardCheck, FileWarning, ShieldCheck, PlusCircle, CheckCircle2, XCircle, Clock3 } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, FileWarning, ShieldCheck, PlusCircle, CheckCircle2, XCircle, Clock3, FileCheck2, LockKeyhole } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import type {
+  FinancePayable,
+  FinancePayableAuthorization,
   FinanceReconciliationCase,
   FinanceReconciliationCaseStatus,
   FinanceReconciliationIssueType,
@@ -19,11 +21,13 @@ import {
   buildFinanceReconciliationCaseSnapshot,
   createFinanceReconciliationCase,
   transitionFinanceReconciliationCase,
+  createFinancePayableAuthorization,
 } from '../../services/financeReconciliationCases';
 import { brl } from '../../services/financeService';
 import { card, msgErr, msgOk } from './ui';
 
 const qty = (value: number) => value.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+const digits = (value: unknown) => String(value ?? '').replace(/\D/g, '');
 const date = (value?: string) => value ? new Date(value).toLocaleDateString('pt-BR') : '—';
 const dateTime = (value: unknown) => {
   if (!value) return '—';
@@ -71,6 +75,8 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [receipts, setReceipts] = useState<MaterialReceiptRecord[]>([]);
   const [cases, setCases] = useState<FinanceReconciliationCase[]>([]);
+  const [payables, setPayables] = useState<FinancePayable[]>([]);
+  const [authorizations, setAuthorizations] = useState<FinancePayableAuthorization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -82,12 +88,17 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
   const [savingCase, setSavingCase] = useState(false);
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
   const [busyCaseId, setBusyCaseId] = useState<string | null>(null);
+  const [busyPayableId, setBusyPayableId] = useState<string | null>(null);
 
   useEffect(() => {
     let ordersReady = false;
     let receiptsReady = false;
     let casesReady = false;
-    const finishLoading = () => { if (ordersReady && receiptsReady && casesReady) setLoading(false); };
+    let payablesReady = false;
+    let authorizationsReady = false;
+    const finishLoading = () => {
+      if (ordersReady && receiptsReady && casesReady && payablesReady && authorizationsReady) setLoading(false);
+    };
     const stopOrders = onSnapshot(
       query(collection(db, 'purchasing_orders'), where('organizationId', '==', orgId)),
       (snapshot) => {
@@ -115,7 +126,25 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
       },
       (err) => { setError('Falha ao carregar registros de divergência: ' + err.message); casesReady = true; finishLoading(); },
     );
-    return () => { stopOrders(); stopReceipts(); stopCases(); };
+    const stopPayables = onSnapshot(
+      query(collection(db, 'finance_payables'), where('orgId', '==', orgId)),
+      (snapshot) => {
+        setPayables(snapshot.docs.map((entry) => ({ ...(entry.data() as FinancePayable), id: entry.id })));
+        payablesReady = true;
+        finishLoading();
+      },
+      (err) => { setError('Falha ao carregar títulos relacionados: ' + err.message); payablesReady = true; finishLoading(); },
+    );
+    const stopAuthorizations = onSnapshot(
+      query(collection(db, 'finance_payable_authorizations'), where('orgId', '==', orgId)),
+      (snapshot) => {
+        setAuthorizations(snapshot.docs.map((entry) => ({ ...(entry.data() as FinancePayableAuthorization), id: entry.id })));
+        authorizationsReady = true;
+        finishLoading();
+      },
+      (err) => { setError('Falha ao carregar autorizações existentes: ' + err.message); authorizationsReady = true; finishLoading(); },
+    );
+    return () => { stopOrders(); stopReceipts(); stopCases(); stopPayables(); stopAuthorizations(); };
   }, [orgId]);
 
   const reconciliations = useMemo(
@@ -208,6 +237,31 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
       setActionMessage({ ok: false, text: err instanceof Error ? err.message : 'Não foi possível atualizar o registro.' });
     } finally {
       setBusyCaseId(null);
+    }
+  };
+
+  const authorizePayable = async (item: FinanceReconciliationCase, payable: FinancePayable) => {
+    if (!user) return;
+    setBusyPayableId(payable.id);
+    setActionMessage(null);
+    try {
+      const id = await createFinancePayableAuthorization(db, {
+        orgId,
+        caseId: item.id,
+        payableId: payable.id,
+        actor: { uid: user.uid, name: member?.userName || user.displayName || user.email || 'Gerente' },
+      });
+      await logAudit(
+        'Financeiro',
+        'Autorização documental vinculada ao título',
+        'Autorização ' + id + ' registrada para o título ' + payable.id + ', vinculada à ocorrência ' + item.id + '. Nenhuma baixa ou pagamento foi executado.',
+        id,
+      );
+      setActionMessage({ ok: true, text: 'Autorização documental registrada no título existente. O status do pagamento não foi alterado.' });
+    } catch (err) {
+      setActionMessage({ ok: false, text: err instanceof Error ? err.message : 'Não foi possível registrar a autorização.' });
+    } finally {
+      setBusyPayableId(null);
     }
   };
 
@@ -331,7 +385,15 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
                   {entryCases.length === 0
                     ? <p className="text-[11px] text-slate-500">Nenhuma ocorrência formal registrada para esta OC.</p>
                     : <div className="space-y-2">
-                      {entryCases.map((item) => (
+                      {entryCases.map((item) => {
+                        const invoiceKeys = item.snapshot?.invoiceKeys || [];
+                        const linkedPayables = payables.filter((payable) =>
+                          payable.purchaseOrderId === item.purchaseOrderId
+                          && digits(payable.fornecedor.cnpj) === digits(item.supplierCnpj)
+                          && !!payable.nfeChave
+                          && invoiceKeys.some((key) => digits(key) === digits(payable.nfeChave)),
+                        );
+                        return (
                         <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-2" data-testid="finance-reconciliation-case">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -368,8 +430,40 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
                               </div>
                             </div>
                           )}
+                          {item.status === 'aprovada' && (
+                            <div className="mt-3 border-t border-slate-800 pt-3 space-y-2" data-testid="payable-authorization-panel">
+                              <p className="text-[11px] font-semibold text-slate-200 flex items-center gap-2">
+                                <LockKeyhole className="w-3.5 h-3.5 text-emerald-300" />Autorização documental em Contas a Pagar
+                              </p>
+                              <p className="text-[10px] text-slate-500">Vincula a decisão aprovada ao título NF-e já existente. Não cria parcela, não altera vencimento e não executa pagamento.</p>
+                              {linkedPayables.length === 0
+                                ? <p className="text-[11px] text-amber-300">{invoiceKeys.length === 0 ? 'Esta ocorrência é anterior ao registro das chaves das NF-e; não é possível vincular títulos automaticamente com segurança.' : 'Nenhum título em Contas a Pagar corresponde à NF-e, fornecedor e OC deste registro.'}</p>
+                                : <div className="space-y-2">
+                                  {linkedPayables.map((payable) => {
+                                    const authorization = authorizations.find((entry) => entry.payableId === payable.id);
+                                    return (
+                                      <div key={payable.id} className="rounded-lg border border-slate-800 bg-slate-900/70 p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="text-[11px] text-slate-200">{payable.documento}{payable.parcela ? ' · parcela ' + payable.parcela : ''} · {brl.format(payable.valor)}</p>
+                                          <p className="text-[10px] text-slate-500">Vencimento {date(payable.vencimento)} · {payable.status === 'aberto' ? 'Em aberto' : payable.status === 'pago' ? 'Pago' : 'Cancelado'}</p>
+                                          {authorization && <p className="text-[10px] text-emerald-300">Autorização {authorization.id} · {authorization.authorizedByName} · valor registrado {brl.format(authorization.authorizedValue)}</p>}
+                                        </div>
+                                        {authorization
+                                          ? <span className="shrink-0 rounded border border-emerald-800 px-2 py-1 text-[10px] text-emerald-300"><FileCheck2 className="inline w-3 h-3 mr-1" />Autorização registrada</span>
+                                          : payable.status !== 'aberto'
+                                            ? <span className="text-[10px] text-slate-500">Título não está em aberto</span>
+                                            : canReviewCase
+                                              ? <button type="button" disabled={busyPayableId === payable.id} onClick={() => authorizePayable(item, payable)} className="shrink-0 rounded-lg border border-emerald-800 px-3 py-1.5 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-50">{busyPayableId === payable.id ? 'Registrando…' : 'Registrar autorização'}</button>
+                                              : <span className="text-[10px] text-slate-500">Aguardando Admin/Gerente</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>}
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      );
+                      })}
                     </div>}
                 </div>
               </details>

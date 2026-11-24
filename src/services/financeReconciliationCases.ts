@@ -73,6 +73,7 @@ export function buildFinanceReconciliationCaseSnapshot(entry: PurchaseReconcilia
     acceptedQuantity: entry.acceptedQuantity,
     stockQuantity: entry.stockQuantity,
     invoiceNumbers: entry.invoices.map((invoice) => invoice.numero || invoice.chave).slice(0, 30),
+    invoiceKeys: entry.invoices.map((invoice) => invoice.chave).filter(Boolean).slice(0, 30),
     receiptIds: entry.receipts.map((receipt) => receipt.id).slice(0, 30),
     sourceIssues: [
       ...entry.issues,
