@@ -38,7 +38,9 @@ export const OperationsModule: React.FC<{
   const frame = useRef<HTMLIFrameElement>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Backup do Inox cria funcionários no RH: exige editar o RH. Gases: basta editar Operações.
   const canImport = (isMaster || isManagerOrAbove) && rhLevel === 2;
+  const canImportGases = areaLevel('operacoes') === 2;
   const orgId = organization?.id || '';
 
   const bridge = useMemo(() => {
@@ -103,13 +105,13 @@ export const OperationsModule: React.FC<{
 
   return (
     <div className="space-y-2">
-      {canImport && (
+      {(canImport || canImportGases) && (
         <div className="flex justify-end">
           <button
             onClick={() => setImportOpen(true)}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:border-blue-500"
           >
-            <DatabaseBackup className="w-4 h-4" /> Importar dados do Inox
+            <DatabaseBackup className="w-4 h-4" /> {canImport ? 'Importar dados (Inox e gases)' : 'Importar gases'}
           </button>
         </div>
       )}
@@ -123,7 +125,7 @@ export const OperationsModule: React.FC<{
       style={{ height: 'calc(100vh - 140px)' }}
     />
       {importOpen && (
-        <InoxImportModal orgId={orgId} onClose={() => setImportOpen(false)} onDone={() => setReloadKey((k) => k + 1)} />
+        <InoxImportModal orgId={orgId} allowInox={canImport} onClose={() => setImportOpen(false)} onDone={() => setReloadKey((k) => k + 1)} />
       )}
     </div>
   );

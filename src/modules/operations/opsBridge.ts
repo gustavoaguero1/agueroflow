@@ -31,6 +31,8 @@ import { db, storage } from '../../firebase';
 import { apiFetch } from '../../apiAuthFetch';
 import type { Unit, UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
+import { GAS_COLLECTIONS, planGasesWrites, type GasKind } from './gasesImport';
+export { detectGasesFile, GAS_LABELS, type GasKind } from './gasesImport';
 import { createPeopleSource } from './peopleSource';
 import { createObrasSource } from './obrasSource';
 import { syncDiarioToTimeLogs } from './diarioSync';
@@ -377,4 +379,24 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
   onProgress('Atualizando equipes de campo…');
   await syncAllRhEmployeesToFieldWorkers(orgId);
   return { registros: writes.length, anexos: urlMap.size, ...stat };
+}
+
+/** Importa os .json da Central de Controle de Gases (lançamentos, pendências, boletos). */
+export async function importGases(
+  orgId: string,
+  files: Array<{ kind: GasKind; rows: unknown[] }>,
+  onProgress: (msg: string) => void,
+): Promise<Record<GasKind, number>> {
+  const pendSnap = await getDocs(collection(db, `ops_orgs/${orgId}/${GAS_COLLECTIONS.pendencias}`));
+  const existing = new Map(pendSnap.docs.map((d) => [d.id, d.get('situacao')]));
+  const writes = planGasesWrites(orgId, files, existing);
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const w of writes.slice(i, i + 400)) batch.set(doc(db, w.path), stripUndefined(w.data), w.merge ? { merge: true } : {});
+    await batch.commit();
+    onProgress(`Gases: ${Math.min(i + 400, writes.length)} de ${writes.length}`);
+  }
+  const count = { lancamentos: 0, pendencias: 0, boletos: 0 } as Record<GasKind, number>;
+  for (const f of files) count[f.kind] += f.rows.length;
+  return count;
 }
