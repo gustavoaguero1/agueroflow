@@ -464,8 +464,8 @@ service cloud.firestore {
         let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
         let recordPath = /databases/$(database)/documents/quality_records/$(resource.data.get('recordId', ''));
         let recordData = get(recordPath).data;
-        let eventExists = existsAfter(eventPath);
-        let eventData = eventExists ? getAfter(eventPath).data : {};
+        let eventExists = exists(eventPath);
+        let eventData = eventExists ? get(eventPath).data : {};
         let currentStatus = resource.data.get('status', '');
         let eventType = eventData.get('eventType', '');
         let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
@@ -491,7 +491,7 @@ service cloud.firestore {
           && eventData.get('actorUid', '') == request.auth.uid
           && eventData.get('actorName', '') is string
           && eventData.get('actorName', '').size() > 0
-          && eventData.get('recordedAt', null) == request.time
+          && eventData.get('recordedAt', null) is timestamp
           && request.resource.data.get('status', '') == nextStatus
           && nextStatus != ''
           && (eventType in ['approved', 'rejected']
