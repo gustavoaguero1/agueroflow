@@ -24,6 +24,18 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
   }
 });
 
+test('salário da equipe de campo só com acesso ao RH', () => {
+  const block = /match \/field_worker_pay\/\{id\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
+  assert.match(block, /allow read: if resource == null \? signedIn\(\) : areaOk\(payOrg\(resource\.data\), A_RH\(\), 1\)/);
+  assert.match(block, /allow create: if areaOk\(payOrg\(request\.resource\.data\), A_RH\(\), 2\)/);
+});
+
+test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só por proposalId)', () => {
+  const block = /match \/commercial_proposal_items\/\{itemId\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
+  assert.match(block, /areaOk\(parentOrg\(resource\.data\), A_COM\(\), 1\)/);
+  assert.doesNotMatch(block, /itemOrg/);
+});
+
 test('acesso por área só muda pelo servidor', () => {
   assert.match(rules, /hasAny\(\['areaDefaults'\]\)/);
   assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'\]\)/);

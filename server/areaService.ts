@@ -49,11 +49,24 @@ export function createAreaService(store: AreaStore) {
       return { ok: true, data: { roleDefaults: ROLE_DEFAULTS, orgDefaults, members, canEdit: canEdit(u, orgId) } };
     },
 
-    async setOrgDefaults(u: AuthUser, orgId: string, raw: unknown): Promise<Result> {
+    async setOrgDefaults(u: AuthUser, orgId: string, raw: unknown): Promise<Result<{ refreshFailed: number }>> {
       if (!canEdit(u, orgId)) return fail(403, NO_EDIT);
-      await store.setOrgDefaults(orgId, sanitizeOrgDefaults(raw));
-      for (const m of await store.listMembers(orgId)) await store.refreshClaims(m.id);
-      return { ok: true, data: undefined };
+      const next = sanitizeOrgDefaults(raw);
+      // O padrão do perfil Admin só muda por um Admin (senão seria um atalho para mexer nos Admins).
+      if (!u.master && u.orgs?.[orgId] !== 'Admin') {
+        const current = sanitizeOrgDefaults(await store.getOrgDefaults(orgId));
+        if (current.Admin) next.Admin = current.Admin;
+        else delete next.Admin;
+      }
+      await store.setOrgDefaults(orgId, next);
+      // Renova todos em grupos; uma falha não impede os demais (quem falhar renova no próximo login).
+      const members = await store.listMembers(orgId);
+      let refreshFailed = 0;
+      for (let i = 0; i < members.length; i += 10) {
+        const r = await Promise.allSettled(members.slice(i, i + 10).map((m) => store.refreshClaims(m.id)));
+        refreshFailed += r.filter((x) => x.status === 'rejected').length;
+      }
+      return { ok: true, data: { refreshFailed } };
     },
 
     async setMemberOverrides(u: AuthUser, memberId: string, raw: unknown): Promise<Result> {

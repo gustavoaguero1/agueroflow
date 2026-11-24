@@ -26,6 +26,8 @@ import {
 
 import { calculateProgressiveInss } from './inss';
 import { toDirectoryEntry } from './rhDirectory';
+import { PAY_COLLECTION } from './fieldWorkerPay';
+import { saveFieldWorker } from './fieldWorkerPayStore';
 export * from './inss';
 
 /**
@@ -678,6 +680,11 @@ export async function syncRhEmployeeToFieldWorker(employee: RhEmployee): Promise
   const siteName = `Obra ${obraCode}`;
 
   const targetId = existingData?.id || fwId;
+  // Histórico de salário mora em field_worker_pay (só RH lê); field_workers antigos ainda podem tê-lo.
+  const existingPay = await getDoc(doc(db, PAY_COLLECTION, targetId))
+    .then((s) => (s.exists() ? (s.data() as Partial<FieldWorker>) : null))
+    .catch(() => null);
+  if (existingData && existingPay?.salaryHistory) existingData = { ...existingData, salaryHistory: existingPay.salaryHistory };
   const workerData: FieldWorker = {
     id: targetId,
     orgId: employee.orgId,
@@ -708,7 +715,7 @@ export async function syncRhEmployeeToFieldWorker(employee: RhEmployee): Promise
     updatedAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, 'field_workers', targetId), cleanFirestoreData(workerData));
+  await saveFieldWorker(cleanFirestoreData(workerData) as unknown as FieldWorker & Record<string, unknown>);
 }
 
 /**

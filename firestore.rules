@@ -132,6 +132,15 @@ service cloud.firestore {
         : (managerOnlyWrite() ? opsManager() && areaOk(orgId, A_OPS(), 2) : areaOk(orgId, A_OPS(), 2));
     }
 
+    // ---- Salário da equipe de campo (fora de field_workers, que toda a Operação lê) ----
+    match /field_worker_pay/{id} {
+      function payOrg(d) { return d.get('orgId', ''); }
+      allow read: if resource == null ? signedIn() : areaOk(payOrg(resource.data), A_RH(), 1);
+      allow create: if areaOk(payOrg(request.resource.data), A_RH(), 2);
+      allow update: if payOrg(request.resource.data) == payOrg(resource.data) && areaOk(payOrg(resource.data), A_RH(), 2);
+      allow delete: if areaOk(payOrg(resource.data), A_RH(), 2);
+    }
+
     // ---- Diretório de pessoas (sem salários; gravado pelo RH) -------------------
     // Operações vê quem é quem; aloca em obra mudando só obra/código.
     match /rh_directory/{id} {
@@ -254,12 +263,12 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
           && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
       }
-      function itemOrg(d) { return d.get('organizationId', '') != '' ? d.organizationId : parentOrg(d); }
+      // Área conferida pela empresa da proposta-mãe: a lista filtra só por proposalId.
       allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
-        && (resource == null || areaOk(itemOrg(resource.data), A_COM(), 1));
+        && (resource == null || areaOk(parentOrg(resource.data), A_COM(), 1));
       allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
-      allow update: if canUpdate() && matchesParent() && areaOk(itemOrg(resource.data), A_COM(), 2);
-      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(itemOrg(resource.data), A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && areaOk(parentOrg(resource.data), A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
     }
 
     // ---- WhatsApp bridge mirror ----------------------------------------------

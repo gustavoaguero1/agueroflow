@@ -125,7 +125,8 @@ export function AreaAccessPanel() {
       const r = await apiFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || 'Não foi possível salvar.');
-      setNotice(done);
+      const failed = Number(j.data?.refreshFailed) || 0;
+      setNotice(failed ? `${done} ${failed} pessoa(s) só recebem o novo acesso ao entrar de novo.` : done);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Não foi possível salvar.');

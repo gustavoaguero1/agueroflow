@@ -14,6 +14,17 @@ test('Operações lê pessoas do diretório, não do cadastro com salários', ()
   assert.doesNotMatch(diario, /'rh_employees'/);
 });
 
+test('importar o backup do Inox exige editar o RH (cria funcionários no RH)', () => {
+  const mod = src('src/modules/OperationsModule.tsx');
+  assert.match(mod, /const canImport = \(isMaster \|\| isManagerOrAbove\) && rhLevel === 2;/);
+});
+
+test('equipe de campo grava salário à parte', () => {
+  for (const f of ['src/components/construction/FieldPersonnelManager.tsx', 'src/components/construction/ExpandedWorkerFormModal.tsx', 'src/services/rhPayrollService.ts']) {
+    assert.doesNotMatch(src(f), /(setDoc|updateDoc)\(doc\(db, 'field_workers'/, f);
+  }
+});
+
 test('todo lugar que grava rh_employees também grava rh_directory', () => {
   const rh = src('src/services/rhPayrollService.ts');
   assert.match(rh, /doc\(db, 'rh_directory', employee\.id\)/);

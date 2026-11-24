@@ -1,7 +1,7 @@
 import test, { before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where } from 'firebase/firestore';
 import { encodeAreas, resolveAreas } from '../../src/permissions/areas.ts';
 
 // Acesso por área nas regras (ver src/permissions/areas.ts).
@@ -85,4 +85,23 @@ test('acesso por área só muda pelo servidor', async () => {
   await assertSucceeds(updateDoc(doc(admin, 'organizations/org_a'), { name: 'A2' }));
   await assertFails(updateDoc(doc(admin, 'org_members/m1'), { areaOverrides: { rh: 2 } }));
   await assertFails(updateDoc(doc(as('member_m1', 'Supervisor'), 'org_members/m1'), { areasUpdatedAt: 'x' }));
+});
+
+test('listas (como o app consulta) respeitam a área', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'field_worker_pay/fw1'), { orgId: 'org_a', baseSalary: 3000 });
+    await setDoc(doc(db, 'commercial_proposal_items/i1'), { organizationId: 'org_a', proposalId: 'p1' });
+  });
+  const op = as('member_op', 'Operacional');
+  const byOrg = (db: any, c: string) => getDocs(query(collection(db, c), where('orgId', '==', 'org_a')));
+  await assertSucceeds(byOrg(op, 'rh_directory'));
+  await assertFails(byOrg(as('member_s', 'Supervisor', withArea('Supervisor', { operacoes: 0 })), 'rh_directory'));
+  await assertFails(byOrg(op, 'rh_employees'));
+  await assertFails(byOrg(op, 'field_worker_pay'));
+  await assertSucceeds(byOrg(as('member_g', 'Gerente'), 'field_worker_pay'));
+  await assertFails(setDoc(doc(as('member_g', 'Gerente'), 'field_worker_pay/fw2'), { orgId: 'org_a', baseSalary: 1 }));
+  const items = (db: any) => getDocs(query(collection(db, 'commercial_proposal_items'), where('proposalId', '==', 'p1')));
+  await assertSucceeds(items(as('member_a', 'Admin')));
+  await assertFails(items(op));
 });

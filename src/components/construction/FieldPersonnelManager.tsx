@@ -10,6 +10,9 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { mergeWorkerPay } from '../../services/fieldWorkerPay';
+import { saveFieldWorker, subscribeWorkerPay } from '../../services/fieldWorkerPayStore';
 import {
   FieldWorker,
   WorkShift,
@@ -153,9 +156,11 @@ export function getCertificationAlertStatus(cert: NRRegulatoryCertification): Ce
 
 export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
   organizationId,
-  canViewFinancials = true,
+  canViewFinancials: canViewFinancialsProp = true,
 }) => {
-  const [workers, setWorkers] = useState<FieldWorker[]>([]);
+  const [rawWorkers, setWorkers] = useState<FieldWorker[]>([]);
+  const [pay, setPay] = useState<Map<string, { baseSalary?: number; salaryHistory?: unknown[] }>>(new Map());
+  const workers = useMemo(() => mergeWorkerPay(rawWorkers, pay) as FieldWorker[], [rawWorkers, pay]);
   const [shifts, setShifts] = useState<WorkShift[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('todos');
@@ -203,17 +208,27 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
   const [isSyncingRh, setIsSyncingRh] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
+  // Salário: só quem tem acesso ao RH vê (field_worker_pay); só quem edita o RH grava.
+  const { areaLevel } = useAuth();
+  const canSeePay = areaLevel('rh') >= 1;
+  const canEditPay = areaLevel('rh') === 2;
+  const canViewFinancials = canViewFinancialsProp && canSeePay;
+
   // Sincronização automática na montagem para assegurar que novos colaboradores do RH apareçam no Módulo 13
   useEffect(() => {
-    if (!organizationId) return;
+    if (!organizationId || !canEditPay) return;
     syncAllRhEmployeesToFieldWorkers(organizationId).catch((err) => {
       console.warn('Erro ao sincronizar colaboradores do RH para o Módulo 13:', err);
     });
-  }, [organizationId]);
+  }, [organizationId, canEditPay]);
 
   // Sincronização sob demanda via botão
   const handleSyncFromRh = async () => {
     if (!organizationId) return;
+    if (!canEditPay) {
+      setSyncFeedback('Trazer pessoas do RH precisa de acesso de edição ao RH.');
+      return;
+    }
     setIsSyncingRh(true);
     setSyncFeedback(null);
     try {
@@ -240,6 +255,8 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
       setWorkers(list);
     });
 
+    const unsubPay = canSeePay ? subscribeWorkerPay(organizationId, setPay) : () => setPay(new Map());
+
     const qS = query(collection(db, 'work_shifts'), where('orgId', '==', organizationId));
     const unsubS = onSnapshot(qS, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkShift));
@@ -249,8 +266,9 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
     return () => {
       unsubW();
       unsubS();
+      unsubPay();
     };
-  }, [organizationId]);
+  }, [organizationId, canSeePay]);
 
   // Open Create Modal - everything blank for typing
   const handleOpenCreate = () => {
@@ -429,7 +447,8 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
 
     try {
       const salaryNum = parseFloat(formBaseSalary) || 0;
-      const hourlyCalculated = Number((salaryNum / 220).toFixed(2));
+      // Sem editar o RH o salário não aparece (vem 0): mantém o valor hora que já existia.
+      const hourlyCalculated = canEditPay && salaryNum > 0 ? Number((salaryNum / 220).toFixed(2)) : editingWorker?.hourlyRate || 0;
 
       // Build readable string array for legacy backward compatibility
       const certsArray = formNrCertifications.map(
@@ -463,7 +482,9 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
           ];
         }
 
-        await updateDoc(doc(db, 'field_workers', editingWorker.id), {
+        await saveFieldWorker({
+          id: editingWorker.id,
+          orgId: organizationId,
           name: formName.trim(),
           cpf: formCpf.trim(),
           role: formRole.trim(),
@@ -479,7 +500,7 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
           nrCertifications: formNrCertifications,
           salaryHistory: history,
           updatedAt: new Date().toISOString(),
-        });
+        }, 'update');
       } else {
         const id = `w_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         const newWorker: FieldWorker = {
@@ -511,7 +532,7 @@ export const FieldPersonnelManager: React.FC<FieldPersonnelManagerProps> = ({
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        await setDoc(doc(db, 'field_workers', id), newWorker);
+        await saveFieldWorker(newWorker as FieldWorker & Record<string, unknown>);
       }
 
       setShowModal(false);

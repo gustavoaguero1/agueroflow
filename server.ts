@@ -81,6 +81,7 @@ import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, s
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
+import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
@@ -12553,6 +12554,13 @@ Identifique 4 oportunidades práticas e acionáveis de melhoria para os próximo
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 AgueroFlow Server rodando na porta ${PORT} [${isProduction ? 'PROD' : 'DEV'}]`);
     startNfeSyncScheduler();
+    // Acesso por área: completa o diretório de pessoas e tira salários de field_workers (dados antigos).
+    const migrationAdmin = getAdmin();
+    if (migrationAdmin) {
+      runAccessMigration(migrationAdmin)
+        .then((n) => { if (n) console.log(`[acesso] ${n} ajuste(s) de dados antigos aplicados`); })
+        .catch((e) => console.error('[acesso] ajuste de dados antigos falhou:', e));
+    }
     // Reembolsos: weekly summary to the owner on Monday from 08:00 (São Paulo), once per week.
     const reembolsoMarker = path.join(__dirname, 'data_reembolso_resumo_enviado.json');
     const reembolsoSkipLogged = new Set<string>();

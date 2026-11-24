@@ -61,6 +61,32 @@ test('quem não é Admin não mexe no acesso de um Admin', async () => {
   assert.equal((await svc.setMemberOverrides(admin('a'), 'm1', { rh: 1 })).ok, true);
 });
 
+test('quem não é Admin não muda o padrão do perfil Admin', async () => {
+  const s = memStore([{ id: 'm1', orgId: 'a', role: 'Admin', userName: 'Dono', active: true }]);
+  const svc = createAreaService(s.store);
+  const editor = { uid: 'x', master: false, orgs: { a: 'Gerente' }, areas: { a: encodeAreas({ ...resolveAreas('Gerente'), configuracoes: 2 }) } } as never;
+  const r = await svc.setOrgDefaults(editor, 'a', { Admin: { rh: 0 }, Supervisor: { rh: 1 } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(s.orgs.a, { Supervisor: { rh: 1 } }); // Admin mantido como estava
+  s.orgs.a = { Admin: { financeiro: 1 } };
+  await svc.setOrgDefaults(editor, 'a', { Supervisor: { rh: 1 } });
+  assert.deepEqual(s.orgs.a, { Admin: { financeiro: 1 }, Supervisor: { rh: 1 } });
+});
+
+test('renovar o login de todos: uma falha não para os outros e é informada', async () => {
+  const s = memStore([
+    { id: 'm1', orgId: 'a', role: 'Supervisor', userName: 'Ana', active: true },
+    { id: 'm2', orgId: 'a', role: 'Operacional', userName: 'Bia', active: true },
+    { id: 'm3', orgId: 'a', role: 'Operacional', userName: 'Cid', active: true },
+  ]);
+  const base = s.store.refreshClaims;
+  s.store.refreshClaims = async (id) => { if (id === 'm2') throw new Error('x'); await base(id); };
+  const r = await createAreaService(s.store).setOrgDefaults(admin('a'), 'a', {});
+  assert.equal(r.ok, true);
+  assert.deepEqual(s.refreshed.sort(), ['m1', 'm3']);
+  if (r.ok) assert.deepEqual(r.data, { refreshFailed: 1 });
+});
+
 test('pessoa inexistente: erro claro, nada gravado', async () => {
   const s = memStore([]);
   const r = await createAreaService(s.store).setMemberOverrides(admin('a'), 'zz', { rh: 1 });

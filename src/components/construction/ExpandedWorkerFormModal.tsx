@@ -5,6 +5,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { saveFieldWorker } from '../../services/fieldWorkerPayStore';
 import {
   FieldWorker,
   WorkShift,
@@ -120,6 +122,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
   shifts = [],
   onSaved,
 }) => {
+  const { areaLevel } = useAuth();
   // Form fields strictly empty for direct user typing
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
@@ -422,7 +425,9 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
 
     try {
       const salaryNum = parseFloat(baseSalary) || 0;
-      const hourlyCalculated = Number((salaryNum / 220).toFixed(2));
+      // Sem editar o RH o salário não aparece (vem 0): mantém o valor hora que já existia.
+      const canEditPay = areaLevel('rh') === 2;
+      const hourlyCalculated = canEditPay && salaryNum > 0 ? Number((salaryNum / 220).toFixed(2)) : editingWorker?.hourlyRate || 0;
       const shiftObj = shifts.find((s) => s.id === shiftId);
 
       const legacyCerts = nrCertifications.map(
@@ -456,7 +461,9 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
           ];
         }
 
-        await updateDoc(doc(db, 'field_workers', editingWorker.id), {
+        await saveFieldWorker({
+          id: editingWorker.id,
+          orgId: editingWorker.orgId,
           name: name.trim(),
           cpf: cpf.trim(),
           whatsapp: whatsapp.trim(),
@@ -473,7 +480,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
           nrCertifications,
           salaryHistory: history,
           updatedAt: new Date().toISOString(),
-        });
+        }, 'update');
       } else {
         workerId = `w_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
         const newWorker: FieldWorker = {
@@ -506,7 +513,7 @@ export const ExpandedWorkerFormModal: React.FC<ExpandedWorkerFormModalProps> = (
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        await setDoc(doc(db, 'field_workers', workerId), newWorker);
+        await saveFieldWorker(newWorker as FieldWorker & Record<string, unknown>);
       }
 
       if (onSaved && workerId) {

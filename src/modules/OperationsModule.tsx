@@ -38,7 +38,7 @@ export const OperationsModule: React.FC<{
   const frame = useRef<HTMLIFrameElement>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const canImport = isMaster || isManagerOrAbove;
+  const canImport = (isMaster || isManagerOrAbove) && rhLevel === 2;
   const orgId = organization?.id || '';
 
   const bridge = useMemo(() => {
