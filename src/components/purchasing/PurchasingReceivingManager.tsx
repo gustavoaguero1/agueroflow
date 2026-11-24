@@ -342,7 +342,12 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
             </div>
 
             <form onSubmit={handleSubmitReceipt} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {formError && (
+                <div className="rounded-lg border border-rose-800 bg-rose-950/50 px-3 py-2 text-xs text-rose-200">
+                  {formError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Ordem de Compra (OC) *
@@ -377,6 +382,21 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Chave de Acesso da NF-e (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={44}
+                    value={invoiceKey}
+                    onChange={(e) => setInvoiceKey(e.target.value.replace(/\\D/g, '').slice(0, 44))}
+                    placeholder="44 dígitos"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Data do Recebimento Físico
                   </label>
                   <input
@@ -392,102 +412,146 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
               {/* Items Verification Table */}
               {selectedOrder && (
                 <div className="border border-slate-800 rounded-xl overflow-hidden">
-                  <div className="bg-slate-950 px-4 py-2 text-xs font-bold text-slate-300 flex justify-between">
+                  <div className="bg-slate-950 px-4 py-2 text-xs font-bold text-slate-300 flex flex-wrap justify-between gap-2">
                     <span>CONFERÊNCIA DOS ITENS</span>
                     <span className="text-slate-400">
                       Fornecedor: {selectedOrder.supplierName}
                     </span>
                   </div>
 
-                  <div className="divide-y divide-slate-800 max-h-60 overflow-y-auto">
+                  <div className="border-b border-slate-800 bg-slate-900/80 p-3">
+                    <label className="text-[10px] text-cyan-300 font-semibold block mb-1">
+                      Unidade / Almoxarifado de destino do estoque
+                    </label>
+                    <select
+                      value={stockUnitId}
+                      onChange={(e) => setStockUnitId(e.target.value)}
+                      disabled={inventoryLoading || units.length === 0}
+                      className="w-full max-w-xl bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white"
+                    >
+                      <option value="">Selecione a unidade de destino...</option>
+                      {units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.name} {unit.code ? `(${unit.code})` : ''}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      O saldo será atualizado somente para linhas aprovadas, marcadas como estocáveis e vinculadas a um material ativo do catálogo.
+                    </p>
+                    {inventoryLoading && <p className="text-[10px] text-slate-400 mt-1">Carregando catálogo e unidades...</p>}
+                    {!inventoryLoading && units.length === 0 && <p className="text-[10px] text-amber-300 mt-1">Cadastre uma unidade antes de lançar materiais no estoque.</p>}
+                  </div>
+
+                  <div className="divide-y divide-slate-800 max-h-[32rem] overflow-y-auto">
                     {selectedOrder.items.map((it) => {
                       const state = itemReceiptState[it.id] || {
                         quantity: 0,
                         heatNumber: '',
                         isConform: true,
                         notes: '',
+                        stockDisposition: 'estoque' as const,
+                        catalogItemId: '',
                       };
+                      const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
 
                       return (
-                        <div key={it.id} className="p-3 bg-slate-900/70 space-y-2">
-                          <div className="flex justify-between items-start text-xs">
+                        <div key={it.id} className="p-3 bg-slate-900/70 space-y-3">
+                          <div className="flex justify-between items-start text-xs gap-3">
                             <div>
                               <span className="font-semibold text-white">{it.description}</span>
                               <div className="text-[11px] text-slate-400">
-                                Pedido: {it.quantityOrdered} {it.unit} • Já Recebido:{' '}
-                                {it.quantityReceived || 0} {it.unit}
+                                Pedido: {it.quantityOrdered} {it.unit} • Já recebido: {it.quantityReceived || 0} {it.unit} • Pendente: {remaining} {it.unit} • Custo unit.: {Number(it.unitPrice || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               </div>
                             </div>
+                            {remaining <= 0 && <span className="shrink-0 text-[10px] text-emerald-300">Quantidade completa</span>}
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
                             <div>
                               <label className="text-[10px] text-slate-400 block mb-0.5">
-                                Qtd Entregue Nesta NF-e ({it.unit})
+                                Quantidade física recebida ({it.unit})
                               </label>
                               <input
                                 type="number"
+                                min="0"
+                                max={remaining}
                                 step="any"
                                 value={state.quantity}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      quantity: Number(e.target.value),
-                                    },
-                                  })
-                                }
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-mono"
-                                required
+                                onChange={(e) => updateReceiptLine(it.id, { quantity: e.target.value === '' ? 0 : Number(e.target.value) })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white font-mono"
                               />
                             </div>
 
                             <div>
                               <label className="text-[10px] text-cyan-400 font-semibold block mb-0.5">
-                                Nº de Corrida Metalúrgica (Heat No.)
+                                Corrida metalúrgica (Heat No.)
                               </label>
                               <input
                                 type="text"
                                 value={state.heatNumber}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      heatNumber: e.target.value,
-                                    },
-                                  })
-                                }
-                                placeholder="Ex: C-98240-B"
-                                className="w-full bg-slate-950 border border-cyan-800/60 rounded-lg px-2.5 py-1 text-white font-mono"
+                                onChange={(e) => updateReceiptLine(it.id, { heatNumber: e.target.value })}
+                                placeholder="Ex.: C-98240-B"
+                                className="w-full bg-slate-950 border border-cyan-800/60 rounded-lg px-2.5 py-2 text-white font-mono"
                               />
                             </div>
 
-                            <div className="flex items-center gap-2 pt-3">
-                              <input
-                                type="checkbox"
-                                id={`conform_${it.id}`}
-                                checked={state.isConform}
-                                onChange={(e) =>
-                                  setItemReceiptState({
-                                    ...itemReceiptState,
-                                    [it.id]: {
-                                      ...state,
-                                      isConform: e.target.checked,
-                                    },
-                                  })
-                                }
-                                className="rounded accent-emerald-500"
-                              />
-                              <label
-                                htmlFor={`conform_${it.id}`}
-                                className="text-xs text-slate-300 font-medium"
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-0.5">Destino da quantidade</label>
+                              <select
+                                value={state.stockDisposition}
+                                onChange={(e) => updateReceiptLine(it.id, { stockDisposition: e.target.value as ItemReceiptFormState['stockDisposition'] })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-white"
                               >
-                                Dimensional Conforme
+                                <option value="estoque">Material para estoque</option>
+                                <option value="nao_estocavel">Serviço / consumo direto / não estocável</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-end">
+                              <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 w-full">
+                                <input
+                                  type="checkbox"
+                                  checked={state.isConform}
+                                  onChange={(e) => updateReceiptLine(it.id, { isConform: e.target.checked })}
+                                  className="rounded accent-emerald-500"
+                                />
+                                <span className="text-xs text-slate-300 font-medium">Qualidade aprovada</span>
                               </label>
                             </div>
                           </div>
+
+                          {state.stockDisposition === 'estoque' && (
+                            <div>
+                              <label className="text-[10px] text-cyan-300 font-semibold block mb-0.5">
+                                Vincular ao item do catálogo (obrigatório para entrada em estoque)
+                              </label>
+                              <select
+                                value={state.catalogItemId}
+                                onChange={(e) => updateReceiptLine(it.id, { catalogItemId: e.target.value })}
+                                disabled={inventoryLoading}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-white"
+                              >
+                                <option value="">Selecione o material no catálogo...</option>
+                                {catalogItems.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.sku} — {item.name} ({item.unitOfMeasure})</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {!state.isConform && (
+                            <div>
+                              <label className="text-[10px] text-rose-300 font-semibold block mb-0.5">
+                                Motivo da não conformidade (obrigatório)
+                              </label>
+                              <input
+                                type="text"
+                                value={state.notes}
+                                onChange={(e) => updateReceiptLine(it.id, { notes: e.target.value })}
+                                placeholder="Descreva a divergência dimensional, especificação ou documentação..."
+                                className="w-full bg-slate-950 border border-rose-800/60 rounded-lg px-2.5 py-2 text-xs text-white"
+                              />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
