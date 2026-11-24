@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
-import { CheckCircle2, Plus, Wallet, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Plus, Wallet, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { brl, payableKpis } from '../../services/financeService';
 import type { FinanceCategory, FinancePayable, FinancePayableAuthorization, FinancePayableAuthorizationDifference, FinancePayableSettlement, FinancePaymentMethod } from '../../types/finance';
 import { createFinancePayableSettlement } from '../../services/financePayableSettlementService';
+import { BankReconciliationView } from './BankReconciliationView';
 import { financePayableBalance, getFinancePayableAuthorizationDifferences } from '../../services/financePayableSettlementRules';
 import { btnGhost, btnPrimary, card, fmtDate, input, label, msgErr, today } from './ui';
 
@@ -33,6 +34,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
+  const [activeView, setActiveView] = useState<'payables' | 'bank'>('payables');
 
   useEffect(() => {
     const stopPayables = onSnapshot(
@@ -142,6 +144,11 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
         )}
       </div>
 
+      <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-1">
+        <button type="button" onClick={() => setActiveView('payables')} className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${activeView === 'payables' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}>Contas a pagar</button>
+        <button type="button" onClick={() => setActiveView('bank')} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${activeView === 'bank' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}><ArrowLeftRight className="h-3.5 w-3.5" />Conciliação bancária</button>
+      </div>
+      {activeView === 'bank' ? <BankReconciliationView orgId={orgId} /> : <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpiCards.map((c) => (
           <div key={c.l} className={card} data-testid="kpi">
@@ -339,6 +346,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
         );
       })()}
 
+      </>}
     </div>
   );
 };
