@@ -268,7 +268,7 @@ export const ConstructionModule: React.FC = () => {
 
     const fieldRecords = prepareRdoFieldRecords(rdoWorkforceDrafts, rdoEquipmentDrafts);
     if (!fieldRecords.valid) {
-      alert(fieldRecords.errors.join('\\n'));
+      alert(fieldRecords.errors.join('\n'));
       return;
     }
 
