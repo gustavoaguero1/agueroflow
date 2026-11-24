@@ -742,9 +742,14 @@ export interface ConstructionMilestone {
   weightPercentage: number;
   completedPercentage: number;
   status: 'nao_iniciado' | 'em_andamento' | 'concluido';
+  plannedStartDate?: string;
   targetDate?: string;
+  actualStartDate?: string;
   completedDate?: string;
+  responsibleName?: string;
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SupportTicket {
