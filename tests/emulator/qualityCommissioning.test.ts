@@ -120,8 +120,6 @@ test('Operations editor creates an inspection and its initial review event atomi
   batch.set(doc(db, 'quality_records', recordId), validQualityRecord('inspector_1', {
     engineeringDocumentId: 'eng_org_a_ISO-101_A',
     engineeringDocumentCode: 'ISO-101 Rev. A',
-    checklistRunId: 'run_a',
-    checklistTitle: 'Checklist de montagem',
   }));
   batch.set(doc(db, 'quality_record_events/event_initial'), validQualityEvent('inspector_1'));
   await assertSucceeds(batch.commit());
@@ -130,6 +128,32 @@ test('Operations editor creates an inspection and its initial review event atomi
   assert.equal(saved.data()?.recordCode, 'QLD-2026-ABC12345');
   const event = await assertSucceeds(getDoc(doc(db, 'quality_record_events/event_initial')));
   assert.equal(event.data()?.eventType, 'submitted_for_review');
+});
+
+test('quality records can link an existing checklist run when no engineering document is selected', async () => {
+  await seedReferences();
+  const db = dbFor('inspector_checklist', 'Operacional');
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'quality_records', recordId), validQualityRecord('inspector_checklist', {
+    checklistRunId: 'run_a',
+    checklistTitle: 'Checklist de montagem',
+  }));
+  batch.set(doc(db, 'quality_record_events/event_checklist'), validQualityEvent('inspector_checklist'));
+  await assertSucceeds(batch.commit());
+});
+
+test('quality records reject simultaneous engineering-document and checklist links', async () => {
+  await seedReferences();
+  const db = dbFor('inspector_both', 'Operacional');
+  await assertFails(setDoc(
+    doc(db, 'quality_records', recordId),
+    validQualityRecord('inspector_both', {
+      engineeringDocumentId: 'eng_org_a_ISO-101_A',
+      engineeringDocumentCode: 'ISO-101 Rev. A',
+      checklistRunId: 'run_a',
+      checklistTitle: 'Checklist de montagem',
+    }),
+  ));
 });
 
 test('Operations Viewer can read quality records but cannot create records or events', async () => {
