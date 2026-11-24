@@ -245,7 +245,7 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
     setBusyPayableId(payable.id);
     setActionMessage(null);
     try {
-      const id = await createFinancePayableAuthorization(db, {
+      const id = await createFinancePayableAuthorization({
         orgId,
         caseId: item.id,
         payableId: payable.id,
