@@ -47,6 +47,60 @@ export interface FinancePayable {
   createdBy: string;
 }
 
+export type FinanceReconciliationCaseStatus = 'aberta' | 'em_analise' | 'aprovada' | 'rejeitada';
+export type FinanceReconciliationIssueType =
+  | 'divergencia_valor_produtos'
+  | 'divergencia_preco_unitario'
+  | 'quantidade_faturada_acima'
+  | 'quantidade_recebida_sem_nf'
+  | 'qualidade_pendente'
+  | 'item_sem_vinculo'
+  | 'xml_ausente'
+  | 'outra';
+
+export interface FinanceReconciliationCaseSnapshot {
+  reconciliationStatus: string;
+  orderSubtotal: number;
+  orderTotal: number;
+  invoiceProductsValue: number;
+  invoiceTotalValue: number;
+  orderValueForInvoicedQuantity: number;
+  productValueDelta: number;
+  orderedQuantity: number;
+  invoicedQuantity: number;
+  physicalQuantity: number;
+  acceptedQuantity: number;
+  stockQuantity: number;
+  invoiceNumbers: string[];
+  receiptIds: string[];
+  sourceIssues: string[];
+}
+
+export interface FinanceReconciliationCase {
+  id: string;
+  orgId: string;
+  purchaseOrderId: string;
+  purchaseOrderCode: string;
+  supplierName: string;
+  supplierCnpj: string;
+  workOrderId?: string;
+  workOrderNumber?: string;
+  issueType: FinanceReconciliationIssueType;
+  issueTitle: string;
+  description: string;
+  evidenceReference?: string;
+  snapshot: FinanceReconciliationCaseSnapshot;
+  status: FinanceReconciliationCaseStatus;
+  createdBy: string;
+  createdByName: string;
+  createdAt: unknown;
+  updatedAt: unknown;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: unknown;
+  resolutionNotes?: string;
+}
+
 export interface NfeItem {
   n: number;
   codigo: string;
