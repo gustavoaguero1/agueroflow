@@ -70,8 +70,11 @@ export function prepareRdoFieldRecords(
         const hoursAtZero = parseFiniteNumber(draft.hours);
         if (hoursAtZero !== 0) {
           errors.push(`A quantidade de ${draft.role} é zero; não informe horas sem profissionais.`);
+          continue;
         }
       }
+      // An explicit zero is recorded; a completely blank row remains "not informed".
+      workforce.push({ role: draft.role.trim(), count: 0, hours: 0 });
       continue;
     }
 
