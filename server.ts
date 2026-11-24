@@ -81,6 +81,7 @@ import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, s
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
+import { createFinancePayableAuthorizationRouter } from './server/financePayableAuthorizationRoutes';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -562,6 +563,7 @@ async function main() {
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
   app.use('/api/org', createAreaRouter());
+  app.use('/api/finance/payable-authorizations', createFinancePayableAuthorizationRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.

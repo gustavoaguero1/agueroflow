@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   financePayableAuthorizationId,
   validateFinancePayableAuthorizationEligibility,
-} from '../src/services/financePayableAuthorizationService.ts';
+} from '../src/services/financePayableAuthorizationRules.ts';
 import type { FinancePayable, FinanceReconciliationCase } from '../src/types/finance';
 
 const reconciliationCase: FinanceReconciliationCase = {

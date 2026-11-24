@@ -21,8 +21,8 @@ import {
   buildFinanceReconciliationCaseSnapshot,
   createFinanceReconciliationCase,
   transitionFinanceReconciliationCase,
+  createFinancePayableAuthorization,
 } from '../../services/financeReconciliationCases';
-import { createFinancePayableAuthorization } from '../../services/financePayableAuthorizationService';
 import { brl } from '../../services/financeService';
 import { card, msgErr, msgOk } from './ui';
 
@@ -249,7 +249,6 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
         orgId,
         caseId: item.id,
         payableId: payable.id,
-        actor: { uid: user.uid, name: member?.userName || user.displayName || user.email || 'Gerente' },
       });
       await logAudit(
         'Financeiro',

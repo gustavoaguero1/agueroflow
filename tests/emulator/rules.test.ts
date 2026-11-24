@@ -1,5 +1,4 @@
 import test, { before, after, beforeEach } from 'node:test';
-import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment,
@@ -478,8 +477,9 @@ test('finance_payable_authorizations: only Admin/Gerente can create one per appr
     await setDoc(doc(db, payablePath), payable);
   });
 
+  await assertFails(setDoc(doc(gerente(), authPath), authorization)); // browsers cannot write this collection
+  await seedAs((db) => setDoc(doc(db, authPath), authorization)); // backend Admin SDK is the only writer
   await assertSucceeds(getDoc(doc(member(), authPath)));
-  await assertSucceeds(setDoc(doc(gerente(), authPath), authorization));
   await assertSucceeds(getDocs(query(collection(member(), 'finance_payable_authorizations'), where('orgId', '==', 'org_a'))));
   assert.equal((await getDoc(doc(gerente(), payablePath))).data()?.status, 'aberto', 'authorization must not mark the title as paid');
   await assertFails(setDoc(doc(gerente(), authPath), authorization)); // deterministic duplicate -> update denied
