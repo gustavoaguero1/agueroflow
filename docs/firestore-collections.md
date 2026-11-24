@@ -37,6 +37,7 @@ Owner kinds:
 | counters | orgId | getDoc | `{orgId}_work_orders` sequence for OS numbers (written in a transaction by `markProposalWon`) |
 | field_workers | orgId | `orgId ==` | |
 | finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
+| finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller; Admin/Gerente update; Supervisor only aberto→pago (`status`/`pagoEm`/`pagoPor`/`updatedAt`); NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent); titles preserve OC, OS and receipt references when linked |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |

@@ -359,6 +359,81 @@ test('finance_payables: createdBy is the caller; Supervisor only settles aberto 
   await assertSucceeds(deleteDoc(doc(admin(), `${c}/pay_org_a_n`)));
 });
 
+
+test('finance_reconciliation_cases: org-scoped, created by actor, manager-only decisions with justification, append-only', async () => {
+  const path = 'finance_reconciliation_cases';
+  const caseId = path + '/rcase_org_a_case1';
+  const record = (uid: string, id = 'rcase_org_a_case1') => ({
+    id,
+    orgId: 'org_a',
+    purchaseOrderId: 'po_a',
+    purchaseOrderCode: 'OC-2026-001',
+    supplierName: 'Fornecedor A',
+    supplierCnpj: '11111111000111',
+    issueType: 'divergencia_valor_produtos',
+    issueTitle: 'Diferença no valor dos produtos',
+    description: 'A NF-e está acima do valor da OC e exige conferência.',
+    snapshot: { productValueDelta: 800, sourceIssues: ['Valor divergente'] },
+    status: 'aberta',
+    createdBy: uid,
+    createdByName: 'Responsável',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await seedAs((db) => setDoc(doc(db, caseId), record('member_m_sup', 'rcase_org_a_case1')));
+  await seedAs((db) => setDoc(doc(db, path + '/rcase_org_b_other'), { ...record('other', 'rcase_org_b_other'), orgId: 'org_b' }));
+  await assertSucceeds(getDoc(doc(member(), caseId)));
+  await assertSucceeds(getDocs(query(collection(member(), path), where('orgId', '==', 'org_a'))));
+  await assertFails(getDoc(doc(member(), path + '/rcase_org_b_other')));
+  await assertFails(getDocs(query(collection(member(), path), where('orgId', '==', 'org_b'))));
+
+  await assertFails(setDoc(doc(member(), path + '/rcase_org_a_viewer'), record('member_m_op', 'rcase_org_a_viewer')));
+  await assertFails(setDoc(doc(supervisor(), path + '/rcase_org_b_squat'), record('member_m_sup', 'rcase_org_b_squat')));
+  await assertFails(setDoc(doc(supervisor(), path + '/rcase_org_a_spoof'), record('someone', 'rcase_org_a_spoof')));
+  await assertFails(setDoc(doc(supervisor(), path + '/rcase_org_a_mismatch'), record('member_m_sup', 'rcase_org_a_other')));
+  await assertSucceeds(setDoc(doc(supervisor(), path + '/rcase_org_a_valid'), record('member_m_sup', 'rcase_org_a_valid')));
+
+  await assertFails(updateDoc(doc(supervisor(), caseId), {
+    status: 'em_analise', reviewedBy: 'member_m_sup', reviewedByName: 'Supervisor',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(doc(gerente(), caseId), {
+    status: 'aprovada', reviewedBy: 'member_m_ger', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(), resolutionNotes: 'Aprovado.',
+  }));
+  await assertSucceeds(updateDoc(doc(gerente(), caseId), {
+    status: 'em_analise', reviewedBy: 'member_m_ger', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(doc(gerente(), caseId), {
+    status: 'aprovada', reviewedBy: 'someone', reviewedByName: 'Outro',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(), resolutionNotes: 'Aprovado.',
+  }));
+  await assertFails(updateDoc(doc(gerente(), caseId), {
+    status: 'aprovada', reviewedBy: 'member_m_ger', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(), resolutionNotes: 'x',
+  }));
+  await assertFails(updateDoc(doc(gerente(), caseId), {
+    status: 'aprovada', purchaseOrderId: 'po_other', reviewedBy: 'member_m_ger',
+    reviewedByName: 'Gerente', reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    resolutionNotes: 'Conferido e autorizado.',
+  }));
+  await assertSucceeds(updateDoc(doc(gerente(), caseId), {
+    status: 'aprovada', reviewedBy: 'member_m_ger', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(), resolutionNotes: 'Conferido com o fornecedor e autorizado.',
+  }));
+  await assertFails(updateDoc(doc(gerente(), caseId), {
+    status: 'aberta', reviewedBy: 'member_m_ger', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }));
+  await assertFails(deleteDoc(doc(admin(), caseId)));
+  await assertFails(updateDoc(doc(as('g', { org_b: 'Gerente' }), caseId), {
+    status: 'rejeitada', reviewedBy: 'g', reviewedByName: 'Gerente',
+    reviewedAt: serverTimestamp(), updatedAt: serverTimestamp(), resolutionNotes: 'Não autorizado.',
+  }));
+});
+
 test('nfe_documents: read by members, server-only create/delete, guarded status transitions', async () => {
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_a_1'), { orgId: 'org_a', status: 'aguardando_classificacao', valorTotal: 10 }));
   await seedAs((db) => setDoc(doc(db, 'nfe_documents/org_b_1'), { orgId: 'org_b', status: 'aguardando_classificacao' }));
