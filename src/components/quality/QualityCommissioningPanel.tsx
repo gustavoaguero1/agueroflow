@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   where,
   writeBatch,
   runTransaction,
@@ -448,25 +450,43 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     setBusyRecordId(record.id);
     setSuccess('');
     try {
+      const initialStateSnapshot = await getDoc(stateRef);
+      if (!initialStateSnapshot.exists()) {
+        throw new Error('O estado atual do registro não foi localizado. Atualize a tela e tente novamente.');
+      }
+      const initialState = initialStateSnapshot.data() as QualityRecordState;
+      const expectedStatus = getQualityNextStatus(initialState.status, eventType);
+      if (!expectedStatus) {
+        throw new Error('Esta movimentação não é permitida a partir do estado atual do registro.');
+      }
+
+      // Persist the immutable event first. It is inactive until the state transaction points to it.
+      const eventRef = doc(collection(db, 'quality_record_events'));
+      await setDoc(eventRef, {
+        orgId: organizationId,
+        unitId: record.unitId,
+        contractId: record.contractId,
+        recordId: record.id,
+        previousEventId: initialState.latestEventId,
+        eventType,
+        actorUid: currentUser.uid,
+        actorName,
+        recordedAt: serverTimestamp(),
+        ...(comment.trim() ? { comment: comment.trim().slice(0, 1500) } : {}),
+      });
+
+      // Advance only if no other user changed the state after this event captured its previousEventId.
       await runTransaction(db, async (transaction) => {
-        const stateSnapshot = await transaction.get(stateRef);
-        if (!stateSnapshot.exists()) throw new Error('O estado atual do registro não foi localizado. Atualize a tela e tente novamente.');
-        const currentState = stateSnapshot.data() as QualityRecordState;
-        const nextStatus = getQualityNextStatus(currentState.status, eventType);
-        if (!nextStatus) throw new Error('Esta movimentação não é permitida a partir do estado atual do registro.');
-        const eventRef = doc(collection(db, 'quality_record_events'));
-        transaction.set(eventRef, {
-          orgId: organizationId,
-          unitId: record.unitId,
-          contractId: record.contractId,
-          recordId: record.id,
-          previousEventId: currentState.latestEventId,
-          eventType,
-          actorUid: currentUser.uid,
-          actorName,
-          recordedAt: serverTimestamp(),
-          ...(comment.trim() ? { comment: comment.trim().slice(0, 1500) } : {}),
-        });
+        const freshSnapshot = await transaction.get(stateRef);
+        if (!freshSnapshot.exists()) throw new Error('O estado do registro não foi localizado.');
+        const freshState = freshSnapshot.data() as QualityRecordState;
+        if (freshState.latestEventId !== initialState.latestEventId) {
+          throw new Error('Outro usuário movimentou este registro. Atualize a tela e tente novamente.');
+        }
+        const nextStatus = getQualityNextStatus(freshState.status, eventType);
+        if (!nextStatus || nextStatus !== expectedStatus) {
+          throw new Error('A movimentação não é mais válida para o estado atual.');
+        }
         transaction.update(stateRef, {
           status: nextStatus,
           latestEventId: eventRef.id,
