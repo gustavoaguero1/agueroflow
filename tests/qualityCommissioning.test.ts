@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getQualityNextStatus,
   getQualityRecordStatus,
+  qualityInitialStatus,
   localQualityDate,
   qualityEventLabel,
   qualityInitialEvent,
@@ -22,7 +24,7 @@ const inspection: QualityRecordInput = {
 
 test('validates the minimum data for an industrial inspection', () => {
   assert.deepEqual(validateQualityRecordInput(inspection), []);
-  assert.equal(qualityInitialEvent('visual_inspection'), 'submitted_for_review');
+  assert.equal(qualityInitialEvent('visual_inspection', 'conforme'), 'submitted_for_review');
 });
 
 test('requires measurable evidence and unit for functional tests', () => {
@@ -74,7 +76,7 @@ test('requires responsible person, due date and severity for punch list and nonc
   assert.ok(errors.some((message) => message.includes('criticidade')));
   assert.ok(errors.some((message) => message.includes('responsável')));
   assert.ok(errors.some((message) => message.includes('prazo')));
-  assert.equal(qualityInitialEvent('punch_item'), 'opened');
+  assert.equal(qualityInitialEvent('punch_item', 'nao_conforme'), 'opened');
 });
 
 test('rejects impossible dates and oversized technical descriptions', () => {
@@ -107,4 +109,37 @@ test('maps the quality event timeline to clear statuses and labels', () => {
 
 test('local quality date uses local calendar components', () => {
   assert.match(localQualityDate(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('a failed inspection or test enters the correction workflow immediately', () => {
+  assert.equal(qualityInitialEvent('visual_inspection', 'nao_conforme'), 'opened');
+  assert.equal(qualityInitialStatus('visual_inspection', 'nao_conforme'), 'open');
+  assert.equal(qualityInitialStatus('hydrostatic_test', 'conforme'), 'review_pending');
+});
+
+test('quality workflow rejects skipped or out-of-order transitions', () => {
+  assert.equal(getQualityNextStatus('review_pending', 'approved'), 'approved');
+  assert.equal(getQualityNextStatus('review_pending', 'rejected'), 'rejected');
+  assert.equal(getQualityNextStatus('open', 'corrective_action_submitted'), 'correction_pending_verification');
+  assert.equal(getQualityNextStatus('correction_pending_verification', 'verified'), 'verified');
+  assert.equal(getQualityNextStatus('verified', 'closed'), 'closed');
+  assert.equal(getQualityNextStatus('closed', 'reopened'), 'reopened');
+  assert.equal(getQualityNextStatus('review_pending', 'closed'), null);
+  assert.equal(getQualityNextStatus('open', 'closed'), null);
+  assert.equal(getQualityNextStatus('correction_pending_verification', 'closed'), null);
+  assert.equal(getQualityNextStatus('closed', 'corrective_action_submitted'), null);
+});
+
+test('any nonconformant result requires severity, responsible person and due date', () => {
+  const errors = validateQualityRecordInput({
+    ...inspection,
+    recordType: 'weld_inspection',
+    result: 'nao_conforme',
+    severity: undefined,
+    responsibleName: '',
+    dueDate: '',
+  });
+  assert.ok(errors.some((message) => message.includes('criticidade')));
+  assert.ok(errors.some((message) => message.includes('responsável')));
+  assert.ok(errors.some((message) => message.includes('prazo')));
 });
