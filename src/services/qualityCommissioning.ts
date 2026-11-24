@@ -56,8 +56,31 @@ function isRealIsoDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-export function qualityInitialEvent(recordType: QualityRecordType): QualityEventType {
-  return QUALITY_FINDING_TYPES.includes(recordType) ? 'opened' : 'submitted_for_review';
+export function qualityInitialEvent(recordType: QualityRecordType, result: QualityResult): QualityEventType {
+  return QUALITY_FINDING_TYPES.includes(recordType) || result === 'nao_conforme'
+    ? 'opened'
+    : 'submitted_for_review';
+}
+
+export function qualityInitialStatus(recordType: QualityRecordType, result: QualityResult): QualityRecordStatus {
+  return qualityInitialEvent(recordType, result) === 'opened' ? 'open' : 'review_pending';
+}
+
+/** Allowed workflow transitions. A current status can only advance through the expected gate. */
+export function getQualityNextStatus(
+  currentStatus: QualityRecordStatus,
+  eventType: QualityEventType,
+): QualityRecordStatus | null {
+  if (eventType === 'note_added') return currentStatus === 'unknown' ? null : currentStatus;
+  if (eventType === 'approved' && currentStatus === 'review_pending') return 'approved';
+  if (eventType === 'rejected' && currentStatus === 'review_pending') return 'rejected';
+  if (eventType === 'corrective_action_submitted' && ['open', 'rejected', 'reopened'].includes(currentStatus)) {
+    return 'correction_pending_verification';
+  }
+  if (eventType === 'verified' && currentStatus === 'correction_pending_verification') return 'verified';
+  if (eventType === 'closed' && currentStatus === 'verified') return 'closed';
+  if (eventType === 'reopened' && currentStatus === 'closed') return 'reopened';
+  return null;
 }
 
 export function validateQualityRecordInput(input: QualityRecordInput): string[] {
@@ -73,13 +96,15 @@ export function validateQualityRecordInput(input: QualityRecordInput): string[] 
   const isFinding = QUALITY_FINDING_TYPES.includes(input.recordType);
   const isTest = QUALITY_TEST_TYPES.includes(input.recordType);
 
-  if (isFinding) {
-    if (input.result !== 'nao_conforme') errors.push('Não conformidades e itens de punch list devem ser registrados como não conformes.');
+  const requiresCorrection = isFinding || input.result === 'nao_conforme';
+
+  if (requiresCorrection) {
+    if (input.result !== 'nao_conforme') errors.push('Apontamentos e registros não conformes devem manter o resultado "não conforme".');
     if (!input.severity) errors.push('Informe a criticidade do apontamento.');
     if (!input.responsibleName?.trim()) errors.push('Informe o responsável pela correção.');
     if (!input.dueDate || !isRealIsoDate(input.dueDate)) errors.push('Informe um prazo válido para a correção.');
   } else {
-    if (input.result === 'nao_conforme' && !input.acceptanceCriteria?.trim()) {
+    if (!input.acceptanceCriteria?.trim()) {
       errors.push('Descreva o critério de aceitação utilizado para registrar a reprovação.');
     }
     if (!input.acceptanceCriteria?.trim()) errors.push('Informe o critério de aceitação ou verificação.');
