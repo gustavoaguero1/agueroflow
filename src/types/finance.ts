@@ -130,6 +130,57 @@ export interface FinancePayableAuthorization {
   createdAt: unknown;
 }
 
+export type FinancePaymentMethod = 'pix' | 'transferencia' | 'boleto' | 'dinheiro' | 'cartao' | 'outro';
+export type FinancePayableAuthorizationDifference = 'valor' | 'vencimento' | 'fornecedor_nome' | 'fornecedor_cnpj';
+
+export interface FinancePayableSettlementRequest {
+  orgId: string;
+  payableId: string;
+  paymentDate: string;
+  paymentMethod: FinancePaymentMethod;
+  paymentReference?: string;
+  proofReference?: string;
+  notes?: string;
+  confirmAuthorizationDivergence?: boolean;
+}
+
+export interface FinancePayableSettlement {
+  id: string;
+  orgId: string;
+  payableId: string;
+  paymentDate: string;
+  paymentMethod: FinancePaymentMethod;
+  paymentReference?: string;
+  proofReference?: string;
+  notes?: string;
+  settledValue: number;
+  payableSnapshot: {
+    origem: FinancePayable['origem'];
+    documento: string;
+    parcela?: string;
+    supplierName: string;
+    supplierCnpj: string;
+    value: number;
+    dueDate: string;
+    nfeChave?: string;
+    purchaseOrderId?: string;
+    purchaseOrderCode?: string;
+    workOrderNumber?: string;
+  };
+  authorizationId?: string;
+  authorizationSnapshot?: {
+    authorizedValue: number;
+    dueDate: string;
+    fornecedorNome: string;
+    fornecedorCnpj: string;
+  };
+  authorizationDifferences: FinancePayableAuthorizationDifference[];
+  settledBy: string;
+  settledByEmail: string;
+  settledAt: unknown;
+  createdAt: unknown;
+}
+
 export interface NfeItem {
   n: number;
   codigo: string;
