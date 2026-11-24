@@ -253,7 +253,752 @@ service cloud.firestore {
           && orgOf(request.resource.data) is string
           && orgOf(request.resource.data).matches('^[A-Za-z0-9_-]{1,80}$')
           && request.resource.data.get('documentCode', '') is string
-          && request.resource.data.get('documentCode', '').matches('^[A-Z0-9][A-Z0-9._-]{0,39}$')
+          && request.resource.data.get('documentCode', '').matches('^[A-Z0-9][A-Z0-9_-]{0,39}
+          && request.resource.data.get('revision', '') is string
+          && request.resource.data.get('revision', '').matches('^[A-Z0-9][A-Z0-9_-]{0,11}
+          && docId == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '') + '_' + request.resource.data.get('revision', '')
+          && request.resource.data.get('documentGroupId', '') == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 2
+          && request.resource.data.get('title', '').size() <= 180
+          && request.resource.data.get('documentType', '') in ['desenho', 'isometrico', 'pid', 'especificacao', 'mapa_solda', 'wps_pqr', 'certificado_material', 'relatorio_ensaios', 'procedimento', 'as_built', 'outro']
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('unitId', '').size() > 0
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('contractId', '').size() > 0
+          && engineeringReferencesBelongToOrg(request.resource.data)
+          && request.resource.data.get('filePath', '') is string
+          && request.resource.data.get('filePath', '').matches('^engineering-documents/' + orgOf(request.resource.data) + '/' + docId + '/[A-Za-z0-9_-]{8,80}$')
+          && request.resource.data.get('fileName', '') is string
+          && request.resource.data.get('fileName', '').size() > 0
+          && request.resource.data.get('fileName', '').size() <= 180
+          && request.resource.data.get('contentType', '') in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+          && request.resource.data.get('fileSize', 0) is number
+          && request.resource.data.get('fileSize', 0) > 0
+          && request.resource.data.get('fileSize', 0) <= 20 * 1024 * 1024
+          && request.resource.data.get('createdByUid', '') == request.auth.uid
+          && request.resource.data.get('createdByName', '') is string
+          && request.resource.data.get('createdByName', '').size() > 0
+          && request.resource.data.get('createdAt', null) == request.time
+          && (request.resource.data.get('documentDate', null) == null
+            || (request.resource.data.get('documentDate', null) is string
+              && request.resource.data.get('documentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+          && (request.resource.data.get('notes', null) == null
+            || (request.resource.data.get('notes', null) is string
+              && request.resource.data.get('notes', '').size() <= 1500))
+        );
+      }
+      function validEngineeringEventCreate() {
+        return coll != 'engineering_document_events' || (
+          signedIn()
+          && request.resource.data.get('orgId', '') is string
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('documentId', '') is string
+          && existsAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', '')))
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('orgId', '') == orgOf(request.resource.data)
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('unitId', '') == request.resource.data.get('unitId', '')
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('contractId', '') == request.resource.data.get('contractId', '')
+          && request.resource.data.get('eventType', '') in ['submitted_internal', 'approved_internal', 'rejected_internal', 'submitted_client', 'approved_client', 'rejected_client', 'marked_as_built']
+          && request.resource.data.get('recordedByUid', '') == request.auth.uid
+          && request.resource.data.get('recordedByName', '') is string
+          && request.resource.data.get('recordedByName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (request.resource.data.get('eventType', '') == 'submitted_internal'
+            ? getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('createdAt', null) == request.time
+            : hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']))
+          && (request.resource.data.get('eventType', '') != 'rejected_internal'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+          && (request.resource.data.get('eventType', '') in ['submitted_client', 'approved_client', 'rejected_client']
+            ? (request.resource.data.get('clientName', '') is string
+              && request.resource.data.get('clientName', '').size() > 0
+              && request.resource.data.get('clientReference', '') is string
+              && request.resource.data.get('clientReference', '').size() > 0)
+            : true)
+          && (request.resource.data.get('eventType', '') != 'rejected_client'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+        );
+      }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && areaWrite(request.resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
+      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
+
+      // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
+      function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
+      function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
+      function isPayable() { return coll == 'finance_payables'; }
+      function isReconciliationCase() { return coll == 'finance_reconciliation_cases'; }
+      function isPayableAuthorization() { return coll == 'finance_payable_authorizations'; }
+      function isPayableSettlement() { return coll == 'finance_payable_settlements'; }
+      function isBankTransaction() { return coll == 'finance_bank_transactions'; }
+      function isBankReconciliation() { return coll == 'finance_bank_reconciliations'; }
+      function isReceivable() { return coll == 'finance_receivables'; }
+      function isReceivableReceipt() { return coll == 'finance_receivable_receipts'; }
+      // Paid-state changes are server-only so the immutable settlement event and payable update stay atomic.
+      function payableClientUpdate() {
+        return resource.data.get('status', '') == 'aberto'
+          && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy']);
+      }
+      function payableClientCreate() {
+        return request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberto'
+          && !request.resource.data.keys().hasAny(['pagoEm', 'pagoPor', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy', 'settlementId']);
+      }
+      function reconciliationCaseUpdate() {
+        let oldStatus = resource.data.get('status', '');
+        let newStatus = request.resource.data.get('status', '');
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'resolutionNotes', 'updatedAt'])
+          && request.resource.data.get('reviewedBy', '') == request.auth.uid
+          && request.resource.data.get('reviewedByName', '') is string
+          && request.resource.data.get('reviewedAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time
+          && ((oldStatus == 'aberta' && newStatus == 'em_analise')
+            || (oldStatus == 'em_analise' && newStatus in ['aprovada', 'rejeitada']
+              && request.resource.data.get('resolutionNotes', '') is string
+              && request.resource.data.get('resolutionNotes', '').size() >= 5
+              && request.resource.data.get('resolutionNotes', '').size() <= 2000));
+      }
+      // Payables: Admin/Gerente may edit title fields, but the paid state is changed only by the backend settlement transaction.
+      // Financeiro: members read; immutable settlement events are written only by the backend.
+      function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
+      allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
+      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+        && fin(request.resource.data, 2)
+        && (!isPayable() || payableClientCreate())
+        && (!isReceivable() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('origem', '') == 'manual'
+          && request.resource.data.get('status', '') == 'aberto'
+          && request.resource.data.get('cliente', null) is map
+          && request.resource.data.get('cliente', {}).get('nome', '') is string
+          && request.resource.data.get('cliente', {}).get('nome', '').size() > 0
+          && request.resource.data.get('cliente', {}).get('nome', '').size() <= 180
+          && request.resource.data.get('documento', '') is string
+          && request.resource.data.get('documento', '').size() > 0
+          && request.resource.data.get('documento', '').size() <= 120
+          && request.resource.data.get('valor', 0) is number
+          && request.resource.data.get('valor', 0) > 0
+          && request.resource.data.get('valor', 0) <= 1000000000
+          && request.resource.data.get('vencimento', '') is string
+          && request.resource.data.get('vencimento', '').size() == 10
+          && !request.resource.data.keys().hasAny(['valorRecebido', 'saldoAberto', 'receiptCount', 'lastReceiptId', 'lastReceiptAt', 'lastReceiptBy', 'recebidoEm', 'recebidoPor'])))
+        && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberta'
+          && request.resource.data.get('purchaseOrderId', '') is string && request.resource.data.get('purchaseOrderId', '').size() > 0
+          && request.resource.data.get('issueType', '') in ['divergencia_valor_produtos', 'divergencia_preco_unitario', 'quantidade_faturada_acima', 'quantidade_recebida_sem_nf', 'qualidade_pendente', 'item_sem_vinculo', 'xml_ausente', 'outra']
+          && request.resource.data.get('issueTitle', '') is string && request.resource.data.get('issueTitle', '').size() >= 5 && request.resource.data.get('issueTitle', '').size() <= 140
+          && request.resource.data.get('description', '') is string && request.resource.data.get('description', '').size() >= 10 && request.resource.data.get('description', '').size() <= 4000
+          && request.resource.data.get('createdByName', '') is string && request.resource.data.get('createdByName', '').size() > 0 && request.resource.data.get('createdByName', '').size() <= 160
+          && request.resource.data.get('snapshot', null) is map
+          && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
+          && request.resource.data.get('createdAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time));
+      allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
+        && (isReconciliationCase()
+          ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
+          : (isPayable()
+            ? payableClientUpdate()
+            : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
+      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
+
+      function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && (request.method == 'delete'
+            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+    }
+
+    // ---- NF-e (written by the server; the client only moves classification status) ----
+    match /nfe_documents/{id} {
+      function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
+      function run() { return resource.data.get('classificacao', {}); }
+      function ownRun() { return run().get('by', '') == request.auth.uid; }
+      // A run left 'classificando' for 2+ minutes (server time) — or a legacy one without startedAt — may be released by Admin/Gerente.
+      function stale() { return !(run().get('startedAt', null) is timestamp) || request.time > run().startedAt + duration.value(2, 'm'); }
+      function newRun() {
+        let r = request.resource.data.get('classificacao', {});
+        return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
+      }
+      function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_FIN(), 2)
+        && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
+        && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
+             && newRun())
+          || (move() == 'classificando>classificada' && ownRun())
+          || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
+    }
+    match /nfe_sync/{orgId} { allow read: if areaOk(orgId, A_FIN(), 1); }
+
+    // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
+    match /commercial_proposal_items/{itemId} {
+      function parentOrg(d) {
+        return get(/databases/$(database)/documents/commercial_proposals/$(d.proposalId)).data.get('organizationId', '');
+      }
+      // A new/updated item must belong to its parent proposal's org (no attaching items to another org's proposal).
+      function matchesParent() {
+        return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
+          && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
+      }
+      // Área conferida pela empresa da proposta-mãe: a lista filtra só por proposalId.
+      allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
+        && (resource == null || areaOk(parentOrg(resource.data), A_COM(), 1));
+      allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && areaOk(parentOrg(resource.data), A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
+    }
+
+    // ---- WhatsApp bridge mirror ----------------------------------------------
+    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
+    // authenticated member. The mirror matches that: any member of some org (or master).
+    function waMember() { return isMaster() || hasAnyOrg(); }
+
+    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
+    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
+
+    match /whatsapp_scheduled_jobs/{jobId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.scheduleTime is string
+        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+        && request.resource.data.promptInstruction is string
+        && request.resource.data.promptInstruction.size() > 0
+        && request.resource.data.promptInstruction.size() <= 2000;
+    }
+
+    match /whatsapp_ocr_receipts/{receiptId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.establishmentName is string
+        && request.resource.data.establishmentName.size() <= 200
+        && request.resource.data.totalAmount is number;
+    }
+
+    match /whatsapp_nd_rules/{ruleId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.groupJid is string;
+    }
+
+    match /whatsapp_nd_records/{recordId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.receiverName is string
+        && request.resource.data.receiverName.size() <= 180
+        && request.resource.data.amount is number;
+    }
+  }
+}
+)
+          && request.resource.data.get('revision', '') is string
+          && request.resource.data.get('revision', '').matches('^[A-Z0-9][A-Z0-9._-]{0,11}$')
+          && docId == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '') + '_' + request.resource.data.get('revision', '')
+          && request.resource.data.get('documentGroupId', '') == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 2
+          && request.resource.data.get('title', '').size() <= 180
+          && request.resource.data.get('documentType', '') in ['desenho', 'isometrico', 'pid', 'especificacao', 'mapa_solda', 'wps_pqr', 'certificado_material', 'relatorio_ensaios', 'procedimento', 'as_built', 'outro']
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('unitId', '').size() > 0
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('contractId', '').size() > 0
+          && engineeringReferencesBelongToOrg(request.resource.data)
+          && request.resource.data.get('filePath', '') is string
+          && request.resource.data.get('filePath', '').matches('^engineering-documents/' + orgOf(request.resource.data) + '/' + docId + '/[A-Za-z0-9_-]{8,80}$')
+          && request.resource.data.get('fileName', '') is string
+          && request.resource.data.get('fileName', '').size() > 0
+          && request.resource.data.get('fileName', '').size() <= 180
+          && request.resource.data.get('contentType', '') in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+          && request.resource.data.get('fileSize', 0) is number
+          && request.resource.data.get('fileSize', 0) > 0
+          && request.resource.data.get('fileSize', 0) <= 20 * 1024 * 1024
+          && request.resource.data.get('createdByUid', '') == request.auth.uid
+          && request.resource.data.get('createdByName', '') is string
+          && request.resource.data.get('createdByName', '').size() > 0
+          && request.resource.data.get('createdAt', null) == request.time
+          && (request.resource.data.get('documentDate', null) == null
+            || (request.resource.data.get('documentDate', null) is string
+              && request.resource.data.get('documentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+          && (request.resource.data.get('notes', null) == null
+            || (request.resource.data.get('notes', null) is string
+              && request.resource.data.get('notes', '').size() <= 1500))
+        );
+      }
+      function validEngineeringEventCreate() {
+        return coll != 'engineering_document_events' || (
+          signedIn()
+          && request.resource.data.get('orgId', '') is string
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('documentId', '') is string
+          && existsAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', '')))
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('orgId', '') == orgOf(request.resource.data)
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('unitId', '') == request.resource.data.get('unitId', '')
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('contractId', '') == request.resource.data.get('contractId', '')
+          && request.resource.data.get('eventType', '') in ['submitted_internal', 'approved_internal', 'rejected_internal', 'submitted_client', 'approved_client', 'rejected_client', 'marked_as_built']
+          && request.resource.data.get('recordedByUid', '') == request.auth.uid
+          && request.resource.data.get('recordedByName', '') is string
+          && request.resource.data.get('recordedByName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (request.resource.data.get('eventType', '') == 'submitted_internal'
+            ? getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('createdAt', null) == request.time
+            : hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']))
+          && (request.resource.data.get('eventType', '') != 'rejected_internal'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+          && (request.resource.data.get('eventType', '') in ['submitted_client', 'approved_client', 'rejected_client']
+            ? (request.resource.data.get('clientName', '') is string
+              && request.resource.data.get('clientName', '').size() > 0
+              && request.resource.data.get('clientReference', '') is string
+              && request.resource.data.get('clientReference', '').size() > 0)
+            : true)
+          && (request.resource.data.get('eventType', '') != 'rejected_client'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+        );
+      }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && areaWrite(request.resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
+      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
+
+      // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
+      function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
+      function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
+      function isPayable() { return coll == 'finance_payables'; }
+      function isReconciliationCase() { return coll == 'finance_reconciliation_cases'; }
+      function isPayableAuthorization() { return coll == 'finance_payable_authorizations'; }
+      function isPayableSettlement() { return coll == 'finance_payable_settlements'; }
+      function isBankTransaction() { return coll == 'finance_bank_transactions'; }
+      function isBankReconciliation() { return coll == 'finance_bank_reconciliations'; }
+      function isReceivable() { return coll == 'finance_receivables'; }
+      function isReceivableReceipt() { return coll == 'finance_receivable_receipts'; }
+      // Paid-state changes are server-only so the immutable settlement event and payable update stay atomic.
+      function payableClientUpdate() {
+        return resource.data.get('status', '') == 'aberto'
+          && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy']);
+      }
+      function payableClientCreate() {
+        return request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberto'
+          && !request.resource.data.keys().hasAny(['pagoEm', 'pagoPor', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy', 'settlementId']);
+      }
+      function reconciliationCaseUpdate() {
+        let oldStatus = resource.data.get('status', '');
+        let newStatus = request.resource.data.get('status', '');
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'resolutionNotes', 'updatedAt'])
+          && request.resource.data.get('reviewedBy', '') == request.auth.uid
+          && request.resource.data.get('reviewedByName', '') is string
+          && request.resource.data.get('reviewedAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time
+          && ((oldStatus == 'aberta' && newStatus == 'em_analise')
+            || (oldStatus == 'em_analise' && newStatus in ['aprovada', 'rejeitada']
+              && request.resource.data.get('resolutionNotes', '') is string
+              && request.resource.data.get('resolutionNotes', '').size() >= 5
+              && request.resource.data.get('resolutionNotes', '').size() <= 2000));
+      }
+      // Payables: Admin/Gerente may edit title fields, but the paid state is changed only by the backend settlement transaction.
+      // Financeiro: members read; immutable settlement events are written only by the backend.
+      function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
+      allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
+      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+        && fin(request.resource.data, 2)
+        && (!isPayable() || payableClientCreate())
+        && (!isReceivable() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('origem', '') == 'manual'
+          && request.resource.data.get('status', '') == 'aberto'
+          && request.resource.data.get('cliente', null) is map
+          && request.resource.data.get('cliente', {}).get('nome', '') is string
+          && request.resource.data.get('cliente', {}).get('nome', '').size() > 0
+          && request.resource.data.get('cliente', {}).get('nome', '').size() <= 180
+          && request.resource.data.get('documento', '') is string
+          && request.resource.data.get('documento', '').size() > 0
+          && request.resource.data.get('documento', '').size() <= 120
+          && request.resource.data.get('valor', 0) is number
+          && request.resource.data.get('valor', 0) > 0
+          && request.resource.data.get('valor', 0) <= 1000000000
+          && request.resource.data.get('vencimento', '') is string
+          && request.resource.data.get('vencimento', '').size() == 10
+          && !request.resource.data.keys().hasAny(['valorRecebido', 'saldoAberto', 'receiptCount', 'lastReceiptId', 'lastReceiptAt', 'lastReceiptBy', 'recebidoEm', 'recebidoPor'])))
+        && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberta'
+          && request.resource.data.get('purchaseOrderId', '') is string && request.resource.data.get('purchaseOrderId', '').size() > 0
+          && request.resource.data.get('issueType', '') in ['divergencia_valor_produtos', 'divergencia_preco_unitario', 'quantidade_faturada_acima', 'quantidade_recebida_sem_nf', 'qualidade_pendente', 'item_sem_vinculo', 'xml_ausente', 'outra']
+          && request.resource.data.get('issueTitle', '') is string && request.resource.data.get('issueTitle', '').size() >= 5 && request.resource.data.get('issueTitle', '').size() <= 140
+          && request.resource.data.get('description', '') is string && request.resource.data.get('description', '').size() >= 10 && request.resource.data.get('description', '').size() <= 4000
+          && request.resource.data.get('createdByName', '') is string && request.resource.data.get('createdByName', '').size() > 0 && request.resource.data.get('createdByName', '').size() <= 160
+          && request.resource.data.get('snapshot', null) is map
+          && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
+          && request.resource.data.get('createdAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time));
+      allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
+        && (isReconciliationCase()
+          ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
+          : (isPayable()
+            ? payableClientUpdate()
+            : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
+      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
+
+      function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && (request.method == 'delete'
+            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+    }
+
+    // ---- NF-e (written by the server; the client only moves classification status) ----
+    match /nfe_documents/{id} {
+      function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
+      function run() { return resource.data.get('classificacao', {}); }
+      function ownRun() { return run().get('by', '') == request.auth.uid; }
+      // A run left 'classificando' for 2+ minutes (server time) — or a legacy one without startedAt — may be released by Admin/Gerente.
+      function stale() { return !(run().get('startedAt', null) is timestamp) || request.time > run().startedAt + duration.value(2, 'm'); }
+      function newRun() {
+        let r = request.resource.data.get('classificacao', {});
+        return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
+      }
+      function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_FIN(), 2)
+        && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
+        && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
+             && newRun())
+          || (move() == 'classificando>classificada' && ownRun())
+          || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
+    }
+    match /nfe_sync/{orgId} { allow read: if areaOk(orgId, A_FIN(), 1); }
+
+    // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
+    match /commercial_proposal_items/{itemId} {
+      function parentOrg(d) {
+        return get(/databases/$(database)/documents/commercial_proposals/$(d.proposalId)).data.get('organizationId', '');
+      }
+      // A new/updated item must belong to its parent proposal's org (no attaching items to another org's proposal).
+      function matchesParent() {
+        return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
+          && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
+      }
+      // Área conferida pela empresa da proposta-mãe: a lista filtra só por proposalId.
+      allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
+        && (resource == null || areaOk(parentOrg(resource.data), A_COM(), 1));
+      allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && areaOk(parentOrg(resource.data), A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
+    }
+
+    // ---- WhatsApp bridge mirror ----------------------------------------------
+    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
+    // authenticated member. The mirror matches that: any member of some org (or master).
+    function waMember() { return isMaster() || hasAnyOrg(); }
+
+    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
+    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
+
+    match /whatsapp_scheduled_jobs/{jobId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.scheduleTime is string
+        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+        && request.resource.data.promptInstruction is string
+        && request.resource.data.promptInstruction.size() > 0
+        && request.resource.data.promptInstruction.size() <= 2000;
+    }
+
+    match /whatsapp_ocr_receipts/{receiptId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.establishmentName is string
+        && request.resource.data.establishmentName.size() <= 200
+        && request.resource.data.totalAmount is number;
+    }
+
+    match /whatsapp_nd_rules/{ruleId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.groupJid is string;
+    }
+
+    match /whatsapp_nd_records/{recordId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.receiverName is string
+        && request.resource.data.receiverName.size() <= 180
+        && request.resource.data.amount is number;
+    }
+  }
+}
+)
+          && docId == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '') + '_' + request.resource.data.get('revision', '')
+          && request.resource.data.get('documentGroupId', '') == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 2
+          && request.resource.data.get('title', '').size() <= 180
+          && request.resource.data.get('documentType', '') in ['desenho', 'isometrico', 'pid', 'especificacao', 'mapa_solda', 'wps_pqr', 'certificado_material', 'relatorio_ensaios', 'procedimento', 'as_built', 'outro']
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('unitId', '').size() > 0
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('contractId', '').size() > 0
+          && engineeringReferencesBelongToOrg(request.resource.data)
+          && request.resource.data.get('filePath', '') is string
+          && request.resource.data.get('filePath', '').matches('^engineering-documents/' + orgOf(request.resource.data) + '/' + docId + '/[A-Za-z0-9_-]{8,80}$')
+          && request.resource.data.get('fileName', '') is string
+          && request.resource.data.get('fileName', '').size() > 0
+          && request.resource.data.get('fileName', '').size() <= 180
+          && request.resource.data.get('contentType', '') in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+          && request.resource.data.get('fileSize', 0) is number
+          && request.resource.data.get('fileSize', 0) > 0
+          && request.resource.data.get('fileSize', 0) <= 20 * 1024 * 1024
+          && request.resource.data.get('createdByUid', '') == request.auth.uid
+          && request.resource.data.get('createdByName', '') is string
+          && request.resource.data.get('createdByName', '').size() > 0
+          && request.resource.data.get('createdAt', null) == request.time
+          && (request.resource.data.get('documentDate', null) == null
+            || (request.resource.data.get('documentDate', null) is string
+              && request.resource.data.get('documentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+          && (request.resource.data.get('notes', null) == null
+            || (request.resource.data.get('notes', null) is string
+              && request.resource.data.get('notes', '').size() <= 1500))
+        );
+      }
+      function validEngineeringEventCreate() {
+        return coll != 'engineering_document_events' || (
+          signedIn()
+          && request.resource.data.get('orgId', '') is string
+          && request.resource.data.get('unitId', '') is string
+          && request.resource.data.get('contractId', '') is string
+          && request.resource.data.get('documentId', '') is string
+          && existsAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', '')))
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('orgId', '') == orgOf(request.resource.data)
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('unitId', '') == request.resource.data.get('unitId', '')
+          && getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('contractId', '') == request.resource.data.get('contractId', '')
+          && request.resource.data.get('eventType', '') in ['submitted_internal', 'approved_internal', 'rejected_internal', 'submitted_client', 'approved_client', 'rejected_client', 'marked_as_built']
+          && request.resource.data.get('recordedByUid', '') == request.auth.uid
+          && request.resource.data.get('recordedByName', '') is string
+          && request.resource.data.get('recordedByName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (request.resource.data.get('eventType', '') == 'submitted_internal'
+            ? getAfter(/databases/$(database)/documents/engineering_documents/$(request.resource.data.get('documentId', ''))).data.get('createdAt', null) == request.time
+            : hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']))
+          && (request.resource.data.get('eventType', '') != 'rejected_internal'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+          && (request.resource.data.get('eventType', '') in ['submitted_client', 'approved_client', 'rejected_client']
+            ? (request.resource.data.get('clientName', '') is string
+              && request.resource.data.get('clientName', '').size() > 0
+              && request.resource.data.get('clientReference', '') is string
+              && request.resource.data.get('clientReference', '').size() > 0)
+            : true)
+          && (request.resource.data.get('eventType', '') != 'rejected_client'
+            || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
+        );
+      }
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && areaWrite(request.resource.data);
+      allow update: if orgScoped() && !immutable() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
+      allow delete: if orgScoped() && !immutable() && canDelete() && areaWrite(resource.data);
+
+      // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
+      function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
+      function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
+      function isPayable() { return coll == 'finance_payables'; }
+      function isReconciliationCase() { return coll == 'finance_reconciliation_cases'; }
+      function isPayableAuthorization() { return coll == 'finance_payable_authorizations'; }
+      function isPayableSettlement() { return coll == 'finance_payable_settlements'; }
+      function isBankTransaction() { return coll == 'finance_bank_transactions'; }
+      function isBankReconciliation() { return coll == 'finance_bank_reconciliations'; }
+      function isReceivable() { return coll == 'finance_receivables'; }
+      function isReceivableReceipt() { return coll == 'finance_receivable_receipts'; }
+      // Paid-state changes are server-only so the immutable settlement event and payable update stay atomic.
+      function payableClientUpdate() {
+        return resource.data.get('status', '') == 'aberto'
+          && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy']);
+      }
+      function payableClientCreate() {
+        return request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberto'
+          && !request.resource.data.keys().hasAny(['pagoEm', 'pagoPor', 'valorPago', 'valorAbatido', 'saldoAberto', 'settlementCount', 'lastSettlementId', 'lastSettlementAt', 'lastSettlementBy', 'settlementId']);
+      }
+      function reconciliationCaseUpdate() {
+        let oldStatus = resource.data.get('status', '');
+        let newStatus = request.resource.data.get('status', '');
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'resolutionNotes', 'updatedAt'])
+          && request.resource.data.get('reviewedBy', '') == request.auth.uid
+          && request.resource.data.get('reviewedByName', '') is string
+          && request.resource.data.get('reviewedAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time
+          && ((oldStatus == 'aberta' && newStatus == 'em_analise')
+            || (oldStatus == 'em_analise' && newStatus in ['aprovada', 'rejeitada']
+              && request.resource.data.get('resolutionNotes', '') is string
+              && request.resource.data.get('resolutionNotes', '').size() >= 5
+              && request.resource.data.get('resolutionNotes', '').size() <= 2000));
+      }
+      // Payables: Admin/Gerente may edit title fields, but the paid state is changed only by the backend settlement transaction.
+      // Financeiro: members read; immutable settlement events are written only by the backend.
+      function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
+      allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
+      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+        && fin(request.resource.data, 2)
+        && (!isPayable() || payableClientCreate())
+        && (!isReceivable() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('origem', '') == 'manual'
+          && request.resource.data.get('status', '') == 'aberto'
+          && request.resource.data.get('cliente', null) is map
+          && request.resource.data.get('cliente', {}).get('nome', '') is string
+          && request.resource.data.get('cliente', {}).get('nome', '').size() > 0
+          && request.resource.data.get('cliente', {}).get('nome', '').size() <= 180
+          && request.resource.data.get('documento', '') is string
+          && request.resource.data.get('documento', '').size() > 0
+          && request.resource.data.get('documento', '').size() <= 120
+          && request.resource.data.get('valor', 0) is number
+          && request.resource.data.get('valor', 0) > 0
+          && request.resource.data.get('valor', 0) <= 1000000000
+          && request.resource.data.get('vencimento', '') is string
+          && request.resource.data.get('vencimento', '').size() == 10
+          && !request.resource.data.keys().hasAny(['valorRecebido', 'saldoAberto', 'receiptCount', 'lastReceiptId', 'lastReceiptAt', 'lastReceiptBy', 'recebidoEm', 'recebidoPor'])))
+        && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberta'
+          && request.resource.data.get('purchaseOrderId', '') is string && request.resource.data.get('purchaseOrderId', '').size() > 0
+          && request.resource.data.get('issueType', '') in ['divergencia_valor_produtos', 'divergencia_preco_unitario', 'quantidade_faturada_acima', 'quantidade_recebida_sem_nf', 'qualidade_pendente', 'item_sem_vinculo', 'xml_ausente', 'outra']
+          && request.resource.data.get('issueTitle', '') is string && request.resource.data.get('issueTitle', '').size() >= 5 && request.resource.data.get('issueTitle', '').size() <= 140
+          && request.resource.data.get('description', '') is string && request.resource.data.get('description', '').size() >= 10 && request.resource.data.get('description', '').size() <= 4000
+          && request.resource.data.get('createdByName', '') is string && request.resource.data.get('createdByName', '').size() > 0 && request.resource.data.get('createdByName', '').size() <= 160
+          && request.resource.data.get('snapshot', null) is map
+          && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
+          && request.resource.data.get('createdAt', null) == request.time
+          && request.resource.data.get('updatedAt', null) == request.time));
+      allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
+        && (isReconciliationCase()
+          ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
+          : (isPayable()
+            ? payableClientUpdate()
+            : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
+      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
+
+      function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && (request.method == 'delete'
+            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+    }
+
+    // ---- NF-e (written by the server; the client only moves classification status) ----
+    match /nfe_documents/{id} {
+      function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
+      function run() { return resource.data.get('classificacao', {}); }
+      function ownRun() { return run().get('by', '') == request.auth.uid; }
+      // A run left 'classificando' for 2+ minutes (server time) — or a legacy one without startedAt — may be released by Admin/Gerente.
+      function stale() { return !(run().get('startedAt', null) is timestamp) || request.time > run().startedAt + duration.value(2, 'm'); }
+      function newRun() {
+        let r = request.resource.data.get('classificacao', {});
+        return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
+      }
+      function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_FIN(), 2)
+        && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
+        && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
+             && newRun())
+          || (move() == 'classificando>classificada' && ownRun())
+          || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
+    }
+    match /nfe_sync/{orgId} { allow read: if areaOk(orgId, A_FIN(), 1); }
+
+    // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
+    match /commercial_proposal_items/{itemId} {
+      function parentOrg(d) {
+        return get(/databases/$(database)/documents/commercial_proposals/$(d.proposalId)).data.get('organizationId', '');
+      }
+      // A new/updated item must belong to its parent proposal's org (no attaching items to another org's proposal).
+      function matchesParent() {
+        return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
+          && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
+      }
+      // Área conferida pela empresa da proposta-mãe: a lista filtra só por proposalId.
+      allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
+        && (resource == null || areaOk(parentOrg(resource.data), A_COM(), 1));
+      allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && areaOk(parentOrg(resource.data), A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
+    }
+
+    // ---- WhatsApp bridge mirror ----------------------------------------------
+    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
+    // authenticated member. The mirror matches that: any member of some org (or master).
+    function waMember() { return isMaster() || hasAnyOrg(); }
+
+    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
+    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
+    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
+
+    match /whatsapp_scheduled_jobs/{jobId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.scheduleTime is string
+        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+        && request.resource.data.promptInstruction is string
+        && request.resource.data.promptInstruction.size() > 0
+        && request.resource.data.promptInstruction.size() <= 2000;
+    }
+
+    match /whatsapp_ocr_receipts/{receiptId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.establishmentName is string
+        && request.resource.data.establishmentName.size() <= 200
+        && request.resource.data.totalAmount is number;
+    }
+
+    match /whatsapp_nd_rules/{ruleId} {
+      allow read, delete: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 160
+        && request.resource.data.groupJid is string;
+    }
+
+    match /whatsapp_nd_records/{recordId} {
+      allow read: if waMember();
+      allow create, update: if waMember()
+        && request.resource.data.receiverName is string
+        && request.resource.data.receiverName.size() <= 180
+        && request.resource.data.amount is number;
+    }
+  }
+}
+)
           && request.resource.data.get('revision', '') is string
           && request.resource.data.get('revision', '').matches('^[A-Z0-9][A-Z0-9._-]{0,11}$')
           && docId == 'eng_' + orgOf(request.resource.data) + '_' + request.resource.data.get('documentCode', '') + '_' + request.resource.data.get('revision', '')
