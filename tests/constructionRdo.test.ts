@@ -146,7 +146,7 @@ test('usa data local sem deslocamento UTC', () => {
 test('gera número de RDO único a partir do id do documento', () => {
   assert.equal(
     buildRdoReportNumber('2026-11-24', 'a1b2c3d4e5f6g7h8'),
-    'RDO-2026-E5F6G7H8',
+    'RDO-2026-A1B2C3D4E5F6G7H8',
   );
   assert.notEqual(
     buildRdoReportNumber('2026-11-24', 'a1b2c3d4e5f6g7h8'),
