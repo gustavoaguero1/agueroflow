@@ -6,6 +6,8 @@ import {
   salarioFromRh,
   mergeObra,
   splitObraWrite,
+  joinColabs,
+  joinSalarios,
 } from '../src/modules/operations/unifiedCollections';
 import type { RhEmployee } from '../src/types/rhPayroll';
 import type { Unit } from '../src/types';
@@ -84,4 +86,24 @@ test('splitObraWrite separa unidade e complemento (ida e volta)', () => {
   const back = mergeObra({ ...unit(), ...unitPatch }, { id: 'o1', unitId: 'u1', ...overlay });
   assert.equal(back.cidade, 'Campinas/SP');
   assert.equal(back.dataFim, '2026-12-31');
+});
+
+test('joinColabs: funcionário sem complemento aparece como rh_<id>; complemento órfão também aparece', () => {
+  const rows = joinColabs([emp(), emp({ id: 'e2', name: 'Bia' })], [
+    { id: 'c-bia', rhId: 'e2', cidade: 'Lins/SP' },
+    { id: 'c-velho', nome: 'Sem RH' },
+  ]);
+  assert.deepEqual(rows.map((r) => r.id), ['rh_e1', 'c-bia', 'c-velho']);
+  assert.equal(rows[1].cidade, 'Lins/SP');
+  assert.equal(rows[2].semRh, true);
+});
+
+test('joinSalarios usa o mesmo id da pessoa e o regime do complemento', () => {
+  const rows = joinSalarios([emp({ baseSalaryCarteira: 3000 }), emp({ id: 'e2', baseSalaryCarteira: 4000 })], [
+    { id: 'c-bia', rhId: 'e2', regime: 'PJ' },
+  ]);
+  assert.deepEqual(rows, [
+    { id: 'rh_e1', clt: 3000, porFora: 0, pj: 0 },
+    { id: 'c-bia', clt: 0, porFora: 0, pj: 4000 },
+  ]);
 });

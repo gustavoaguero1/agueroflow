@@ -308,6 +308,7 @@ function MainRouter() {
         <OperationsModule
           route={currentNavSection === 'operacoes' ? 'inicio' : currentNavSection.slice(4)}
           onRouteChange={(r) => setCurrentNavSection(`ops-${r}` as NavSection)}
+          onNavigate={(s) => setCurrentNavSection(s as NavSection)}
         />
       )}
       {currentNavSection.startsWith('bens') && (

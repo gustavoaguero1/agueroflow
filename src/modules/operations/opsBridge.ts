@@ -31,6 +31,7 @@ import { db, storage } from '../../firebase';
 import { apiFetch } from '../../apiAuthFetch';
 import type { UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
+import { createPeopleSource } from './peopleSource';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -66,6 +67,13 @@ function mapError(e: any): any {
 }
 const wrapErr = <T,>(p: Promise<T>) => p.catch((e) => { throw mapError(e); });
 
+/** Documento de coleção virtual: mesmos métodos que a página usa, com os erros traduzidos. */
+function wrapVirtualDoc(d: { id: string } & Record<string, any>) {
+  const w = (fn?: (...a: any[]) => Promise<unknown>) => (...a: any[]) =>
+    fn ? wrapErr(Promise.resolve().then(() => fn(...a))) : Promise.reject(Object.assign(new Error('não suportado'), { code: 'owned_elsewhere' }));
+  return { id: d.id, set: w(d.set), update: w(d.update), delete: w(d.delete) };
+}
+
 const snapDoc = (d: DocumentSnapshot<DocumentData>) => ({ id: d.id, exists: d.exists(), data: () => d.data() });
 const snapQuery = (s: QuerySnapshot<DocumentData>) => ({
   docs: s.docs.map(snapDoc),
@@ -77,7 +85,19 @@ export function createOpsBridge(ctx: OpsContext) {
   const subs = new Set<Unsub>();
   const base = (path: string) => `ops_orgs/${ctx.orgId}/${String(path).replace(/^\/+|\/+$/g, '')}`;
 
-  const docApi = (path: string) => {
+  // Pessoas e salários vêm do RH (ver peopleSource.ts); demais coleções ficam em ops_orgs/{orgId}.
+  const track = (u: Unsub) => { subs.add(u); return () => { u(); subs.delete(u); }; };
+  const people = createPeopleSource(ctx.orgId, track);
+  const split = (path: string) => {
+    const p = String(path).replace(/^\/+|\/+$/g, '');
+    const i = p.indexOf('/');
+    return i < 0 ? { col: p, id: '' } : { col: p.slice(0, i), id: p.slice(i + 1) };
+  };
+
+  const docApi = (path: string): any => {
+    const { col, id } = split(path);
+    if (col === 'colaboradores' && id) return wrapVirtualDoc(people.colabDoc(id));
+    if (col === 'salarios' && id) return wrapVirtualDoc(people.salarioDoc(id));
     const r = doc(db, base(path));
     return {
       id: r.id,
@@ -94,7 +114,10 @@ export function createOpsBridge(ctx: OpsContext) {
     };
   };
 
-  const collectionApi = (path: string) => {
+  const collectionApi = (path: string): any => {
+    const { col } = split(path);
+    if (col === 'colaboradores') return people.colaboradores;
+    if (col === 'salarios') return people.salarios;
     const c = collection(db, base(path));
     return {
       doc: (id?: string) => docApi(`${path}/${id || doc(c).id}`),

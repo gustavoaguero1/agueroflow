@@ -208,6 +208,7 @@ async function save(fn,ok){
   if(!db){toast('Sem conexão com a base de dados.');return false}
   try{await fn();if(ok)toast(ok);return true}
   catch(e){if(e&&e.code==='invalid_argument'){S.me.canWrite=false;toast('Seu acesso não permite salvar isso. Fale com um gerente.')}
+    else if(e&&e.code==='owned_elsewhere')toast(e.message);
     else if(e&&e.code==='quota_exceeded')toast('A base atingiu o limite de registros.');
     else toast('Não foi possível salvar agora. Tente de novo.');return false}
 }
@@ -310,7 +311,7 @@ function custoLogistico(mora,obra,cot,interv,estadiaMes){
 /* folgas no ano: (dias do ano + dias de folga) ÷ (dias de trabalho + dias de folga), como na planilha de custos */
 function folgasAno(iv){const p=P();const fd=+p.folgaDias||0;return iv>0?Math.floor((p.horiz+fd)/(iv+fd)):0}
 /* custo mensal do salário cadastrado: parte CLT com 13º, 1/3 de férias e encargos + parte PJ */
-function remSal(s){if(!s)return null;if(s.clt!=null||s.pj!=null){const c=num(s.clt)||0,j=num(s.pj)||0;if(!c&&!j)return null;return (c?remuneracao('CLT',c):0)+(j?remuneracao('PJ',j):0)}return remuneracao(s.regime,s.salario)}
+function remSal(s){if(!s)return null;if(s.clt!=null||s.pj!=null){const c=num(s.clt)||0,j=num(s.pj)||0,f=num(s.porFora)||0;if(!c&&!j&&!f)return null;return (c?remuneracao('CLT',c):0)+(j?remuneracao('PJ',j):0)+f}return remuneracao(s.regime,s.salario)}
 function remuneracao(reg,sal){const p=P();const s=num(sal);if(s==null)return null;return reg==='PJ'?s*(1+p.pjenc):s*(13+1/3)/12*(1+encCLT(p))}
 
 /* ---------- avaliação de candidato ---------- */
@@ -2022,7 +2023,7 @@ function bindMain(){
     if(a==='fat-del'){if(!podeFaturar())return;if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='Confirmar';return}await save(()=>db.doc(b.dataset.col+'/'+b.dataset.id).delete(),'Excluído.');return}
     if(a==='go-fat'){S.route='direcionar';S.view.d=S.view.d||{modo:'fat',pessoas:[]};S.view.d.modo='fat';S.view.f=S.view.f||{tab:'proj',q:'',open:{}};S.view.f.coord=b.dataset.v;location.hash='#direcionar';render();return}
     if(a==='mc-buscar'){const V=S.view.d,C=V.comp;C.busca=JSON.stringify([V.obra2,C.q,C.req,C.prio,!!C.soLivres]);render();return}
-    if(a==='nc-open'){S.view.b.nc={regime:'CLT'};render();return}
+    if(a==='nc-open'){if(opsVaiPara('rh-funcionarios','Pessoas são cadastradas no RH → Funcionários; aparecem aqui na hora.'))return;S.view.b.nc={regime:'CLT'};render();return}
     if(a==='nc-cancel'){S.view.b.nc=null;render();return}
     if(a==='nc-save'){salvarNovoColab(b);return}
     if(a==='rel'){gerarRelatorio(b);return}
@@ -2091,7 +2092,7 @@ function bindMain(){
       if(ed.col==='indicacoes')d.salario=num(d.salario);
       if(ed.col!=='salarios'&&!(d.nome||'').trim()){toast('Preencha o nome.');return}
       const ref=ed.id?db.doc(ed.col+'/'+ed.id):db.collection(ed.col).doc();
-      if(await save(()=>ref.set(d),'Salvo.')){S.view.b.edit=null;render()}}
+      if(await save(()=>ref.set(d),ed.col==='colaboradores'?'Salvo. Nome, função e situação vêm do RH → Funcionários.':'Salvo.')){S.view.b.edit=null;render()}}
     if(a==='del'){if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='Confirmar';return}
       await save(()=>db.doc(b.dataset.col+'/'+b.dataset.id).delete(),'Excluído.')}
     if(a==='nova-pass'){S.view.b.tab='pass';openPassForm()}

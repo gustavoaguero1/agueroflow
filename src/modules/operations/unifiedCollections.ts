@@ -44,6 +44,25 @@ export function salarioFromRh(emp: RhEmployee, regime?: string): { clt: number; 
   return hora > 0 ? { ...out, valorHora: hora } : out;
 }
 
+/** Todas as pessoas do RH (com ou sem complemento) + complementos sem funcionário no RH. */
+export function joinColabs(rh: RhEmployee[], overlays: Overlay[]): Row[] {
+  const byRh = new Map(overlays.filter((o) => o.rhId).map((o) => [o.rhId as string, o]));
+  const rhIds = new Set(rh.map((e) => e.id));
+  return [
+    ...rh.map((e) => mergeColab(e, byRh.get(e.id) || null)),
+    ...overlays.filter((o) => !o.rhId || !rhIds.has(o.rhId)).map((o) => mergeColab(null, o)),
+  ];
+}
+
+/** Salário de cada pessoa do RH, com o mesmo id que a pessoa tem em `colaboradores`. */
+export function joinSalarios(rh: RhEmployee[], overlays: Overlay[]): Row[] {
+  const byRh = new Map(overlays.filter((o) => o.rhId).map((o) => [o.rhId as string, o]));
+  return rh.map((e) => {
+    const o = byRh.get(e.id);
+    return { id: o?.id || `rh_${e.id}`, ...salarioFromRh(e, o?.regime as string | undefined) };
+  });
+}
+
 export function mergeObra(unit: Unit | null, overlay: Overlay | null): Row {
   if (!unit) return { ...(overlay as Overlay), semUnidade: true };
   const cidade = [unit.city, unit.state].filter(Boolean).join('/');
