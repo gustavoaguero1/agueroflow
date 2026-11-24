@@ -140,14 +140,13 @@ export function localDateInputValue(date: Date = new Date()): string {
 
 /** RDO number derived from its Firestore auto-id, avoiding reports.length races between users. */
 export function buildRdoReportNumber(date: string, documentId: string): string {
-  const parsedDate = /^\\d{4}-\\d{2}-\\d{2}$/.test(date)
-    ? new Date(`${date}T00:00:00.000Z`)
-    : null;
+  const hasDateShape = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date);
+  const parsedDate = hasDateShape ? new Date(date + 'T00:00:00.000Z') : null;
   const validDate = parsedDate && Number.isFinite(parsedDate.getTime())
     && parsedDate.toISOString().slice(0, 10) === date;
 
   if (!validDate || documentId.trim().length < 8) {
     throw new Error('Não foi possível gerar o identificador do RDO.');
   }
-  return `RDO-${date.slice(0, 4)}-${documentId.slice(-8).toUpperCase()}`;
+  return 'RDO-' + date.slice(0, 4) + '-' + documentId.slice(-8).toUpperCase();
 }
