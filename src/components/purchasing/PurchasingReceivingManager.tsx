@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   PackageCheck,
   CheckCircle2,
   AlertTriangle,
   FileText,
   Calendar,
-  Building,
-  Hash,
   Plus,
   ShieldAlert,
   ClipboardList,
@@ -16,7 +14,19 @@ import {
   MaterialReceiptRecord,
   PurchaseOrder
 } from '../../types/purchasing';
-import { saveMaterialReceipt } from '../../services/purchasingService';
+import { useAuth } from '../../contexts/AuthContext';
+import { db } from '../../firebase';
+import { getReceivingInventorySetup, registerPurchaseReceipt } from '../../services/purchasingReceivingService';
+import type { Item, Unit } from '../../types';
+
+type ItemReceiptFormState = {
+  quantity: number;
+  heatNumber: string;
+  isConform: boolean;
+  notes: string;
+  stockDisposition: 'estoque' | 'nao_estocavel';
+  catalogItemId: string;
+};
 
 interface PurchasingReceivingManagerProps {
   receipts: MaterialReceiptRecord[];
@@ -33,26 +43,59 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
   currentUserName,
   onRefresh,
 }) => {
+  const { user } = useAuth();
   const [isReceivingModalOpen, setIsReceivingModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceKey, setInvoiceKey] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
+  const [stockUnitId, setStockUnitId] = useState('');
   const [status, setStatus] = useState<MaterialReceiptRecord['status']>('conforme');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<Item[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [itemReceiptState, setItemReceiptState] = useState<Record<string, ItemReceiptFormState>>({});
 
-  // Per-item receipt state: item.id -> { quantity, heatNumber, isConform, notes }
-  const [itemReceiptState, setItemReceiptState] = useState<
-    Record<
-      string,
-      {
-        quantity: number;
-        heatNumber: string;
-        isConform: boolean;
-        notes: string;
-      }
-    >
-  >({});
+  useEffect(() => {
+    let active = true;
+    setInventoryLoading(true);
+    getReceivingInventorySetup(currentOrgId)
+      .then(({ items, units: loadedUnits }) => {
+        if (!active) return;
+        setCatalogItems(items);
+        setUnits(loadedUnits);
+        setStockUnitId((previous) => previous || loadedUnits[0]?.id || '');
+      })
+      .catch((error) => {
+        if (active) setFormError(error instanceof Error ? error.message : 'Falha ao carregar catálogo e unidades.');
+      })
+      .finally(() => {
+        if (active) setInventoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [currentOrgId]);
+
+  const initializeOrderLines = (order: PurchaseOrder) => {
+    const initial: Record<string, ItemReceiptFormState> = {};
+    order.items.forEach((orderItem) => {
+      const matched = catalogItems.find((item) =>
+        (orderItem.internalCode && [item.sku, item.code].some((code) => code?.trim().toLowerCase() === orderItem.internalCode?.trim().toLowerCase()))
+        || (orderItem.manufacturerCode && [item.sku, item.code].some((code) => code?.trim().toLowerCase() === orderItem.manufacturerCode?.trim().toLowerCase()))
+      );
+      initial[orderItem.id] = {
+        quantity: Math.max(0, orderItem.quantityOrdered - (orderItem.quantityReceived || 0)),
+        heatNumber: orderItem.heatNumber || '',
+        isConform: true,
+        notes: '',
+        stockDisposition: 'estoque',
+        catalogItemId: matched?.id || '',
+      };
+    });
+    setItemReceiptState(initial);
+  };
 
   // Eligible orders for receipt (not fully received yet and not cancelled)
   const openOrders = orders.filter(
@@ -65,94 +108,95 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
     const targetOrder = order || openOrders[0];
     if (targetOrder) {
       setSelectedOrderId(targetOrder.id);
-      const init: Record<string, any> = {};
-      targetOrder.items.forEach((it) => {
-        const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
-        init[it.id] = {
-          quantity: remaining,
-          heatNumber: it.heatNumber || '',
-          isConform: true,
-          notes: '',
-        };
-      });
-      setItemReceiptState(init);
+      initializeOrderLines(targetOrder);
     }
     setInvoiceNumber('');
+    setInvoiceKey('');
     setReceiptDate(new Date().toISOString().split('T')[0]);
     setStatus('conforme');
     setNotes('');
+    setFormError(null);
     setIsReceivingModalOpen(true);
   };
 
   const handleOrderChange = (orderId: string) => {
     setSelectedOrderId(orderId);
-    const ord = orders.find((o) => o.id === orderId);
-    if (ord) {
-      const init: Record<string, any> = {};
-      ord.items.forEach((it) => {
-        const remaining = Math.max(0, it.quantityOrdered - (it.quantityReceived || 0));
-        init[it.id] = {
-          quantity: remaining,
-          heatNumber: it.heatNumber || '',
-          isConform: true,
-          notes: '',
-        };
-      });
-      setItemReceiptState(init);
-    }
+    const order = orders.find((candidate) => candidate.id === orderId);
+    if (order) initializeOrderLines(order);
+  };
+
+  const updateReceiptLine = (itemId: string, patch: Partial<ItemReceiptFormState>) => {
+    setItemReceiptState((previous) => ({
+      ...previous,
+      [itemId]: { ...previous[itemId], ...patch },
+    }));
   };
 
   const handleSubmitReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder) return;
+    if (!selectedOrder || !user) {
+      setFormError('Não foi possível identificar a Ordem de Compra ou o usuário responsável.');
+      return;
+    }
     if (!invoiceNumber.trim()) {
-      alert('Informe o número da NF-e de entrada.');
+      setFormError('Informe o número da NF-e de entrada.');
+      return;
+    }
+    if (invoiceKey.trim() && !/^\\d{44}$/.test(invoiceKey.trim())) {
+      setFormError('A chave de acesso deve conter exatamente 44 dígitos.');
       return;
     }
 
     setSubmitting(true);
+    setFormError(null);
     try {
-      const itemsReceived = selectedOrder.items.map((it) => {
-        const state = itemReceiptState[it.id] || {
+      const lines = selectedOrder.items.map((orderItem) => {
+        const state = itemReceiptState[orderItem.id] || {
           quantity: 0,
           heatNumber: '',
           isConform: true,
           notes: '',
+          stockDisposition: 'estoque' as const,
+          catalogItemId: '',
         };
         return {
-          itemId: it.id,
-          description: it.description,
+          purchaseOrderItemId: orderItem.id,
           quantityReceived: Number(state.quantity) || 0,
-          unit: it.unit,
           heatNumber: state.heatNumber.trim() || undefined,
           isConform: state.isConform,
           nonConformityNotes: state.notes.trim() || undefined,
+          stockDisposition: state.stockDisposition,
+          catalogItemId: state.stockDisposition === 'estoque' ? state.catalogItemId || undefined : undefined,
         };
-      });
+      }).filter((line) => line.quantityReceived > 0);
 
-      const receiptRecord: MaterialReceiptRecord = {
-        id: `rec_${Date.now()}`,
+      if (lines.length === 0) {
+        throw new Error('Informe a quantidade recebida em pelo menos um item.');
+      }
+
+      const result = await registerPurchaseReceipt(db, {
         organizationId: currentOrgId,
         purchaseOrderId: selectedOrder.id,
-        purchaseOrderCode: selectedOrder.code,
-        supplierName: selectedOrder.supplierName,
         invoiceNumber: invoiceNumber.trim(),
+        invoiceKey: invoiceKey.trim() || undefined,
         receiptDate,
-        receivedBy: 'buyer_active',
+        receivedBy: user.uid,
         receivedByName: currentUserName,
-        itemsReceived,
+        stockUnitId: stockUnitId || undefined,
+        itemsReceived: lines,
         status,
         notes: notes.trim() || undefined,
-        createdAt: new Date().toISOString(),
-      };
+      });
 
-      await saveMaterialReceipt(receiptRecord);
       setIsReceivingModalOpen(false);
       onRefresh();
-      alert(`Recebimento da NF-e ${invoiceNumber} gravado com sucesso!`);
+      const stockMessage = result.quantityAddedToStock > 0
+        ? ` ${result.quantityAddedToStock} unidade(s) lançada(s) no estoque.`
+        : ' Nenhum item foi liberado para o estoque.';
+      alert(`Recebimento ${invoiceNumber} registrado. ${result.stockLines} linha(s) movimentada(s).${stockMessage}`);
     } catch (err) {
-      console.error(err);
-      alert('Erro ao registrar recebimento.');
+      console.error('Erro ao registrar recebimento e integrar estoque:', err);
+      setFormError(err instanceof Error ? err.message : 'Erro ao registrar recebimento.');
     } finally {
       setSubmitting(false);
     }
