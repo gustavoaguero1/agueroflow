@@ -34,7 +34,7 @@ import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
 import { createPeopleSource } from './peopleSource';
 import { createObrasSource } from './obrasSource';
 import { syncDiarioToTimeLogs } from './diarioSync';
-import { matchByName, rhEmployeeFromInox } from './inoxBackup';
+import { claimMatches, rhEmployeeFromInox } from './inoxBackup';
 import { nextUnitCode, splitColabWrite, splitObraWrite } from './unifiedCollections';
 import { syncAllRhEmployeesToFieldWorkers } from '../../services/rhPayrollService';
 import type { RhEmployee } from '../../types/rhPayroll';
@@ -289,10 +289,18 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
     .map((d) => ({ ...(d.data() as Unit), id: d.id }));
   const unitOfObra = new Map<string, Unit>();
   const stat = { pessoasCasadas: 0, pessoasCriadas: 0, obrasCasadas: 0, obrasCriadas: 0 };
-  for (const row of b.colecoes.obras || []) {
+  // Ligações de uma importação anterior (complementos já gravados) valem antes do nome/código.
+  const linkOf = async (col: string, field: string) =>
+    new Map((await getDocs(collection(db, `ops_orgs/${orgId}/${col}`))).docs.map((d) => [d.id, d.data()[field] as string | undefined]));
+  const obraLinks = await linkOf('obras', 'unitId');
+  const obraRows = (b.colecoes.obras || []).filter((r) => r.id);
+  const obraMatch = claimMatches(
+    obraRows.map((r) => ({ id: r.id, name: String(r.nome || ''), code: r.os ? String(r.os) : undefined, linkedId: obraLinks.get(r.id) })),
+    units.map((u) => ({ id: u.id, name: u.name, code: String(u.code || '') })),
+  );
+  for (const row of obraRows) {
     const { id, ...data } = row;
-    if (!id) continue;
-    let u = units.find((x) => data.os && String(x.code) === String(data.os)) || matchByName(String(data.nome || ''), units);
+    let u = units.find((x) => x.id === obraMatch.get(id));
     if (u) stat.obrasCasadas++;
     else {
       const { unitPatch } = splitObraWrite(data);
@@ -313,16 +321,25 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
   const rh = (await getDocs(query(collection(db, 'rh_employees'), where('orgId', '==', orgId)))).docs
     .map((d) => ({ ...(d.data() as RhEmployee), id: d.id }));
   const salById = new Map((b.colecoes.salarios || []).map((s) => [s.id, s as Record<string, unknown>]));
-  for (const row of b.colecoes.colaboradores || []) {
+  const colabLinks = await linkOf('colaboradores', 'rhId');
+  const rhIds = new Set(rh.map((e) => e.id));
+  const colabRows = (b.colecoes.colaboradores || []).filter((r) => r.id);
+  const colabMatch = claimMatches(
+    colabRows.map((r) => {
+      const created = rhEmployeeFromInox(orgId, r.id, r, null).id; // criado numa importação anterior
+      return { id: r.id, name: String(r.nome || ''), linkedId: colabLinks.get(r.id) || (rhIds.has(created) ? created : undefined) };
+    }),
+    rh.map((e) => ({ id: e.id, name: e.name })),
+  );
+  for (const row of colabRows) {
     const { id, ...data } = row;
-    if (!id) continue;
-    let emp = matchByName(String(data.nome || ''), rh);
+    let emp = rh.find((e) => e.id === colabMatch.get(id));
     if (emp) stat.pessoasCasadas++;
     else {
+      // Só cria: nunca regrava um funcionário que já existe (edições do RH ficam).
       emp = rhEmployeeFromInox(orgId, id, data, salById.get(id) || null);
       const { id: eid, ...empData } = emp;
       writes.push({ path: `rh_employees/${eid}`, data: empData });
-      rh.push(emp);
       stat.pessoasCriadas++;
     }
     const overlay = rewriteUrls(stripUndefined(splitColabWrite(data).overlay), urlMap);

@@ -1805,26 +1805,31 @@ async function salvarNovoColab(b){const nc=S.view.b.nc;if(!nc||!db)return;const 
   if(sal.clt||sal.pj)await save(()=>db.doc('salarios/'+id).set(sal));
   if(nc.obraAtual)notificar([{nome,de:''}],nc.obraAtual);
   S.view.b.nc=null;toast(nome+' cadastrado.');render()}
-async function moverParaIndicacoes(id,motivo,b){const c=S.colab.find(x=>x.id===id);if(!c||!db)return;b.disabled=true;
+async function moverParaIndicacoes(id,motivo,b){const c=S.colab.find(x=>x.id===id);if(!c||!db)return;
+  /* No AgueroFlow o desligamento é no RH: primeiro desliga lá; depois este botão registra a indicação. */
+  if(c.status!=='Desligado'&&opsVaiPara('rh-funcionarios','Desligue '+(c.nome||'a pessoa')+' no RH → Funcionários e depois clique de novo em "Saiu da empresa" para registrar em Indicações.'))return;
+  b.disabled=true;
   const s=S.me.isG?S.sal[id]:null;const clt=num(s&&s.clt)||0,pj=num(s&&s.pj)||0;const sal=clt+pj||null;const reg=pj&&!clt?'PJ':'CLT';
   const o=S.obras.find(x=>x.id===c.obraAtual);
   const obs=['Por que saiu da Aguero: '+(motivo.trim()||'não informado'),sal?'Último salário '+reg+' '+brl(sal):'',o?'Última obra: '+o.nome:'',c.obsEscala||''].filter(Boolean).join(' | ');
   const ind=clean({data:hojeISO(),nome:c.nome||'',funcao:c.funcao||'',telefone:c.telefone||'',cidade:c.cidade||'',indicadoPor:'',status:'Nova',origem:'Ex-colaborador',regime:reg,salario:sal,folga:c.folga||'',obs,movidoEm:new Date().toISOString()});
   if(!await save(()=>db.doc('indicacoes/ex-'+id.replace(/^c-/,'')).set(ind))){b.disabled=false;return}
-  await save(()=>db.doc('colaboradores/'+id).delete());if(s)await save(()=>db.doc('salarios/'+id).delete());
+  if(typeof opsVaiPara==='function'&&window.parent!==window){await save(()=>db.doc('colaboradores/'+id).update({obraAtual:''}))}
+  else{await save(()=>db.doc('colaboradores/'+id).delete());if(s)await save(()=>db.doc('salarios/'+id).delete())}
   S.view.b.saida=null;toast(c.nome+' foi para Indicações.');render()}
 function bColab(){return saidaBox()+crud('colaboradores',F_COL,[...S.colab].sort((a,b)=>(a.nome||'').localeCompare(b.nome||'')),'Colaborador','<p class="small muted">Quem sai da empresa: botão "Saiu da empresa" (vai direto para Indicações). Função, cidade, nível técnico, atividades que domina e obra atual de cada colaborador. É daqui que sai a montagem da melhor equipe. O salário fica separado, na aba Salários, que só os gerentes veem.</p>')}
 function bObras(){return crud('obras',F_OBR,S.obras.slice().sort((a,b)=>(a.coordenador||'').localeCompare(b.coordenador||'')||(a.nome||'').localeCompare(b.nome||'')),'Obra','<p class="small muted">Só as obras ativas aparecem para escolher em Contratação e Direcionar. Cidade no formato Cidade/UF; sem cidade, o custo não é calculado.</p>')}
 function custoPessoa(c,s){const p=P();const clt=num(s&&s.clt)??(s&&s.regime!=='PJ'?num(s.salario):null)??0,pj=num(s&&s.pj)??(s&&s.regime==='PJ'?num(s.salario):null)??0;
-  const enc=encCLT(p);const sal=clt+pj,prov=clt*(1+1/3)/12,encM=(clt*12+clt*(1+1/3))*enc/12,pjx=pj*p.pjenc;
+  const pf=num(s&&s.porFora)??0;/* "Por fora": só o valor mensal, sem 13º, férias ou encargos */
+  const enc=encCLT(p);const sal=clt+pj+pf,prov=clt*(1+1/3)/12,encM=(clt*12+clt*(1+1/3))*enc/12,pjx=pj*p.pjenc;
   const iv=folgaDe(c);const fa=iv==null?folgasAno(folgaPadrao(c.funcao)):folgasAno(iv);const pc=num(c.passagemCiclo);const via=pc==null?null:fa*pc/12;
-  const mo=sal+prov+encM+pjx;return{clt,pj,sal,prov,encM:encM+pjx,mo,fa,pc,via,tot:mo+(via||0),semSal:!clt&&!pj}}
+  const mo=sal+prov+encM+pjx;return{clt,pj,pf,sal,prov,encM:encM+pjx,mo,fa,pc,via,tot:mo+(via||0),semSal:!clt&&!pj&&!pf}}
 function bSal(){
   const V=S.view.b;const ed=V.edit&&V.edit.col==='salarios'?V.edit:null;const per=V.per||(V.per=1);const q=(V.q||'').toLowerCase();const ff=V.ff||'';
   const all=[...S.colab].filter(c=>c.status!=='Desligado').map(c=>({c,k:custoPessoa(c,S.sal[c.id])}));
   const rows=all.filter(x=>(!q||(x.c.nome||'').toLowerCase().includes(q))&&(!ff||x.c.funcao===ff)).sort((a,b)=>b.k.tot-a.k.tot);
   const T=k=>rows.reduce((t,x)=>t+(x.k[k]||0),0);
-  const vin=x=>x.k.clt&&x.k.pj?'CLT + PJ':x.k.pj?'PJ':x.k.clt?'CLT':'—';
+  const vin=x=>{const b=x.k.clt&&x.k.pj?'CLT + PJ':x.k.pj?'PJ':x.k.clt?'CLT':'';return x.k.pf?(b?b+' + Por fora':'Por fora'):(b||'—')};
   const grp={};all.forEach(x=>{const g=vin(x);const e=grp[g]||(grp[g]={n:0,t:0});e.n++;e.t+=x.k.tot});
   const funcs=[...new Set(all.map(x=>x.c.funcao).filter(Boolean))].sort();
   const PER=[[1,'1 mês'],[3,'3 meses'],[6,'6 meses'],[9,'9 meses'],[12,'1 ano']];

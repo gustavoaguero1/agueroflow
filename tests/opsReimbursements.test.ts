@@ -1,6 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loteDaSemana, receiptToReembNota, phoneKey } from '../server/opsReimbursements';
+import { loteDaSemana, receiptToReembNota, phoneKey, mirrorReceiptsToOps } from '../server/opsReimbursements';
+
+/** Firestore falso: guarda os docs gravados por caminho. */
+function fakeDb(colabs: Record<string, Array<{ id: string; telefone?: string }>> = {}) {
+  const written = new Map<string, Record<string, unknown>>();
+  const images = new Map<string, { base64: string; mimeType: string }>();
+  const db = {
+    collection: (path: string) => ({
+      get: async () => ({ docs: (colabs[path] || []).map((c) => ({ id: c.id, get: (k: string) => (c as Record<string, unknown>)[k] })) }),
+    }),
+    doc: (path: string) => ({ path, get: async () => ({ exists: images.has(path), data: () => images.get(path) }) }),
+    batch: () => {
+      const ops: Array<[string, Record<string, unknown>]> = [];
+      return { set: (ref: { path: string }, data: Record<string, unknown>) => ops.push([ref.path, data]), commit: async () => ops.forEach(([p, d]) => written.set(p, d)) };
+    },
+  };
+  return { db: db as never, written, images };
+}
+
+const base = { employeeName: 'Ana', employeePhone: '5511912345678', receiptDate: '2026-11-20', establishmentName: 'Posto', category: 'combustivel', totalAmount: 10, receivedAt: '2026-11-23T12:00:00-03:00', status: 'pendente', source: 'whatsapp_real', imageStatus: 'salva' };
+
+test('mirror: empresa antiga/ausente vai para a empresa real (effectiveOrg), nunca é pulada', async () => {
+  const { db, written } = fakeDb();
+  const resolveOrg = (id?: string) => (!id || id === 'org_aguero_default' ? 'org_real' : id);
+  const n = await mirrorReceiptsToOps(db, [{ ...base, id: 'r1', organizationId: 'org_aguero_default' }, { ...base, id: 'r2', organizationId: '' }] as never, { resolveOrg });
+  assert.equal(n, 2);
+  assert.ok(written.has('ops_orgs/org_real/reemb_notas/wa_r1'));
+  assert.ok(written.has('ops_orgs/org_real/reemb_notas/wa_r2'));
+});
+
+test('mirror: a foto salva do recibo vai para o Storage e entra nos anexos', async () => {
+  const { db, written, images } = fakeDb();
+  images.set('receipt_images/r1', { base64: 'AAAA', mimeType: 'image/png' });
+  const uploads: string[] = [];
+  const uploadImage = async (path: string) => { uploads.push(path); return `https://storage/${path}`; };
+  await mirrorReceiptsToOps(db, [{ ...base, id: 'r1', organizationId: 'org' }] as never, { resolveOrg: (x) => x || 'org', uploadImage });
+  assert.deepEqual(uploads, ['operacoes/org/wa_r1.png']);
+  const nota = written.get('ops_orgs/org/reemb_notas/wa_r1')!;
+  assert.deepEqual(nota.anexos, [{ nome: 'nota-r1.png', tipo: 'image/png', url: 'https://storage/operacoes/org/wa_r1.png' }]);
+});
+
+test('mirror: recibo recém-chegado ainda sem situação da foto espera a próxima gravação', async () => {
+  const { db, written } = fakeDb();
+  const now = new Date('2026-11-23T15:00:30Z');
+  const n = await mirrorReceiptsToOps(db, [{ ...base, id: 'r1', organizationId: 'org', imageStatus: undefined, receivedAt: '2026-11-23T15:00:00Z' }] as never, { resolveOrg: (x) => x || 'org', now });
+  assert.equal(n, 0);
+  assert.equal(written.size, 0);
+});
+
+test('receiptToReembNota: recibo já reembolsado ou rejeitado não entra para pagar de novo', () => {
+  assert.equal(receiptToReembNota({ ...base, id: 'r1', organizationId: 'o', reimbursedAt: '2026-11-10T10:00:00Z' } as never, new Map()).incluir, false);
+  assert.equal(receiptToReembNota({ ...base, id: 'r2', organizationId: 'o', status: 'rejeitado' } as never, new Map()).incluir, false);
+  assert.equal(receiptToReembNota({ ...base, id: 'r3', organizationId: 'o', status: 'pendente' } as never, new Map()).incluir, true);
+});
 
 // Semana do Inox: fecha quinta 17:00 (horário de Brasília); o lote é a data da quinta.
 test('loteDaSemana: segunda vai para a quinta da mesma semana', () => {

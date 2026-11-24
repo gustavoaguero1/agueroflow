@@ -7,7 +7,7 @@ import { db } from '../../firebase';
 import type { RhEmployee } from '../../types/rhPayroll';
 import type { Unit } from '../../types';
 import { joinColabs, joinObras } from './unifiedCollections';
-import { diarioToTimeLogs, timeLogIdPrefix, type DiarioLinha } from './diarioToTimeLogs';
+import { diarioToTimeLogs, fieldWorkerIdFor, timeLogIdPrefix, type DiarioLinha } from './diarioToTimeLogs';
 
 const rows = async (q: ReturnType<typeof query> | ReturnType<typeof collection>) =>
   (await getDocs(q)).docs.map((d) => ({ ...(d.data() as Record<string, unknown>), id: d.id }));
@@ -16,14 +16,25 @@ export async function syncDiarioToTimeLogs(orgId: string, isoDate: string): Prom
   const d = await getDoc(doc(db, `ops_orgs/${orgId}/diario/${isoDate}`));
   const linhas = ((d.exists() && d.data().linhas) || {}) as Record<string, DiarioLinha>;
 
-  const [rh, colOv, units, obraOv, existing] = await Promise.all([
+  const [rh, colOv, units, obraOv, existing, workers] = await Promise.all([
     rows(query(collection(db, 'rh_employees'), where('orgId', '==', orgId))),
     rows(collection(db, `ops_orgs/${orgId}/colaboradores`)),
     rows(query(collection(db, 'units'), where('orgId', '==', orgId))),
     rows(collection(db, `ops_orgs/${orgId}/obras`)),
     rows(query(collection(db, 'worker_time_logs'), where('orgId', '==', orgId), where('date', '==', isoDate))),
+    rows(query(collection(db, 'field_workers'), where('orgId', '==', orgId))),
   ]);
-  const colabs = new Map(joinColabs(rh as unknown as RhEmployee[], colOv as never).map((c) => [c.id, c as never]));
+  const rhById = new Map((rh as unknown as RhEmployee[]).map((e) => [e.id, e]));
+  const fw = workers as unknown as Array<{ id: string; name: string }>;
+  const colabs = new Map(
+    joinColabs(rh as unknown as RhEmployee[], colOv as never).map((c) => {
+      const e = c.rhId ? rhById.get(String(c.rhId)) : undefined;
+      const extra = e
+        ? { workerId: fieldWorkerIdFor(e, fw), hourlyRate: (e.hourlyRateCarteira || 0) + (e.hourlyRatePorFora || 0) }
+        : {};
+      return [c.id, { ...c, ...extra } as never];
+    }),
+  );
   const obras = new Map(joinObras(units as unknown as Unit[], obraOv as never).map((o) => [o.id, o as never]));
 
   const logs = diarioToTimeLogs(orgId, isoDate, linhas, colabs, obras);
@@ -31,7 +42,7 @@ export async function syncDiarioToTimeLogs(orgId: string, isoDate: string): Prom
   const batch = writeBatch(db);
   for (const l of logs) batch.set(doc(db, 'worker_time_logs', l.id), l);
   for (const e of existing) {
-    if (e.id.startsWith(timeLogIdPrefix(isoDate)) && !keep.has(e.id)) batch.delete(doc(db, 'worker_time_logs', e.id));
+    if (e.id.startsWith(timeLogIdPrefix(orgId, isoDate)) && !keep.has(e.id)) batch.delete(doc(db, 'worker_time_logs', e.id));
   }
   await batch.commit();
 }

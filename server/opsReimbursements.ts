@@ -43,10 +43,16 @@ export function loteDaSemana(isoInstant: string): string {
 
 export const phoneKey = (p: unknown) => String(p || '').replace(/\D/g, '').slice(-11);
 
-export function receiptToReembNota(r: ReimbursementReceipt, colabByPhone: Map<string, string>): Record<string, unknown> {
+/** Recibo que já foi pago ou recusado não pode entrar para pagar de novo. */
+const FECHADO = new Set(['reembolsado', 'rejeitado', 'abatido_fundo_missao']);
+
+type Anexo = { nome: string; tipo: string; url: string };
+
+export function receiptToReembNota(r: ReimbursementReceipt, colabByPhone: Map<string, string>, anexo?: Anexo): Record<string, unknown> {
   const received = r.receivedAt || new Date().toISOString();
   const colab = colabByPhone.get(phoneKey(r.employeePhone)) || '';
   const url = r.fileUrl || r.rawImageUrl || '';
+  const anexos = anexo ? [anexo] : url ? [{ nome: `nota-${r.id}.jpg`, tipo: 'image/jpeg', url }] : [];
   const quem = [r.employeeName, r.employeePhone].filter(Boolean).join(' · ');
   return {
     lote: loteDaSemana(received),
@@ -62,8 +68,8 @@ export function receiptToReembNota(r: ReimbursementReceipt, colabByPhone: Map<st
     natSug: NATUREZA[r.category] || '',
     natureza: NATUREZA[r.category] || '',
     lido: true,
-    anexos: url ? [{ nome: `nota-${r.id}.jpg`, tipo: 'image/jpeg', url }] : [],
-    incluir: true,
+    anexos,
+    incluir: !(r.reimbursedAt || FECHADO.has(r.status)),
     origem: 'whatsapp',
     receiptId: r.id,
     criadoPor: 'WhatsApp',
@@ -75,13 +81,39 @@ export function receiptToReembNota(r: ReimbursementReceipt, colabByPhone: Map<st
  * Grava no Reembolso de Operações os recibos que ainda não foram para lá (sem `opsNotaId`).
  * Marca cada recibo enviado com `opsNotaId`; devolve quantos foram enviados.
  */
-export async function mirrorReceiptsToOps(db: Firestore, receipts: ReimbursementReceipt[]): Promise<number> {
+export interface MirrorOptions {
+  /** Mesma regra do resto do servidor (effectiveOrg): empresa antiga/ausente → empresa real. */
+  resolveOrg: (id?: string) => string;
+  /** Sobe a foto para o Storage e devolve a URL; sem isso a nota fica sem anexo. */
+  uploadImage?: (path: string, data: Buffer, mimeType: string) => Promise<string>;
+  now?: Date;
+}
+
+/** Recibo recém-chegado cuja foto ainda está sendo salva espera a próxima gravação (até 2 min). */
+const ready = (r: ReimbursementReceipt, now: Date) =>
+  r.imageStatus !== undefined || now.getTime() - new Date(r.receivedAt || 0).getTime() > 2 * 60_000;
+
+export async function mirrorReceiptsToOps(db: Firestore, receipts: ReimbursementReceipt[], opts: MirrorOptions): Promise<number> {
+  const now = opts.now || new Date();
   const pending = receipts.filter(
-    (r) => r && r.organizationId && !(r as { opsNotaId?: string }).opsNotaId && (r.source === 'whatsapp_real' || r.source === 'manual_upload'),
+    (r) => r && !(r as { opsNotaId?: string }).opsNotaId && (r.source === 'whatsapp_real' || r.source === 'manual_upload') && ready(r, now),
   );
   if (!pending.length) return 0;
   const byOrg = new Map<string, ReimbursementReceipt[]>();
-  for (const r of pending) byOrg.set(r.organizationId, [...(byOrg.get(r.organizationId) || []), r]);
+  for (const r of pending) {
+    const org = opts.resolveOrg(r.organizationId);
+    byOrg.set(org, [...(byOrg.get(org) || []), r]);
+  }
+  const anexoDe = async (orgId: string, r: ReimbursementReceipt): Promise<Anexo | undefined> => {
+    if (!opts.uploadImage) return undefined;
+    const img = await db.doc(`receipt_images/${r.id}`).get();
+    const d = img.exists ? (img.data() as { base64?: string; mimeType?: string }) : null;
+    if (!d?.base64) return undefined;
+    const tipo = d.mimeType || 'image/jpeg';
+    const ext = (tipo.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '');
+    const url = await opts.uploadImage(`operacoes/${orgId}/wa_${r.id}.${ext}`, Buffer.from(d.base64, 'base64'), tipo);
+    return { nome: `nota-${r.id}.${ext}`, tipo, url };
+  };
   let sent = 0;
   for (const [orgId, list] of byOrg) {
     const colabs = await db.collection(`ops_orgs/${orgId}/colaboradores`).get();
@@ -92,11 +124,12 @@ export async function mirrorReceiptsToOps(db: Firestore, receipts: Reimbursement
     }
     for (let i = 0; i < list.length; i += 400) {
       const chunk = list.slice(i, i + 400);
+      const anexos = await Promise.all(chunk.map((r) => anexoDe(orgId, r).catch(() => undefined)));
       const batch = db.batch();
-      for (const r of chunk) {
+      chunk.forEach((r, k) => {
         const id = `wa_${r.id}`.replace(/[^\w-]/g, '_');
-        batch.set(db.doc(`ops_orgs/${orgId}/reemb_notas/${id}`), receiptToReembNota(r, byPhone));
-      }
+        batch.set(db.doc(`ops_orgs/${orgId}/reemb_notas/${id}`), receiptToReembNota(r, byPhone, anexos[k]));
+      });
       await batch.commit();
       for (const r of chunk) (r as { opsNotaId?: string }).opsNotaId = `wa_${r.id}`.replace(/[^\w-]/g, '_');
       sent += chunk.length;

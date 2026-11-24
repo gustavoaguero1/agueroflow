@@ -2970,7 +2970,15 @@ Sua tarefa:
     const admin = getAdmin();
     if (!admin || mirroringReceipts) return;
     mirroringReceipts = true;
-    mirrorReceiptsToOps(admin.db, reimbursementReceipts)
+    mirrorReceiptsToOps(admin.db, reimbursementReceipts, {
+      resolveOrg: effectiveOrg,
+      // Foto do recibo vai para o Storage de Operações com token de download (mesmo formato do app).
+      uploadImage: async (path, data, mimeType) => {
+        const token = crypto.randomUUID();
+        await admin.bucket.file(path).save(data, { contentType: mimeType, metadata: { metadata: { firebaseStorageDownloadTokens: token } } });
+        return `https://firebasestorage.googleapis.com/v0/b/${admin.bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+      },
+    })
       .then((n) => { mirroringReceipts = false; if (n > 0) persistReceipts(); })
       .catch((err) => { mirroringReceipts = false; console.warn('[operacoes] recibos → reembolso:', err?.message || err); });
   };
