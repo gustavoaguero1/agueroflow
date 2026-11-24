@@ -82,6 +82,22 @@ test('payableKpis', () => {
   });
 });
 
+test('payableKpis includes partial cash movements and excludes abatements from cash paid', () => {
+  const ps = [
+    { id: 'p1', status: 'aberto', valor: 5400, valorPago: 1500, valorAbatido: 100, vencimento: '2026-11-20' },
+    { id: 'p2', status: 'pago', valor: 3000, valorPago: 2500, valorAbatido: 500, vencimento: '2026-11-01', pagoEm: '2026-11-21' },
+  ] as any;
+  const movements = [
+    { payableId: 'p1', paymentDate: '2026-11-21', paymentAmount: 1000, settledValue: 1100 },
+    { payableId: 'p1', paymentDate: '2026-11-22', paymentAmount: 500, settledValue: 500 },
+    { payableId: 'p2', paymentDate: '2026-11-21', paymentAmount: 2500, settledValue: 3000 },
+  ];
+  const k = payableKpis(ps, '2026-11-21', movements);
+  assert.equal(k.atrasadas.valor, 3800);
+  assert.equal(k.pagoMes.valor, 4000);
+  assert.equal(k.pagoMes.qtd, 2);
+});
+
 test('matchCatalogItem by EAN then normalized description', () => {
   const items = [{ id: 'a', name: 'Chapa Inox 304 2mm', ean: '' }, { id: 'b', name: 'Outro', ean: '7891234567895' }] as any;
   assert.equal(matchCatalogItem(items, { ean: '7891234567895', descricao: 'Chapa inox 304 2mm' } as any)?.id, 'b');

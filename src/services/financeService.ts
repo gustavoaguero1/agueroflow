@@ -189,7 +189,12 @@ export function buildPayables(
 }
 
 type Kpi = { qtd: number; valor: number };
-export function payableKpis(ps: Pick<FinancePayable, 'status' | 'valor' | 'vencimento' | 'pagoEm' | 'valorPago' | 'valorAbatido'>[], today: string) {
+type PayableCashMovement = { payableId: string; paymentDate: string; paymentAmount?: number; settledValue: number };
+export function payableKpis(
+  ps: Pick<FinancePayable, 'id' | 'status' | 'valor' | 'vencimento' | 'pagoEm' | 'valorPago' | 'valorAbatido'>[],
+  today: string,
+  movements: PayableCashMovement[] = [],
+) {
   const month = today.slice(0, 7);
   const in7 = addDays(today, 7);
   const k = { atrasadas: { qtd: 0, valor: 0 }, vence7: { qtd: 0, valor: 0 }, aPagarMes: { qtd: 0, valor: 0 }, pagoMes: { qtd: 0, valor: 0 } };
@@ -201,11 +206,31 @@ export function payableKpis(ps: Pick<FinancePayable, 'status' | 'valor' | 'venci
       if (p.vencimento < today) add(k.atrasadas, remaining);
       else if (p.vencimento <= in7) add(k.vence7, remaining);
       if (p.vencimento.startsWith(month)) add(k.aPagarMes, remaining);
-    } else if (p.status === 'pago' && (p.pagoEm ?? '').startsWith(month)) {
-      // "Pago no mês" measures cash disbursed; approved abatements are reported separately on the payable.
-      add(k.pagoMes, p.valorPago ?? p.valor);
     }
   }
+
+  // Sum cash paid in the month from immutable movement events, counting each title once.
+  const titlesWithHistory = new Set(movements.map((movement) => movement.payableId));
+  const paidTitleIds = new Set<string>();
+  for (const movement of movements) {
+    if (!movement.paymentDate.startsWith(month)) continue;
+    const cash = movement.paymentAmount ?? movement.settledValue;
+    if (cash > 0) {
+      k.pagoMes.valor = round2(k.pagoMes.valor + cash);
+      paidTitleIds.add(movement.payableId);
+    }
+  }
+  // Legacy titles that predate the event collection keep their original month-based KPI behavior.
+  for (const p of ps) {
+    if (p.status === 'pago' && (p.pagoEm ?? '').startsWith(month) && !titlesWithHistory.has(p.id)) {
+      const cash = p.valorPago ?? p.valor;
+      if (cash > 0) {
+        k.pagoMes.valor = round2(k.pagoMes.valor + cash);
+        paidTitleIds.add(p.id);
+      }
+    }
+  }
+  k.pagoMes.qtd = paidTitleIds.size;
   return k;
 }
 

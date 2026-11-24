@@ -54,7 +54,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
   }, [orgId]);
 
   const t = today();
-  const kpis = useMemo(() => payableKpis(ps, t), [ps, t]);
+  const kpis = useMemo(() => payableKpis(ps, t, settlements), [ps, t, settlements]);
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome ?? 'Sem categoria';
   const ctName = (id?: string) => { const c = contracts.find((x) => x.id === id); return c ? c.title || c.name || c.contractNumber : ''; };
   const shown = ps.filter((p) => (!f.status || p.status === f.status)
