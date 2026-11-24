@@ -57,6 +57,21 @@ test('rejeita quantidade fracionada, negativa ou acima do limite', () => {
   }
 });
 
+test('preserva quantidade explicitamente informada como zero', () => {
+  const result = prepareRdoFieldRecords(
+    [
+      { role: 'Caldeireiro', count: '0', hours: '' },
+      { role: 'Soldador TIG', count: '', hours: '' },
+    ],
+    [],
+  );
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.workforce, [
+    { role: 'Caldeireiro', count: 0, hours: 0 },
+  ]);
+});
+
 test('não aceita horas de equipe sem quantidade de profissionais', () => {
   const result = prepareRdoFieldRecords(
     [{ role: 'Supervisor', count: '0', hours: '8' }],
