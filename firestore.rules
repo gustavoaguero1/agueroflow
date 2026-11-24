@@ -218,7 +218,8 @@ service cloud.firestore {
       function isPayableSettlement() { return coll == 'finance_payable_settlements'; }
       // Paid-state changes are server-only so the immutable settlement event and payable update stay atomic.
       function payableClientUpdate() {
-        return financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
+        return resource.data.get('status', '') == 'aberto'
+          && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'pagoEm', 'pagoPor', 'settlementId']);
       }
       function reconciliationCaseUpdate() {

@@ -262,6 +262,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
                 <div><h3 id="settlement-title" className="text-sm font-bold text-white">Registrar baixa do título</h3><p className="text-[11px] text-slate-400 mt-1">{settlementTarget.documento} · {settlementTarget.fornecedor.nome}</p></div>
                 <button type="button" onClick={() => setSettlementTarget(null)} className="text-slate-400 hover:text-white" aria-label="Fechar"><X className="w-4 h-4" /></button>
               </div>
+              {error && <p className={msgErr}>{error}</p>}
               <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 flex items-center justify-between gap-3">
                 <div><p className="text-[10px] text-slate-400">Valor integral que será baixado</p><p className="text-lg font-extrabold text-white font-mono">{brl.format(settlementTarget.valor)}</p></div>
                 <div className="text-right"><p className="text-[10px] text-slate-400">Vencimento atual</p><p className="text-xs text-slate-200">{fmtDate(settlementTarget.vencimento)}</p></div>

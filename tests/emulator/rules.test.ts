@@ -342,6 +342,7 @@ test('finance_payables: createdBy is caller; payment state can only change throu
   const c = 'finance_payables';
   await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', valor: 10, status: 'aberto', createdBy: 'x' }));
   await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', valor: 10, status: 'aberto' }));
+  await seedAs((db) => setDoc(doc(db, `${c}/paid`), { orgId: 'org_a', valor: 25, status: 'pago', pagoEm: '2026-11-24', pagoPor: 'settler1' }));
   await assertSucceeds(getDoc(doc(member(), `${c}/a`)));
   await assertFails(getDoc(doc(member(), `${c}/b`)));
   await assertFails(setDoc(doc(member(), `${c}/pay_org_a_n`), { orgId: 'org_a', createdBy: 'member_m_op' }));
@@ -354,6 +355,7 @@ test('finance_payables: createdBy is caller; payment state can only change throu
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_ger', updatedAt: 'x' }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { settlementId: 'forged' }));
   await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { valor: 12 }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/paid`), { valor: 99 }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
   await assertFails(updateDoc(doc(member(), `${c}/a`), { status: 'pago' }));
   await assertFails(deleteDoc(doc(supervisor(), `${c}/pay_org_a_n`)));
