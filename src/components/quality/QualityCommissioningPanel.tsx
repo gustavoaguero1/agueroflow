@@ -208,23 +208,43 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     };
   }, [organizationId]);
 
+  const statesByRecord = useMemo(
+    () => new Map(states.map((item) => [item.recordId, item])),
+    [states],
+  );
+
+  // Only events reachable from the current state's latestEventId are part of the active history.
+  // Direct append-only events that do not advance the state are retained in storage but not presented as completed transitions.
   const eventsByRecord = useMemo(() => {
     const grouped = new Map<string, QualityRecordEvent[]>();
+    const eventsById = new Map(events.map((event) => [event.id, event]));
+    for (const state of states) {
+      const chain: QualityRecordEvent[] = [];
+      const seen = new Set<string>();
+      let currentEventId = state.latestEventId;
+      while (currentEventId && !seen.has(currentEventId)) {
+        seen.add(currentEventId);
+        const event = eventsById.get(currentEventId);
+        if (!event || event.recordId !== state.recordId) break;
+        chain.push(event);
+        currentEventId = event.previousEventId || '';
+      }
+      grouped.set(state.recordId, chain.sort((a, b) => dateMillis(a.recordedAt) - dateMillis(b.recordedAt)));
+    }
+    // Preserve full event history for legacy records that predate the state ledger.
     for (const event of events) {
+      if (statesByRecord.has(event.recordId)) continue;
       const current = grouped.get(event.recordId) || [];
       current.push(event);
       grouped.set(event.recordId, current);
     }
     for (const [recordId, list] of grouped) {
-      grouped.set(recordId, list.sort((a, b) => dateMillis(a.recordedAt) - dateMillis(b.recordedAt)));
+      if (!statesByRecord.has(recordId)) {
+        grouped.set(recordId, list.sort((a, b) => dateMillis(a.recordedAt) - dateMillis(b.recordedAt)));
+      }
     }
     return grouped;
-  }, [events]);
-
-  const statesByRecord = useMemo(
-    () => new Map(states.map((item) => [item.recordId, item])),
-    [states],
-  );
+  }, [events, states, statesByRecord]);
 
   const currentStatusFor = (record: QualityRecord) =>
     statesByRecord.get(record.id)?.status
