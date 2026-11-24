@@ -318,7 +318,8 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     setSuccess('');
     try {
       const recordRef = doc(collection(db, 'quality_records'));
-        const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
+      const eventRef = doc(collection(db, 'quality_record_events'));
+      const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
       const recordCode = `QLD-${recordDate.slice(0, 4)}-${recordRef.id.slice(0, 8).toUpperCase()}`;
       const eventType: QualityEventType = isFinding(recordType) ? 'opened' : 'submitted_for_review';
       const batch = writeBatch(db);
