@@ -435,6 +435,11 @@ export const ConstructionModule: React.FC = () => {
     });
   }, [reports, selectedContractId, searchQuery]);
 
+  const rdoFieldRecordsPreview = useMemo(
+    () => prepareRdoFieldRecords(rdoWorkforceDrafts, rdoEquipmentDrafts),
+    [rdoWorkforceDrafts, rdoEquipmentDrafts],
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -480,7 +485,7 @@ export const ConstructionModule: React.FC = () => {
 
           <button
             onClick={() => {
-              setRdoContractId(selectedContractId || contracts[0]?.id || '');
+              resetRdoForm();
               setShowRdoModal(true);
             }}
             className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold shadow-sm transition-all cursor-pointer"
@@ -931,7 +936,7 @@ export const ConstructionModule: React.FC = () => {
                 </span>
                 <div>
                   <h3 className="text-base font-bold text-white">Novo Relatório Diário de Obra (RDO)</h3>
-                  <p className="text-xs text-slate-400">Emissão diária para controle de canteiro e medição contratual.</p>
+                  <p className="text-xs text-slate-400">Registro do que foi efetivamente executado, mobilizado e conferido na frente de trabalho.</p>
                 </div>
               </div>
               <button
@@ -943,8 +948,8 @@ export const ConstructionModule: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateRdo} className="mt-4 space-y-4 text-xs">
-              {/* Date, Contract, Weather */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Dados de referência: todos exigem escolha explícita no momento do RDO. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Data do Diário *</label>
                   <input
@@ -957,15 +962,34 @@ export const ConstructionModule: React.FC = () => {
                 </div>
 
                 <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Unidade / Local da Obra *</label>
+                  <select
+                    required
+                    value={rdoUnitId}
+                    onChange={(e) => setRdoUnitId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="">Selecione a unidade / local</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name}{unit.code ? ` (${unit.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
                   <label className="block text-slate-300 font-semibold mb-1">Contrato / Obra *</label>
                   <select
+                    required
                     value={rdoContractId}
                     onChange={(e) => setRdoContractId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
                   >
+                    <option value="">Selecione o contrato / obra</option>
                     {contracts.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name || c.title}
+                        {c.name || c.title}{c.code || c.contractNumber ? ` (${c.code || c.contractNumber})` : ''}
                       </option>
                     ))}
                   </select>
@@ -974,10 +998,12 @@ export const ConstructionModule: React.FC = () => {
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Condição Climática *</label>
                   <select
+                    required
                     value={rdoWeather}
-                    onChange={(e) => setRdoWeather(e.target.value as any)}
+                    onChange={(e) => setRdoWeather(e.target.value as ConstructionDailyReport['weather'] | '')}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
                   >
+                    <option value="">Selecione a condição observada</option>
                     {WEATHER_OPTIONS.map((w) => (
                       <option key={w.id} value={w.id}>
                         {w.label}
@@ -987,76 +1013,142 @@ export const ConstructionModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Mão de Obra Presente */}
-              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-                <h4 className="font-bold text-slate-200 flex items-center space-x-1.5">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  <span>Efetivo de Campo Presente na Obra (Quantidade de Profissionais)</span>
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Caldeireiros</label>
+              {/* Efetivo de campo: quantidade e horas são informadas pelo responsável pelo RDO. */}
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h4 className="font-bold text-slate-200 flex items-center space-x-1.5">
+                    <Users className="w-4 h-4 text-blue-400" />
+                    <span>Efetivo de Campo</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-500">Informe a quantidade presente e as horas por profissional</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(150px,1fr)_110px_140px] gap-2 text-[10px] text-slate-500">
+                  <span>Função</span>
+                  <span>Quantidade</span>
+                  <span>Horas / profissional</span>
+                </div>
+                {rdoWorkforceDrafts.map((draft) => (
+                  <div key={draft.role} className="grid grid-cols-1 sm:grid-cols-[minmax(150px,1fr)_110px_140px] gap-2 items-center">
+                    <span className="text-xs text-slate-300">{draft.role}</span>
                     <input
                       type="number"
                       min="0"
-                      value={rdoCaldeireiros}
-                      onChange={(e) => setRdoCaldeireiros(parseInt(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                      max="500"
+                      step="1"
+                      inputMode="numeric"
+                      value={draft.count}
+                      onChange={(e) => updateRdoWorkforceDraft(draft.role, { count: e.target.value })}
+                      placeholder="Qtd."
+                      aria-label={`Quantidade de ${draft.role}`}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Soldadores TIG</label>
                     <input
                       type="number"
-                      min="0"
-                      value={rdoSoldadores}
-                      onChange={(e) => setRdoSoldadores(parseInt(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
+                      min="0.25"
+                      max="24"
+                      step="0.25"
+                      value={draft.hours}
+                      onChange={(e) => updateRdoWorkforceDraft(draft.role, { hours: e.target.value })}
+                      placeholder="Horas"
+                      aria-label={`Horas por profissional de ${draft.role}`}
+                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Montadores</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={rdoMontadores}
-                      onChange={(e) => setRdoMontadores(parseInt(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Ajudantes</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={rdoAjudantes}
-                      onChange={(e) => setRdoAjudantes(parseInt(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Supervisores</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={rdoSupervisores}
-                      onChange={(e) => setRdoSupervisores(parseInt(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-center font-mono font-bold"
-                    />
-                  </div>
+                ))}
+                <div className="border-t border-slate-800 pt-2 text-[11px] text-slate-400">
+                  {rdoFieldRecordsPreview.valid
+                    ? `Total informado: ${rdoFieldRecordsPreview.totalPersonHours.toLocaleString('pt-BR')} horas-homem.`
+                    : 'Revise quantidade e horas por profissional antes de emitir o RDO.'}
+                  <span className="block text-[10px] text-slate-500 mt-0.5">Linhas em branco não são gravadas. As horas representam a jornada de cada profissional naquela função.</span>
                 </div>
               </div>
 
-              {/* Equipamentos Mobilizados */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Maquinário & Equipamentos em Operação</label>
+              {/* Equipamentos mobilizados: cada linha é um equipamento efetivamente informado. */}
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h4 className="font-bold text-slate-200">Máquinas e Equipamentos</h4>
+                    <p className="text-[10px] text-slate-500">Cadastre somente os itens mobilizados; horas em operação podem ser zero.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRdoEquipmentDrafts((current) => [...current, { name: '', quantity: '', operationalHours: '' }])}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-semibold"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Adicionar
+                  </button>
+                </div>
+
+                {rdoEquipmentDrafts.length === 0 && (
+                  <p className="text-[11px] text-slate-500">Nenhum equipamento informado neste RDO.</p>
+                )}
+
+                {rdoEquipmentDrafts.map((draft, index) => (
+                  <div key={index} className="grid grid-cols-1 sm:grid-cols-[minmax(160px,1fr)_90px_120px_34px] gap-2 items-end">
+                    <label className="block text-[10px] text-slate-400">
+                      Equipamento
+                      <input
+                        type="text"
+                        maxLength={120}
+                        value={draft.name}
+                        onChange={(e) => updateRdoEquipmentDraft(index, { name: e.target.value })}
+                        placeholder="Ex.: Inversora TIG Miller"
+                        className="mt-1 w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs"
+                      />
+                    </label>
+                    <label className="block text-[10px] text-slate-400">
+                      Quantidade
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        step="1"
+                        value={draft.quantity}
+                        onChange={(e) => updateRdoEquipmentDraft(index, { quantity: e.target.value })}
+                        placeholder="Qtd."
+                        className="mt-1 w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs text-center"
+                      />
+                    </label>
+                    <label className="block text-[10px] text-slate-400">
+                      Horas em operação
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        step="0.25"
+                        value={draft.operationalHours}
+                        onChange={(e) => updateRdoEquipmentDraft(index, { operationalHours: e.target.value })}
+                        placeholder="Horas"
+                        className="mt-1 w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-white text-xs text-center"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setRdoEquipmentDrafts((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                      aria-label={`Remover equipamento ${index + 1}`}
+                      className="h-8 w-8 inline-flex items-center justify-center rounded bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-300"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Avanço físico do dia é opcional; vazio significa não informado. */}
+              <div className="max-w-xs">
+                <label className="block text-slate-300 font-semibold mb-1">Avanço físico do dia (%) — opcional</label>
                 <input
-                  type="text"
-                  value={rdoEquipamentos}
-                  onChange={(e) => setRdoEquipamentos(e.target.value)}
-                  placeholder="Ex: 2 Inversoras TIG Miller, 1 Andaime Tubular, 1 Caminhão Munck"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={rdoProgress}
+                  onChange={(e) => setRdoProgress(e.target.value)}
+                  placeholder="Não informado"
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:border-amber-500 focus:outline-none"
                 />
+                <span className="text-[10px] text-slate-500 block mt-1">Deixe em branco quando não houver medição do avanço no dia. Zero deve ser informado explicitamente.</span>
               </div>
 
               {/* Atividades Executadas */}
