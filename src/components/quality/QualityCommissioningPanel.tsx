@@ -8,7 +8,6 @@ import {
   serverTimestamp,
   setDoc,
   where,
-  writeBatch,
   runTransaction,
 } from 'firebase/firestore';
 import {
