@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ShoppingCart, Plus, Trash2, X, DollarSign, Calendar, Building, Truck } from 'lucide-react';
 import { PurchaseOrder, PurchaseOrderItem, PurchasingSupplier } from '../../types/purchasing';
 import { savePurchaseOrder } from '../../services/purchasingService';
+import { workOrderLinkFields } from '../../services/purchasingLinks';
+import type { WorkOrder } from '../../types';
 
 interface NewPurchaseOrderModalProps {
   isOpen: boolean;
@@ -9,6 +11,7 @@ interface NewPurchaseOrderModalProps {
   suppliers: PurchasingSupplier[];
   currentOrgId: string;
   currentUserName: string;
+  workOrders: WorkOrder[];
   onOrderCreated: () => void;
 }
 
@@ -18,6 +21,7 @@ export const NewPurchaseOrderModal: React.FC<NewPurchaseOrderModalProps> = ({
   suppliers,
   currentOrgId,
   currentUserName,
+  workOrders,
   onOrderCreated,
 }) => {
   const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '');
@@ -33,6 +37,7 @@ export const NewPurchaseOrderModal: React.FC<NewPurchaseOrderModalProps> = ({
     return d.toISOString().split('T')[0];
   });
   const [notes, setNotes] = useState('');
+  const [linkedWorkOrderId, setLinkedWorkOrderId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const [items, setItems] = useState<
@@ -120,6 +125,7 @@ export const NewPurchaseOrderModal: React.FC<NewPurchaseOrderModalProps> = ({
         id: orderId,
         organizationId: currentOrgId,
         code,
+        ...workOrderLinkFields(workOrders.find((wo) => wo.id === linkedWorkOrderId)),
         supplierId: sup.id,
         supplierName: sup.name,
         supplierCnpj: sup.cnpj,
@@ -176,6 +182,14 @@ export const NewPurchaseOrderModal: React.FC<NewPurchaseOrderModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Supplier and Commercial Conditions */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Vincular à Ordem de Serviço (opcional)</label>
+            <select value={linkedWorkOrderId} onChange={(e) => setLinkedWorkOrderId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+              <option value="">Compra direta, sem OS</option>
+              {workOrders.map((wo) => <option key={wo.id} value={wo.id}>{wo.orderNumber} — {wo.title}</option>)}
+            </select>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
