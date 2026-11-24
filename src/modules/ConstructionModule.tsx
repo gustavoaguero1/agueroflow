@@ -308,15 +308,21 @@ export const ConstructionModule: React.FC = () => {
       };
 
       await setDoc(reportRef, newReport);
-      await logAudit(
-        'Obras',
-        'Registrar RDO',
-        `Diário de Obra ${reportNum} emitido por ${preparedBy}; ${fieldRecords.totalPersonHours} horas-homem informadas.`,
-        rdoId,
-      );
-
       setShowRdoModal(false);
       resetRdoForm();
+
+      try {
+        await logAudit(
+          'Obras',
+          'Registrar RDO',
+          `Diário de Obra ${reportNum} emitido por ${preparedBy}; ${fieldRecords.totalPersonHours} horas-homem informadas.`,
+          rdoId,
+        );
+      } catch (auditError) {
+        // The report is already saved. Do not show a save failure that could cause duplicate submissions.
+        console.error('RDO salvo, mas não foi possível registrar o evento de auditoria:', auditError);
+        alert(`O RDO ${reportNum} foi salvo, mas o evento de auditoria não pôde ser registrado. Avise o administrador.`);
+      }
     } catch (err) {
       console.error('Erro ao salvar RDO:', err);
       alert('Não foi possível concluir o registro do RDO. Confira a conexão e tente novamente.');
