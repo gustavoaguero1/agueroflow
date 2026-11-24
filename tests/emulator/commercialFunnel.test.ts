@@ -25,7 +25,7 @@ beforeEach(async () => {
   });
 });
 
-const db = () => env.authenticatedContext('u1', { orgs: { org_a: 'Operacional' } }).firestore() as any;
+const db = () => env.authenticatedContext('u1', { orgs: { org_a: 'Operacional' }, areas: { org_a: '12120010112' } }).firestore() as any;
 const user = { uid: 'u1', name: 'Op' };
 const prop = { id: 'p1', organizationId: 'org_a' } as any;
 
