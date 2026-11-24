@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { CheckCircle2, Plus, Wallet } from 'lucide-react';
+import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { CheckCircle2, Plus, Wallet, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { brl, payableKpis } from '../../services/financeService';
-import type { FinanceCategory, FinancePayable, FinancePayableAuthorization } from '../../types/finance';
+import type { FinanceCategory, FinancePayable, FinancePayableAuthorization, FinancePayableAuthorizationDifference, FinancePayableSettlement, FinancePaymentMethod } from '../../types/finance';
+import { createFinancePayableSettlement } from '../../services/financePayableSettlementService';
+import { getFinancePayableAuthorizationDifferences } from '../../services/financePayableSettlementRules';
 import { btnGhost, btnPrimary, card, fmtDate, input, label, msgErr, today } from './ui';
 
 const STATUS_CLS: Record<FinancePayable['status'], string> = {
@@ -13,12 +15,19 @@ const STATUS_CLS: Record<FinancePayable['status'], string> = {
   cancelado: 'bg-slate-800 text-slate-400 border-slate-700',
 };
 const emptyForm = { nome: '', cnpj: '', documento: '', valor: '', vencimento: '', categoriaId: '', contractId: '' };
+const PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string> = { pix: 'PIX', transferencia: 'Transferência bancária', boleto: 'Boleto', dinheiro: 'Dinheiro', cartao: 'Cartão', outro: 'Outro' };
+const PAYMENT_METHOD_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS) as [FinancePaymentMethod, string][];
 
 export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory[] }> = ({ orgId, categories }) => {
-  const { user, contracts, isSupervisorOrAbove } = useAuth();
+  const { user, role, contracts, isSupervisorOrAbove, areaLevel, logAudit } = useAuth();
   const [ps, setPs] = useState<FinancePayable[]>([]);
   const [authorizations, setAuthorizations] = useState<FinancePayableAuthorization[]>([]);
+  const [settlements, setSettlements] = useState<FinancePayableSettlement[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [settlementTarget, setSettlementTarget] = useState<FinancePayable | null>(null);
+  const [settlementBusy, setSettlementBusy] = useState(false);
+  const [settlementForm, setSettlementForm] = useState({ paymentDate: today(), paymentMethod: 'pix' as FinancePaymentMethod, paymentReference: '', proofReference: '', notes: '', confirmAuthorizationDivergence: false });
   const [f, setF] = useState({ status: 'aberto', de: '', ate: '', categoriaId: '', contractId: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -35,7 +44,12 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
       (snapshot) => setAuthorizations(snapshot.docs.map((d) => ({ ...(d.data() as FinancePayableAuthorization), id: d.id }))),
       (err) => setError(`Falha ao carregar autorizações de pagamento: ${err.message}`),
     );
-    return () => { stopPayables(); stopAuthorizations(); };
+    const stopSettlements = onSnapshot(
+      query(collection(db, 'finance_payable_settlements'), where('orgId', '==', orgId)),
+      (snapshot) => setSettlements(snapshot.docs.map((d) => ({ ...(d.data() as FinancePayableSettlement), id: d.id }))),
+      (err) => setError(`Falha ao carregar histórico de baixas: ${err.message}`),
+    );
+    return () => { stopPayables(); stopAuthorizations(); stopSettlements(); };
   }, [orgId]);
 
   const t = today();
@@ -47,8 +61,26 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
     && (!f.categoriaId || p.categoriaId === f.categoriaId || p.rateio?.some((r) => r.categoriaId === f.categoriaId))
     && (!f.contractId || p.contractId === f.contractId || p.rateio?.some((r) => r.contractId === f.contractId)));
 
-  const pay = (p: FinancePayable) => updateDoc(doc(db, 'finance_payables', p.id), { status: 'pago', pagoEm: today(), pagoPor: user?.uid ?? '', updatedAt: new Date().toISOString() })
-    .catch((e) => setError(`Falha ao marcar como pago: ${e.message}`));
+  const canSettle = isSupervisorOrAbove && areaLevel('financeiro') >= (role === 'Supervisor' ? 1 : 2);
+  const openSettlement = (payable: FinancePayable) => {
+    setSettlementTarget(payable);
+    setSettlementForm({ paymentDate: today(), paymentMethod: 'pix', paymentReference: '', proofReference: '', notes: '', confirmAuthorizationDivergence: false });
+    setError(null); setSuccess(null);
+  };
+
+  const submitSettlement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!settlementTarget || !user) return;
+    setSettlementBusy(true); setError(null); setSuccess(null);
+    try {
+      const settlementId = await createFinancePayableSettlement({ orgId, payableId: settlementTarget.id, ...settlementForm });
+      setSettlementTarget(null);
+      setSuccess(`Baixa registrada com histórico auditável. Registro ${settlementId}.`);
+      void logAudit('Financeiro', 'Título baixado com histórico auditável', 'Título ' + settlementTarget.id + ' baixado por ' + settlementForm.paymentMethod + ', valor ' + brl.format(settlementTarget.valor) + ', evento ' + settlementId + '.', settlementId).catch(() => undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível registrar a baixa do título.');
+    } finally { setSettlementBusy(false); }
+  };
 
   const saveManual = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +139,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
       </div>
 
       {error && <p className={msgErr}>{error}</p>}
+      {success && <p className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300">{success}</p>}
 
       {showForm && (
         <form onSubmit={saveManual} className={`${card} grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3`}>
@@ -152,6 +185,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {shown.map((p) => {
+            const settlement = settlements.find((entry) => entry.payableId === p.id);
             const late = p.status === 'aberto' && p.vencimento < t;
             const authorization = authorizations.find((entry) => entry.payableId === p.id);
             const currentSupplierCnpj = String(p.fornecedor.cnpj || '').replace(/\D/g, '');
@@ -182,6 +216,21 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
                   </div>
                   <p className="text-base font-extrabold text-white font-mono shrink-0">{brl.format(p.valor)}</p>
                 </div>
+                {p.status === 'pago' && (
+                  <div className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-2 space-y-1" data-testid="payable-settlement">
+                    <p className="text-[10px] font-semibold text-sky-300">Baixa registrada</p>
+                    {settlement ? (
+                      <>
+                        <p className="text-[10px] text-slate-300">{fmtDate(settlement.paymentDate)} · {PAYMENT_METHOD_LABELS[settlement.paymentMethod]} · {brl.format(settlement.settledValue)}</p>
+                        <p className="text-[10px] text-slate-400">Registrada por {settlement.settledByEmail || settlement.settledBy}</p>
+                        {settlement.paymentReference && <p className="text-[10px] text-slate-400">Referência: {settlement.paymentReference}</p>}
+                        {settlement.proofReference && (/^https?:\/\//i.test(settlement.proofReference) ? <a href={settlement.proofReference} target="_blank" rel="noreferrer" className="text-[10px] text-cyan-300 underline">Abrir referência do comprovante</a> : <p className="text-[10px] text-slate-400">Comprovante: {settlement.proofReference}</p>)}
+                        {settlement.notes && <p className="text-[10px] text-slate-400">Observações: {settlement.notes}</p>}
+                        <p className="text-[9px] text-slate-500">Evento imutável {settlement.id}</p>
+                      </>
+                    ) : <p className="text-[10px] text-slate-400">Baixa anterior à implantação do histórico detalhado. Não há evento de pagamento associado.</p>}
+                  </div>
+                )}
                 {authorization && (
                   <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-2 space-y-1" data-testid="payable-authorization">
                     <p className="text-[10px] font-semibold text-emerald-300">Decisão de divergência vinculada</p>
@@ -192,14 +241,54 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
                     <p className="text-[9px] text-slate-500">Registro documental; não representa comprovante bancário nem baixa automática.</p>
                   </div>
                 )}
-                {isSupervisorOrAbove && p.status === 'aberto' && (
-                  <button type="button" className={`${btnGhost} w-full`} onClick={() => pay(p)}><CheckCircle2 className="w-3.5 h-3.5" />Marcar como pago</button>
+                {canSettle && p.status === 'aberto' && (
+                  <button type="button" className={`${btnGhost} w-full`} onClick={() => openSettlement(p)}>
+                    <CheckCircle2 className="w-3.5 h-3.5" />Registrar baixa
+                  </button>
                 )}
               </div>
             );
           })}
         </div>
       )}
+      {settlementTarget && (() => {
+        const linkedAuthorization = authorizations.find((item) => item.payableId === settlementTarget.id);
+        const differences = getFinancePayableAuthorizationDifferences(settlementTarget, linkedAuthorization);
+        const differenceLabels: Record<FinancePayableAuthorizationDifference, string> = { valor: 'valor do título', vencimento: 'vencimento', fornecedor_nome: 'razão social do fornecedor', fornecedor_cnpj: 'CNPJ do fornecedor' };
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="settlement-title">
+            <form onSubmit={submitSettlement} className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div><h3 id="settlement-title" className="text-sm font-bold text-white">Registrar baixa do título</h3><p className="text-[11px] text-slate-400 mt-1">{settlementTarget.documento} · {settlementTarget.fornecedor.nome}</p></div>
+                <button type="button" onClick={() => setSettlementTarget(null)} className="text-slate-400 hover:text-white" aria-label="Fechar"><X className="w-4 h-4" /></button>
+              </div>
+              {error && <p className={msgErr}>{error}</p>}
+              <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 flex items-center justify-between gap-3">
+                <div><p className="text-[10px] text-slate-400">Valor integral que será baixado</p><p className="text-lg font-extrabold text-white font-mono">{brl.format(settlementTarget.valor)}</p></div>
+                <div className="text-right"><p className="text-[10px] text-slate-400">Vencimento atual</p><p className="text-xs text-slate-200">{fmtDate(settlementTarget.vencimento)}</p></div>
+              </div>
+              {linkedAuthorization && differences.length > 0 && (
+                <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-300">O título mudou após a autorização</p>
+                  <p className="text-[11px] text-slate-300">Foram identificadas alterações em: {differences.map((item) => differenceLabels[item]).join(', ')}. Confira a autorização original e confirme a revalidação antes da baixa.</p>
+                  <label className="flex items-start gap-2 text-[11px] text-slate-200"><input type="checkbox" checked={settlementForm.confirmAuthorizationDivergence} onChange={(event) => setSettlementForm((previous) => ({ ...previous, confirmAuthorizationDivergence: event.target.checked }))} className="mt-0.5" />Revisei as diferenças e confirmo a baixa pelo valor e dados atuais do título.</label>
+                </div>
+              )}
+              {linkedAuthorization && differences.length === 0 && <p className="text-[10px] text-emerald-300">Os dados atuais do título correspondem ao snapshot da autorização vinculada.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className={label}>Data do pagamento *</label><input type="date" required className={input} value={settlementForm.paymentDate} onChange={(event) => setSettlementForm((previous) => ({ ...previous, paymentDate: event.target.value }))} /></div>
+                <div><label className={label}>Forma de pagamento *</label><select required className={input} value={settlementForm.paymentMethod} onChange={(event) => setSettlementForm((previous) => ({ ...previous, paymentMethod: event.target.value as FinancePaymentMethod }))}>{PAYMENT_METHOD_OPTIONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>
+                <div className="sm:col-span-2"><label className={label}>Referência da transação</label><input maxLength={200} className={input} value={settlementForm.paymentReference} onChange={(event) => setSettlementForm((previous) => ({ ...previous, paymentReference: event.target.value }))} placeholder="ID PIX, autenticação bancária ou número do documento" /></div>
+                <div className="sm:col-span-2"><label className={label}>Referência do comprovante</label><input maxLength={1000} className={input} value={settlementForm.proofReference} onChange={(event) => setSettlementForm((previous) => ({ ...previous, proofReference: event.target.value }))} placeholder="Link ou caminho interno do comprovante (sem upload nesta etapa)" /></div>
+                <div className="sm:col-span-2"><label className={label}>Observações</label><textarea maxLength={1000} rows={3} className={input} value={settlementForm.notes} onChange={(event) => setSettlementForm((previous) => ({ ...previous, notes: event.target.value }))} placeholder="Informações adicionais para conferência" /></div>
+              </div>
+              <p className="text-[10px] text-slate-500">A baixa é integral pelo valor atual do título. O histórico será gravado junto com a alteração para Pago, em uma única transação. Não há integração bancária ou envio automático de pagamento.</p>
+              <div className="flex justify-end gap-2 border-t border-slate-800 pt-3"><button type="button" onClick={() => setSettlementTarget(null)} disabled={settlementBusy} className={btnGhost}>Cancelar</button><button type="submit" disabled={settlementBusy || (differences.length > 0 && !settlementForm.confirmAuthorizationDivergence)} className={btnPrimary}>{settlementBusy ? 'Registrando…' : 'Confirmar baixa'}</button></div>
+            </form>
+          </div>
+        );
+      })()}
+
     </div>
   );
 };
