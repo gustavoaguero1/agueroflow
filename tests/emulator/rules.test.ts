@@ -101,7 +101,7 @@ test('list query by organizationId allowed for member', async () => {
 test('estoque: acesso por área nas coleções de compras', async () => {
   const viewOnly = as('stock_view', { org_a: 'Operacional' }, false, { org_a: '12121010112' });
   const editor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12221010112' });
-  const noAccess = as('stock_none', { org_a: 'Operacional' }, false, { org_a: '12021010112' });
+  const noAccess = as('stock_none', { org_a: 'Operacional' }, false, { org_a: '12020010112' });
   const collections = [
     'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts',
     'purchasing_requisitions', 'purchasing_suppliers',
