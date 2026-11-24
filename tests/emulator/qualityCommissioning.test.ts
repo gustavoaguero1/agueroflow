@@ -18,7 +18,6 @@ import {
   setDoc,
   updateDoc,
   where,
-  writeBatch,
 } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
