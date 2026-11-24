@@ -748,6 +748,8 @@ export interface ConstructionMilestone {
   completedDate?: string;
   responsibleName?: string;
   notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SupportTicket {
