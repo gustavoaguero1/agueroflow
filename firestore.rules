@@ -218,34 +218,42 @@ service cloud.firestore {
       function payableAuthorizationReferencesValid() {
         let cPath = /databases/$(database)/documents/finance_reconciliation_cases/$(request.resource.data.caseId);
         let pPath = /databases/$(database)/documents/finance_payables/$(request.resource.data.payableId);
-        return exists(cPath) && exists(pPath)
-          && get(cPath).data.get('orgId', '') == orgOf(request.resource.data)
-          && get(cPath).data.get('status', '') == 'aprovada'
-          && get(cPath).data.get('purchaseOrderId', '') == get(pPath).data.get('purchaseOrderId', '')
-          && get(cPath).data.get('purchaseOrderCode', '') == request.resource.data.get('purchaseOrderCode', '')
-          && get(cPath).data.get('issueTitle', '') == request.resource.data.get('issueTitle', '')
-          && get(cPath).data.get('resolutionNotes', '') == request.resource.data.get('resolutionNotes', '')
-          && get(cPath).data.get('reviewedBy', '') == request.resource.data.get('approvedBy', '')
-          && get(cPath).data.get('reviewedByName', '') == request.resource.data.get('approvedByName', '')
-          && get(cPath).data.get('reviewedAt', null) == request.resource.data.get('approvedAt', null)
-          && get(cPath).data.get('supplierCnpj', '') == get(pPath).data.get('fornecedor', {}).get('cnpj', '')
-          && get(cPath).data.get('reviewedBy', '') is string
-          && get(cPath).data.get('reviewedBy', '').size() > 0
-          && get(cPath).data.get('resolutionNotes', '') is string
-          && get(cPath).data.get('resolutionNotes', '').size() >= 5
-          && get(cPath).data.get('snapshot', {}).get('invoiceKeys', []) is list
-          && get(cPath).data.get('snapshot', {}).get('invoiceKeys', []).hasAny([get(pPath).data.get('nfeChave', '')])
-          && get(pPath).data.get('orgId', '') == orgOf(request.resource.data)
-          && get(pPath).data.get('status', '') == 'aberto'
-          && get(pPath).data.get('origem', '') == 'nfe'
-          && get(pPath).data.get('nfeChave', '') == request.resource.data.get('nfeChave', '')
-          && get(pPath).data.get('valor', 0) == request.resource.data.get('authorizedValue', -1)
-          && get(pPath).data.get('vencimento', '') == request.resource.data.get('dueDate', '')
-          && get(pPath).data.get('documento', '') == request.resource.data.get('documento', '')
-          && get(pPath).data.get('parcela', '') == request.resource.data.get('parcela', '')
-          && get(pPath).data.get('id', '') == request.resource.data.get('payableId', '')
-          && get(pPath).data.get('fornecedor', {}).get('nome', '') == request.resource.data.get('fornecedorNome', '')
-          && get(pPath).data.get('fornecedor', {}).get('cnpj', '') == request.resource.data.get('fornecedorCnpj', '');
+        let cExists = exists(cPath);
+        let pExists = exists(pPath);
+        let c = cExists ? get(cPath).data : {};
+        let p = pExists ? get(pPath).data : {};
+        let supplier = p.get('fornecedor', {});
+        let snapshot = c.get('snapshot', {});
+        let invoiceKeys = snapshot.get('invoiceKeys', []);
+        return cExists && pExists
+          && c.get('id', '') == request.resource.data.get('caseId', '')
+          && c.get('orgId', '') == orgOf(request.resource.data)
+          && c.get('status', '') == 'aprovada'
+          && c.get('purchaseOrderId', '') == p.get('purchaseOrderId', '')
+          && c.get('purchaseOrderCode', '') == request.resource.data.get('purchaseOrderCode', '')
+          && c.get('issueTitle', '') == request.resource.data.get('issueTitle', '')
+          && c.get('resolutionNotes', '') == request.resource.data.get('resolutionNotes', '')
+          && c.get('reviewedBy', '') == request.resource.data.get('approvedBy', '')
+          && c.get('reviewedByName', '') == request.resource.data.get('approvedByName', '')
+          && c.get('reviewedAt', null) == request.resource.data.get('approvedAt', null)
+          && c.get('supplierCnpj', '') == supplier.get('cnpj', '')
+          && c.get('reviewedBy', '') is string
+          && c.get('reviewedBy', '').size() > 0
+          && c.get('resolutionNotes', '') is string
+          && c.get('resolutionNotes', '').size() >= 5
+          && invoiceKeys is list
+          && invoiceKeys.hasAny([p.get('nfeChave', '')])
+          && p.get('orgId', '') == orgOf(request.resource.data)
+          && p.get('status', '') == 'aberto'
+          && p.get('origem', '') == 'nfe'
+          && p.get('nfeChave', '') == request.resource.data.get('nfeChave', '')
+          && p.get('valor', 0) == request.resource.data.get('authorizedValue', -1)
+          && p.get('vencimento', '') == request.resource.data.get('dueDate', '')
+          && p.get('documento', '') == request.resource.data.get('documento', '')
+          && p.get('parcela', '') == request.resource.data.get('parcela', '')
+          && p.get('id', '') == request.resource.data.get('payableId', '')
+          && supplier.get('nome', '') == request.resource.data.get('fornecedorNome', '')
+          && supplier.get('cnpj', '') == request.resource.data.get('fornecedorCnpj', '');
       }
       function reconciliationCaseUpdate() {
         let oldStatus = resource.data.get('status', '');
