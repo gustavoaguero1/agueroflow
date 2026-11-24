@@ -61,8 +61,7 @@ const safe = <T extends object>(value: T) =>
 /**
  * Registers a physical receipt and, in the same Firestore transaction, updates
  * the PO quantities, accepted stock balances and immutable stock movements.
- * An invoice can be split across different POs, but cannot be applied twice to
- * the same PO. The deterministic receipt/movement IDs make retries idempotent.
+ * An invoice can be applied once per purchase order. The deterministic receipt/movement IDs make retries idempotent.
  */
 export async function registerPurchaseReceipt(
   firestore: Firestore,
@@ -226,7 +225,7 @@ export async function registerPurchaseReceipt(
 
     const nextOrderItems = order.items.map((item) => {
       const received = requestedLines.find((entry) => entry.orderItem.id === item.id);
-      if (!received) return item;
+      if (!received || input.status === 'rejeitado' || !received.line.isConform) return item;
       return { ...item, quantityReceived: round4(Number(item.quantityReceived || 0) + received.line.quantityReceived) };
     });
     const allDelivered = nextOrderItems.every((item) => Number(item.quantityReceived || 0) >= Number(item.quantityOrdered) - 0.0001);
