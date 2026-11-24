@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { ArrowLeftRight, CheckCircle2, FileUp } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import type { FinancePayableSettlement, FinanceReceivable, FinanceReceivableReceipt } from '../../types/finance';
+import type { FinancePayableSettlement, FinanceReceivableReceipt } from '../../types/finance';
 import { parseFinanceBankStatement, type FinanceBankStatementRow } from '../../services/financeBankStatementParser';
 import {
   importFinanceBankTransactions, matchFinanceBankTransaction, matchFinanceBankReceiptTransaction,
@@ -24,7 +24,6 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
   const canManage = isMaster || ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2);
   const [transactions, setTransactions] = useState<FinanceBankTransaction[]>([]);
   const [settlements, setSettlements] = useState<Candidate[]>([]);
-  const [receivables, setReceivables] = useState<FinanceReceivable[]>([]);
   const [receipts, setReceipts] = useState<ReceiptCandidate[]>([]);
   const [matches, setMatches] = useState<FinanceBankMatch[]>([]);
   const [fileName, setFileName] = useState('');
@@ -47,11 +46,6 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
       (snapshot) => setSettlements(snapshot.docs.map((d) => ({ ...(d.data() as Candidate), id: d.id }))),
       (err) => setError('Falha ao carregar pagamentos: ' + err.message),
     );
-    const stopReceivables = onSnapshot(
-      query(collection(db, 'finance_receivables'), where('orgId', '==', orgId)),
-      (snapshot) => setReceivables(snapshot.docs.map((d) => ({ ...(d.data() as FinanceReceivable), id: d.id }))),
-      (err) => setError('Falha ao carregar contas a receber: ' + err.message),
-    );
     const stopReceipts = onSnapshot(
       query(collection(db, 'finance_receivable_receipts'), where('orgId', '==', orgId)),
       (snapshot) => setReceipts(snapshot.docs.map((d) => ({ ...(d.data() as ReceiptCandidate), id: d.id }))),
@@ -62,7 +56,7 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
       (snapshot) => setMatches(snapshot.docs.map((d) => ({ ...(d.data() as FinanceBankMatch), id: d.id }))),
       (err) => setError('Falha ao carregar conciliações: ' + err.message),
     );
-    return () => { stopTransactions(); stopSettlements(); stopReceivables(); stopReceipts(); stopMatches(); };
+    return () => { stopTransactions(); stopSettlements(); stopReceipts(); stopMatches(); };
   }, [orgId]);
 
   const matchedByTransaction = useMemo(() => new Map(matches.map((match) => [match.transactionId, match])), [matches]);
