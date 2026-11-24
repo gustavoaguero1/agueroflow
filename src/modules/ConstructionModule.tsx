@@ -952,7 +952,7 @@ export const ConstructionModule: React.FC = () => {
           currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Equipe de Engenharia'}
           canEdit={areaLevel('operacoes') >= 2}
-          canApprove={isMaster || isSupervisorOrAbove}
+          canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
           logAudit={logAudit}
         />
       )}
