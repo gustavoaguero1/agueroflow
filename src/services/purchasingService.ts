@@ -22,6 +22,7 @@ import {
   MonthlySavingsReport,
 } from '../types/purchasing';
 import { apiFetch } from '../apiAuthFetch';
+import type { WorkOrder } from '../types';
 
 // Helper to remove undefined fields for Firestore
 function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> {
@@ -36,6 +37,15 @@ function cleanFirestoreData<T extends Record<string, any>>(data: T): Partial<T> 
     }
   }
   return cleaned as Partial<T>;
+}
+
+/** Work orders available to link to purchasing requisitions and orders. */
+export async function getWorkOrdersForPurchasing(organizationId: string): Promise<WorkOrder[]> {
+  const q = query(collection(db, 'work_orders'), where('orgId', '==', organizationId));
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as WorkOrder))
+    .sort((a, b) => (a.orderNumber || '').localeCompare(b.orderNumber || '', 'pt-BR'));
 }
 
 // ---------------------------------------------------------------------------
