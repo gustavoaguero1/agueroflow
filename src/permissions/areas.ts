@@ -17,18 +17,19 @@ export type AreaOverrides = Partial<Record<AreaId, AreaLevel>>;
 export const LEVEL_LABELS: Record<AreaLevel, string> = { 0: 'Sem acesso', 1: 'Ver', 2: 'Editar' };
 
 /** Seções do menu de cada área (a seção é o nome ou começa com "nome-"). */
-export const AREAS: Array<{ id: AreaId; label: string; description: string; sections: string[] }> = [
-  { id: 'painel', label: 'Painel', description: 'Visão geral e pendências. Todo mundo vê.', sections: ['painel'] },
-  { id: 'operacoes', label: 'Operações', description: 'OS, checklists, inspeções, ocorrências, obras e RDO, diário, viagens, reembolsos e bens coletivos.', sections: ['ordens', 'checklists', 'inspecoes', 'ocorrencias', 'operacoes', 'ops', 'obras', 'viagens', 'bens'] },
-  { id: 'estoque', label: 'Estoque e compras', description: 'Peças e serviços, estoque e compras.', sections: ['pecas', 'servicos', 'mao', 'subcategorias', 'estoque', 'compras'] },
-  { id: 'comercial', label: 'Comercial', description: 'Propostas, clientes, composições e marketing.', sections: ['comercial', 'marketing'] },
-  { id: 'financeiro', label: 'Financeiro', description: 'Contas a pagar, categorias e notas fiscais.', sections: ['financeiro'] },
-  { id: 'rh', label: 'RH e salários', description: 'Funcionários, salários, admissões, 13º e relatórios de RH.', sections: ['rh'] },
-  { id: 'whatsapp', label: 'WhatsApp', description: 'Central de conversas, automações, NDs e recibos.', sections: ['whatsapp'] },
-  { id: 'relatorios', label: 'Relatórios e IA', description: 'Relatórios gerais e assistente de IA.', sections: ['relatorios', 'ia'] },
-  { id: 'estrutura', label: 'Estrutura', description: 'Unidades, contratos, equipes e auditoria.', sections: ['estrutura', 'contratos', 'auditoria'] },
-  { id: 'configuracoes', label: 'Configurações', description: 'Empresa, equipe e permissões.', sections: ['configuracoes'] },
-  { id: 'suporte', label: 'Suporte', description: 'Chamados de suporte. Todo mundo usa.', sections: ['suporte'] },
+// enforcedInDatabase: o banco/servidor também bloqueia; false = a área só some do menu (dados ainda legíveis por quem é da empresa).
+export const AREAS: Array<{ id: AreaId; label: string; description: string; sections: string[]; enforcedInDatabase: boolean }> = [
+  { id: 'painel', label: 'Painel', description: 'Visão geral e pendências. Todo mundo vê.', sections: ['painel'], enforcedInDatabase: false },
+  { id: 'operacoes', label: 'Operações', description: 'OS, checklists, inspeções, ocorrências, obras e RDO, diário, viagens, reembolsos e bens coletivos.', sections: ['ordens', 'checklists', 'inspecoes', 'ocorrencias', 'operacoes', 'ops', 'obras', 'viagens', 'bens'], enforcedInDatabase: true },
+  { id: 'estoque', label: 'Estoque e compras', description: 'Peças e serviços, estoque e compras.', sections: ['pecas', 'servicos', 'mao', 'subcategorias', 'estoque', 'compras'], enforcedInDatabase: false },
+  { id: 'comercial', label: 'Comercial', description: 'Propostas, clientes, composições e marketing.', sections: ['comercial', 'marketing'], enforcedInDatabase: true },
+  { id: 'financeiro', label: 'Financeiro', description: 'Contas a pagar, categorias e notas fiscais.', sections: ['financeiro'], enforcedInDatabase: true },
+  { id: 'rh', label: 'RH e salários', description: 'Funcionários, salários, admissões, 13º e relatórios de RH.', sections: ['rh'], enforcedInDatabase: true },
+  { id: 'whatsapp', label: 'WhatsApp', description: 'Central de conversas, automações, NDs e recibos.', sections: ['whatsapp'], enforcedInDatabase: false },
+  { id: 'relatorios', label: 'Relatórios e IA', description: 'Relatórios gerais e assistente de IA.', sections: ['relatorios', 'ia'], enforcedInDatabase: false },
+  { id: 'estrutura', label: 'Estrutura', description: 'Unidades, contratos, equipes e auditoria.', sections: ['estrutura', 'contratos', 'auditoria'], enforcedInDatabase: false },
+  { id: 'configuracoes', label: 'Configurações', description: 'Tema e dispositivos (todo mundo); empresa, equipe e acessos (quem edita).', sections: ['configuracoes'], enforcedInDatabase: true },
+  { id: 'suporte', label: 'Suporte', description: 'Chamados de suporte. Todo mundo usa.', sections: ['suporte'], enforcedInDatabase: false },
 ];
 
 const row = (v: number[]): AreaLevels => Object.fromEntries(AREA_IDS.map((a, i) => [a, v[i] as AreaLevel])) as AreaLevels;
@@ -36,13 +37,14 @@ const row = (v: number[]): AreaLevels => Object.fromEntries(AREA_IDS.map((a, i) 
 export const ROLE_DEFAULTS: Record<UserRole, AreaLevels> = {
   Admin: row([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
   Gerente: row([2, 2, 2, 2, 2, 1, 2, 2, 2, 1, 2]),
-  Supervisor: row([1, 2, 2, 1, 2, 0, 2, 1, 1, 0, 2]),
-  Operacional: row([1, 2, 1, 0, 0, 0, 1, 0, 1, 0, 2]),
-  Visualizador: row([1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 2]),
+  Supervisor: row([1, 2, 2, 1, 2, 0, 2, 1, 1, 1, 2]),
+  Operacional: row([1, 2, 1, 0, 0, 0, 1, 0, 1, 1, 2]),
+  Visualizador: row([1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 2]),
 };
 
 /** Áreas que todo mundo precisa ver: nunca abaixo de "ver". */
-const MINIMUM: AreaOverrides = { painel: 1, suporte: 1 };
+const MINIMUM: AreaOverrides = { painel: 1, configuracoes: 1, suporte: 1 };
+const NONE = row([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
 const isLevel = (v: unknown): v is AreaLevel => v === 0 || v === 1 || v === 2;
 
@@ -52,7 +54,7 @@ export function resolveAreas(
   orgDefaults?: Partial<Record<UserRole, AreaOverrides>> | null,
   overrides?: AreaOverrides | null,
 ): AreaLevels {
-  const out = { ...(ROLE_DEFAULTS[role] || ROLE_DEFAULTS.Visualizador) };
+  const out = { ...(ROLE_DEFAULTS[role] || NONE) }; // perfil desconhecido: só os mínimos
   for (const layer of [orgDefaults?.[role], overrides]) {
     for (const a of AREA_IDS) {
       const v = layer?.[a];

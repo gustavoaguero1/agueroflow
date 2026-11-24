@@ -3,7 +3,7 @@ import { FieldValue, type DocumentSnapshot, type Transaction, type WriteBatch } 
 import type { AdminHandles } from './firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import type { OrgMember, Organization, UserRole } from '../src/types/index.ts';
-import { encodeAreas, resolveAreas, sanitizeOrgDefaults, sanitizeOverrides } from '../src/permissions/areas.ts';
+import { AREA_IDS, decodeAreas, encodeAreas, resolveAreas, sanitizeOrgDefaults, sanitizeOverrides, type AreaLevels } from '../src/permissions/areas.ts';
 
 export type Role = UserRole;
 /** `areas`: níveis por área em cada empresa, codificados por encodeAreas (um dígito por área). */
@@ -18,11 +18,38 @@ export function claimsFromMembers(members: MemberAccess[], orgDefaults: Record<s
   for (const m of members) {
     if (!m.orgId) continue;
     orgs[m.orgId] = m.role;
-    const code = encodeAreas(resolveAreas(m.role, sanitizeOrgDefaults(orgDefaults[m.orgId]), sanitizeOverrides(m.areaOverrides)));
-    // Igual ao padrão do perfil: fica fora do token (quem lê cai no mesmo padrão).
-    if (code !== encodeAreas(resolveAreas(m.role))) areas[m.orgId] = code;
+    const roleDefaults = sanitizeOrgDefaults(orgDefaults[m.orgId]);
+    const overrides = sanitizeOverrides(m.areaOverrides);
+    // Sem nenhum ajuste (empresa nem pessoa): fica fora do token, quem lê cai no padrão do perfil.
+    // Com ajuste, entra mesmo se igual ao padrão de hoje: se o padrão do sistema mudar, o ajuste vale.
+    const customized = Object.keys(roleDefaults[m.role] || {}).length > 0 || Object.keys(overrides).length > 0;
+    if (customized) areas[m.orgId] = encodeAreas(resolveAreas(m.role, roleDefaults, overrides));
   }
-  return Object.keys(areas).length ? { master: false, orgs, areas } : { master: false, orgs };
+  return fitClaims(Object.keys(areas).length ? { master: false, orgs, areas } : { master: false, orgs });
+}
+
+/** Limite do Firebase para claims (1000 bytes), com folga. */
+const CLAIMS_MAX = 950;
+export const ERR_CLAIMS_TOO_BIG = 'Esta pessoa está em empresas demais com acesso ajustado: o login não comporta. Tire ajustes de algumas empresas.';
+
+/**
+ * Cabe no limite? Senão tira primeiro as liberações extras (o que cai no padrão do perfil nunca
+ * dá acesso a mais do que o ajuste); restrições ficam. Se nem assim couber, erro claro.
+ */
+function fitClaims(c: Claims): Claims {
+  if (JSON.stringify(c).length <= CLAIMS_MAX || !c.areas) return c;
+  const areas: NonNullable<Claims['areas']> = {};
+  for (const [org, code] of Object.entries(c.areas)) {
+    const custom = decodeAreas(code);
+    if (!custom) continue;
+    const base = resolveAreas(c.orgs[org]);
+    const safe = Object.fromEntries(AREA_IDS.map((a) => [a, Math.min(custom[a], base[a])])) as AreaLevels;
+    if (encodeAreas(safe) !== encodeAreas(base)) areas[org] = encodeAreas(safe);
+  }
+  const out: Claims = Object.keys(areas).length ? { ...c, areas } : { master: false, orgs: c.orgs };
+  if (JSON.stringify(out).length > CLAIMS_MAX) throw new Error(ERR_CLAIMS_TOO_BIG);
+  console.warn('[acesso] token grande demais: liberações extras ficaram de fora para uma pessoa');
+  return out;
 }
 
 type LoginResult =
@@ -291,6 +318,14 @@ export async function syncSession(
   const claims = await claimsFor(h, uid, email, docs);
   await h.auth.setCustomUserClaims(uid, claims);
   return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: uid } : null };
+}
+
+/** Acesso retirado: derruba os logins já emitidos da pessoa (senha e Google vinculado); ela entra de novo. */
+export async function revokeMemberTokens(h: AdminHandles, memberId: string): Promise<void> {
+  const ignoreMissing = (e: unknown) => { if (!isNotFound(e)) throw e; };
+  await h.auth.revokeRefreshTokens(`member_${memberId}`).catch(ignoreMissing);
+  const bound = await boundUser(h, memberId);
+  if (bound) await h.auth.revokeRefreshTokens(bound.uid).catch(ignoreMissing);
 }
 
 // userId on org_members is admin-writable: never let it reach a master identity (forced logout / claim overwrite).

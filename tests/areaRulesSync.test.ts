@@ -14,6 +14,11 @@ test('as regras do banco usam a mesma tabela de padrões por perfil que o app', 
   }
 });
 
+test('perfil desconhecido: regras e app dão o mesmo (só os mínimos)', () => {
+  const m = /\}\.get\(role, '([012]+)'\)/.exec(rules);
+  assert.equal(m?.[1], encodeAreas(resolveAreas('Desconhecido' as never)));
+});
+
 test('as regras numeram as áreas na mesma ordem do app', () => {
   const order = /\/\/ Ordem: (.+)/.exec(rules)![1].split(', ').map((s) => s.split(' '));
   assert.deepEqual(order.map(([id]) => id), [...AREA_IDS]);

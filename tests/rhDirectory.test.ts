@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toDirectoryEntry, DIRECTORY_FIELDS } from '../src/services/rhDirectory';
+import { toDirectoryEntry, DIRECTORY_FIELDS, directoryChanges } from '../src/services/rhDirectory';
 import type { RhEmployee } from '../src/types/rhPayroll';
 
 const emp: RhEmployee = {
@@ -23,6 +23,19 @@ test('diretório leva o que Operações precisa: nome, função, situação, adm
     department: 'Obras', registrationNumber: '12', unitId: 'u1', codigoObra: '198', updatedAt: 'u',
   });
   assert.ok(DIRECTORY_FIELDS.includes('name'));
+});
+
+test('sincronizar o diretório grava só o que mudou e apaga quem saiu do RH', () => {
+  const same = toDirectoryEntry(emp);
+  const ops = directoryChanges(
+    [emp, { ...emp, id: 'e2', name: 'Bia' }, { ...emp, id: 'e3', role: 'Nova função' }],
+    [
+      { id: 'e1', data: { ...same } },
+      { id: 'e3', data: { ...same, id: 'e3' } },
+      { id: 'e9', data: { orgId: 'org', name: 'Saiu' } },
+    ],
+  );
+  assert.deepEqual(ops.map((o) => `${o.kind}:${o.id}`).sort(), ['delete:e9', 'set:e2', 'set:e3']);
 });
 
 test('campos ausentes não viram undefined (o Firestore recusa undefined)', () => {

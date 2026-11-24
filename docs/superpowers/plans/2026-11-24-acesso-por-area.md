@@ -14,7 +14,7 @@
 
 - Níveis: 0 sem acesso, 1 ver, 2 editar. Master sempre 2.
 - Painel e Suporte: mínimo 1 para todos (não configurável abaixo disso).
-- Token antigo (sem `areas`): RH só Admin/Gerente; demais áreas como antes.
+- Token sem `areas` para a empresa (antigo, ou pessoa sem nenhum ajuste): vale o padrão do perfil da tabela abaixo — RH só Admin (editar) e Gerente (ver).
 - Nenhum módulo para de funcionar para quem tem acesso; Operações continua funcionando sem acesso ao RH (sem salários).
 
 ## Áreas e padrões (Admin / Gerente / Supervisor / Operacional / Visualizador)
@@ -30,7 +30,7 @@
 | whatsapp | whatsapp-* | 2/2/2/1/1 |
 | relatorios | relatorios, ia | 2/2/1/0/1 |
 | estrutura | estrutura-* | 2/2/1/1/1 |
-| configuracoes | configuracoes | 2/1/0/0/0 |
+| configuracoes | configuracoes | 2/1/1/1/1 (mín. 1: tema e dispositivos; lista de acessos só Admin, Gerente ou quem edita) |
 | suporte | suporte | 2/2/2/2/2 (mín. 1) |
 
 ## Review Focus

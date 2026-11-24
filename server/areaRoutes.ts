@@ -7,7 +7,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { orgIdOf } from './authMiddleware.ts';
-import { refreshMemberClaims } from './authService.ts';
+import { refreshMemberClaims, revokeMemberTokens } from './authService.ts';
 import { createAreaService, type AreaStore } from './areaService.ts';
 
 const validId = (id: unknown): id is string => typeof id === 'string' && !!id && !id.includes('/');
@@ -40,6 +40,7 @@ export function firestoreAreaStore(h: AdminHandles): AreaStore {
       // Depois do token novo: o navegador da pessoa vê a marca e renova o login.
       await members.doc(id).update({ areasUpdatedAt: new Date().toISOString() });
     },
+    revokeTokens: (id) => revokeMemberTokens(h, id),
   };
 }
 

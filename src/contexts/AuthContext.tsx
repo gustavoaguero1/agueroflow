@@ -1051,12 +1051,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Acesso por área: vem do token (o servidor grava); sem áreas no token, padrão do perfil.
   const [tokenAreas, setTokenAreas] = useState<Record<string, string>>({});
   const tokenIssuedAt = useRef<string>('');
-  const readTokenAreas = useCallback(async (u: User, force = false) => {
+  const lastAreasStamp = useRef<unknown>(undefined); // último areasUpdatedAt visto no cadastro da pessoa
+  const readTokenAreas = useCallback(async (u: User, force = false): Promise<void> => {
     try {
       const r = await u.getIdTokenResult(force);
       tokenIssuedAt.current = r.issuedAtTime;
       const a = r.claims.areas;
       setTokenAreas(a && typeof a === 'object' ? (a as Record<string, string>) : {});
+      // O cadastro pode ter chegado antes do token: confere de novo agora que sabemos quando o token saiu.
+      if (!force && needsTokenRefresh(lastAreasStamp.current, r.issuedAtTime)) return readTokenAreas(u, true);
     } catch (err) {
       console.warn('Não foi possível ler o acesso por área do login:', err);
     }
@@ -1071,7 +1074,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return onSnapshot(
       doc(db, 'org_members', member.id),
       (s) => {
-        if (needsTokenRefresh(s.get('areasUpdatedAt'), tokenIssuedAt.current)) readTokenAreas(user, true);
+        lastAreasStamp.current = s.get('areasUpdatedAt');
+        if (needsTokenRefresh(lastAreasStamp.current, tokenIssuedAt.current)) readTokenAreas(user, true);
       },
       () => {},
     );

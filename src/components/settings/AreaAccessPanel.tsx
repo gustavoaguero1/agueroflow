@@ -17,7 +17,7 @@ import type { UserRole } from '../../types';
 const ROLES: UserRole[] = ['Admin', 'Gerente', 'Supervisor', 'Operacional', 'Visualizador'];
 const LEVELS: AreaLevel[] = [0, 1, 2];
 // Áreas com mínimo: não oferecemos "Sem acesso".
-const MIN_ONE: AreaId[] = ['painel', 'suporte'];
+const MIN_ONE: AreaId[] = ['painel', 'configuracoes', 'suporte'];
 
 type Member = { id: string; userName: string; role: UserRole; areaOverrides: AreaOverrides; levels: AreaLevels };
 type Overview = {
@@ -161,7 +161,8 @@ export function AreaAccessPanel() {
           <h3 id="area-access-title" className="text-sm font-bold text-[#1D1D1F] dark:text-[#F5F5F7]">Acessos por área</h3>
           <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5 max-w-2xl leading-relaxed">
             Cada perfil tem um acesso padrão a cada área. Mude o padrão da empresa para um perfil, ou libere algo a mais para uma pessoa
-            (por exemplo, um Supervisor que também precisa ver o RH). Painel e Suporte ficam sempre visíveis.
+            (por exemplo, um Supervisor que também precisa ver o RH). Painel, Configurações e Suporte ficam sempre visíveis.
+            Quem perde algum acesso precisa entrar de novo no sistema.
           </p>
           {!canEdit && data && (
             <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-1.5">Você pode consultar. Para mudar, é preciso editar Configurações.</p>
@@ -201,7 +202,12 @@ export function AreaAccessPanel() {
                   <li key={a.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5">
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium text-[#1D1D1F] dark:text-[#F5F5F7]">{a.label}</p>
-                      <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">{a.description}</p>
+                      <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">
+                        {a.description}
+                        {!a.enforcedInDatabase && !MIN_ONE.includes(a.id) && (
+                          <> Sem acesso esconde do menu; os dados não ficam bloqueados para quem é da empresa.</>
+                        )}
+                      </p>
                     </div>
                     <LevelPicker
                       label={`${a.label} para ${role}`}
