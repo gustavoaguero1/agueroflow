@@ -362,6 +362,7 @@ service cloud.firestore {
           && request.resource.data.get('unitId', '').size() > 0
           && request.resource.data.get('contractId', '') is string
           && request.resource.data.get('contractId', '').size() > 0
+          && !(request.resource.data.get('engineeringDocumentId', '') != '' && request.resource.data.get('checklistRunId', '') != '')
           && qualityReferencesBelongToOrg(request.resource.data)
           && request.resource.data.get('createdByUid', '') == request.auth.uid
           && request.resource.data.get('createdByName', '') is string
