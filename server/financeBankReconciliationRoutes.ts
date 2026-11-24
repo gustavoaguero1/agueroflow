@@ -188,14 +188,14 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
         ]);
         if (!transactionSnap.exists) throw new BankRouteError(404, 'Lançamento bancário não encontrado.');
         if (!receiptSnap.exists) throw new BankRouteError(404, 'Evento de recebimento não encontrado.');
-        if (matchSnap.exists) throw new BankRouteError(409, 'Este lançamento bancário já foi conciliado.');
-        if (receiptMatchSnap.docs.some((item: any) => item.data()?.orgId === orgId)) {
-          throw new BankRouteError(409, 'Este recebimento já possui uma conciliação bancária.');
-        }
 
         const bank = transactionSnap.data()!;
         const receipt = receiptSnap.data()!;
         if (bank.orgId !== orgId || receipt.orgId !== orgId) throw new BankRouteError(403, 'Os registros pertencem a outra empresa.');
+        if (matchSnap.exists) throw new BankRouteError(409, 'Este lançamento bancário já foi conciliado.');
+        if (receiptMatchSnap.docs.some((item: any) => item.data()?.orgId === orgId)) {
+          throw new BankRouteError(409, 'Este recebimento já possui uma conciliação bancária.');
+        }
         if (bank.direction !== 'credit') throw new BankRouteError(409, 'Somente créditos bancários podem ser conciliados com recebimentos.');
         const receivedAmount = Number(receipt.receiptAmount ?? 0);
         if (!(receivedAmount > 0) || cents(Number(bank.amount)) !== cents(receivedAmount)) {
