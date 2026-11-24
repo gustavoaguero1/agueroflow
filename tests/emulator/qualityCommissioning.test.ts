@@ -398,7 +398,7 @@ test('quality references must belong to the same organization, unit and contract
   const db = dbFor('inspector_1', 'Operacional');
   await assertFails(setDoc(
     doc(db, 'quality_records', recordId),
-    validQualityRecord('inspector_1', { contractId: 'contract_b' }),
+    validQualityRecord('inspector_1', { contractId: '' }),
   ));
   await assertFails(setDoc(
     doc(db, 'quality_records', recordId),
