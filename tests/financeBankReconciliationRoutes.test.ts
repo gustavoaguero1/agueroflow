@@ -177,3 +177,61 @@ test('keeps identical CSV rows without bank IDs distinct by source row, while re
     assert.equal([...docs.keys()].filter((path) => path.startsWith('finance_bank_transactions/')).length, 2);
   });
 });
+
+test('manually matches a bank credit to an exact receivable receipt without changing the receivable or receipt event', async () => {
+  const transactionId = 'btxn_org_a_credit1';
+  const receiptId = 'recr_org_a_recv_1_request001';
+  const seed = {
+    ['finance_bank_transactions/' + transactionId]: {
+      id: transactionId, orgId: 'org_a', date: '2026-11-24', amount: 400, direction: 'credit',
+      description: 'TED Cliente A', sourceFileName: 'extrato.csv',
+    },
+    ['finance_receivable_receipts/' + receiptId]: {
+      id: receiptId, orgId: 'org_a', receivableId: 'recv_org_a_1',
+      receiptDate: '2026-11-24', receiptAmount: 400,
+      receivableSnapshot: { clientName: 'Cliente A', documento: 'PROP-001' },
+    },
+    'finance_receivables/recv_org_a_1': {
+      id: 'recv_org_a_1', orgId: 'org_a', status: 'aberto', valor: 1000, valorRecebido: 400, saldoAberto: 600,
+    },
+  };
+  await withApi(seed, async (base, docs) => {
+    const receivableBefore = docs.get('finance_receivables/recv_org_a_1');
+    const receiptBefore = docs.get('finance_receivable_receipts/' + receiptId);
+    const response = await post(base, '/' + transactionId + '/match-receipt', {
+      orgId: 'org_a', transactionId, receiptId,
+    });
+    assert.equal(response.status, 201);
+    const result = await response.json() as { matchId: string };
+    const match = docs.get('finance_bank_reconciliations/' + result.matchId) as any;
+    assert.equal(match.matchType, 'receivable');
+    assert.equal(match.transactionId, transactionId);
+    assert.equal(match.receiptId, receiptId);
+    assert.equal(match.receivableId, 'recv_org_a_1');
+    assert.equal(match.amount, 400);
+    assert.deepEqual(docs.get('finance_receivables/recv_org_a_1'), receivableBefore);
+    assert.deepEqual(docs.get('finance_receivable_receipts/' + receiptId), receiptBefore);
+  });
+});
+
+test('credit reconciliation rejects wrong direction, amount mismatch, foreign company and duplicate receipt match', async () => {
+  const receiptId = 'recr_org_a_recv_1_request001';
+  const seed = {
+    ['finance_receivable_receipts/' + receiptId]: {
+      id: receiptId, orgId: 'org_a', receivableId: 'recv_org_a_1', receiptDate: '2026-11-24', receiptAmount: 400,
+    },
+    'finance_bank_transactions/debit': { id: 'debit', orgId: 'org_a', date: '2026-11-24', amount: 400, direction: 'debit' },
+    'finance_bank_transactions/wrong': { id: 'wrong', orgId: 'org_a', date: '2026-11-24', amount: 401, direction: 'credit' },
+    'finance_bank_transactions/foreign': { id: 'foreign', orgId: 'org_b', date: '2026-11-24', amount: 400, direction: 'credit' },
+    'finance_bank_transactions/credit2': { id: 'credit2', orgId: 'org_a', date: '2026-11-24', amount: 400, direction: 'credit' },
+    'finance_bank_reconciliations/already-used': {
+      id: 'already-used', orgId: 'org_a', transactionId: 'credit1', receiptId,
+    },
+  };
+  await withApi(seed, async (base) => {
+    assert.equal((await post(base, '/debit/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
+    assert.equal((await post(base, '/wrong/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
+    assert.equal((await post(base, '/foreign/match-receipt', { orgId: 'org_a', receiptId })).status, 403);
+    assert.equal((await post(base, '/credit2/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
+  });
+});
