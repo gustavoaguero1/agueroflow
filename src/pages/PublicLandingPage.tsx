@@ -24,7 +24,7 @@ import {
   Sun,
   Moon,
 } from "lucide-react";
-import { GatLogo } from "../components/common/GatLogo";
+import { BrandLogo } from "../components/common/BrandLogo";
 import { useTheme } from "../contexts/ThemeContext";
 import { apiFetch } from '../apiAuthFetch';
 
@@ -118,7 +118,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
             className="flex items-center space-x-3 cursor-pointer py-1"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           >
-            <GatLogo size="md" />
+            <BrandLogo size="md" background="dark" />
             <div className="hidden sm:block border-l border-slate-700/80 pl-3">
               <span className="block text-xs font-bold tracking-wider text-white uppercase">
                 Soluções & Atendimento
@@ -991,7 +991,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center space-x-3">
-              <GatLogo size="sm" />
+              <BrandLogo size="sm" background="dark" />
               <span className="text-slate-400 text-xs">
                 GAT — Soluções, Atendimento & Gestão Operacional
               </span>

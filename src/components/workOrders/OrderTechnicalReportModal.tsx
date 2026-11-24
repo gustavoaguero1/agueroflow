@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   FileText,
 } from 'lucide-react';
-import { GatLogo } from '../common/GatLogo';
+import { BrandLogo } from '../common/BrandLogo';
 import { getActiveTimeInfo } from './workOrderHelpers';
 
 interface OrderTechnicalReportModalProps {
@@ -71,7 +71,7 @@ export const OrderTechnicalReportModal: React.FC<OrderTechnicalReportModalProps>
           {/* Document Header */}
           <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
             <div className="flex items-center space-x-3">
-              <GatLogo className="h-10 w-auto text-slate-900" />
+              <BrandLogo size="md" background="light" />
               <div>
                 <h1 className="text-xl font-extrabold tracking-tight text-slate-950 uppercase">
                   AgueroFlow — Manutenção & Engenharia

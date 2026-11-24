@@ -6,7 +6,7 @@ import { db } from '../firebase';
 import { postJson, refreshClaims } from '../apiAuthFetch';
 import { FirstAccessLinkButton } from '../components/common/FirstAccessLinkButton';
 import { Organization, OrgMember, UserRole } from '../types';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 import {
   Building2,
   Plus,
@@ -309,7 +309,7 @@ export const MasterCompanySelectorPage: React.FC<MasterCompanySelectorPageProps>
       <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl border-b border-black/[0.08] dark:border-white/[0.08]">
         <div className="max-w-6xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           <div className="flex items-center space-x-3.5">
-            <GatLogo size="sm" />
+            <BrandLogo size="sm" />
             <div className="h-5 w-px bg-black/[0.1] dark:bg-white/[0.12] hidden sm:block" />
             <div className="hidden sm:flex items-center space-x-1.5 text-xs font-medium text-[#6E6E73] dark:text-[#98989D]">
               <ShieldCheck className="w-3.5 h-3.5 text-[#0071E3] dark:text-[#0A84FF]" />

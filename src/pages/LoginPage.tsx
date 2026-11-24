@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, MASTER_EMAIL } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 import {
   ShieldCheck,
   Lock,
@@ -325,7 +325,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10] text-[#1D1D1F] dark:text-[#F5F5F7] flex flex-col justify-between selection:bg-[#0071E3] selection:text-white">
       {/* Minimal Apple Top Bar */}
       <header className="w-full max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-        <GatLogo size="sm" />
+        <BrandLogo size="sm" />
 
         <button
           type="button"
@@ -353,7 +353,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           {/* Brand Heading */}
           <div className="text-center mb-7">
             <div className="inline-flex justify-center mb-4">
-              <GatLogo size="md" />
+              <BrandLogo size="md" />
             </div>
             <h1 className="text-2xl font-bold tracking-[-0.025em] text-[#1D1D1F] dark:text-[#F5F5F7]">
               {flowState === 'first_access' || flowState === 'first_access_saving'

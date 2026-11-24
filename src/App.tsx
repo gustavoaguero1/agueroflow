@@ -36,7 +36,7 @@ import {
 } from './modules/WhatsAppAutomationModule';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { testConnection } from './firebase';
-import { GatLogo } from './components/common/GatLogo';
+import { BrandLogo } from './components/common/BrandLogo';
 import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
 import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
@@ -128,7 +128,7 @@ function MainRouter() {
     return (
       <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10] flex items-center justify-center text-[#1D1D1F] dark:text-[#F5F5F7] font-sans">
         <div className="flex flex-col items-center space-y-4">
-          <GatLogo size="lg" />
+          <BrandLogo size="lg" />
           <div className="w-5 h-5 border-2 border-[#0071E3] border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
