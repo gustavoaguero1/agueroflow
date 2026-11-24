@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildEngineeringDocumentGroupId,
+  compareEngineeringRevisions,
   buildEngineeringDocumentId,
   engineeringDocumentDateMillis,
   getEngineeringDocumentStatus,
@@ -22,6 +23,13 @@ test('rejects empty or invalid identifiers and unsafe organization ids', () => {
   assert.throws(() => normalizeEngineeringDocumentCode(' / '));
   assert.throws(() => normalizeEngineeringRevision(''));
   assert.throws(() => buildEngineeringDocumentId('org/a', 'P-101', 'A'));
+});
+
+test('compares engineering revisions in natural order', () => {
+  assert.equal(compareEngineeringRevisions('A', 'B') < 0, true);
+  assert.equal(compareEngineeringRevisions('00', '01') < 0, true);
+  assert.equal(compareEngineeringRevisions('REV-2', 'REV-10') < 0, true);
+  assert.equal(compareEngineeringRevisions('REV-B', 'REV-A') > 0, true);
 });
 
 test('accepts only supported private-document formats within the size limit', () => {
