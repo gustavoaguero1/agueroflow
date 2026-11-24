@@ -500,22 +500,20 @@ service cloud.firestore {
         return coll != 'quality_record_states' || validQualityStateUpdateForDoc();
       }
       function validQualityEventCreateForDoc() {
-        let recordId = request.resource.data.get('recordId', '');
-        let statePath = /databases/$(database)/documents/quality_record_states/$(recordId);
+        let statePath = /databases/$(database)/documents/quality_record_states/$(request.resource.data.get('recordId', ''));
         let stateExistsBefore = exists(statePath);
         let stateBefore = stateExistsBefore ? get(statePath).data : {};
         let stateAfterExists = existsAfter(statePath);
         let stateAfter = stateAfterExists ? getAfter(statePath).data : {};
-        let recordData = getAfter(/databases/$(database)/documents/quality_records/$(recordId)).data;
+        let recordData = getAfter(/databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''))).data;
         let isInitial = recordData.get('createdAt', null) == request.time;
-        let currentStatus = isInitial ? 'new' : stateBefore.get('status', 'unknown');
         let eventType = request.resource.data.get('eventType', '');
-        let nextStatus = isInitial ? qualityInitialStatus(recordData) : qualityStatusAfter(currentStatus, eventType);
+        let nextStatus = isInitial ? qualityInitialStatus(recordData) : qualityStatusAfter(stateBefore.get('status', 'unknown'), eventType);
         let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
-          || recordData.get('result', '') == 'nao_conforme' || currentStatus == 'rejected';
+          || recordData.get('result', '') == 'nao_conforme' || stateBefore.get('status', 'unknown') == 'rejected';
         return signedIn()
-          && recordId is string
-          && recordId.size() > 0
+          && request.resource.data.get('recordId', '') is string
+          && request.resource.data.get('recordId', '').size() > 0
           && recordData.get('orgId', '') == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
