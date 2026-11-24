@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  financeReceivableReceiptId, financeReceivableBalance, isValidReceivableDate,
+  financeReceivableReceiptId, financeReceivableBalance, normalizeReceivableMoney, isValidReceivableDate,
   validateFinanceReceivableReceiptRequest, validateFinanceReceivableReceiptEligibility,
   receivableReceiptRequestMatches,
 } from '../src/services/financeReceivableRules.ts';
@@ -23,6 +23,11 @@ test('receivable balance is based on original amount minus received cash', () =>
   assert.equal(financeReceivableBalance(receivable()), 750);
   assert.equal(financeReceivableBalance(receivable({ valorRecebido: 1200 })), 0);
 });
+test('money values are rounded to cents before updating the ledger', () => {
+  assert.equal(normalizeReceivableMoney(1.005), 1.01);
+  assert.equal(financeReceivableBalance(receivable({ valor: 100.10, valorRecebido: 0.10 })), 100);
+});
+
 test('receipt identifier is stable and tenant-scoped', () => {
   assert.equal(financeReceivableReceiptId('org_a', 'recv_1', 'request-0001'), financeReceivableReceiptId('org_a', 'recv_1', 'request-0001'));
   assert.notEqual(financeReceivableReceiptId('org_a', 'recv_1', 'request-0001'), financeReceivableReceiptId('org_b', 'recv_1', 'request-0001'));
