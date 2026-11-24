@@ -412,8 +412,6 @@ service cloud.firestore {
               && request.resource.data.get('dueDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
             : (request.resource.data.get('acceptanceCriteria', '') is string
               && request.resource.data.get('acceptanceCriteria', '').size() > 0))
-          && existsAfter(/databases/$(database)/documents/quality_record_states/$(docId))
-          && getAfter(/databases/$(database)/documents/quality_record_states/$(docId)).data.get('recordId', '') == docId
         );
       }
       function qualityInitialEventType(record) {
@@ -489,8 +487,6 @@ service cloud.firestore {
         let statePath = /databases/$(database)/documents/quality_record_states/$(request.resource.data.get('recordId', ''));
         let stateExistsBefore = exists(statePath);
         let stateBefore = stateExistsBefore ? get(statePath).data : {};
-        let stateAfterExists = existsAfter(statePath);
-        let stateAfter = stateAfterExists ? getAfter(statePath).data : {};
         let recordData = getAfter(/databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''))).data;
         let isInitial = recordData.get('createdAt', null) == request.time;
         let eventType = request.resource.data.get('eventType', '');
@@ -510,10 +506,6 @@ service cloud.firestore {
           && request.resource.data.get('actorName', '') is string
           && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
-          && stateAfterExists
-          && stateAfter.get('latestEventId', '') == docId
-          && stateAfter.get('status', '') == nextStatus
-          && stateAfter.get('updatedByUid', '') == request.auth.uid
           && (isInitial
             ? (!stateExistsBefore
               && eventType == qualityInitialEventType(recordData)
