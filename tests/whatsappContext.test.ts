@@ -94,6 +94,33 @@ test('automação de empresa sem WhatsApp conectado avisa no log em vez de envia
   assert.ok(warns.some((w) => w.includes('Sem WhatsApp conectado para a empresa org9')));
 });
 
+test('isCompanySession: só a conexão que é o remetente da empresa faz as automações', () => {
+  const { ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }, { key: 'u_b', orgId: 'org1', uid: 'b', connected: true }]);
+  // sem número oficial: a mais antiga conectada (aqui as duas têm since=0 → a primeira da lista)
+  assert.equal(ctx.runInSession({ key: 'u_a', orgId: 'org1', uid: 'a' }, () => ctx.isCompanySession()), true);
+  assert.equal(ctx.runInSession({ key: 'u_b', orgId: 'org1', uid: 'b' }, () => ctx.isCompanySession()), false);
+  assert.equal(ctx.isCompanySession(), false);
+});
+
+test('sem contexto e sem nenhum WhatsApp na empresa padrão: avisa no log', () => {
+  const { ctx } = setup([]);
+  const warns: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: string) => { warns.push(String(m)); };
+  try { ctx.api.getWhatsAppBridgeStatus(); } finally { console.warn = orig; }
+  assert.ok(warns.some((w) => w.includes('Sem WhatsApp conectado para a empresa org1')));
+});
+
+test('gancho lê a empresa da sessão a cada mensagem (troca de empresa vale na hora)', async () => {
+  const { reg, ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }]);
+  const seen: string[] = [];
+  ctx.api.registerWhatsAppBridgeHooks({ onIncomingMessage: () => { seen.push(ctx.orgOfContext()); } } as never);
+  reg.get('u_a')!.fire('onIncomingMessage', {});
+  reg.ensure('u_a', { orgId: 'org2', uid: 'a' });
+  reg.get('u_a')!.fire('onIncomingMessage', {});
+  assert.deepEqual(seen, ['org1', 'org2']);
+});
+
 test('ganchos registrados uma vez valem para todas as conexões, e rodam no contexto de quem recebeu', async () => {
   const { reg, ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }]);
   const seen: unknown[] = [];

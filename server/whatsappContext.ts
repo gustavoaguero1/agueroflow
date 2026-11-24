@@ -48,12 +48,15 @@ export function createWhatsAppContext(opts: {
   const attach = (b: WhatsAppBridge) => {
     if (!hooks || attached.has(b)) return;
     attached.add(b);
-    const m = opts.registry.meta(b.key);
-    const ctx: SessionContext = { key: b.key, orgId: m?.orgId || opts.defaultOrgId, uid: m?.uid ?? null };
+    // A empresa é lida a cada chamada: se a sessão mudar de empresa, vale na próxima mensagem.
+    const ctxNow = (): SessionContext => {
+      const m = opts.registry.meta(b.key);
+      return { key: b.key, orgId: m?.orgId || opts.defaultOrgId, uid: m?.uid ?? null };
+    };
     const wrapped = Object.fromEntries(
       Object.entries(hooks).map(([name, fn]) => [
         name,
-        typeof fn === 'function' ? (...a: unknown[]) => als.run(ctx, () => (fn as (...x: unknown[]) => unknown)(...a)) : fn,
+        typeof fn === 'function' ? (...a: unknown[]) => als.run(ctxNow(), () => (fn as (...x: unknown[]) => unknown)(...a)) : fn,
       ]),
     ) as BridgeHooks;
     b.registerWhatsAppBridgeHooks(wrapped);
@@ -89,7 +92,16 @@ export function createWhatsAppContext(opts: {
     }
     if (s) return opts.registry.get(s.key) || opts.blank;
     const k = senderKey(opts.defaultOrgId);
-    return (k && opts.registry.get(k)) || opts.blank;
+    const b = k && opts.registry.get(k);
+    if (b) return b;
+    warnNoSender(opts.defaultOrgId);
+    return opts.blank;
+  };
+
+  /** A conexão atual é o remetente da empresa? Só ela faz OCR, NDs, respostas automáticas e @aguero. */
+  const isCompanySession = (): boolean => {
+    const s = als.getStore();
+    return Boolean(s && s.key === senderKey(s.orgId));
   };
 
   const runInSession = <T,>(ctx: SessionContext, fn: () => T): T => als.run(ctx, fn);
@@ -139,7 +151,7 @@ export function createWhatsAppContext(opts: {
     },
   };
 
-  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, attach, attachAll, senderKey };
+  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, isCompanySession, attach, attachAll, senderKey };
 }
 
 export type WhatsAppContext = ReturnType<typeof createWhatsAppContext>;

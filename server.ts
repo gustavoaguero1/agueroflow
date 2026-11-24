@@ -46,6 +46,8 @@ import {
   resumeSavedWhatsAppSessions,
   runInWhatsAppSession,
   runAsOrgWhatsAppSender,
+  isCompanyWhatsApp,
+  resumeOrgSessions,
   currentWhatsAppSession,
   orgOfWhatsAppContext,
   waRegistry,
@@ -53,6 +55,7 @@ import {
   setOfficialSessionKey,
 } from './server/whatsappRuntime';
 import { sessionForRequest, addTag } from './server/whatsappRouting';
+import { createWhatsAppMiddlewares } from './server/whatsappMiddleware';
 import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
   buildOutlookOAuthAuthorizationUrl,
@@ -74,7 +77,7 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
@@ -556,15 +559,9 @@ async function main() {
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
-  app.use('/api', (req: Request, _res: Response, next: any) => {
-    if (!req.orgId) return next();
-    runAsOrgWhatsAppSender(effectiveOrg(req.orgId), next);
-  });
-  app.use('/api/whatsapp/bridge', (req: Request, _res: Response, next: any) => {
-    const s = sessionForRequest({ user: req.user, orgId: req.orgId });
-    if (!('key' in s)) return next();
-    runInWhatsAppSession(s, next);
-  });
+  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender });
+  app.use('/api', waMiddlewares.companyContext);
+  app.use('/api/whatsapp/bridge', waMiddlewares.ownSessionContext);
   app.use('/api/nfe', nfeRouter);
   app.use('/api/nfe', nfeSyncRouter);
   app.use('/api/protheus', protheusProbeRouter);
@@ -8653,6 +8650,9 @@ DIRETRIZES ESSENCIAIS:
     };
   };
 
+  /** Qual conexão abriu como número da empresa, por empresa (para saber se a queda é dela). */
+  const companyWhatsAppKeyByOrg = new Map<string, string>();
+
   registerWhatsAppBridgeHooks({
     isPriorityMonitoredJid: (remoteJid) => {
       if (!remoteJid) return false;
@@ -8703,6 +8703,20 @@ DIRETRIZES ESSENCIAIS:
       return false;
     },
     onConnectionOpen: ({ connectedNumber, connectedName }) => {
+      // WhatsApp pessoal: só registra. A configuração e as varreduras da empresa ficam com o número da empresa.
+      if (!isCompanyWhatsApp()) {
+        addWebhookLog({
+          method: 'WA_WEB_BRIDGE',
+          event: 'dispositivo_conectado',
+          senderPhone: connectedNumber,
+          senderName: connectedName,
+          hasMedia: false,
+          status: 'sucesso',
+          summary: `WhatsApp pessoal conectado (${connectedNumber} · ${connectedName}).`,
+        });
+        return;
+      }
+      companyWhatsAppKeyByOrg.set(orgOfWhatsAppContext(), currentWhatsAppSession()?.key || '');
       whatsAppReceiptsConfig = {
         ...whatsAppReceiptsConfig,
         provider: 'baileys_web_bridge',
@@ -8734,7 +8748,9 @@ DIRETRIZES ESSENCIAIS:
       }, 45000);
     },
     onConnectionClose: (reason) => {
-      if (whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
+      // Só a queda do número da empresa muda o status do canal da empresa.
+      const wasCompany = companyWhatsAppKeyByOrg.get(orgOfWhatsAppContext()) === currentWhatsAppSession()?.key;
+      if (wasCompany && whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
         whatsAppReceiptsConfig.status = 'desconectado';
         persistWaConfig();
       }
@@ -8776,6 +8792,7 @@ DIRETRIZES ESSENCIAIS:
       const msgTsMs = new Date(histEvt.timestampIso || 0).getTime();
       const txt = String(histEvt.text || '').trim();
       if (
+        isCompanyWhatsApp() && // ND só pelo número da empresa
         Number.isFinite(msgTsMs) &&
         Date.now() - msgTsMs <= 4 * 60 * 60 * 1000 &&
         txt.length >= 8 &&
@@ -8825,6 +8842,35 @@ DIRETRIZES ESSENCIAIS:
         );
       }
       schedulePersistWaContacts();
+
+      // WhatsApp pessoal: só guarda a conversa. OCR de recibos, NDs, respostas automáticas e @aguero
+      // rodam apenas no número da empresa (evita recibo em dobro, ND saindo do número de um funcionário
+      // e acesso ao ERP por quem não tem perfil para isso).
+      if (!isCompanyWhatsApp()) {
+        recordWhatsAppMessage({
+          organizationId: orgOfWhatsAppContext(),
+          direction: evt.fromMe ? 'outbound' : 'inbound',
+          contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
+          contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
+          contactType: isEmployee ? 'funcionario' : 'cliente',
+          category: isEmployee ? 'orientacao_equipe' : 'atendimento',
+          text: evt.text,
+          chatJid: evt.remoteJid,
+          isGroup: evt.isGroup,
+          groupName: evt.groupName,
+          participantPhone: evt.senderPhone,
+          participantName: evt.senderName,
+          sourceBridge: 'baileys_web',
+          hasMedia: Boolean(evt.mediaBase64),
+          mediaMimeType: evt.mediaMimeType,
+          externalMessageId: evt.messageId,
+          status: evt.fromMe ? 'enviado' : 'recebido',
+          sentByUserName: evt.fromMe ? evt.senderName : undefined,
+          createdAt: evt.timestampIso,
+          deferPersist: true,
+        });
+        return;
+      }
 
       // STRICT OCR OPT-IN: NEVER run OCR or auto-reply unless this exact group/contact is explicitly enabled/locked!
       const senderContact = !evt.isGroup ? findManagedContact(evt.senderPhone) : undefined;
@@ -9182,7 +9228,8 @@ DIRETRIZES ESSENCIAIS:
 
   // Ultra-fast keep-alive heartbeat endpoint (keeps Cloud Run warm & WhatsApp bridge alive while ERP is open)
   app.get('/api/whatsapp/bridge/keepalive', (_req: Request, res: Response) => {
-    ensureWhatsAppBridgeResumed();
+    // Retoma todas as conexões salvas da empresa que caíram (não só as que estão online).
+    resumeOrgSessions(orgOfWhatsAppContext());
     const status = getWhatsAppBridgeStatus();
     if (status.state === 'conectado' && whatsAppNdRules.some((r) => r.active && r.groupJid)) {
       scanArchivedMessagesForPendingNds(4).catch(() => undefined);
@@ -9213,7 +9260,7 @@ DIRETRIZES ESSENCIAIS:
   // Bridge Connect (QR Code or 8-digit Pairing Code)
   // Cada usuário conecta o próprio WhatsApp (QR ou código), na empresa selecionada.
   app.post('/api/whatsapp/bridge/connect', async (req: Request, res: Response) => {
-    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
     if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const { phoneNumberForPairing, forceFreshQr } = req.body || {};
@@ -9241,7 +9288,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Desconectar o PRÓPRIO WhatsApp (desvincular apaga as credenciais desta sessão).
   app.post('/api/whatsapp/bridge/disconnect', async (req: Request, res: Response) => {
-    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
     if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const logout = Boolean(req.body?.logout);
@@ -9297,7 +9344,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Admin assume a sessão antiga (o número que era único para todos) como o próprio WhatsApp.
   app.post('/api/whatsapp/bridge/sessions/legacy/claim', requireRole('Admin'), async (req: Request, res: Response) => {
-    const who = sessionForRequest({ user: req.user, orgId: req.orgId });
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
     if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     const legacy = waRegistry.meta(LEGACY_SESSION_KEY);
     if (!legacy || legacy.orgId !== who.orgId) return res.status(404).json({ success: false, error: 'Não há sessão antiga nesta empresa.' });
@@ -9972,6 +10019,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Trigger manual catch-up / status check on WhatsApp Web Bridge
   app.post('/api/whatsapp/bridge/catch-up', async (req: Request, res: Response) => {
+    resumeOrgSessions(orgOfWhatsAppContext());
     const br = getWhatsAppBridgeStatus();
     if (br.state !== 'conectado') {
       if (br.hasSavedSession) {

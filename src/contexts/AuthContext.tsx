@@ -12,7 +12,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
-import { postJson } from '../apiAuthFetch';
+import { postJson, setApiOrgGetter } from '../apiAuthFetch';
 import {
   Organization,
   OrgMember,
@@ -149,6 +149,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [member, setMember] = useState<OrgMember | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
+  // Rotas do WhatsApp levam a empresa selecionada (cada pessoa tem o próprio número por empresa).
+  useEffect(() => {
+    setApiOrgGetter(() => organization?.id || null);
+  }, [organization?.id]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [authError, setAuthError] = useState<string | null>(null);
 

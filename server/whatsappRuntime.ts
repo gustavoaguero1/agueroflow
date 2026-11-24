@@ -81,6 +81,23 @@ export function resumeSavedWhatsAppSessions() {
   }
 }
 
+/**
+ * Retoma as conexões salvas de uma empresa que caíram (rede da plataforma de nuvem dormiu etc.).
+ * Antes era o keepalive que fazia isso para a conexão única; agora vale para todas da empresa.
+ */
+export function resumeOrgSessions(orgId: string) {
+  for (const s of waRegistry.list()) {
+    if (s.orgId !== orgId) continue;
+    const b = waRegistry.get(s.key);
+    if (!b || !b.hasPersistedBridgeSession()) continue;
+    waContext.attach(b);
+    waContext.runInSession({ key: s.key, orgId: s.orgId, uid: s.uid }, () => b.ensureWhatsAppBridgeResumed());
+  }
+}
+
+/** A conexão do contexto é o remetente da empresa (faz OCR, NDs, respostas automáticas, @aguero)? */
+export const isCompanyWhatsApp = waContext.isCompanySession;
+
 export const runInWhatsAppSession = waContext.runInSession;
 export const runAsOrgWhatsAppSender = waContext.runAsOrgSender;
 export const currentWhatsAppSession = waContext.currentSession;

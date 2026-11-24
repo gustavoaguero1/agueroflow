@@ -63,6 +63,10 @@ export function createSessionRegistry(opts: {
     ensure(key: string, m: SessionMeta): WhatsAppBridge {
       const existing = open.get(key);
       if (existing) {
+        const connected = (existing as { getWhatsAppBridgeStatus?: () => { state?: string } }).getWhatsAppBridgeStatus?.()?.state === 'conectado';
+        if (connected && meta[key] && meta[key].orgId !== m.orgId) {
+          throw Object.assign(new Error('Seu WhatsApp está conectado em outra empresa. Desconecte-o antes de trocar de empresa.'), { status: 409 });
+        }
         if (meta[key]?.orgId !== m.orgId || meta[key]?.uid !== m.uid) {
           meta = { ...meta, [key]: m };
           writeMeta(opts.baseDir, meta);
@@ -113,6 +117,14 @@ export function createSessionRegistry(opts: {
     /** Depois de reiniciar: recria as instâncias de todas as sessões salvas. */
     restoreAll(): string[] {
       meta = readMeta(opts.baseDir);
+      // Tentativas sem QR lido (sem credenciais) são esquecidas para não ocupar vagas.
+      const paired = Object.fromEntries(
+        Object.entries(meta).filter(([k]) => fs.existsSync(path.join(opts.baseDir, k, 'creds.json'))),
+      );
+      if (Object.keys(paired).length !== Object.keys(meta).length) {
+        meta = paired;
+        writeMeta(opts.baseDir, meta);
+      }
       const keys = Object.keys(meta).slice(0, opts.maxSessions);
       for (const k of keys) if (!open.has(k)) create(k);
       return keys;

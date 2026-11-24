@@ -51,10 +51,36 @@ test('restoreAll recria as sessões salvas depois de reiniciar', () => {
   const r1 = createSessionRegistry({ baseDir: base, maxSessions: 5, factory: f1.factory });
   r1.ensure('u_a', { orgId: 'o1', uid: 'a' });
   r1.ensure('u_b', { orgId: 'o2', uid: 'b' });
+  for (const k of ['u_a', 'u_b']) {
+    fs.mkdirSync(path.join(base, k), { recursive: true });
+    fs.writeFileSync(path.join(base, k, 'creds.json'), '{"registered":true}');
+  }
   const f2 = fakeFactory();
   const r2 = createSessionRegistry({ baseDir: base, maxSessions: 5, factory: f2.factory });
   assert.deepEqual(r2.restoreAll().sort(), ['u_a', 'u_b']);
   assert.deepEqual(r2.meta('u_b'), { orgId: 'o2', uid: 'b' });
+});
+
+test('restoreAll esquece tentativas sem QR lido (sem credenciais) para não ocupar vagas', () => {
+  const base = tmp();
+  const r1 = createSessionRegistry({ baseDir: base, maxSessions: 5, factory: fakeFactory().factory });
+  r1.ensure('u_pareado', { orgId: 'o', uid: 'p' });
+  r1.ensure('u_abandonado', { orgId: 'o', uid: 'x' });
+  fs.mkdirSync(path.join(base, 'u_pareado'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'u_pareado', 'creds.json'), '{"registered":true}');
+  const r2 = createSessionRegistry({ baseDir: base, maxSessions: 5, factory: fakeFactory().factory });
+  assert.deepEqual(r2.restoreAll(), ['u_pareado']);
+  assert.equal(r2.meta('u_abandonado'), undefined);
+});
+
+test('ensure não troca a empresa de uma sessão conectada', () => {
+  const reg = createSessionRegistry({
+    baseDir: tmp(), maxSessions: 5,
+    factory: ((cfg: { key: string }) => ({ key: cfg.key, getWhatsAppBridgeStatus: () => ({ state: 'conectado' }) })) as never,
+  });
+  reg.ensure('u_a', { orgId: 'o1', uid: 'a' });
+  assert.throws(() => reg.ensure('u_a', { orgId: 'o2', uid: 'a' }), (e: { status?: number }) => e.status === 409);
+  assert.deepEqual(reg.meta('u_a'), { orgId: 'o1', uid: 'a' });
 });
 
 test('remove para a sessão, apaga as credenciais e esquece os dados', async () => {
