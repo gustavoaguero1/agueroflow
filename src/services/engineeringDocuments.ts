@@ -63,6 +63,15 @@ export function buildEngineeringDocumentId(orgId: string, documentCode: string, 
   return `${buildEngineeringDocumentGroupId(orgId, documentCode)}_${normalizeEngineeringRevision(revision)}`;
 }
 
+/** Natural ordering supports common drawing revisions such as A/B/C, 00/01/02 and 1.0/1.1. */
+export function compareEngineeringRevisions(left: string, right: string): number {
+  return normalizeEngineeringRevision(left).localeCompare(
+    normalizeEngineeringRevision(right),
+    'pt-BR',
+    { numeric: true, sensitivity: 'base' },
+  );
+}
+
 export function isEngineeringDocumentFileAllowed(file: { type: string; size: number; name?: string }): boolean {
   return (ENGINEERING_DOCUMENT_MIME_TYPES as readonly string[]).includes(file.type)
     && Number.isFinite(file.size)
