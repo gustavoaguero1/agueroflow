@@ -2,7 +2,7 @@ import test, { before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { purchaseReceiptId, registerPurchaseReceipt, type RegisterPurchaseReceiptInput } from '../../src/services/purchasingReceivingService.ts';
 
 let env: RulesTestEnvironment;
@@ -110,11 +110,20 @@ test('recebimento parcial atualiza OC, saldo, custo médio e histórico na mesma
   assert.equal(movement?.receiptId, result.receiptId);
 });
 
-test('não permite lançar a mesma NF-e na mesma OC duas vezes', async () => {
+test('não permite lançar a mesma NF-e duas vezes, mesmo em outra OC da mesma empresa', async () => {
   await seed();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'purchasing_orders', 'po_2'), {
+      ...baseOrder, id: 'po_2', code: 'OC-2026-0002',
+    });
+  });
   const input = receiptInput();
   const first = await registerPurchaseReceipt(db(), input);
   await assert.rejects(registerPurchaseReceipt(db(), input), /já foi registrada/);
+  await assert.rejects(
+    registerPurchaseReceipt(db(), receiptInput({ purchaseOrderId: 'po_2' })),
+    /já foi registrada/,
+  );
   const balance = await readDoc('stock_balances', 'bal_unit_main_item_1');
   const receipt = await readDoc('purchasing_receipts', first.receiptId);
   assert.equal(balance?.currentBalance, 4);
@@ -141,6 +150,20 @@ test('impede recebimento acima da quantidade pendente sem gravar parcialmente', 
   assert.equal(order?.items[0].quantityReceived, 0);
 });
 
+test('entrada de recebimento pondera custo médio com o saldo anterior', async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'stock_balances/bal_unit_main_item_1'), {
+      id: 'bal_unit_main_item_1', orgId: 'org_a', unitId: 'unit_main',
+      itemId: 'item_1', currentBalance: 6, averageCost: 50,
+    });
+  });
+  await registerPurchaseReceipt(db(), receiptInput());
+  const balance = await readDoc('stock_balances', 'bal_unit_main_item_1');
+  assert.equal(balance?.currentBalance, 10);
+  assert.equal(balance?.averageCost, 70);
+});
+
 test('material não conforme fica bloqueado e não reduz saldo pendente da OC', async () => {
   await seed();
   const result = await registerPurchaseReceipt(db(), receiptInput({
@@ -163,6 +186,17 @@ test('material não conforme fica bloqueado e não reduz saldo pendente da OC', 
   assert.equal(await readDoc('stock_balances', 'bal_unit_main_item_1'), undefined);
 });
 
+test('rejeita unidade de catálogo diferente da unidade comprada', async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'items/item_1'), { unitOfMeasure: 'M' });
+  });
+  await assert.rejects(registerPurchaseReceipt(db(), receiptInput()), /não corresponde à unidade da OC/);
+  assert.equal(await readDoc('stock_balances', 'bal_unit_main_item_1'), undefined);
+  const order = await readDoc('purchasing_orders', 'po_1');
+  assert.equal(order?.items[0].quantityReceived, 0);
+});
+
 test('serviço/consumo explicitamente não estocável fecha quantidade sem movimentar estoque', async () => {
   await seed();
   const result = await registerPurchaseReceipt(db(), receiptInput({
@@ -180,6 +214,20 @@ test('serviço/consumo explicitamente não estocável fecha quantidade sem movim
   assert.equal(order?.items[0].quantityReceived, 2);
   assert.equal(receipt?.itemsReceived[0].stockStatus, 'nao_estocavel');
   assert.equal(await readDoc('stock_balances', 'bal_unit_main_item_1'), undefined);
+});
+
+test('frete FOB é rateado no custo unitário de estoque', async () => {
+  await seed({
+    ...baseOrder,
+    freightType: 'FOB',
+    freightValue: 100,
+  });
+  const result = await registerPurchaseReceipt(db(), receiptInput());
+  const balance = await readDoc('stock_balances', 'bal_unit_main_item_1');
+  const movement = await readDoc('stock_movements', result.stockMovementIds[0]);
+  assert.equal(balance?.averageCost, 110);
+  assert.equal(movement?.unitCost, 110);
+  assert.equal(movement?.totalCost, 440);
 });
 
 test('entrada em estoque exige unidade pertencente à empresa e item de catálogo com unidade compatível', async () => {
