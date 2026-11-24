@@ -46,13 +46,13 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
     const body = req.body ?? {};
     if (!orgId || body.orgId !== orgId) return res.status(400).json({ ok: false, error: 'Informe a empresa autorizada para importar o extrato.' });
     if (!actor?.uid) return res.status(401).json({ ok: false, error: 'Usuário não autenticado.' });
-    if (!validId(body.importBatchId) || typeof body.sourceFileName !== 'string' || !body.sourceFileName.trim() || body.sourceFileName.length > 180) {
-      return res.status(400).json({ ok: false, error: 'Identifique o arquivo e a importação.' });
+    if (!validId(body.importBatchId) || typeof body.sourceFileName !== 'string' || !body.sourceFileName.trim() || body.sourceFileName.length > 180 || typeof body.accountLabel !== 'string' || !body.accountLabel.trim() || body.accountLabel.length > 120) {
+      return res.status(400).json({ ok: false, error: 'Informe o arquivo, a identificação da conta bancária e a importação.' });
     }
     if (!Array.isArray(body.rows) || body.rows.length < 1 || body.rows.length > 2000 || !body.rows.every(validateRow)) {
       return res.status(400).json({ ok: false, error: 'O extrato deve conter de 1 a 2.000 lançamentos válidos.' });
     }
-    const accountLabel = typeof body.accountLabel === 'string' ? body.accountLabel.trim().slice(0, 120) : '';
+    const accountLabel = body.accountLabel.trim();
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });
 

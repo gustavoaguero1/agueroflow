@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { ArrowLeftRight, CheckCircle2, FileUp, RefreshCw } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, FileUp } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { FinancePayableSettlement } from '../../types/finance';
@@ -73,7 +73,7 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
   };
 
   const importFile = async () => {
-    if (!fileName || !preview.length || !importBatchId || !canManage) return;
+    if (!fileName || !preview.length || !importBatchId || !accountLabel.trim() || !canManage) return;
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await importFinanceBankTransactions({
@@ -129,7 +129,7 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
         <p className="text-[11px] text-slate-400">Formatos aceitos: OFX e CSV com colunas de data, descrição/histórico e valor (ou débito/crédito). Limite de 10 MB e 2.000 lançamentos por arquivo.</p>
         {!canManage && <p className="text-[11px] text-amber-300">A importação e a confirmação de conciliações exigem Admin/Gerente com Financeiro nível 2.</p>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className={label}>Identificação da conta (opcional)</label><input className={input} value={accountLabel} onChange={(e) => setAccountLabel(e.target.value)} placeholder="Ex.: Itaú • Conta operacional" /></div>
+          <div><label className={label}>Identificação da conta *</label><input required maxLength={120} className={input} value={accountLabel} onChange={(e) => setAccountLabel(e.target.value)} placeholder="Ex.: Itaú • Conta operacional" /></div>
           <div><label className={label}>Arquivo OFX ou CSV</label><input className={input} type="file" accept=".ofx,.csv" disabled={!canManage || busy} onChange={(e) => void handleFile(e.target.files?.[0])} /></div>
         </div>
         {preview.length > 0 && (
@@ -147,7 +147,7 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
       </section>
 
       <section className={card + ' space-y-3'}>
-        <div className="flex items-center justify-between gap-2"><h4 className="text-xs font-bold text-white">Lançamentos do extrato</h4><button type="button" className={btnGhost} onClick={() => window.location.reload()}><RefreshCw className="h-3 w-3" />Atualizar</button></div>
+        <div className="flex items-center justify-between gap-2"><h4 className="text-xs font-bold text-white">Lançamentos do extrato</h4><span className="text-[10px] text-slate-500">Atualização em tempo real</span></div>
         {transactions.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">Nenhum extrato importado nesta empresa.</p> : (
           <div className="space-y-2">
             {transactions.slice(0, 250).map((transaction) => {

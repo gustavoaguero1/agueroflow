@@ -15,12 +15,15 @@ const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u0
 function parseDate(value: string): string | null {
   const raw = value.trim();
   const compact = raw.match(/^(\d{4})(\d{2})(\d{2})/);
-  if (compact) return compact[1] + '-' + compact[2] + '-' + compact[3];
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
   const br = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
-  if (br) return br[3] + '-' + br[2].padStart(2, '0') + '-' + br[1].padStart(2, '0');
-  return null;
+  const parts = compact ? [compact[1], compact[2], compact[3]]
+    : iso ? [iso[1], iso[2], iso[3]]
+      : br ? [br[3], br[2].padStart(2, '0'), br[1].padStart(2, '0')] : null;
+  if (!parts) return null;
+  const result = parts[0] + '-' + parts[1] + '-' + parts[2];
+  const parsed = new Date(result + 'T00:00:00Z');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === result ? result : null;
 }
 
 function parseMoney(value: string): number | null {
@@ -113,7 +116,7 @@ function ofxTag(block: string, tag: string): string {
 }
 
 function parseOfx(text: string): FinanceBankStatementRow[] {
-  const blocks = [...text.matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi)].map((match) => match[1]);
+  const blocks = [...text.matchAll(/<STMTTRN>([\\s\\S]*?)(?:<\\/STMTTRN>|(?=<STMTTRN>|<\\/BANKTRANLIST>|$))/gi)].map((match) => match[1]);
   if (!blocks.length) throw new Error('Não encontrei lançamentos STMTTRN no arquivo OFX.');
   const rows: FinanceBankStatementRow[] = [];
   blocks.forEach((block, index) => {
