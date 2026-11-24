@@ -34,6 +34,7 @@ import {
   PurchaseOrder,
   PurchaseOrderItem,
 } from '../../types/purchasing';
+import { workOrderLinkFields } from '../../services/purchasingLinks';
 import {
   savePurchaseQuotation,
   savePurchaseOrder,
@@ -464,9 +465,7 @@ export const PurchasingPriceComparison: React.FC<PurchasingPriceComparisonProps>
         code: orderCode,
         requisitionCode: activeItem.requisitionCode,
         quotationMapCode: activeItem.quotationMapCode,
-        linkedWorkOrderId: activeMap?.linkedWorkOrderId,
-        linkedWorkOrderNumber: activeMap?.linkedWorkOrderNumber,
-        linkedWorkOrderTitle: activeMap?.linkedWorkOrderTitle,
+        ...workOrderLinkFields(activeMap ? { id: activeMap.linkedWorkOrderId, orderNumber: activeMap.linkedWorkOrderNumber, title: activeMap.linkedWorkOrderTitle } : undefined),
         supplierId: winnerBidToHomologate.supplierId,
         supplierName: winnerBidToHomologate.supplierName,
         supplierCnpj: winnerBidToHomologate.supplierCnpj || '00.000.000/0001-00',
