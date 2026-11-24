@@ -8,8 +8,9 @@ import type { FinanceCategory } from '../types/finance';
 import { NfeInbox } from '../components/finance/NfeInbox';
 import { PayablesView } from '../components/finance/PayablesView';
 import { CategoriesManager } from '../components/finance/CategoriesManager';
+import { ReceivablesView } from '../components/finance/ReceivablesView';
 
-export type FinanceSubSection = 'financeiro-notas' | 'financeiro-pagar' | 'financeiro-plano';
+export type FinanceSubSection = 'financeiro-notas' | 'financeiro-pagar' | 'financeiro-receber' | 'financeiro-plano';
 
 export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> = ({ currentSubSection }) => {
   const { organization, isSupervisorOrAbove } = useAuth();
@@ -42,6 +43,7 @@ export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> =
       {error && <p className="text-xs rounded-lg px-3 py-2 bg-red-950/60 text-red-300 border border-red-800/50">{error}</p>}
       {currentSubSection === 'financeiro-notas' && <NfeInbox orgId={orgId} categories={categories} costCenters={costCenters} />}
       {currentSubSection === 'financeiro-pagar' && <PayablesView orgId={orgId} categories={categories} />}
+      {currentSubSection === 'financeiro-receber' && <ReceivablesView orgId={orgId} />}
       {currentSubSection === 'financeiro-plano' && <CategoriesManager orgId={orgId} categories={categories} />}
     </div>
   );
