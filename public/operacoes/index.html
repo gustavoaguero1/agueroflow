@@ -133,6 +133,24 @@ input[type=file]{font-size:13px;color:var(--muted)}
 input[type=file]::file-selector-button{font:inherit;font-weight:500;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctl);padding:6px 12px;margin-right:10px;cursor:pointer}
 input[type=file]::file-selector-button:hover{border-color:var(--accent)}
 @media (prefers-reduced-motion:reduce){.btn{transition:none}}
+/* Controle de gases */
+.gas-filtros{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:end}
+.gas-kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.gas-kpis .stat{display:grid;gap:2px}
+.gas-kpis .stat b{font-family:var(--display);font-size:22px;font-weight:600;letter-spacing:-.01em}
+.gas-2{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media (max-width:900px){.gas-2{grid-template-columns:1fr}}
+.gas-2 h3{margin-bottom:8px}
+.gas-2 .tw{max-height:360px;overflow:auto}
+.gas-bars{display:grid;grid-template-columns:repeat(12,1fr);gap:6px;height:190px;align-items:end;padding-top:18px}
+.gas-bar{display:grid;grid-template-rows:auto 1fr auto;height:100%;align-items:end;text-align:center;min-width:0}
+.gas-bar i{display:block;background:var(--accent);border-radius:6px 6px 2px 2px;min-height:2px;align-self:end}
+.gas-bar span{font-size:11px;color:var(--muted);padding-top:4px}
+.gas-bar-v{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gas-pends{display:grid;gap:10px;margin-top:10px}
+.gas-pend{display:grid;gap:8px}
+.gas-pend.feita{opacity:.72}
+@media (max-width:640px){.gas-bar-v{display:none}}
 </style>
 </head>
 <body>
@@ -150,6 +168,7 @@ input[type=file]::file-selector-button:hover{border-color:var(--accent)}
 <datalist id="dl-ativ"></datalist>
 <script src="xlsx.full.min.js"></script>
 <script src="bridge.js"></script>
+<script src="gases.js"></script>
 <script>
 "use strict";
 const CIDADES_BASE=["Altamira/PA", "Aparecida/SP", "Aracaju/SE", "Araraquara/SP", "Araucária/PR", "Araçatuba/SP", "Balneário Camboriú/SC", "Barreiras/BA", "Barretos/SP", "Bauru/SP", "Bebedouro/SP", "Belo Horizonte/MG", "Belém/PA", "Boa Vista/RR", "Bonito/MS", "Bragança Paulista/SP", "Brasília/DF", "Cabo Frio/RJ", "Campina Grande/PB", "Campinas/SP", "Campo Grande/MS", "Campos dos Goytacazes/RJ", "Caraguatatuba/SP", "Cascavel/PR", "Castro/PR", "Caxias do Sul/RS", "Chapecó/SC", "Conde/BA", "Conde/PB", "Cruzeiro do Sul/AC", "Cuiabá/MT", "Curitiba/PR", "Dias d’Ávila/BA", "Dois Vizinhos/PR", "Dourados/MS", "Feira de Santana/BA", "Florianópolis/SC", "Fortaleza/CE", "Foz do Iguaçu/PR", "Francisco Beltrão/PR", "Frutal/MG", "Goiânia/GO", "Governador Valadares/MG", "Guarapuava/PR", "Guarulhos/SP", "Ilha Comprida/SP", "Ilhéus/BA", "Imperatriz/MA", "Indaiatuba/SP", "Ipatinga/MG", "Itabirito/MG", "Itajaí/SC", "Itapira/SP", "Jaboticabal/SP", "Jacareí/SP", "Ji-Paraná/RO", "Joinville/SC", "João Pessoa/PB", "Juazeiro do Norte/CE", "Juiz de Fora/MG", "Jundiaí/SP", "Londrina/PR", "Lorena/SP", "Macapá/AP", "Macaé/RJ", "Maceió/AL", "Manaus/AM", "Marabá/PA", "Maringá/PR", "Marília/SP", "Mococa/SP", "Mogi das Cruzes/SP", "Montes Claros/MG", "Mossoró/RN", "Muriaé/MG", "Natal/RN", "Navegantes/SC", "Nova Esperança/PR", "Palmas/TO", "Paranavaí/PR", "Parauapebas/PA", "Pará De Minas/MG", "Pará de Minas/MG", "Passo Fundo/RS", "Pato Branco/PR", "Pelotas/RS", "Petrolina/PE", "Pintadas/BA", "Ponta Grossa/PR", "Porto Alegre/RS", "Porto Seguro/BA", "Porto Velho/RO", "Poços De Caldas/MG", "Poços de Caldas/MG", "Presidente Prudente/SP", "Recife/PE", "Ribeirão Preto/SP", "Rio Branco/AC", "Rio Verde/GO", "Rio de Janeiro/RJ", "Rondonópolis/MT", "Salvador/BA", "Santarém/PA", "Santo Amaro/BA", "Santo André/SP", "Santo Ângelo/RS", "Sinop/MT", "Sorocaba/SP", "São Bernardo do Campo/SP", "São Jorge do Oeste/PR", "São Jorge d’Oeste/PR", "São José do Rio Preto/SP", "São José dos Campos/SP", "São Luís/MA", "São Miguel Arcanjo/SP", "São Paulo/SP", "Tabatinga/AM", "Tefé/AM", "Teixeira de Freitas/BA", "Teresina/PI", "Teresópolis/RJ", "Toledo/PR", "Uberaba/MG", "Uberlândia/MG", "Uruguaiana/RS", "Vinhedo/SP", "Vitória da Conquista/BA", "Vitória/ES", "Águas da Prata/SP"];
@@ -191,7 +210,7 @@ const DEF={fatorEstrada:1.3,taxiKm:3,taxiUrbano:60,taxiMaxKm:80,raioAeroporto:35
   pesos:{sal:30,log:15,tec:20,fot:5,est:15,ref:5,ind:10},maxCusto:1.5,funcoes:FUNCOES_PAD,salref:{},
   indFortes:INDICADORES_FORTES,indMedios:INDICADORES_MEDIOS,pInd:{forte:10,medio:7,mesma:5,outra:2,junto:1.5}};
 
-const S={rbn:[],rbl:[],vales:[],eco:[],diario:[],viagens:[],dcfg:null,cont:[],fatp:[],fatn:[],fatc:[],notif:[],tar:[],pass:[],cand:[],ind:[],colab:[],obras:[],dir:[],sal:{},membros:{},params:null,loaded:{},route:'inicio',me:{id:null,name:'',isG:false,papel:'',canWrite:null},view:{}};
+const S={gasl:[],gasp:[],gasb:[],rbn:[],rbl:[],vales:[],eco:[],diario:[],viagens:[],dcfg:null,cont:[],fatp:[],fatn:[],fatc:[],notif:[],tar:[],pass:[],cand:[],ind:[],colab:[],obras:[],dir:[],sal:{},membros:{},params:null,loaded:{},route:'inicio',me:{id:null,name:'',isG:false,papel:'',canWrite:null},view:{}};
 let db=null,user=null,routeIdx=null;
 
 /* ---------- utilidades ---------- */
@@ -398,8 +417,8 @@ function render(){
   bindMain();renderNotif();
   if(keep){const el=document.getElementById(keep.id);if(el){el.focus();try{if(keep.s!=null)el.setSelectionRange(keep.s,keep.s)}catch(e){}}}
 }
-/* Controle de gases: reservado para a Central de Controle de Gases 2026 (conteúdo ainda não migrado) */
-function vGases(){return `<div class="row"><h1>Controle de gases</h1></div><div class="card" style="display:grid;gap:8px"><b>Em preparação.</b><div class="muted">Esta aba vai receber a Central de Controle de Gases (cilindros, consumo por obra, fornecedores e vencimentos). Os dados ainda não foram migrados para o AgueroFlow.</div></div>`}
+/* Controle de gases: tela e cálculos em gases.js */
+function vGases(){return vGasesView()}
 function roText(){const bad=Object.values(S.loaded).some(v=>v==='timeout'||v==='erro');return (bad?'<div class="notice">Parte da base ainda não carregou. Os números podem estar incompletos.</div>':'')+(S.me.canWrite===false?'<div class="lock">Seu acesso é só de leitura. Para cadastrar e editar, peça para um gerente mudar seu perfil no AgueroFlow.</div>':'')}
 
 /* ---------- Início ---------- */
@@ -1909,7 +1928,7 @@ async function resolveNames(){if(!user||!user.profiles)return;const ids=Object.k
 /* ---------- eventos ---------- */
 function bindMain(){
   const m=$('#main');
-  m.oninput=e=>{const t=e.target;
+  m.oninput=e=>{const t=e.target;if(S.route==='gases'){gasesEvent(e);return}
     if(t.id==='c-q'){S.view.c.q=t.value;render();return}
     if(t.id==='b-q'){S.view.b.q=t.value;S.view.b.lim=150;render();return}
     if(t.id==='fat-q'){S.view.f.q=t.value;clearTimeout(m._t);m._t=setTimeout(render,300);return}
@@ -1920,7 +1939,7 @@ function bindMain(){
     if(t.dataset.ed){S.view.b.edit.data[t.dataset.ed]=t.value;return}
     if(t.id==='cfg-busca'){clearTimeout(m._s);m._s=setTimeout(()=>buscar(t.value),300)}
   };
-  m.onchange=async e=>{const t=e.target;
+  m.onchange=async e=>{const t=e.target;if(S.route==='gases'){await gasesEvent(e);return}
     if(t.id==='mc-prio'){S.view.d.comp.prio=t.value;render();return}
     if(t.dataset.esini){await save(()=>db.doc('colaboradores/'+t.dataset.esini).update({cicloInicio:t.value}));return}
     if(t.dataset.essai){await save(()=>db.doc('colaboradores/'+t.dataset.essai).update({saidaFolga:t.value,emFolga:false}));return}
@@ -1987,7 +2006,7 @@ function bindMain(){
     if(t.dataset.mcoord){const m=S.membros[t.dataset.mcoord]||{};await save(()=>db.doc('membros/'+t.dataset.mcoord).set({papel:m.papel||'Coordenador',coord:t.value}),'Coordenador vinculado.');return}
     if(t.id==='imp-file'&&t.files[0]){importar(t.files[0]);t.value=''}
   };
-  m.onclick=async e=>{
+  m.onclick=async e=>{if(S.route==='gases'&&await gasesEvent(e))return;
     const sel=e.target.closest('[data-sel]');if(sel){e.stopPropagation();return}
     const sm=e.target.closest('#pick-det > summary');if(sm&&S.view.d&&S.view.d.comp){S.view.d.comp.pickOpen=!sm.parentElement.open;return}
     const tr=e.target.closest('tr[data-open]');const b=e.target.closest('[data-act]');
@@ -2235,6 +2254,7 @@ async function boot(){carregarGeo();
   listen('diario','diario',a=>{S.diario=a;renderNotif()});listen('viagens','viagens',a=>{S.viagens=a;renderNotif()});
   db.doc('config/diario').onSnapshot(d=>{S.dcfg=d.exists?d.data():null;renderNotif();if(['diario','viagem'].includes(S.route))render()},()=>{});
   listen('contatos','cont',a=>{const antes=S.cont.filter(c=>c.status==='Pendente').length;S.cont=a;const agora=a.filter(c=>c.status==='Pendente').length;if(S.loaded._contOk&&agora>antes&&souAuxiliar()){NOTIF_FECHADO=0;bip()}S.loaded._contOk=true;renderNotif()});
+  listen('gases_lancamentos','gasl',a=>S.gasl=a);listen('gases_pendencias','gasp',a=>S.gasp=a);listen('gases_boletos','gasb',a=>S.gasb=a);
   listen('fat_pedidos','fatp',a=>S.fatp=a);listen('fat_nfs','fatn',a=>S.fatn=a);listen('fat_cobrancas','fatc',a=>S.fatc=a);
   listen('membros','membros',a=>{S.membros={};a.forEach(m=>S.membros[m.id]={papel:m.papel,coord:m.coord||''});if(!S.me.isG&&S.me.id&&S.membros[S.me.id])S.me.papel=S.membros[S.me.id].papel;else if(S.me.isG)S.me.papel='Gerente';whoR()});
   if(S.me.isG)listen('salarios','sal',a=>{S.sal={};a.forEach(s=>S.sal[s.id]=s)});
