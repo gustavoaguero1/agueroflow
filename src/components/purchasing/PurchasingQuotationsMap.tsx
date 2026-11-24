@@ -23,6 +23,7 @@ import {
   PurchaseOrder,
   PurchaseOrderItem
 } from '../../types/purchasing';
+import { workOrderLinkFields } from '../../services/purchasingLinks';
 import {
   savePurchaseQuotation,
   savePurchaseOrder,
@@ -188,9 +189,7 @@ export const PurchasingQuotationsMap: React.FC<PurchasingQuotationsMapProps> = (
         title: newMapTitle.trim(),
         requisitionId: linkedReq?.id,
         requisitionCode: linkedReq?.code,
-        linkedWorkOrderId: linkedReq?.linkedWorkOrderId,
-        linkedWorkOrderNumber: linkedReq?.linkedWorkOrderNumber,
-        linkedWorkOrderTitle: linkedReq?.linkedWorkOrderTitle,
+        ...workOrderLinkFields(linkedReq ? { id: linkedReq.linkedWorkOrderId, orderNumber: linkedReq.linkedWorkOrderNumber, title: linkedReq.linkedWorkOrderTitle } : undefined),
         items: linkedReq ? [...linkedReq.items] : [
           {
             id: `item_${Date.now()}_1`,
@@ -284,9 +283,7 @@ export const PurchasingQuotationsMap: React.FC<PurchasingQuotationsMapProps> = (
         organizationId: currentOrgId,
         code: orderCode,
         requisitionCode: selectedMap.requisitionCode,
-        linkedWorkOrderId: selectedMap.linkedWorkOrderId,
-        linkedWorkOrderNumber: selectedMap.linkedWorkOrderNumber,
-        linkedWorkOrderTitle: selectedMap.linkedWorkOrderTitle,
+        ...workOrderLinkFields({ id: selectedMap.linkedWorkOrderId, orderNumber: selectedMap.linkedWorkOrderNumber, title: selectedMap.linkedWorkOrderTitle }),
         quotationMapCode: selectedMap.code,
         supplierId: winningBid.supplierId,
         supplierName: winningBid.supplierName,
