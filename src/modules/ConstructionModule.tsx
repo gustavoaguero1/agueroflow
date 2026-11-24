@@ -51,7 +51,7 @@ import {
   Settings,
   Award,
 } from 'lucide-react';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 import { FieldPersonnelManager } from '../components/construction/FieldPersonnelManager';
 import { DailyLaborTimesheet } from '../components/construction/DailyLaborTimesheet';
 import { DailyLaborCostDashboard } from '../components/construction/DailyLaborCostDashboard';
@@ -968,7 +968,7 @@ export const ConstructionModule: React.FC = () => {
             <div className="mt-4 p-5 rounded-xl bg-slate-900 border border-slate-800 space-y-4 print:bg-white print:text-black">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center space-x-3">
-                  <GatLogo size="md" />
+                  <BrandLogo size="md" background="dark" />
                   <div>
                     <h3 className="text-base font-extrabold text-white tracking-wide">
                       {organization?.name || 'AGUERO INOX'}

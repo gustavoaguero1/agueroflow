@@ -35,7 +35,7 @@ import {
   LayoutGrid,
   Workflow,
 } from 'lucide-react';
-import { GatLogo } from '../common/GatLogo';
+import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { useTheme } from '../../contexts/ThemeContext';
 import { areaOfSection, visibleNav } from '../../permissions/areas';
@@ -655,7 +655,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               onClick={() => onNavigate('painel')}
               title="Ir para o Painel"
             >
-              <GatLogo size="sm" />
+              <BrandLogo size="sm" />
             </button>
             <button
               type="button"

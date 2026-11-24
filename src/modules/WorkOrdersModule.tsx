@@ -73,7 +73,7 @@ import {
   MessageSquare,
   Wrench,
 } from 'lucide-react';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 import { getActiveTimeInfo, getPlanningSummary } from '../components/workOrders/workOrderHelpers';
 import { OrderOverviewTab } from '../components/workOrders/OrderOverviewTab';
 import { OrderDiscussionTab } from '../components/workOrders/OrderDiscussionTab';

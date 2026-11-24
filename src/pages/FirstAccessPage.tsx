@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../firebase';
 import { postJson, apiFetch } from '../apiAuthFetch';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 
 export const FirstAccessPage: React.FC<{ token: string }> = ({ token }) => {
   const [info, setInfo] = useState<{ memberName: string; orgName: string } | null>(null);
@@ -47,7 +47,7 @@ export const FirstAccessPage: React.FC<{ token: string }> = ({ token }) => {
   return (
     <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10] flex items-center justify-center p-4 text-[#1D1D1F] dark:text-[#F5F5F7] font-sans">
       <div className="w-full max-w-sm bg-white dark:bg-[#1C1C1E] rounded-2xl shadow p-6 space-y-4">
-        <GatLogo size="lg" />
+        <BrandLogo size="lg" />
         <h1 className="text-lg font-semibold">Primeiro acesso</h1>
         {checking && <p className="text-sm">Validando link...</p>}
         {info && (

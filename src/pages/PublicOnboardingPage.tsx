@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { checkOnboardingToken, submitOnboardingForm } from '../services/onboardingService';
 import { OnboardingSubmittedData, OnboardingDocumentAttachment } from '../types/onboarding';
-import { GatLogo } from '../components/common/GatLogo';
+import { BrandLogo } from '../components/common/BrandLogo';
 import { apiFetch } from '../apiAuthFetch';
 
 interface PublicOnboardingPageProps {
@@ -298,7 +298,7 @@ export const PublicOnboardingPage: React.FC<PublicOnboardingPageProps> = ({
     return (
       <div className="min-h-screen bg-[#070B14] flex items-center justify-center text-slate-300 font-sans p-4">
         <div className="flex flex-col items-center space-y-4">
-          <GatLogo size="lg" />
+          <BrandLogo size="lg" background="dark" />
           <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
           <span className="text-xs font-semibold text-cyan-400">Verificando autenticidade do link de admissão...</span>
         </div>
@@ -312,7 +312,7 @@ export const PublicOnboardingPage: React.FC<PublicOnboardingPageProps> = ({
       <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-4 text-slate-200">
         <div className="max-w-md w-full bg-[#0B132B] border border-slate-700/80 rounded-2xl p-6 shadow-2xl text-center space-y-5">
           <div className="flex justify-center">
-            <GatLogo size="md" />
+            <BrandLogo size="md" background="dark" />
           </div>
 
           {tokenStatus === 'submitted' || tokenStatus === 'approved' ? (
@@ -424,7 +424,7 @@ export const PublicOnboardingPage: React.FC<PublicOnboardingPageProps> = ({
         {/* Header Branding */}
         <div className="bg-[#0B132B] border border-slate-700/80 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <GatLogo size="md" />
+            <BrandLogo size="md" background="dark" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold text-white">Aguero Inox — Admissão Digital</h1>
