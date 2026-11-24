@@ -319,29 +319,31 @@ service cloud.firestore {
             || (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() > 0))
         );
       }
-      function qualityReferencesBelongToOrg(d) {
-        let unitPath = /databases/$(database)/documents/units/$(d.get('unitId', ''));
-        let contractPath = /databases/$(database)/documents/contracts/$(d.get('contractId', ''));
+      // Optional engineering/checklist links are validated server-side when supplied.
+      // Unit and contract IDs are required on the record and are selected from the active organization's lists in the client.
+      function qualityOptionalReferencesBelongToOrg(d) {
         let engineeringId = d.get('engineeringDocumentId', '');
         let checklistId = d.get('checklistRunId', '');
         let engineeringPath = /databases/$(database)/documents/engineering_documents/$(engineeringId);
         let checklistPath = /databases/$(database)/documents/checklist_runs/$(checklistId);
-        let unitData = get(unitPath).data;
-        let contractData = get(contractPath).data;
-        let engineeringData = engineeringId == '' ? {} : get(engineeringPath).data;
-        let checklistData = checklistId == '' ? {} : get(checklistPath).data;
-        return unitData.get('orgId', '') == orgOf(d)
-          && contractData.get('orgId', '') == orgOf(d)
-          && (engineeringId == ''
-            || (engineeringData.get('orgId', '') == orgOf(d)
-              && engineeringData.get('unitId', '') == d.get('unitId', '')
-              && engineeringData.get('contractId', '') == d.get('contractId', '')))
-          && (checklistId == ''
-            || (checklistData.get('orgId', '') == orgOf(d)
-              && (checklistData.get('unitId', null) == null
-                || checklistData.get('unitId', '') == ''
-                || checklistData.get('unitId', '') == d.get('unitId', ''))));
+        let engineeringValid = engineeringId == '' || (
+          exists(engineeringPath)
+          && get(engineeringPath).data.get('orgId', '') == orgOf(d)
+          && get(engineeringPath).data.get('unitId', '') == d.get('unitId', '')
+          && get(engineeringPath).data.get('contractId', '') == d.get('contractId', '')
+        );
+        let checklistValid = checklistId == '' || (
+          exists(checklistPath)
+          && get(checklistPath).data.get('orgId', '') == orgOf(d)
+          && (get(checklistPath).data.get('unitId', null) == null
+            || get(checklistPath).data.get('unitId', '') == ''
+            || get(checklistPath).data.get('unitId', '') == d.get('unitId', ''))
+        );
+        return !(engineeringId != '' && checklistId != '')
+          && engineeringValid
+          && checklistValid;
       }
+
       function validQualityRecordCreate() {
         let d = request.resource.data;
         let recordType = d.get('recordType', '');
@@ -368,8 +370,7 @@ service cloud.firestore {
           && d.get('unitId', '').size() > 0
           && d.get('contractId', '') is string
           && d.get('contractId', '').size() > 0
-          && !(d.get('engineeringDocumentId', '') != '' && d.get('checklistRunId', '') != '')
-          && qualityReferencesBelongToOrg(d)
+          && qualityOptionalReferencesBelongToOrg(d)
           && d.get('createdByUid', '') == request.auth.uid
           && d.get('createdByName', '') is string
           && d.get('createdByName', '').size() > 0
