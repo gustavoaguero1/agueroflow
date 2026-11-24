@@ -1209,6 +1209,20 @@ export const ConstructionModule: React.FC = () => {
                 )}
               </div>
 
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-950/25 border border-amber-800/50 text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  required
+                  checked={rdoConfirmationChecked}
+                  onChange={(e) => setRdoConfirmationChecked(e.target.checked)}
+                  className="mt-0.5 accent-amber-500"
+                />
+                <span className="text-[11px] leading-relaxed">
+                  <strong className="block text-amber-300 mb-0.5">Confirmação do responsável pelo registro</strong>
+                  Confirmo que conferi as informações deste RDO com os registros da frente de trabalho e que não preenchi quantidades, horas, equipamentos ou avanço por estimativa automática. Esta confirmação fica vinculada ao meu usuário autenticado; não representa assinatura digital certificada nem aceite do cliente.
+                </span>
+              </label>
+
               {/* Actions */}
               <div className="pt-3 border-t border-slate-800 flex justify-end space-x-2">
                 <button
@@ -1283,18 +1297,24 @@ export const ConstructionModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Informações da Obra */}
-              <div className="grid grid-cols-2 gap-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
+              {/* Dados da obra e da frente informados no momento do RDO */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Obra / Contrato</span>
                   <span className="font-bold text-white">
-                    {contracts.find((c) => c.id === selectedReport.contractId)?.name || 'Contrato de Montagem & Caldeiraria'}
+                    {contracts.find((c) => c.id === selectedReport.contractId)?.name || 'Não identificado'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Unidade / Local</span>
+                  <span className="font-bold text-white">
+                    {units.find((unit) => unit.id === selectedReport.unitId)?.name || 'Não identificado'}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase font-bold">Condição Climática</span>
                   <span className="font-bold text-amber-300 uppercase">
-                    {WEATHER_OPTIONS.find((w) => w.id === selectedReport.weather)?.label}
+                    {WEATHER_OPTIONS.find((w) => w.id === selectedReport.weather)?.label || 'Não informada'}
                   </span>
                 </div>
               </div>
@@ -1304,15 +1324,72 @@ export const ConstructionModule: React.FC = () => {
                 <h4 className="font-bold text-slate-300 text-[11px] uppercase mb-1.5">
                   Efetivo em Campo
                 </h4>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {selectedReport.workforce?.map((w, i) => (
-                    <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 text-center">
-                      <span className="text-[10px] text-slate-400 block truncate">{w.role}</span>
-                      <span className="font-mono font-bold text-sm text-cyan-400">{w.count}</span>
-                    </div>
-                  ))}
-                </div>
+                {selectedReport.workforce?.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] border-collapse">
+                      <thead>
+                        <tr className="text-slate-500 border-b border-slate-800">
+                          <th className="py-2 pr-2">Função</th>
+                          <th className="py-2 px-2 text-right">Profissionais</th>
+                          <th className="py-2 px-2 text-right">Horas / profissional</th>
+                          <th className="py-2 pl-2 text-right">Horas-homem</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedReport.workforce.map((w, i) => (
+                          <tr key={i} className="border-b border-slate-800/60">
+                            <td className="py-2 pr-2 text-slate-200">{w.role}</td>
+                            <td className="py-2 px-2 text-right font-mono">{w.count}</td>
+                            <td className="py-2 px-2 text-right font-mono">{w.hours.toLocaleString('pt-BR')} h</td>
+                            <td className="py-2 pl-2 text-right font-mono text-cyan-300">{(w.count * w.hours).toLocaleString('pt-BR')} h</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={3} className="py-2 text-right font-bold text-slate-400">Total de horas-homem</td>
+                          <td className="py-2 pl-2 text-right font-bold text-cyan-300">
+                            {selectedReport.workforce.reduce((sum, w) => sum + (w.count * w.hours), 0).toLocaleString('pt-BR')} h
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-500">
+                    Nenhum apontamento de efetivo foi informado neste RDO.
+                  </p>
+                )}
               </div>
+
+              {/* Equipamentos utilizados */}
+              <div>
+                <h4 className="font-bold text-slate-300 text-[11px] uppercase mb-1.5">
+                  Máquinas e Equipamentos
+                </h4>
+                {selectedReport.equipment?.length ? (
+                  <div className="space-y-1.5">
+                    {selectedReport.equipment.map((equipment, index) => (
+                      <div key={index} className="grid grid-cols-[minmax(0,1fr)_70px_100px] gap-2 p-2 rounded bg-slate-950 border border-slate-800">
+                        <span className="text-slate-200">{equipment.name}</span>
+                        <span className="text-right font-mono">{equipment.quantity} un.</span>
+                        <span className="text-right font-mono">{equipment.operationalHours.toLocaleString('pt-BR')} h</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-500">
+                    Nenhum equipamento foi informado neste RDO.
+                  </p>
+                )}
+              </div>
+
+              {selectedReport.progressPercentage !== undefined && (
+                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                  <span className="text-slate-500 block text-[10px] uppercase font-bold">Avanço físico diário informado</span>
+                  <span className="text-lg font-bold text-amber-300">{selectedReport.progressPercentage}%</span>
+                </div>
+              )}
 
               {/* Atividades Executadas */}
               <div>
@@ -1348,15 +1425,25 @@ export const ConstructionModule: React.FC = () => {
                 </div>
               )}
 
-              {/* Assinatura */}
-              <div className="pt-4 border-t border-slate-800 grid grid-cols-2 gap-4 text-center">
-                <div className="p-3 border-t border-slate-700">
-                  <span className="font-bold text-slate-300 block">{selectedReport.preparedBy}</span>
-                  <span className="text-[10px] text-slate-500">Responsável Técnico Aguero Inox</span>
+              {/* Registro e confirmação: não equivale a assinatura certificada nem aceite do cliente. */}
+              <div className="pt-4 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Registrado por</span>
+                  <span className="font-bold text-slate-200 block">{selectedReport.preparedBy}</span>
                 </div>
-                <div className="p-3 border-t border-slate-700">
-                  <span className="font-bold text-slate-300 block">Fiscal da Obra / Contratante</span>
-                  <span className="text-[10px] text-slate-500">Aceite da Frente de Trabalho</span>
+                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Confirmação eletrônica do registro</span>
+                  {selectedReport.confirmedAt && selectedReport.confirmedByUid ? (
+                    <>
+                      <span className="font-bold text-emerald-300 block">{selectedReport.confirmedByName || selectedReport.preparedBy}</span>
+                      <span className="text-[10px] text-slate-400 block mt-1">
+                        {new Date(selectedReport.confirmedAt).toLocaleString('pt-BR')}
+                      </span>
+                      <span className="text-[9px] text-slate-500 block mt-1">Vinculada ao usuário autenticado. Não é assinatura digital certificada.</span>
+                    </>
+                  ) : (
+                    <span className="text-slate-500 block">Confirmação não registrada neste RDO legado.</span>
+                  )}
                 </div>
               </div>
             </div>
