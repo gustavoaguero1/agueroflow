@@ -30,7 +30,7 @@ Owner kinds:
 | commercial_proposal_items | organizationId, parent `commercial_proposals/{proposalId}` | `proposalId ==` only | read/delete also allowed via the parent proposal's org (`get()`), so the proposalId-only query works; create/update need the parent to exist and share the item's organizationId |
 | commercial_proposals | organizationId | `organizationId ==`, getDoc | |
 | construction_milestones | orgId | `orgId ==` | Marcos do cronograma por contrato/obra; guarda peso, avanço físico, início e término previstos, início e conclusão reais e responsável. O template cria etapas zeradas e não sobrescreve medições existentes. |
-| construction_reports | orgId | `orgId ==` | |
+| construction_reports | orgId | `orgId ==` | RDO com unidade, contrato e clima escolhidos explicitamente; equipe registra quantidade e horas por profissional (`hours`), equipamentos registram quantidade e horas em operação; avanço diário é opcional. A confirmação é vinculada a `confirmedByUid`, `confirmedByName` e `confirmedAt`. RDOs antigos continuam legíveis; `supervisorSignature` é apenas campo legado e não é interpretado como assinatura certificada. |
 | constructions | orgId | `orgId ==` | |
 | contracts | orgId | `orgId ==` | |
 | cost_centers | orgId | `orgId ==` | |
