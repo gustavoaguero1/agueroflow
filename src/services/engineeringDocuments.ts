@@ -25,7 +25,7 @@ export function normalizeEngineeringDocumentCode(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9._-]+/g, '-')
+    .replace(/[^A-Z0-9_-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[.-]+|[.-]+$/g, '')
     .slice(0, 40);
@@ -40,7 +40,7 @@ export function normalizeEngineeringRevision(value: string): string {
   const normalized = String(value || '')
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9._-]+/g, '-')
+    .replace(/[^A-Z0-9_-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[.-]+|[.-]+$/g, '')
     .slice(0, 12);
