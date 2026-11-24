@@ -14,7 +14,8 @@ export function createApiFetch(
     const url = new URL(raw, target.location.origin);
     if (url.origin !== target.location.origin || !url.pathname.startsWith('/api/')) return orig(input, init);
     // WhatsApp: cada pessoa tem o próprio número por empresa; o servidor precisa saber a empresa selecionada.
-    const org = url.pathname.startsWith('/api/whatsapp/') && !url.searchParams.has('orgId') ? getOrgId() : null;
+    const isWa = url.pathname.startsWith('/api/whatsapp/') || url.pathname.startsWith('/api/composio/');
+    const org = isWa && !url.searchParams.has('orgId') ? getOrgId() : null;
     if (org) url.searchParams.set('orgId', org);
     const headers = new Headers(init?.headers ?? (isReq ? (input as Request).headers : undefined));
     let bearer = headers.get('Authorization');
@@ -37,6 +38,8 @@ export function setApiTokenGetter(fn: () => Promise<string | null>): void { toke
 let orgGetter: () => string | null | undefined = () => null;
 /** Empresa selecionada (AuthContext): vai junto nas rotas do WhatsApp. */
 export function setApiOrgGetter(fn: () => string | null | undefined): void { orgGetter = fn; }
+/** Empresa selecionada agora (ou null). */
+export const selectedApiOrg = (): string | null => orgGetter() || null;
 /** Use instead of fetch everywhere in the browser code: identical for other URLs, adds the token for /api/. */
 export const apiFetch: typeof fetch = createApiFetch(() => tokenGetter(), globalThis as any, () => orgGetter());
 

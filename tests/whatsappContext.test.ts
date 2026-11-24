@@ -121,6 +121,13 @@ test('gancho lê a empresa da sessão a cada mensagem (troca de empresa vale na 
   assert.deepEqual(seen, ['org1', 'org2']);
 });
 
+test('forEachOrg roda a tarefa uma vez por empresa, cada uma no próprio contexto', async () => {
+  const { ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }, { key: 'u_c', orgId: 'org2', uid: 'c', connected: true }]);
+  const seen: string[] = [];
+  await ctx.forEachOrg(['org3', 'org1'], async () => { seen.push(`${ctx.orgOfContext()}:${ctx.currentSession()?.key}`); });
+  assert.deepEqual(seen.sort(), ['org1:u_a', 'org2:u_c', 'org3:__sem_whatsapp__']);
+});
+
 test('ganchos registrados uma vez valem para todas as conexões, e rodam no contexto de quem recebeu', async () => {
   const { reg, ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }]);
   const seen: unknown[] = [];

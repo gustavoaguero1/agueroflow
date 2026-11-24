@@ -26,8 +26,11 @@ export function createWhatsAppContext(opts: {
   blank: WhatsAppBridge;
   /** Número oficial escolhido pela empresa (chave de sessão), se houver. */
   officialKeyOf: (orgId: string) => string | undefined;
+  /** Normaliza o id da empresa (ex.: effectiveOrg: id antigo → empresa real). */
+  normalizeOrg?: (orgId?: string) => string;
 }) {
   const als = new AsyncLocalStorage<SessionContext>();
+  const norm = (org?: string): string => (opts.normalizeOrg ? opts.normalizeOrg(org || undefined) : org || opts.defaultOrgId);
   let hooks: BridgeHooks | null = null;
   const attached = new WeakSet<object>();
 
@@ -41,7 +44,8 @@ export function createWhatsAppContext(opts: {
         const since = Date.parse(String((b?.getWhatsAppBridgeStatus() as { connectedAt?: string } | undefined)?.connectedAt || '')) || 0;
         return { key: s.key, orgId: s.orgId, connected: connected(b), since };
       }),
-      opts.officialKeyOf(orgId),
+      opts.officialKeyOf(norm(orgId)),
+      norm,
     );
 
   /** Liga os ganchos do servidor a uma conexão, rodando cada um no contexto dela. */
@@ -51,7 +55,7 @@ export function createWhatsAppContext(opts: {
     // A empresa é lida a cada chamada: se a sessão mudar de empresa, vale na próxima mensagem.
     const ctxNow = (): SessionContext => {
       const m = opts.registry.meta(b.key);
-      return { key: b.key, orgId: m?.orgId || opts.defaultOrgId, uid: m?.uid ?? null };
+      return { key: b.key, orgId: norm(m?.orgId), uid: m?.uid ?? null };
     };
     const wrapped = Object.fromEntries(
       Object.entries(hooks).map(([name, fn]) => [
@@ -81,7 +85,7 @@ export function createWhatsAppContext(opts: {
   };
 
   /** Empresa do contexto atual (sessão que recebeu ou empresa da requisição); sem contexto, a padrão. */
-  const orgOfContext = (): string => als.getStore()?.orgId || opts.defaultOrgId;
+  const orgOfContext = (): string => norm(als.getStore()?.orgId);
 
   /** Conexão do contexto atual; sem contexto, o número da empresa padrão; sem nada, a em branco. */
   const resolve = (): WhatsAppBridge => {
@@ -101,14 +105,30 @@ export function createWhatsAppContext(opts: {
   /** A conexão atual é o remetente da empresa? Só ela faz OCR, NDs, respostas automáticas e @aguero. */
   const isCompanySession = (): boolean => {
     const s = als.getStore();
-    return Boolean(s && s.key === senderKey(s.orgId));
+    return Boolean(s && s.key === senderKey(norm(s.orgId)));
   };
 
   const runInSession = <T,>(ctx: SessionContext, fn: () => T): T => als.run(ctx, fn);
 
   const runAsOrgSender = <T,>(orgId: string, fn: () => T): T => {
-    const k = senderKey(orgId);
-    return als.run({ key: k || NO_SENDER, orgId, uid: (k && opts.registry.meta(k)?.uid) ?? null }, fn);
+    const org = norm(orgId);
+    const k = senderKey(org);
+    return als.run({ key: k || NO_SENDER, orgId: org, uid: (k && opts.registry.meta(k)?.uid) ?? null }, fn);
+  };
+
+  /**
+   * Tarefa em segundo plano para cada empresa (as que têm dados + as que têm WhatsApp), uma de cada vez,
+   * no número da empresa. Erro numa empresa não impede as outras.
+   */
+  const forEachOrg = async (orgsWithData: string[], fn: () => unknown | Promise<unknown>) => {
+    const orgs = new Set([...orgsWithData, ...opts.registry.list().map((s) => s.orgId)].map((o) => norm(o)));
+    for (const org of orgs) {
+      try {
+        await runAsOrgSender(org, () => fn());
+      } catch (err: any) {
+        console.warn(`⚠️ [WhatsApp] Tarefa em segundo plano falhou para a empresa ${org}:`, err?.message || err);
+      }
+    }
   };
 
   type Fn<K extends keyof WhatsAppBridge> = WhatsAppBridge[K];
@@ -151,7 +171,7 @@ export function createWhatsAppContext(opts: {
     },
   };
 
-  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, isCompanySession, attach, attachAll, senderKey };
+  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, isCompanySession, forEachOrg, attach, attachAll, senderKey };
 }
 
 export type WhatsAppContext = ReturnType<typeof createWhatsAppContext>;

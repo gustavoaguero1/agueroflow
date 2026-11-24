@@ -54,6 +54,24 @@ test('cadeia real: canal da empresa (enviar, grupos, keepalive) usa o número of
   } finally { s.close(); }
 });
 
+test('dados do WhatsApp sem empresa válida: 403 para quem não é master (não cai na empresa padrão)', async () => {
+  const mws = createWhatsAppMiddlewares({ runInSession: (_s, fn) => fn(), runAsOrgSender: (_o, fn) => fn() });
+  const app = express();
+  app.use((r, _s, n) => { (r as { user?: object }).user = { uid: 'b', master: false, orgs: { B: 'Operacional', C: 'Admin' } }; n(); });
+  app.use('/api', mws.companyContext);
+  app.all('/api/*', (_r, s) => s.json({ ok: true }));
+  const srv = app.listen(0);
+  const port = (srv.address() as AddressInfo).port;
+  try {
+    const st = async (p: string) => (await fetch(`http://127.0.0.1:${port}${p}`)).status;
+    assert.equal(await st('/api/whatsapp/contacts?orgId=X'), 403);
+    assert.equal(await st('/api/whatsapp/contacts'), 403);
+    assert.equal(await st('/api/composio/whatsapp/status'), 403);
+    assert.equal(await st('/api/whatsapp/contacts?orgId=B'), 200);
+    assert.equal(await st('/api/rh/qualquer'), 200);
+  } finally { srv.close(); }
+});
+
 test('cadeia real: empresa de que a pessoa não é membro não abre sessão nenhuma', async () => {
   const s = await serve({ uid: 'ana', master: false, orgs: { o1: 'Operacional', o3: 'Admin' } });
   try {

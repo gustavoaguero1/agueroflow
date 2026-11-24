@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionForRequest, pickOrgSender, addTag } from '../server/whatsappRouting';
+import { sessionForRequest, pickOrgSender, addTag, acceptForOrg } from '../server/whatsappRouting';
+
+const normOrg = (o?: string) => (!o || o === 'org_aguero_default' ? 'REAL' : o);
+
+test('acceptForOrg: sincronização só aceita registros da empresa atual', () => {
+  assert.equal(acceptForOrg('B', 'B', normOrg), true);
+  assert.equal(acceptForOrg('A', 'B', normOrg), false);
+  assert.equal(acceptForOrg('org_aguero_default', 'REAL', normOrg), true);
+});
+
+test('acceptForOrg: registro sem empresa só entra na empresa padrão', () => {
+  assert.equal(acceptForOrg(undefined, 'REAL', normOrg), true);
+  assert.equal(acceptForOrg(undefined, 'B', normOrg), false);
+});
+
+test('pickOrgSender normaliza a empresa (sessão antiga marcada com id antigo vale para a empresa real)', () => {
+  const s = [{ key: 'legacy', orgId: 'org_aguero_default', connected: true }];
+  assert.equal(pickOrgSender('REAL', s, undefined, normOrg), 'legacy');
+});
 
 test('addTag: acrescenta a sessão sem repetir e ignora vazio', () => {
   assert.deepEqual(addTag(undefined, 'u_a'), ['u_a']);

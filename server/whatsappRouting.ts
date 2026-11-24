@@ -11,6 +11,14 @@ export function sessionForRequest(req: {
   return { key: sessionKeyForUser(uid), orgId: req.orgId, uid };
 }
 
+/**
+ * Sincronização (Firestore → servidor): só aceita registros da empresa atual. Registro sem empresa
+ * (dado antigo) só entra na empresa padrão — `normalize` (effectiveOrg) leva vazio/id antigo para ela.
+ */
+export function acceptForOrg(itemOrg: string | undefined, currentOrg: string, normalize: (org?: string) => string): boolean {
+  return normalize(itemOrg) === normalize(currentOrg);
+}
+
 /** Lista de marcas (ex.: sessões que viram um contato) sem repetir. */
 export function addTag(list: string[] | undefined, tag: string | undefined): string[] {
   const out = [...(list || [])];
@@ -27,8 +35,10 @@ export function pickOrgSender(
   orgId: string,
   sessions: Array<{ key: string; orgId: string; connected: boolean; since?: number }>,
   officialKey?: string,
+  normalize: (org?: string) => string = (o) => o || '',
 ): string | null {
-  const mine = sessions.filter((s) => s.orgId === orgId && s.connected);
+  const target = normalize(orgId);
+  const mine = sessions.filter((s) => normalize(s.orgId) === target && s.connected);
   if (officialKey && mine.some((s) => s.key === officialKey)) return officialKey;
   const legacy = mine.find((s) => s.key === LEGACY_SESSION_KEY);
   if (legacy) return legacy.key;

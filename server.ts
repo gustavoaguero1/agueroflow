@@ -46,6 +46,7 @@ import {
   resumeSavedWhatsAppSessions,
   runInWhatsAppSession,
   runAsOrgWhatsAppSender,
+  forEachWhatsAppOrg,
   isCompanyWhatsApp,
   resumeOrgSessions,
   currentWhatsAppSession,
@@ -54,7 +55,8 @@ import {
   getOfficialSessionKey,
   setOfficialSessionKey,
 } from './server/whatsappRuntime';
-import { sessionForRequest, addTag } from './server/whatsappRouting';
+import { createOrgScopedArray, createOrgScopedMap, createOrgScopedObject } from './server/orgScopedStore';
+import { sessionForRequest, addTag, acceptForOrg } from './server/whatsappRouting';
 import { createWhatsAppMiddlewares } from './server/whatsappMiddleware';
 import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
@@ -576,7 +578,7 @@ async function main() {
       fs.writeFileSync(ndExportSinceFile, JSON.stringify({ since }), 'utf-8');
       return since;
     },
-    records: () => whatsAppNdRecords,
+    records: () => whatsAppNdRecords$.live(), // todas as empresas (registros reais: marcar "exportado" grava)
     pdf: (r) => getOrGenerateNdPdfBuffer(r as WhatsAppNdRecord),
     persist: () => persistWaNdRecords(),
   }));
@@ -2080,7 +2082,7 @@ Sua tarefa:
   const WA_AI_CHAT_FILE = path.join(process.cwd(), 'data_whatsapp_ai_chat.json');
 
   // Persistent store for WhatsApp configuration
-  let whatsAppReceiptsConfig: any = {
+  const waConfigDefaults = (): any => ({
     provider: 'composio_whatsapp',
     messagingMode: '1_to_1_private',
     connectedPhoneNumber: process.env.OWNER_PHONE || '',
@@ -2112,30 +2114,44 @@ Sua tarefa:
       includeConversationContext: true,
       contextMessagesCount: 15,
     },
-  };
+  });
 
   let composioRealtimeSubscribed = false;
   let composioRealtimeError: string | null = null;
 
+  // Configuração do WhatsApp por empresa. Arquivo antigo (um objeto só) = empresa padrão.
+  const normalizeWaConfig = (diskData: any): any => {
+    const d = waConfigDefaults();
+    const cfg = { ...d, ...(diskData || {}), mentionTrigger: { ...d.mentionTrigger, ...(diskData?.mentionTrigger || {}) } };
+    if (cfg.targetGroupJid === '1203632948192841@g.us') {
+      cfg.targetGroupJid = '';
+      cfg.targetGroupName = '';
+    }
+    return cfg;
+  };
+  let waConfigInit: any = null;
   try {
     if (fs.existsSync(WA_CONFIG_FILE)) {
       const diskData = JSON.parse(fs.readFileSync(WA_CONFIG_FILE, 'utf-8'));
-      whatsAppReceiptsConfig = {
-        ...whatsAppReceiptsConfig,
-        ...diskData,
-        mentionTrigger: {
-          ...whatsAppReceiptsConfig.mentionTrigger,
-          ...(diskData?.mentionTrigger || {}),
-        },
-      };
-      if (whatsAppReceiptsConfig.targetGroupJid === '1203632948192841@g.us') {
-        whatsAppReceiptsConfig.targetGroupJid = '';
-        whatsAppReceiptsConfig.targetGroupName = '';
-      }
+      waConfigInit = diskData?.__porEmpresa
+        ? { __porEmpresa: Object.fromEntries(Object.entries(diskData.__porEmpresa).map(([o, c]) => [o, normalizeWaConfig(c)])) }
+        : normalizeWaConfig(diskData);
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_config.json:', err);
   }
+  const whatsAppReceiptsConfig$ = createOrgScopedObject<any>({
+    orgOf: orgOfWhatsAppContext,
+    defaultOrg: effectiveOrg(undefined),
+    normalize: (o) => effectiveOrg(o),
+    // Empresa nova não herda a identidade da padrão (dono, equipe autorizada, conta do Composio).
+    defaults: (org: string) =>
+      org === effectiveOrg(undefined)
+        ? waConfigDefaults()
+        : { ...waConfigDefaults(), connectedPhoneNumber: '', authorizedPhones: [], status: 'desconectado', composioEntityId: '' },
+    initial: waConfigInit,
+  });
+  const whatsAppReceiptsConfig: any = whatsAppReceiptsConfig$.view;
 
   let persistWaConfigTimer: ReturnType<typeof setTimeout> | null = null;
   const persistWaConfig = () => {
@@ -2144,7 +2160,7 @@ Sua tarefa:
       persistWaConfigTimer = null;
     }
     try {
-      fs.writeFileSync(WA_CONFIG_FILE, JSON.stringify(whatsAppReceiptsConfig, null, 2), 'utf-8');
+      fs.writeFileSync(WA_CONFIG_FILE, JSON.stringify({ __porEmpresa: whatsAppReceiptsConfig$.all() }, null, 2), 'utf-8');
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_config.json:', err);
     }
@@ -2157,17 +2173,19 @@ Sua tarefa:
     }, 1500);
   };
 
-  let whatsAppMessages: any[] = [];
+  let whatsAppMessages__init: any[] = [];
   try {
     if (fs.existsSync(WA_MESSAGES_FILE)) {
       const savedMsgs = JSON.parse(fs.readFileSync(WA_MESSAGES_FILE, 'utf-8'));
       if (Array.isArray(savedMsgs)) {
-        whatsAppMessages = savedMsgs;
+        whatsAppMessages__init = savedMsgs;
       }
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_messages.json:', err);
   }
+  const whatsAppMessages$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppMessages__init });
+  const whatsAppMessages = whatsAppMessages$.view; // por empresa (server/orgScopedStore.ts)
 
   const MAX_WA_MESSAGES = 15000;
   const PROTECTED_MSGS_PER_CHAT = 300;
@@ -2197,7 +2215,7 @@ Sua tarefa:
     const merged = [...kept, ...overflow.slice(0, remainingSlots)].sort(
       (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
     );
-    whatsAppMessages = merged.slice(0, MAX_WA_MESSAGES);
+    whatsAppMessages$.set(merged.slice(0, MAX_WA_MESSAGES));
   };
 
   const persistWaMessages = () => {
@@ -2208,7 +2226,7 @@ Sua tarefa:
     trimWhatsAppMessagesFairly();
     try {
       const tmp = `${WA_MESSAGES_FILE}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(whatsAppMessages, null, 2), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify(whatsAppMessages$.all(), null, 2), 'utf-8');
       fs.renameSync(tmp, WA_MESSAGES_FILE);
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_messages.json:', err);
@@ -2262,7 +2280,14 @@ Sua tarefa:
     enabledAt: string;
   }
 
-  const ocrEnabledLockMap = new Map<string, OcrChannelLockEntry>();
+  // Canais com OCR ligado, por empresa (server/orgScopedStore.ts).
+  const ocrEnabledLockMap$ = createOrgScopedMap<OcrChannelLockEntry>({
+    orgOf: orgOfWhatsAppContext,
+    defaultOrg: effectiveOrg(undefined),
+    normalize: (o) => effectiveOrg(o),
+    initial: [],
+  });
+  const ocrEnabledLockMap = ocrEnabledLockMap$.view;
 
   const makeOcrLockKey = (jidOrPhone: string, isGroup?: boolean): string => {
     const raw = String(jidOrPhone || '').trim();
@@ -2274,7 +2299,7 @@ Sua tarefa:
 
   const persistOcrLockRegistry = () => {
     try {
-      const entries = Array.from(ocrEnabledLockMap.values());
+      const entries = ocrEnabledLockMap$.all().map(([, entry]) => entry);
       const payload = JSON.stringify(entries, null, 2);
       const tmp = `${WA_OCR_CHANNELS_FILE}.tmp`;
       fs.writeFileSync(tmp, payload, 'utf-8');
@@ -2355,7 +2380,9 @@ Sua tarefa:
     if (loadedLocks) {
       for (const item of loadedLocks) {
         if (item?.jidOrPhone) {
-          setOcrChannelLock(item, true);
+          // Cada canal volta na empresa dele (sem empresa = empresa padrão).
+          const org = (item as { organizationId?: string }).organizationId || effectiveOrg(undefined);
+          runInWhatsAppSession({ key: '__carga__', orgId: org, uid: null }, () => setOcrChannelLock(item, true));
         }
       }
     }
@@ -2363,7 +2390,7 @@ Sua tarefa:
     console.warn('Aviso: Falha ao carregar data_whatsapp_ocr_channels.json:', err);
   }
 
-  let whatsAppContacts: any[] = [];
+  let whatsAppContacts__init: any[] = [];
   try {
     const loadContactsFile = (fp: string): any[] | null => {
       if (!fs.existsSync(fp)) return null;
@@ -2373,9 +2400,9 @@ Sua tarefa:
     const primaryContacts = loadContactsFile(WA_CONTACTS_FILE);
     const backupContacts = !primaryContacts ? loadContactsFile(WA_CONTACTS_BACKUP_FILE) : null;
     if (primaryContacts) {
-      whatsAppContacts = primaryContacts;
+      whatsAppContacts__init = primaryContacts;
     } else if (backupContacts) {
-      whatsAppContacts = backupContacts;
+      whatsAppContacts__init = backupContacts;
       console.warn('♻️ [WA Contacts] Recuperado automaticamente de data_whatsapp_contacts_backup.json!');
     }
   } catch (err) {
@@ -2383,12 +2410,14 @@ Sua tarefa:
     try {
       if (fs.existsSync(WA_CONTACTS_BACKUP_FILE)) {
         const recovered = JSON.parse(fs.readFileSync(WA_CONTACTS_BACKUP_FILE, 'utf-8'));
-        if (Array.isArray(recovered)) whatsAppContacts = recovered;
+        if (Array.isArray(recovered)) whatsAppContacts__init = recovered;
       }
     } catch {
       // keep empty
     }
   }
+  const whatsAppContacts$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppContacts__init });
+  const whatsAppContacts = whatsAppContacts$.view; // por empresa (server/orgScopedStore.ts)
 
   // Seed lock registry from any contact currently marked ocrEnabled === true
   for (const c of whatsAppContacts) {
@@ -2424,7 +2453,7 @@ Sua tarefa:
           };
         }
       }
-      const payload = JSON.stringify(whatsAppContacts, null, 2);
+      const payload = JSON.stringify(whatsAppContacts$.all(), null, 2);
       const tmp = `${WA_CONTACTS_FILE}.tmp`;
       fs.writeFileSync(tmp, payload, 'utf-8');
       fs.renameSync(tmp, WA_CONTACTS_FILE);
@@ -2595,7 +2624,7 @@ Sua tarefa:
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    whatsAppContacts = [created, ...whatsAppContacts];
+    whatsAppContacts$.set([created, ...whatsAppContacts]);
     if (!options?.skipPersist) persistWaContacts();
     return created;
   };
@@ -2643,42 +2672,46 @@ Sua tarefa:
       updatedAt: new Date().toISOString(),
     },
   ];
-  let whatsAppQuickReplies: any[] = defaultQuickReplies;
+  let whatsAppQuickReplies__init: any[] = defaultQuickReplies;
   try {
     if (fs.existsSync(WA_QUICK_REPLIES_FILE)) {
       const saved = JSON.parse(fs.readFileSync(WA_QUICK_REPLIES_FILE, 'utf-8'));
-      if (Array.isArray(saved)) whatsAppQuickReplies = saved;
+      if (Array.isArray(saved)) whatsAppQuickReplies__init = saved;
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_quick_replies.json:', err);
   }
+  const whatsAppQuickReplies$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppQuickReplies__init });
+  const whatsAppQuickReplies = whatsAppQuickReplies$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaQuickReplies = () => {
     try {
-      fs.writeFileSync(WA_QUICK_REPLIES_FILE, JSON.stringify(whatsAppQuickReplies, null, 2), 'utf-8');
+      fs.writeFileSync(WA_QUICK_REPLIES_FILE, JSON.stringify(whatsAppQuickReplies$.all(), null, 2), 'utf-8');
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_quick_replies.json:', err);
     }
   };
 
   // Persistent AI Auto-Responder Rules & Assistant Chat History
-  let whatsAppAiRules: any[] = [];
+  let whatsAppAiRules__init: any[] = [];
   try {
     if (fs.existsSync(WA_AI_RULES_FILE)) {
       const saved = JSON.parse(fs.readFileSync(WA_AI_RULES_FILE, 'utf-8'));
-      if (Array.isArray(saved)) whatsAppAiRules = saved;
+      if (Array.isArray(saved)) whatsAppAiRules__init = saved;
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_ai_rules.json:', err);
   }
+  const whatsAppAiRules$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppAiRules__init });
+  const whatsAppAiRules = whatsAppAiRules$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaAiRules = () => {
     try {
-      fs.writeFileSync(WA_AI_RULES_FILE, JSON.stringify(whatsAppAiRules, null, 2), 'utf-8');
+      fs.writeFileSync(WA_AI_RULES_FILE, JSON.stringify(whatsAppAiRules$.all(), null, 2), 'utf-8');
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_ai_rules.json:', err);
     }
   };
 
-  let whatsAppAiChat: any[] = [
+  let whatsAppAiChat__init: any[] = [
     {
       id: 'wabot_welcome',
       role: 'assistant',
@@ -2689,14 +2722,16 @@ Sua tarefa:
   try {
     if (fs.existsSync(WA_AI_CHAT_FILE)) {
       const saved = JSON.parse(fs.readFileSync(WA_AI_CHAT_FILE, 'utf-8'));
-      if (Array.isArray(saved) && saved.length > 0) whatsAppAiChat = saved;
+      if (Array.isArray(saved) && saved.length > 0) whatsAppAiChat__init = saved;
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_ai_chat.json:', err);
   }
+  const whatsAppAiChat$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppAiChat__init });
+  const whatsAppAiChat = whatsAppAiChat$.view; // por empresa (server/orgScopedStore.ts)
   const persistWaAiChat = () => {
     try {
-      fs.writeFileSync(WA_AI_CHAT_FILE, JSON.stringify(whatsAppAiChat.slice(-150), null, 2), 'utf-8');
+      fs.writeFileSync(WA_AI_CHAT_FILE, JSON.stringify(whatsAppAiChat$.all(), null, 2), 'utf-8');
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_ai_chat.json:', err);
     }
@@ -2708,7 +2743,7 @@ Sua tarefa:
       createdAt: entry.createdAt || new Date().toISOString(),
       ...entry,
     };
-    whatsAppAiChat = [...whatsAppAiChat, item].slice(-150);
+    whatsAppAiChat$.set([...whatsAppAiChat, item].slice(-150));
     persistWaAiChat();
     return item;
   };
@@ -3076,20 +3111,22 @@ Sua tarefa:
   })();
 
   // Persistent Scheduled WhatsApp Jobs / Recurring Commands (Daily ND summaries, daily messages, etc.)
-  let whatsAppScheduledJobs: any[] = [];
+  let whatsAppScheduledJobs__init: any[] = [];
   try {
     if (fs.existsSync(WA_SCHEDULED_JOBS_FILE)) {
       const savedJobs = JSON.parse(fs.readFileSync(WA_SCHEDULED_JOBS_FILE, 'utf-8'));
-      if (Array.isArray(savedJobs)) whatsAppScheduledJobs = savedJobs;
+      if (Array.isArray(savedJobs)) whatsAppScheduledJobs__init = savedJobs;
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_scheduled_jobs.json:', err);
   }
+  const whatsAppScheduledJobs$ = createOrgScopedArray<any>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppScheduledJobs__init });
+  const whatsAppScheduledJobs = whatsAppScheduledJobs$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaScheduledJobs = () => {
     try {
       const tmpPath = `${WA_SCHEDULED_JOBS_FILE}.tmp`;
-      fs.writeFileSync(tmpPath, JSON.stringify(whatsAppScheduledJobs, null, 2), 'utf-8');
+      fs.writeFileSync(tmpPath, JSON.stringify(whatsAppScheduledJobs$.all(), null, 2), 'utf-8');
       fs.renameSync(tmpPath, WA_SCHEDULED_JOBS_FILE);
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_whatsapp_scheduled_jobs.json:', err);
@@ -3100,7 +3137,7 @@ Sua tarefa:
   // Nota de Débito (ND) Automation Rules & Protected History + Outlook Dispatch
   // ---------------------------------------------------------------------------
   const WA_ND_RULES_BACKUP_FILE = path.join(process.cwd(), 'data_whatsapp_nd_rules_backup.json');
-  let whatsAppNdRules: WhatsAppNdRule[] = [];
+  let whatsAppNdRules__init: WhatsAppNdRule[] = [];
   try {
     const loadRulesArray = (fp: string) => {
       if (!fs.existsSync(fp)) return null;
@@ -3110,21 +3147,23 @@ Sua tarefa:
     const primaryRules = loadRulesArray(WA_ND_RULES_FILE);
     const backupRules = loadRulesArray(WA_ND_RULES_BACKUP_FILE);
     if (primaryRules && primaryRules.length > 0) {
-      whatsAppNdRules = primaryRules;
+      whatsAppNdRules__init = primaryRules;
     } else if (backupRules && backupRules.length > 0) {
-      whatsAppNdRules = backupRules;
+      whatsAppNdRules__init = backupRules;
       fs.writeFileSync(WA_ND_RULES_FILE, JSON.stringify(backupRules, null, 2), 'utf-8');
       console.warn('♻️ [ND Rules] Recuperado automaticamente de data_whatsapp_nd_rules_backup.json!');
     } else if (primaryRules) {
-      whatsAppNdRules = primaryRules;
+      whatsAppNdRules__init = primaryRules;
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_nd_rules.json:', err);
   }
+  const whatsAppNdRules$ = createOrgScopedArray<WhatsAppNdRule>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppNdRules__init });
+  const whatsAppNdRules = whatsAppNdRules$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaNdRules = () => {
     try {
-      const payload = JSON.stringify(whatsAppNdRules, null, 2);
+      const payload = JSON.stringify(whatsAppNdRules$.all(), null, 2);
       const tmpPath = `${WA_ND_RULES_FILE}.tmp`;
       fs.writeFileSync(tmpPath, payload, 'utf-8');
       fs.renameSync(tmpPath, WA_ND_RULES_FILE);
@@ -3136,7 +3175,7 @@ Sua tarefa:
     }
   };
 
-  let whatsAppNdRecords: WhatsAppNdRecord[] = [];
+  let whatsAppNdRecords__init: WhatsAppNdRecord[] = [];
   try {
     const loadNdArray = (fp: string) => {
       if (!fs.existsSync(fp)) return null;
@@ -3146,19 +3185,21 @@ Sua tarefa:
     const primaryNd = loadNdArray(WA_ND_RECORDS_FILE);
     const backupNd = !primaryNd ? loadNdArray(WA_ND_RECORDS_BACKUP_FILE) : null;
     if (primaryNd) {
-      whatsAppNdRecords = primaryNd;
+      whatsAppNdRecords__init = primaryNd;
     } else if (backupNd) {
-      whatsAppNdRecords = backupNd;
+      whatsAppNdRecords__init = backupNd;
       fs.writeFileSync(WA_ND_RECORDS_FILE, JSON.stringify(backupNd, null, 2), 'utf-8');
       console.warn('♻️ [ND Records] Recuperado automaticamente de data_whatsapp_nd_records_backup.json!');
     }
   } catch (err) {
     console.warn('Aviso: Falha ao carregar data_whatsapp_nd_records.json:', err);
   }
+  const whatsAppNdRecords$ = createOrgScopedArray<WhatsAppNdRecord>({ orgOf: orgOfWhatsAppContext, defaultOrg: effectiveOrg(undefined), normalize: (o) => effectiveOrg(o), initial: whatsAppNdRecords__init });
+  const whatsAppNdRecords = whatsAppNdRecords$.view; // por empresa (server/orgScopedStore.ts)
 
   const persistWaNdRecords = () => {
     try {
-      const payload = JSON.stringify(whatsAppNdRecords, null, 2);
+      const payload = JSON.stringify(whatsAppNdRecords$.all(), null, 2);
       const tmpPath = `${WA_ND_RECORDS_FILE}.tmp`;
       fs.writeFileSync(tmpPath, payload, 'utf-8');
       fs.renameSync(tmpPath, WA_ND_RECORDS_FILE);
@@ -3834,7 +3875,7 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     rule.nextProjNumber = nextSeq;
     rule.generatedCount = (Number(rule.generatedCount) || 0) + 1;
     rule.updatedAt = nowIso;
-    whatsAppNdRules = whatsAppNdRules.map((r) => {
+    whatsAppNdRules$.set(whatsAppNdRules.map((r) => {
       if (r.id === rule.id) {
         return { ...r, nextProjNumber: nextSeq, generatedCount: rule.generatedCount, updatedAt: nowIso };
       }
@@ -3842,11 +3883,11 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
         return { ...r, nextProjNumber: nextSeq, updatedAt: nowIso };
       }
       return r;
-    });
+    }));
     persistWaNdRules();
 
     // Persist record immediately BEFORE network calls so sequential counter & record survive any timeout/error
-    whatsAppNdRecords = [record, ...whatsAppNdRecords];
+    whatsAppNdRecords$.set([record, ...whatsAppNdRecords]);
     persistWaNdRecords();
 
     // Generate PDF buffer and persist to disk
@@ -3966,7 +4007,7 @@ ${cleanText || '(Sem legenda — verifique a imagem anexa)'}
     }
 
     record.updatedAt = new Date().toISOString();
-    whatsAppNdRecords = whatsAppNdRecords.map((r) => (r.id === record.id ? record : r));
+    whatsAppNdRecords$.set(whatsAppNdRecords.map((r) => (r.id === record.id ? record : r)));
     persistWaNdRecords();
 
     const waExpectedAndFailed = Boolean(
@@ -4345,7 +4386,7 @@ REGRAS OBRIGATÓRIAS DE REVISÃO:
     };
 
     // Update in-place immediately so no duplicate record or skipped number is ever created
-    whatsAppNdRecords = whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    whatsAppNdRecords$.set(whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)));
     persistWaNdRecords();
 
     // Regenerate PDF with REVISADA stamp & save to disk
@@ -4477,7 +4518,7 @@ REGRAS OBRIGATÓRIAS DE REVISÃO:
     }
 
     updatedRecord.updatedAt = new Date().toISOString();
-    whatsAppNdRecords = whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    whatsAppNdRecords$.set(whatsAppNdRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)));
     persistWaNdRecords();
 
     addWebhookLog({
@@ -4665,11 +4706,11 @@ Sua missão é extrair rigorosamente os seguintes campos:
     const incoming = Object.fromEntries(
       Object.entries(req.body || {}).filter(([, v]) => !isMasked(v))
     );
-    whatsAppReceiptsConfig = {
+    whatsAppReceiptsConfig$.set({
       ...whatsAppReceiptsConfig,
       ...incoming,
       lastPingAt: new Date().toISOString(),
-    };
+    });
     persistWaConfig();
     res.json({
       success: true,
@@ -5836,7 +5877,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         'ID salvo localmente. Defina COMPOSIO_API_KEY nas variáveis do servidor (Secrets) para ativar disparos reais.';
     }
 
-    whatsAppReceiptsConfig = {
+    whatsAppReceiptsConfig$.set({
       ...whatsAppReceiptsConfig,
       provider: 'composio_whatsapp',
       messagingMode: messagingMode || '1_to_1_private',
@@ -5861,7 +5902,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
         composioRealtimeEnabled !== undefined ? Boolean(composioRealtimeEnabled) : whatsAppReceiptsConfig.composioRealtimeEnabled,
       status: validatedAccount?.status === 'ACTIVE' || !isComposioConfigured() ? 'conectado' : 'aguardando_qrcode',
       lastPingAt: new Date().toISOString(),
-    };
+    });
     persistWaConfig();
 
     if (isComposioConfigured() && whatsAppReceiptsConfig.composioRealtimeEnabled && !composioRealtimeSubscribed) {
@@ -7004,7 +7045,7 @@ INSTRUÇÕES:
 
   // Background 10-second scheduler for recurring & one-shot relative WhatsApp jobs (America/Sao_Paulo)
   if (!(globalThis as any).__waScheduledJobsInterval) {
-    (globalThis as any).__waScheduledJobsInterval = setInterval(async () => {
+    (globalThis as any).__waScheduledJobsInterval = setInterval(() => forEachWhatsAppOrg(whatsAppScheduledJobs$.orgs(), async () => {
       try {
         if (whatsAppScheduledJobs.length === 0) return;
         const brStatus = getWhatsAppBridgeStatus();
@@ -7047,7 +7088,7 @@ INSTRUÇÕES:
       } catch (schedErr: any) {
         console.warn('⚠️ [WA Scheduler Tick]:', schedErr?.message || schedErr);
       }
-    }, 10_000);
+    }), 10_000);
   }
 
   const parseRelativeDelayMinutes = (text: string): number | null => {
@@ -7931,7 +7972,7 @@ Classifique e extraia em JSON estrito:
           createdAt: nowIso,
           updatedAt: nowIso,
         };
-        whatsAppScheduledJobs = [newJob, ...whatsAppScheduledJobs];
+        whatsAppScheduledJobs$.set([newJob, ...whatsAppScheduledJobs]);
         persistWaScheduledJobs();
 
         const recLabel =
@@ -8181,12 +8222,12 @@ DIRETRIZES ESSENCIAIS:
     let createdRuleId: string | undefined;
 
     if (aiResult.intent === 'pause_rules') {
-      whatsAppAiRules = whatsAppAiRules.map((r) => ({
+      whatsAppAiRules$.set(whatsAppAiRules.map((r) => ({
         ...r,
         active: false,
         pausedReason: 'Pausado via comando @aguero no WhatsApp.',
         updatedAt: nowIso,
-      }));
+      })));
       persistWaAiRules();
     } else if (aiResult.intent === 'create_rule') {
       const remainingNum = Number(aiResult.remainingReplies || 0);
@@ -8205,7 +8246,7 @@ DIRETRIZES ESSENCIAIS:
         createdAt: nowIso,
         updatedAt: nowIso,
       };
-      whatsAppAiRules = [newRule, ...whatsAppAiRules];
+      whatsAppAiRules$.set([newRule, ...whatsAppAiRules]);
       persistWaAiRules();
       createdRuleId = newRule.id;
     }
@@ -8739,14 +8780,14 @@ DIRETRIZES ESSENCIAIS:
         return;
       }
       companyWhatsAppKeyByOrg.set(orgOfWhatsAppContext(), currentWhatsAppSession()?.key || '');
-      whatsAppReceiptsConfig = {
+      whatsAppReceiptsConfig$.set({
         ...whatsAppReceiptsConfig,
         provider: 'baileys_web_bridge',
         messagingMode: 'hybrid_groups_and_private',
         connectedPhoneNumber: connectedNumber || whatsAppReceiptsConfig.connectedPhoneNumber,
         status: 'conectado',
         lastPingAt: new Date().toISOString(),
-      };
+      });
       persistWaConfig();
       addWebhookLog({
         method: 'WA_WEB_BRIDGE',
@@ -9242,9 +9283,12 @@ DIRETRIZES ESSENCIAIS:
   // for active ND rule groups (<1ms when idle; skips already-processed and non-ND chatter IDs)
   if (!(globalThis as any).__agueroflowNdSafetyInterval) {
     (globalThis as any).__agueroflowNdSafetyInterval = setInterval(() => {
-      if (whatsAppNdRules.some((r) => r.active && r.groupJid)) {
-        scanArchivedMessagesForPendingNds(4).catch(() => undefined);
-      }
+      // Cada empresa com regra de ND ativa, no número dela.
+      forEachWhatsAppOrg(whatsAppNdRules$.orgs(), async () => {
+        if (whatsAppNdRules.some((r) => r.active && r.groupJid)) {
+          await scanArchivedMessagesForPendingNds(4).catch(() => undefined);
+        }
+      });
     }, 45_000);
   }
 
@@ -9428,14 +9472,14 @@ DIRETRIZES ESSENCIAIS:
         ? Boolean(existingChannel.ocrAutoReply === true)
         : false;
 
-    whatsAppReceiptsConfig = {
+    whatsAppReceiptsConfig$.set({
       ...whatsAppReceiptsConfig,
       provider: 'baileys_web_bridge',
       messagingMode: 'hybrid_groups_and_private',
       targetGroupJid: cleanJid,
       targetGroupName: cleanName,
       lastPingAt: new Date().toISOString(),
-    };
+    });
     persistWaConfig();
 
     const updated = upsertManagedContact(
@@ -9641,8 +9685,14 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Restore OCR-enabled contacts/groups from Firestore cloud mirror after container restarts
+  /**
+   * Sincronização (cópia na nuvem → servidor): só entram registros da empresa atual. Sem isso, a cópia
+   * (que enxerga todas as empresas) colaria dados de uma empresa em outra.
+   */
+  const isOfCurrentWaOrg = (item: any) => acceptForOrg(item?.organizationId, orgOfWhatsAppContext(), (o) => effectiveOrg(o));
+
   app.post('/api/whatsapp/contacts/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
+    const incoming = Array.isArray(req.body?.contacts) ? req.body.contacts.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     for (const item of incoming) {
       if (!item?.jidOrPhone || !item?.ocrEnabled) continue;
@@ -9751,7 +9801,7 @@ DIRETRIZES ESSENCIAIS:
       removeOcrChannelLock(target.jidOrPhone);
       if (target.normalizedPhone) removeOcrChannelLock(target.normalizedPhone);
     }
-    whatsAppContacts = whatsAppContacts.filter((c) => c.id !== id);
+    whatsAppContacts$.set(whatsAppContacts.filter((c) => c.id !== id));
     persistWaContacts();
     if (target && whatsAppReceiptsConfig.targetGroupJid === target.jidOrPhone) {
       whatsAppReceiptsConfig.targetGroupJid = '';
@@ -9803,13 +9853,13 @@ DIRETRIZES ESSENCIAIS:
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    whatsAppQuickReplies = [created, ...whatsAppQuickReplies];
+    whatsAppQuickReplies$.set([created, ...whatsAppQuickReplies]);
     persistWaQuickReplies();
     res.json({ success: true, quickReply: created, message: 'Resposta rápida criada!' });
   });
 
   app.delete('/api/whatsapp/quick-replies/:id', (req: Request, res: Response) => {
-    whatsAppQuickReplies = whatsAppQuickReplies.filter((q) => q.id !== req.params.id);
+    whatsAppQuickReplies$.set(whatsAppQuickReplies.filter((q) => q.id !== req.params.id));
     persistWaQuickReplies();
     res.json({ success: true, message: 'Resposta rápida excluída.' });
   });
@@ -9886,7 +9936,7 @@ DIRETRIZES ESSENCIAIS:
       updatedAt: nowIso,
     };
 
-    whatsAppScheduledJobs = [newJob, ...whatsAppScheduledJobs];
+    whatsAppScheduledJobs$.set([newJob, ...whatsAppScheduledJobs]);
     persistWaScheduledJobs();
 
     res.json({
@@ -9971,7 +10021,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Bidirectional Firestore -> Server restore/merge for scheduled commands
   app.post('/api/whatsapp/assistant/jobs/sync-restore', (req: Request, res: Response) => {
-    const incoming: any[] = Array.isArray(req.body?.jobs) ? req.body.jobs : [];
+    const incoming: any[] = Array.isArray(req.body?.jobs) ? req.body.jobs.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
 
@@ -10034,7 +10084,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   app.delete('/api/whatsapp/assistant/jobs/:id', (req: Request, res: Response) => {
-    whatsAppScheduledJobs = whatsAppScheduledJobs.filter((j) => j.id !== req.params.id);
+    whatsAppScheduledJobs$.set(whatsAppScheduledJobs.filter((j) => j.id !== req.params.id));
     persistWaScheduledJobs();
     res.json({ success: true, scheduledJobs: whatsAppScheduledJobs });
   });
@@ -10290,7 +10340,7 @@ DIRETRIZES ESSENCIAIS:
       outlookBodyTemplate: String(body.outlookBodyTemplate || base.outlookBodyTemplate).trim(),
     };
 
-    whatsAppNdRules = [newRule, ...whatsAppNdRules];
+    whatsAppNdRules$.set([newRule, ...whatsAppNdRules]);
     persistWaNdRules();
 
     res.json({
@@ -10360,12 +10410,12 @@ DIRETRIZES ESSENCIAIS:
 
   app.delete('/api/whatsapp/nd/rules/:id', (req: Request, res: Response) => {
     const target = whatsAppNdRules.find((r) => r.id === req.params.id);
-    whatsAppNdRules = whatsAppNdRules.filter((r) => r.id !== req.params.id);
+    whatsAppNdRules$.set(whatsAppNdRules.filter((r) => r.id !== req.params.id));
     persistWaNdRules();
 
     // Only remove records if explicitly cleaning up an automated [TEST] rule
     if (target && target.name.startsWith('[TEST]') && req.query.cleanupTestRecords === 'true') {
-      whatsAppNdRecords = whatsAppNdRecords.filter((rec) => rec.ruleId !== target.id);
+      whatsAppNdRecords$.set(whatsAppNdRecords.filter((rec) => rec.ruleId !== target.id));
       persistWaNdRecords();
     }
 
@@ -10373,7 +10423,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   app.post('/api/whatsapp/nd/rules/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.rules) ? req.body.rules : [];
+    const incoming = Array.isArray(req.body?.rules) ? req.body.rules.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
     for (const item of incoming) {
@@ -10405,7 +10455,7 @@ DIRETRIZES ESSENCIAIS:
   });
 
   app.post('/api/whatsapp/nd/records/sync-restore', (req: Request, res: Response) => {
-    const incoming = Array.isArray(req.body?.records) ? req.body.records : [];
+    const incoming = Array.isArray(req.body?.records) ? req.body.records.filter(isOfCurrentWaOrg) : [];
     let restored = 0;
     let updated = 0;
     for (const item of incoming) {
@@ -10807,7 +10857,14 @@ DIRETRIZES ESSENCIAIS:
     }
   });
 
-  let pendingChatRuleDraft: WhatsAppPendingRuleDraft | null = null;
+  // Rascunho de regra do assistente: um por empresa (o chat do assistente também é por empresa).
+  const pendingDraftBox = createOrgScopedObject<{ draft: WhatsAppPendingRuleDraft | null }>({
+    orgOf: orgOfWhatsAppContext,
+    defaultOrg: effectiveOrg(undefined),
+    normalize: (o) => effectiveOrg(o),
+    defaults: () => ({ draft: null }),
+    initial: null,
+  }).view;
 
   const evaluatePendingDraft = (draft: WhatsAppPendingRuleDraft): WhatsAppPendingRuleDraft => {
     const missing: string[] = [];
@@ -10960,11 +11017,11 @@ DIRETRIZES ESSENCIAIS:
 
     // 1. Handle Cancel Draft immediately
     if (
-      pendingChatRuleDraft &&
+      pendingDraftBox.draft &&
       (actionMode === 'cancel_draft' ||
         /^(cancelar|cancela|desistir|desisto|esquece|n[aã]o criar|abortar)$/i.test(effectiveText))
     ) {
-      pendingChatRuleDraft = null;
+      pendingDraftBox.draft = null;
       const botEntry = pushAiChatEntry({
         role: 'assistant',
         text: '❌ Criação da regra/rotina cancelada. Quando quiser criar outra, é só me avisar!',
@@ -10986,8 +11043,8 @@ DIRETRIZES ESSENCIAIS:
         effectiveText
       );
 
-    if (pendingChatRuleDraft && pendingChatRuleDraft.readyToConfirm && isExplicitConfirm) {
-      const draft = pendingChatRuleDraft;
+    if (pendingDraftBox.draft && pendingDraftBox.draft.readyToConfirm && isExplicitConfirm) {
+      const draft = pendingDraftBox.draft;
       const nowIso = new Date().toISOString();
 
       if (draft.kind === 'scheduled_job') {
@@ -11034,9 +11091,9 @@ DIRETRIZES ESSENCIAIS:
           createdAt: nowIso,
           updatedAt: nowIso,
         };
-        whatsAppScheduledJobs = [newJob, ...whatsAppScheduledJobs];
+        whatsAppScheduledJobs$.set([newJob, ...whatsAppScheduledJobs]);
         persistWaScheduledJobs();
-        pendingChatRuleDraft = null;
+        pendingDraftBox.draft = null;
 
         const timingLabel =
           draft.delayMinutes && draft.delayMinutes > 0
@@ -11091,9 +11148,9 @@ DIRETRIZES ESSENCIAIS:
           createdAt: nowIso,
           updatedAt: nowIso,
         };
-        whatsAppAiRules = [newRule, ...whatsAppAiRules];
+        whatsAppAiRules$.set([newRule, ...whatsAppAiRules]);
         persistWaAiRules();
-        pendingChatRuleDraft = null;
+        pendingDraftBox.draft = null;
 
         const botEntry = pushAiChatEntry({
           role: 'assistant',
@@ -11119,7 +11176,7 @@ DIRETRIZES ESSENCIAIS:
     // 3. Parse user message (either updating an active draft OR classifying a brand-new command)
     const detectedDelay = parseRelativeDelayMinutes(effectiveText);
     const looksLikeCrossChatNow =
-      !pendingChatRuleDraft &&
+      !pendingDraftBox.draft &&
       !detectedDelay &&
       !/\b(todo dia|todos os dias|diariamente|sempre [aà]s|de segunda a sexta|agend[ae]|program[ae]|criar regra|nova regra|nova rotina|rotina|[aà]s \d{1,2}\s?(h|hr|hrs|horas?|:\d{2}))\b/i.test(
         effectiveText
@@ -11151,13 +11208,13 @@ DIRETRIZES ESSENCIAIS:
 
     // Owner panel: ERP questions go straight to the read-only tools (route is behind requireAuth).
     const erpPanelOrg = effectiveOrg(undefined);
-    if (process.env.GEMINI_API_KEY && !pendingChatRuleDraft && actionMode !== 'confirm_draft' && actionMode !== 'cancel_draft' &&
+    if (process.env.GEMINI_API_KEY && !pendingDraftBox.draft && actionMode !== 'confirm_draft' && actionMode !== 'cancel_draft' &&
         ERP_QUESTION.test(effectiveText) && canQueryErp(req.user, erpPanelOrg) && getAdmin()) {
       try {
         const text = await answerWithTools(getAdmin()!, erpPanelOrg, effectiveText, [], async (p) => (await generateContentWithFallback(p)).response);
         if (text) {
           const botEntry = pushAiChatEntry({ role: 'assistant', text });
-          return res.json({ success: true, reply: botEntry, rules: whatsAppAiRules, scheduledJobs: whatsAppScheduledJobs, chatHistory: whatsAppAiChat, pendingDraft: pendingChatRuleDraft });
+          return res.json({ success: true, reply: botEntry, rules: whatsAppAiRules, scheduledJobs: whatsAppScheduledJobs, chatHistory: whatsAppAiChat, pendingDraft: pendingDraftBox.draft });
         }
       } catch (e) {
         console.warn('[WA panel ERP tools] fallback:', e);
@@ -11167,9 +11224,9 @@ DIRETRIZES ESSENCIAIS:
     let aiParsed: any = null;
     if (process.env.GEMINI_API_KEY) {
       try {
-        const draftContext = pendingChatRuleDraft
+        const draftContext = pendingDraftBox.draft
           ? `HÁ UM RASCUNHO DE REGRA/ROTINA EM ANDAMENTO QUE O USUÁRIO ESTÁ PREENCHENDO OU EDITANDO:\n${JSON.stringify(
-              pendingChatRuleDraft,
+              pendingDraftBox.draft,
               null,
               2
             )}\nMantenha todos os campos já preenchidos no rascunho a menos que o usuário peça para alterar algum campo ou responda a um campo pendente!`
@@ -11242,17 +11299,17 @@ Retorne JSON estrito.`;
     // Heuristic fallback if Gemini failed or returned empty
     if (!aiParsed || !aiParsed.intent) {
       const lower = effectiveText.toLowerCase();
-      if (!pendingChatRuleDraft && (lower.includes('pausar') || lower.includes('desativar todas'))) {
+      if (!pendingDraftBox.draft && (lower.includes('pausar') || lower.includes('desativar todas'))) {
         aiParsed = { intent: 'pause_all_rules' };
       } else if (
-        pendingChatRuleDraft ||
+        pendingDraftBox.draft ||
         detectedDelay ||
         /\b(criar regra|nova regra|nova rotina|agend[ae]|program[ae]|todo dia|todos os dias|sempre que|responda por mim|pr[oó]ximas?\s+\d*\s*mensagens?|[aà]s \d{1,2}(:\d{2}|\s?h))\b/i.test(
           effectiveText
         )
       ) {
         const isAutoReply =
-          pendingChatRuleDraft?.kind === 'auto_reply_rule' ||
+          pendingDraftBox.draft?.kind === 'auto_reply_rule' ||
           /\b(sempre que|responda por mim|auto[- ]?resposta|pr[oó]ximas?\s+\d*\s*mensagens?)\b/i.test(effectiveText);
         const groupMatch = effectiveText.match(/\bno\s+grupo\s+([A-Za-zÀ-ÖØ-öø-ÿ0-9_\-\s/]{2,40}?)(?=\s+(?:dizendo|falando|escrevendo|com|às|as|em)\b|$)/i);
         const timeMatch = effectiveText.match(/\b[aà]s\s+(\d{1,2})(?::(\d{2})|\s?h(?:rs?|oras?)?)\b/i);
@@ -11260,9 +11317,9 @@ Retorne JSON estrito.`;
         aiParsed = {
           intent: isAutoReply ? 'draft_auto_reply_rule' : 'draft_scheduled_job',
           title:
-            pendingChatRuleDraft &&
-            pendingChatRuleDraft.missingFields.length === 1 &&
-            pendingChatRuleDraft.missingFields[0].toLowerCase().includes('título')
+            pendingDraftBox.draft &&
+            pendingDraftBox.draft.missingFields.length === 1 &&
+            pendingDraftBox.draft.missingFields[0].toLowerCase().includes('título')
               ? effectiveText
               : '',
           jobType: literalMsg ? 'fixed_message' : undefined,
@@ -11285,14 +11342,14 @@ Retorne JSON estrito.`;
 
     if (aiParsed.intent === 'pause_all_rules') {
       const nowIso = new Date().toISOString();
-      whatsAppAiRules = whatsAppAiRules.map((r) => ({
+      whatsAppAiRules$.set(whatsAppAiRules.map((r) => ({
         ...r,
         active: false,
         pausedReason: 'Pausado via chat do Assistente.',
         updatedAt: nowIso,
-      }));
+      })));
       persistWaAiRules();
-      pendingChatRuleDraft = null;
+      pendingDraftBox.draft = null;
       const botEntry = pushAiChatEntry({
         role: 'assistant',
         text: '⏸️ Todas as regras de resposta automática foram pausadas.',
@@ -11334,9 +11391,9 @@ Retorne JSON estrito.`;
     if (
       aiParsed.intent === 'draft_scheduled_job' ||
       aiParsed.intent === 'draft_auto_reply_rule' ||
-      pendingChatRuleDraft
+      pendingDraftBox.draft
     ) {
-      const base: WhatsAppPendingRuleDraft = pendingChatRuleDraft || {
+      const base: WhatsAppPendingRuleDraft = pendingDraftBox.draft || {
         kind: aiParsed.intent === 'draft_auto_reply_rule' ? 'auto_reply_rule' : 'scheduled_job',
         missingFields: [],
         readyToConfirm: false,
@@ -11430,7 +11487,7 @@ Retorne JSON estrito.`;
           ? String(aiParsed.actionContent).trim()
           : base.actionContent || fallbackLiteral || undefined;
 
-      pendingChatRuleDraft = evaluatePendingDraft({
+      pendingDraftBox.draft = evaluatePendingDraft({
         kind: base.kind,
         title: nextTitle,
         jobType: nextJobType,
@@ -11459,7 +11516,7 @@ Retorne JSON estrito.`;
 
       const botEntry = pushAiChatEntry({
         role: 'assistant',
-        text: formatDraftReviewMessage(pendingChatRuleDraft),
+        text: formatDraftReviewMessage(pendingDraftBox.draft),
       });
       return res.json({
         success: true,
@@ -11467,7 +11524,7 @@ Retorne JSON estrito.`;
         rules: whatsAppAiRules,
         scheduledJobs: whatsAppScheduledJobs,
         chatHistory: whatsAppAiChat,
-        pendingDraft: pendingChatRuleDraft,
+        pendingDraft: pendingDraftBox.draft,
       });
     }
 
@@ -11484,7 +11541,7 @@ Retorne JSON estrito.`;
       rules: whatsAppAiRules,
       scheduledJobs: whatsAppScheduledJobs,
       chatHistory: whatsAppAiChat,
-      pendingDraft: pendingChatRuleDraft,
+      pendingDraft: pendingDraftBox.draft,
     });
   });
 
@@ -11504,14 +11561,14 @@ Retorne JSON estrito.`;
   });
 
   app.delete('/api/whatsapp/assistant/rules/:id', (req: Request, res: Response) => {
-    whatsAppAiRules = whatsAppAiRules.filter((r) => r.id !== req.params.id);
+    whatsAppAiRules$.set(whatsAppAiRules.filter((r) => r.id !== req.params.id));
     persistWaAiRules();
     res.json({ success: true, rules: whatsAppAiRules });
   });
 
   app.delete('/api/whatsapp/assistant/chat', (req: Request, res: Response) => {
-    pendingChatRuleDraft = null;
-    whatsAppAiChat = whatsAppAiChat.slice(0, 1);
+    pendingDraftBox.draft = null;
+    whatsAppAiChat$.set(whatsAppAiChat.slice(0, 1));
     persistWaAiChat();
     res.json({ success: true, chatHistory: whatsAppAiChat });
   });
