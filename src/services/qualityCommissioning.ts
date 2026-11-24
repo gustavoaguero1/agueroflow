@@ -104,9 +104,6 @@ export function validateQualityRecordInput(input: QualityRecordInput): string[] 
     if (!input.responsibleName?.trim()) errors.push('Informe o responsável pela correção.');
     if (!input.dueDate || !isRealIsoDate(input.dueDate)) errors.push('Informe um prazo válido para a correção.');
   } else {
-    if (!input.acceptanceCriteria?.trim()) {
-      errors.push('Descreva o critério de aceitação utilizado para registrar a reprovação.');
-    }
     if (!input.acceptanceCriteria?.trim()) errors.push('Informe o critério de aceitação ou verificação.');
   }
 
