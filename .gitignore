@@ -16,3 +16,6 @@ data_whatsapp_*.json
 data_whatsapp_auth/
 data_whatsapp_bridge_state/
 .whatsapp_auth/
+
+# Dados gerados pelo servidor em execução: nunca versionar
+data_*.json
