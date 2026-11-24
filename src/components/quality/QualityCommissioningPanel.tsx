@@ -639,17 +639,26 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="space-y-1 text-[11px] text-slate-400">Documento técnico vinculado (opcional)
-              <select className={inputClass} value={engineeringDocumentId} onChange={(e) => setEngineeringDocumentId(e.target.value)}>
+              <select className={inputClass} value={engineeringDocumentId} onChange={(e) => {
+                const next = e.target.value;
+                setEngineeringDocumentId(next);
+                if (next) setChecklistRunId('');
+              }}>
                 <option value="">Sem vínculo com desenho / procedimento</option>
                 {availableDocuments.map((item) => <option key={item.id} value={item.id}>{item.documentCode} Rev. {item.revision} — {item.title}</option>)}
               </select>
             </label>
             <label className="space-y-1 text-[11px] text-slate-400">Checklist executado vinculado (opcional)
-              <select className={inputClass} value={checklistRunId} onChange={(e) => setChecklistRunId(e.target.value)}>
+              <select className={inputClass} value={checklistRunId} onChange={(e) => {
+                const next = e.target.value;
+                setChecklistRunId(next);
+                if (next) setEngineeringDocumentId('');
+              }}>
                 <option value="">Sem checklist vinculado</option>
                 {availableChecklists.map((item) => <option key={item.id} value={item.id}>{item.templateTitle} — {item.inspectorName}</option>)}
               </select>
             </label>
+            <p className="md:col-span-2 text-[10px] text-slate-500">Vincule um documento técnico ou uma execução de checklist por registro. Selecionar um limpa automaticamente o outro.</p>
           </div>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-800 pt-3 sm:flex-row sm:justify-end">
