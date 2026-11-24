@@ -154,12 +154,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     setEngineeringDocuments([]);
     setChecklistRuns([]);
     setLoadError('');
-    const sources = [
-      ['quality_records', setRecords],
-      ['quality_record_events', setEvents],
-    ] as const;
-
-    const stopRecords = onSnapshot(
+      const stopRecords = onSnapshot(
       query(collection(db, 'quality_records'), where('orgId', '==', organizationId)),
       (snapshot) => {
         const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as QualityRecord));
@@ -195,7 +190,6 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
       stopEvents();
       stopDocuments();
       stopChecklists();
-      void sources;
     };
   }, [organizationId]);
 
@@ -324,8 +318,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     setSuccess('');
     try {
       const recordRef = doc(collection(db, 'quality_records'));
-      const eventRef = doc(collection(db, 'quality_record_events'));
-      const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
+        const actorName = currentUser.displayName?.trim() || currentUserName.trim() || currentUser.email || 'Usuário AgueroFlow';
       const recordCode = `QLD-${recordDate.slice(0, 4)}-${recordRef.id.slice(0, 8).toUpperCase()}`;
       const eventType: QualityEventType = isFinding(recordType) ? 'opened' : 'submitted_for_review';
       const batch = writeBatch(db);
@@ -417,7 +410,6 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     } finally {
       setBusyRecordId('');
     }
-    void eventRef;
   };
 
   const handleAction = async (record: QualityRecord, eventType: QualityEventType) => {
@@ -492,8 +484,6 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
     if (canEdit) actions.push({ type: 'note_added', label: 'Adicionar observação' });
     return actions;
   };
-
-  const selectedRecord = records.find((item) => item.id === selectedRecordId) || null;
 
   return (
     <div className="space-y-5 text-slate-100">
@@ -714,7 +704,7 @@ export const QualityCommissioningPanel: React.FC<QualityCommissioningPanelProps>
                         <span className="font-mono text-xs font-bold text-white">{record.recordCode}</span>
                         <span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-300">{qualityRecordTypeLabel(record.recordType)}</span>
                         <span className={`rounded border px-2 py-0.5 text-[10px] ${eventToneClass(latest?.eventType)}`}>{qualityStatusLabel(status)}</span>
-                        {record.severity && <span className="rounded border border-rose-900/70 bg-rose-950/30 px-2 py-0.5 text-[10px] text-rose-200">{record.severity.toUpperCase('pt-BR')}</span>}
+                        {record.severity && <span className="rounded border border-rose-900/70 bg-rose-950/30 px-2 py-0.5 text-[10px] text-rose-200">{record.severity.toLocaleUpperCase('pt-BR')}</span>}
                       </div>
                       <p className="mt-1 truncate text-sm font-semibold text-slate-200">{record.title}</p>
                       <p className="mt-1 text-[10px] text-slate-500">{unitName} · {contractName} · {record.recordDate.split('-').reverse().join('/')}</p>
