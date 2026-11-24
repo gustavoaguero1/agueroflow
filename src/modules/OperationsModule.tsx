@@ -48,6 +48,8 @@ export const OperationsModule: React.FC<{
       userName: member?.userName || user.displayName || '',
       role,
       isManager: isMaster || isManagerOrAbove,
+      canSeeSalaries: isMaster || isManagerOrAbove,
+      canEditRh: isMaster || isManagerOrAbove,
     });
   }, [user, orgId, member?.userName, role, isMaster, isManagerOrAbove]);
 

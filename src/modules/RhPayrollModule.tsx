@@ -34,6 +34,7 @@ import {
   saveRhCalculation,
   calculateEmployeeThirteenth,
   syncAllRhEmployeesToFieldWorkers,
+  syncRhDirectory,
 } from '../services/rhPayrollService';
 import { RhDashboard } from '../components/rhPayroll/RhDashboard';
 import { RhEmployeesManager } from '../components/rhPayroll/RhEmployeesManager';
@@ -149,6 +150,8 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     }
 
     setLoading(true);
+    // Mantém o diretório de pessoas (sem salários) em dia para as outras áreas.
+    syncRhDirectory(organization.id).catch((err) => console.warn('Diretório de pessoas não atualizado:', err));
     const unsubEmployees = subscribeRhEmployees(organization.id, (data) => {
       setEmployees(data);
     });

@@ -38,6 +38,7 @@ import { claimMatches, rhEmployeeFromInox } from './inoxBackup';
 import { nextUnitCode, splitColabWrite, splitObraWrite } from './unifiedCollections';
 import { syncAllRhEmployeesToFieldWorkers } from '../../services/rhPayrollService';
 import type { RhEmployee } from '../../types/rhPayroll';
+import { toDirectoryEntry } from '../../services/rhDirectory';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -47,6 +48,8 @@ export interface OpsContext {
   userName: string;
   role: UserRole;
   isManager: boolean; // Admin, Gerente ou master
+  canSeeSalaries: boolean; // acesso ao RH (nível ≥ Ver)
+  canEditRh?: boolean; // acesso ao RH para editar (aprovar candidato cria o funcionário)
 }
 
 type Unsub = () => void;
@@ -93,7 +96,7 @@ export function createOpsBridge(ctx: OpsContext) {
 
   // Pessoas e salários vêm do RH (ver peopleSource.ts); demais coleções ficam em ops_orgs/{orgId}.
   const track = (u: Unsub) => { subs.add(u); return () => { u(); subs.delete(u); }; };
-  const people = createPeopleSource(ctx.orgId, track);
+  const people = createPeopleSource(ctx.orgId, track, { canSeeSalaries: ctx.canSeeSalaries, canEditRh: !!ctx.canEditRh });
   const obras = createObrasSource(ctx.orgId, track);
   const split = (path: string) => {
     const p = String(path).replace(/^\/+|\/+$/g, '');
@@ -340,12 +343,16 @@ export async function importInoxBackup(orgId: string, b: InoxBackup, onProgress:
       emp = rhEmployeeFromInox(orgId, id, data, salById.get(id) || null);
       const { id: eid, ...empData } = emp;
       writes.push({ path: `rh_employees/${eid}`, data: empData });
+      writes.push({ path: `rh_directory/${eid}`, data: stripUndefined(toDirectoryEntry(emp)) });
       stat.pessoasCriadas++;
     }
     const overlay = rewriteUrls(stripUndefined(splitColabWrite(data).overlay), urlMap);
     writes.push({ path: `ops_orgs/${orgId}/colaboradores/${id}`, data: { ...overlay, rhId: emp.id } });
     const u = data.obraAtual ? unitOfObra.get(String(data.obraAtual)) : undefined;
-    if (u) writes.push({ path: `rh_employees/${emp.id}`, data: { unitId: u.id, codigoObra: u.code }, merge: true });
+    if (u) {
+      writes.push({ path: `rh_employees/${emp.id}`, data: { unitId: u.id, codigoObra: u.code }, merge: true });
+      writes.push({ path: `rh_directory/${emp.id}`, data: { orgId, unitId: u.id, codigoObra: u.code }, merge: true });
+    }
   }
 
   for (const [col, rows] of Object.entries(b.colecoes)) {

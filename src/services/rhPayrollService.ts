@@ -25,6 +25,7 @@ import {
 } from '../types/rhPayroll';
 
 import { calculateProgressiveInss } from './inss';
+import { toDirectoryEntry } from './rhDirectory';
 export * from './inss';
 
 /**
@@ -727,6 +728,32 @@ export async function syncAllRhEmployeesToFieldWorkers(orgId: string): Promise<n
   return count;
 }
 
+/**
+ * Regrava o diretório de pessoas (sem salários) a partir do cadastro do RH.
+ * Roda quando alguém com acesso ao RH abre o módulo, para cobrir funcionários
+ * gravados antes do diretório existir. Apaga entradas de quem saiu do RH.
+ */
+export async function syncRhDirectory(orgId: string): Promise<number> {
+  if (!orgId) return 0;
+  const [emps, dir] = await Promise.all([
+    getDocs(query(collection(db, 'rh_employees'), where('orgId', '==', orgId))),
+    getDocs(query(collection(db, 'rh_directory'), where('orgId', '==', orgId))),
+  ]);
+  const ids = new Set(emps.docs.map((d) => d.id));
+  const ops: Array<(b: ReturnType<typeof writeBatch>) => void> = [];
+  for (const d of emps.docs) {
+    const entry = cleanFirestoreData(toDirectoryEntry({ ...(d.data() as RhEmployee), id: d.id }));
+    ops.push((b) => b.set(doc(db, 'rh_directory', d.id), entry));
+  }
+  for (const d of dir.docs) if (!ids.has(d.id)) ops.push((b) => b.delete(d.ref));
+  for (let i = 0; i < ops.length; i += 400) {
+    const b = writeBatch(db);
+    ops.slice(i, i + 400).forEach((op) => op(b));
+    await b.commit();
+  }
+  return emps.size;
+}
+
 export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
   const ref = doc(db, 'rh_employees', employee.id);
   const data = cleanFirestoreData({
@@ -738,6 +765,7 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
     updatedAt: new Date().toISOString(),
   });
   await setDoc(ref, data);
+  await setDoc(doc(db, 'rh_directory', employee.id), cleanFirestoreData(toDirectoryEntry(data as RhEmployee)));
 
   // Sincroniza automaticamente com o Módulo 13 (Obras / Colaboradores de Campo)
   try {
@@ -749,6 +777,7 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
 
 export async function deleteRhEmployee(id: string): Promise<void> {
   await deleteDoc(doc(db, 'rh_employees', id));
+  await deleteDoc(doc(db, 'rh_directory', id));
   try {
     const fwId = `fw_${id.replace(/^emp_/, '')}`;
     const fwRef = doc(db, 'field_workers', fwId);
@@ -904,6 +933,7 @@ export async function seedRhDemoData(orgId: string, userEmail: string): Promise<
     };
 
     batch.set(doc(db, 'rh_employees', empId), fullEmp);
+    batch.set(doc(db, 'rh_directory', empId), cleanFirestoreData(toDirectoryEntry(fullEmp)));
     createdEmployees.push(fullEmp);
 
     // Gerar cálculo de 13º correspondente com simulação de conferência
