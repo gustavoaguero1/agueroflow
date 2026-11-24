@@ -36,6 +36,7 @@ import type {
 import {
   buildEngineeringDocumentGroupId,
   buildEngineeringDocumentId,
+  compareEngineeringRevisions,
   engineeringDocumentDateMillis,
   engineeringDocumentStatusLabel,
   getEngineeringDocumentStatus,
@@ -182,11 +183,15 @@ export const EngineeringDocumentsPanel: React.FC<EngineeringDocumentsPanelProps>
   }, [events]);
 
   const latestRevisionByGroup = useMemo(() => {
-    const latest = new Map<string, string>();
+    const latest = new Map<string, EngineeringDocument>();
     for (const document of documents) {
-      if (!latest.has(document.documentGroupId)) latest.set(document.documentGroupId, document.id);
+      const current = latest.get(document.documentGroupId);
+      const comparison = current ? compareEngineeringRevisions(document.revision, current.revision) : 1;
+      if (!current || comparison > 0 || (comparison === 0 && engineeringDocumentDateMillis(document.createdAt) > engineeringDocumentDateMillis(current.createdAt))) {
+        latest.set(document.documentGroupId, document);
+      }
     }
-    return latest;
+    return new Map([...latest.entries()].map(([groupId, document]) => [groupId, document.id]));
   }, [documents]);
 
   const filteredDocuments = useMemo(() => {
@@ -251,8 +256,16 @@ export const EngineeringDocumentsPanel: React.FC<EngineeringDocumentsPanelProps>
       const normalizedRevision = normalizeEngineeringRevision(revision);
       const documentId = buildEngineeringDocumentId(organizationId, normalizedCode, normalizedRevision);
       const groupId = buildEngineeringDocumentGroupId(organizationId, normalizedCode);
-      if (documents.some((item) => item.id === documentId)) {
-        throw new Error(`A revisão ${normalizedRevision} do documento ${normalizedCode} já está cadastrada. Cadastre uma nova revisão para substituir o arquivo.`);
+      const existingRevisions = documents.filter((item) => item.documentGroupId === groupId);
+      const highestRevision = existingRevisions.reduce<EngineeringDocument | null>((highest, item) => {
+        if (!highest || compareEngineeringRevisions(item.revision, highest.revision) > 0) return item;
+        return highest;
+      }, null);
+      if (existingRevisions.some((item) => item.id === documentId)) {
+        throw new Error(`A revisão ${normalizedRevision} do documento ${normalizedCode} já está cadastrada.`);
+      }
+      if (highestRevision && compareEngineeringRevisions(normalizedRevision, highestRevision.revision) <= 0) {
+        throw new Error(`A revisão informada (${normalizedRevision}) não é posterior à revisão atual (${highestRevision.revision}). Cadastre uma revisão superior para preservar a sequência.`);
       }
 
       const storageFileId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
