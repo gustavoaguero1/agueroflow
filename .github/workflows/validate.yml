@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: validar-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  group: validar-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,20 +36,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.5
-
-      - name: Atualizar bun.lock conforme package.json
-        run: bun install --lockfile-only
-
-      - name: Exportar lockfile atualizado para commit versionado
-        run: |
-          base64 -w 30000 bun.lock | sed 's/^/BUNLOCK_PART=/'
-
-      - name: Publicar lockfile gerado para revisão
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-bun-lockfile
-          path: bun.lock
-          if-no-files-found: error
 
       - name: Instalar dependências pelo lockfile
         run: bun install --frozen-lockfile
