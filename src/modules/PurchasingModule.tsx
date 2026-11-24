@@ -26,6 +26,7 @@ import {
   getPurchaseOrders,
   getPurchasingSuppliers,
   getMaterialReceipts,
+  getWorkOrdersForPurchasing,
 } from '../services/purchasingService';
 import { PurchasingDashboard } from '../components/purchasing/PurchasingDashboard';
 import { PurchasingRequisitions } from '../components/purchasing/PurchasingRequisitions';
@@ -37,6 +38,7 @@ import { PurchasingReceivingManager } from '../components/purchasing/PurchasingR
 import { PurchaseHistoryTable } from '../components/purchasing/PurchaseHistoryTable';
 import { SupplierIntelligence } from '../components/purchasing/SupplierIntelligence';
 import { NewPurchaseOrderModal } from '../components/purchasing/NewPurchaseOrderModal';
+import type { WorkOrder } from '../types';
 
 interface PurchasingModuleProps {
   currentSubSection: PurchasingSubSection;
@@ -61,6 +63,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<PurchasingSupplier[]>([]);
   const [receipts, setReceipts] = useState<MaterialReceiptRecord[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
 
   // Modals
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
@@ -74,12 +77,13 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
 
   const loadAllData = useCallback(async () => {
     try {
-      const [reqs, quotes, ords, sups, recs] = await Promise.all([
+      const [reqs, quotes, ords, sups, recs, wos] = await Promise.all([
         getPurchaseRequisitions(currentOrgId),
         getPurchaseQuotations(currentOrgId),
         getPurchaseOrders(currentOrgId),
         getPurchasingSuppliers(currentOrgId),
         getMaterialReceipts(currentOrgId),
+        getWorkOrdersForPurchasing(currentOrgId),
       ]);
 
       setRequisitions(reqs);
@@ -87,6 +91,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
       setOrders(ords);
       setSuppliers(sups);
       setReceipts(recs);
+      setWorkOrders(wos);
     } catch (err) {
       console.error('Erro ao carregar dados do módulo de Compras:', err);
     } finally {
@@ -271,6 +276,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               organizationId={currentOrgId}
               requisitions={requisitions}
               userName={currentUserName}
+              workOrders={workOrders}
               onRefresh={loadAllData}
               onCreateQuotationFromRequisition={(req: PurchaseRequisition) => {
                 handleTabChange('compras-cotacoes');
