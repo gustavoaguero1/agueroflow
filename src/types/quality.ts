@@ -60,6 +60,7 @@ export interface QualityRecordEvent {
   unitId: string;
   contractId: string;
   recordId: string;
+  previousEventId?: string;
   eventType: QualityEventType;
   actorUid: string;
   actorName: string;
