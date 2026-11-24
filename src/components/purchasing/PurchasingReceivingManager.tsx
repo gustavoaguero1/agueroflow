@@ -62,7 +62,7 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
   useEffect(() => {
     let active = true;
     setInventoryLoading(true);
-    getReceivingInventorySetup(currentOrgId)
+    getReceivingInventorySetup(db, currentOrgId)
       .then(({ items, units: loadedUnits }) => {
         if (!active) return;
         setCatalogItems(items);
