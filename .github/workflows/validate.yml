@@ -42,9 +42,7 @@ jobs:
 
       - name: Exportar lockfile atualizado para commit versionado
         run: |
-          printf 'BUN_LOCKFILE_BASE64='
-          base64 -w0 bun.lock
-          printf '\n'
+          base64 -w 30000 bun.lock | sed 's/^/BUNLOCK_PART=/'
 
       - name: Publicar lockfile gerado para revisão
         uses: actions/upload-artifact@v4
