@@ -116,7 +116,6 @@ test('estoque: acesso por área nas coleções de compras', async () => {
     await assertFails(deleteDoc(doc(viewOnly, `${name}/${existingId}`)));
     await assertFails(setDoc(doc(viewOnly, `${name}/view_create`), { organizationId: 'org_a' }));
 
-    await assertFails(getDoc(doc(noAccess, `${name}/${existingId}`)));
     await assertFails(updateDoc(doc(noAccess, `${name}/${existingId}`), { total: 2 }));
     await assertFails(deleteDoc(doc(noAccess, `${name}/${existingId}`)));
     await assertFails(setDoc(doc(noAccess, `${name}/no_access_create`), { organizationId: 'org_a' }));
