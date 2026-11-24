@@ -69,6 +69,7 @@ import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
 import { getAdmin, adminStatus, runtimeServiceAccount } from './server/firebaseAdmin';
+import { mirrorReceiptsToOps } from './server/opsReimbursements';
 import { effectiveOrg } from './server/orgDefaults';
 import { answerWithTools, canUseErpTools, canQueryErp, ERP_QUESTION } from './server/agentTools';
 import type {
@@ -2960,7 +2961,20 @@ Sua tarefa:
     } catch (err) {
       console.warn('Aviso: Falha ao gravar data_receipts.json:', err);
     }
+    mirrorReceiptsSoon();
   };
+
+  // Recibos novos também entram no Reembolso de Operações (uma vez cada; marca opsNotaId).
+  let mirroringReceipts = false;
+  const mirrorReceiptsSoon = () => {
+    const admin = getAdmin();
+    if (!admin || mirroringReceipts) return;
+    mirroringReceipts = true;
+    mirrorReceiptsToOps(admin.db, reimbursementReceipts)
+      .then((n) => { mirroringReceipts = false; if (n > 0) persistReceipts(); })
+      .catch((err) => { mirroringReceipts = false; console.warn('[operacoes] recibos → reembolso:', err?.message || err); });
+  };
+  setTimeout(mirrorReceiptsSoon, 15_000).unref?.();
 
   // One-time boot recovery: if the dedicated OCR lock registry file does not exist yet and
   // no contact is marked ocrEnabled (e.g. after a previous non-atomic overwrite), recover
