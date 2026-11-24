@@ -46,6 +46,7 @@ import {
   resumeSavedWhatsAppSessions,
   runInWhatsAppSession,
   runAsOrgWhatsAppSender,
+  forEachWhatsAppOrg,
   isCompanyWhatsApp,
   resumeOrgSessions,
   currentWhatsAppSession,
@@ -7038,7 +7039,7 @@ INSTRUÇÕES:
 
   // Background 10-second scheduler for recurring & one-shot relative WhatsApp jobs (America/Sao_Paulo)
   if (!(globalThis as any).__waScheduledJobsInterval) {
-    (globalThis as any).__waScheduledJobsInterval = setInterval(async () => {
+    (globalThis as any).__waScheduledJobsInterval = setInterval(() => forEachWhatsAppOrg(whatsAppScheduledJobs$.orgs(), async () => {
       try {
         if (whatsAppScheduledJobs.length === 0) return;
         const brStatus = getWhatsAppBridgeStatus();
@@ -7081,7 +7082,7 @@ INSTRUÇÕES:
       } catch (schedErr: any) {
         console.warn('⚠️ [WA Scheduler Tick]:', schedErr?.message || schedErr);
       }
-    }, 10_000);
+    }), 10_000);
   }
 
   const parseRelativeDelayMinutes = (text: string): number | null => {
@@ -9276,9 +9277,12 @@ DIRETRIZES ESSENCIAIS:
   // for active ND rule groups (<1ms when idle; skips already-processed and non-ND chatter IDs)
   if (!(globalThis as any).__agueroflowNdSafetyInterval) {
     (globalThis as any).__agueroflowNdSafetyInterval = setInterval(() => {
-      if (whatsAppNdRules.some((r) => r.active && r.groupJid)) {
-        scanArchivedMessagesForPendingNds(4).catch(() => undefined);
-      }
+      // Cada empresa com regra de ND ativa, no número dela.
+      forEachWhatsAppOrg(whatsAppNdRules$.orgs(), async () => {
+        if (whatsAppNdRules.some((r) => r.active && r.groupJid)) {
+          await scanArchivedMessagesForPendingNds(4).catch(() => undefined);
+        }
+      });
     }, 45_000);
   }
 

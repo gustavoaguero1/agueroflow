@@ -111,6 +111,21 @@ export function createWhatsAppContext(opts: {
     return als.run({ key: k || NO_SENDER, orgId, uid: (k && opts.registry.meta(k)?.uid) ?? null }, fn);
   };
 
+  /**
+   * Tarefa em segundo plano para cada empresa (as que têm dados + as que têm WhatsApp), uma de cada vez,
+   * no número da empresa. Erro numa empresa não impede as outras.
+   */
+  const forEachOrg = async (orgsWithData: string[], fn: () => unknown | Promise<unknown>) => {
+    const orgs = new Set([...orgsWithData, ...opts.registry.list().map((s) => s.orgId)]);
+    for (const org of orgs) {
+      try {
+        await runAsOrgSender(org, () => fn());
+      } catch (err: any) {
+        console.warn(`⚠️ [WhatsApp] Tarefa em segundo plano falhou para a empresa ${org}:`, err?.message || err);
+      }
+    }
+  };
+
   type Fn<K extends keyof WhatsAppBridge> = WhatsAppBridge[K];
   const via = <K extends keyof WhatsAppBridge>(name: K) =>
     ((...a: unknown[]) => (resolve()[name] as (...x: unknown[]) => unknown)(...a)) as Fn<K>;
@@ -151,7 +166,7 @@ export function createWhatsAppContext(opts: {
     },
   };
 
-  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, isCompanySession, attach, attachAll, senderKey };
+  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, isCompanySession, forEachOrg, attach, attachAll, senderKey };
 }
 
 export type WhatsAppContext = ReturnType<typeof createWhatsAppContext>;

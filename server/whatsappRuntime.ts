@@ -98,6 +98,9 @@ export function resumeOrgSessions(orgId: string) {
 /** A conexão do contexto é o remetente da empresa (faz OCR, NDs, respostas automáticas, @aguero)? */
 export const isCompanyWhatsApp = waContext.isCompanySession;
 
+/** Tarefa em segundo plano para cada empresa (com dados ou com WhatsApp), no número dela. */
+export const forEachWhatsAppOrg = waContext.forEachOrg;
+
 export const runInWhatsAppSession = waContext.runInSession;
 export const runAsOrgWhatsAppSender = waContext.runAsOrgSender;
 export const currentWhatsAppSession = waContext.currentSession;
