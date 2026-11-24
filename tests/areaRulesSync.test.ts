@@ -23,7 +23,7 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
   const order = /\/\/ Ordem: (.+)/.exec(rules)![1].split(', ').map((s) => s.split(' '));
   assert.deepEqual(order.map(([id]) => id), [...AREA_IDS]);
   order.forEach(([, i], n) => assert.equal(Number(i), n));
-  for (const [fn, id] of [['A_OPS', 'operacoes'], ['A_COM', 'comercial'], ['A_FIN', 'financeiro'], ['A_RH', 'rh']]) {
+  for (const [fn, id] of [['A_OPS', 'operacoes'], ['A_STOCK', 'estoque'], ['A_COM', 'comercial'], ['A_FIN', 'financeiro'], ['A_RH', 'rh']]) {
     const v = new RegExp(`function ${fn}\\(\\) \\{ return (\\d+); \\}`).exec(rules)![1];
     assert.equal(Number(v), AREA_IDS.indexOf(id as never), fn);
   }

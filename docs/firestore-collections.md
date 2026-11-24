@@ -53,11 +53,11 @@ Owner kinds:
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
-| purchasing_orders | organizationId | `organizationId ==` | |
-| purchasing_quotations | organizationId | `organizationId ==` | |
-| purchasing_receipts | organizationId | `organizationId ==` | |
-| purchasing_requisitions | organizationId | `organizationId ==` | |
-| purchasing_suppliers | organizationId | `organizationId ==` | |
+| purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_receipts | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_requisitions | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_suppliers | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | recurring_orders | orgId | `orgId ==` | |
 | rh_batches | orgId | `orgId ==` | |
 | rh_calculations | orgId | `orgId ==` | |

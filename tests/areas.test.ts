@@ -47,7 +47,7 @@ test('perfil desconhecido: nada além do mínimo (igual às regras do banco)', (
 test('cada área diz se o banco também bloqueia ou se é só o menu', () => {
   const byId = Object.fromEntries(AREAS.map((a) => [a.id, a.enforcedInDatabase]));
   assert.deepEqual(byId, {
-    painel: false, operacoes: true, estoque: false, comercial: true, financeiro: true, rh: true,
+    painel: false, operacoes: true, estoque: true, comercial: true, financeiro: true, rh: true,
     whatsapp: false, relatorios: false, estrutura: false, configuracoes: true, suporte: false,
   });
 });
