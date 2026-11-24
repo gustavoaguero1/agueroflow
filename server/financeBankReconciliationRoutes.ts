@@ -134,7 +134,7 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
         }
         const createdAt = FieldValue.serverTimestamp();
         tx.create(matchRef, {
-          id: matchId, orgId, transactionId, settlementId, payableId: String(settlement.payableId || ''),
+          id: matchId, orgId, matchType: 'payable', transactionId, settlementId, payableId: String(settlement.payableId || ''),
           amount: cashAmount, bankDate: String(bank.date), paymentDate: String(settlement.paymentDate),
           bankTransactionSnapshot: {
             date: bank.date, amount: bank.amount, direction: bank.direction,
@@ -155,6 +155,77 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
       if (error instanceof BankRouteError) return res.status(error.status).json({ ok: false, error: error.message });
       console.error('[finance bank match] failed:', error);
       return res.status(500).json({ ok: false, error: 'Não foi possível conciliar o lançamento bancário.' });
+    }
+  });
+
+
+  router.post('/:transactionId/match-receipt', ...bankWriteAccess, async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const transactionId = req.params.transactionId;
+    const receiptId = req.body?.receiptId;
+    if (!orgId || req.body?.orgId !== orgId || !validId(transactionId) || !validId(receiptId)) {
+      return res.status(400).json({ ok: false, error: 'Informe o lançamento bancário e o recebimento para conciliação.' });
+    }
+    if (!actor?.uid) return res.status(401).json({ ok: false, error: 'Usuário não autenticado.' });
+    const h = getH();
+    if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });
+
+    const transactionRef = h.db.collection('finance_bank_transactions').doc(transactionId);
+    const receiptRef = h.db.collection('finance_receivable_receipts').doc(receiptId);
+    // The same transaction-keyed match document is shared by debit and credit reconciliation:
+    // a bank row can never be linked once to a payable and again to a receivable.
+    const matchId = 'bmatch_' + orgId.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + hash(transactionId).slice(0, 36);
+    const matchRef = h.db.collection('finance_bank_reconciliations').doc(matchId);
+    // Query only by receiptId so the default single-field index is sufficient.
+    const receiptMatches = h.db.collection('finance_bank_reconciliations')
+      .where('receiptId', '==', receiptId).limit(10);
+
+    try {
+      await h.db.runTransaction(async (tx) => {
+        const [transactionSnap, receiptSnap, matchSnap, receiptMatchSnap] = await Promise.all([
+          tx.get(transactionRef), tx.get(receiptRef), tx.get(matchRef), tx.get(receiptMatches),
+        ]);
+        if (!transactionSnap.exists) throw new BankRouteError(404, 'Lançamento bancário não encontrado.');
+        if (!receiptSnap.exists) throw new BankRouteError(404, 'Evento de recebimento não encontrado.');
+        if (matchSnap.exists) throw new BankRouteError(409, 'Este lançamento bancário já foi conciliado.');
+        if (receiptMatchSnap.docs.some((item: any) => item.data()?.orgId === orgId)) {
+          throw new BankRouteError(409, 'Este recebimento já possui uma conciliação bancária.');
+        }
+
+        const bank = transactionSnap.data()!;
+        const receipt = receiptSnap.data()!;
+        if (bank.orgId !== orgId || receipt.orgId !== orgId) throw new BankRouteError(403, 'Os registros pertencem a outra empresa.');
+        if (bank.direction !== 'credit') throw new BankRouteError(409, 'Somente créditos bancários podem ser conciliados com recebimentos.');
+        const receivedAmount = Number(receipt.receiptAmount ?? 0);
+        if (!(receivedAmount > 0) || cents(Number(bank.amount)) !== cents(receivedAmount)) {
+          throw new BankRouteError(409, 'O valor do crédito bancário precisa ser igual ao valor efetivamente recebido.');
+        }
+        const createdAt = FieldValue.serverTimestamp();
+        tx.create(matchRef, {
+          id: matchId, orgId, matchType: 'receivable', transactionId, receiptId,
+          receivableId: String(receipt.receivableId || ''),
+          amount: receivedAmount,
+          bankDate: String(bank.date), receiptDate: String(receipt.receiptDate),
+          bankTransactionSnapshot: {
+            date: bank.date, amount: bank.amount, direction: bank.direction,
+            description: bank.description, reference: bank.reference ?? null,
+            sourceFileName: bank.sourceFileName,
+          },
+          receiptSnapshot: {
+            receivableId: receipt.receivableId, receiptDate: receipt.receiptDate,
+            receiptAmount: receivedAmount, paymentReference: receipt.paymentReference ?? null,
+            clientName: receipt.receivableSnapshot?.clientName ?? '',
+            document: receipt.receivableSnapshot?.documento ?? '',
+          },
+          createdBy: actor.uid, createdByEmail: actor.email || actor.uid, createdAt,
+        });
+      });
+      return res.status(201).json({ ok: true, matchId });
+    } catch (error) {
+      if (error instanceof BankRouteError) return res.status(error.status).json({ ok: false, error: error.message });
+      console.error('[finance bank receipt match] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível conciliar o crédito bancário.' });
     }
   });
 
