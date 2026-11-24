@@ -94,7 +94,7 @@ function parseCsv(text: string): FinanceBankStatementRow[] {
     } else {
       if (rawAmount == null || rawAmount === 0) throw new Error('Linha ' + (i + 1) + ': valor ausente ou inválido.');
       const type = normalize(cells[typeIndex] ?? '');
-      direction = rawAmount < 0 || /debito|debit|saida|outgoing/.test(type) ? 'debit' : 'credit';
+      direction = rawAmount < 0 || /^(d|debito|debit|saida|outgoing)$/.test(type) ? 'debit' : 'credit';
       amount = Math.abs(rawAmount);
     }
     if (!date || !description || !(amount > 0)) throw new Error('Linha ' + (i + 1) + ': data, descrição ou valor inválido.');
@@ -116,7 +116,7 @@ function ofxTag(block: string, tag: string): string {
 }
 
 function parseOfx(text: string): FinanceBankStatementRow[] {
-  const blocks = [...text.matchAll(/<STMTTRN>([\\s\\S]*?)(?:<\\/STMTTRN>|(?=<STMTTRN>|<\\/BANKTRANLIST>|$))/gi)].map((match) => match[1]);
+  const blocks = [...text.matchAll(/<STMTTRN>([\s\\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>|$))/gi)].map((match) => match[1]);
   if (!blocks.length) throw new Error('Não encontrei lançamentos STMTTRN no arquivo OFX.');
   const rows: FinanceBankStatementRow[] = [];
   blocks.forEach((block, index) => {
