@@ -434,22 +434,22 @@ service cloud.firestore {
 
       function validQualityStateCreateForDoc() {
         let recordPath = /databases/$(database)/documents/quality_records/$(docId);
-        let recordData = getAfter(recordPath).data;
+        let recordData = get(recordPath).data;
         let eventId = request.resource.data.get('latestEventId', '');
         let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
         return signedIn()
           && request.resource.data.get('id', '') == docId
           && request.resource.data.get('recordId', '') == docId
-          && existsAfter(recordPath)
+          && exists(recordPath)
           && orgOf(recordData) == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
           && eventId is string
           && eventId.size() > 0
-          && existsAfter(eventPath)
-          && getAfter(eventPath).data.get('recordId', '') == docId
-          && getAfter(eventPath).data.get('actorUid', '') == request.auth.uid
-          && getAfter(eventPath).data.get('eventType', '') == qualityInitialEventType(recordData)
+          && exists(eventPath)
+          && get(eventPath).data.get('recordId', '') == docId
+          && get(eventPath).data.get('actorUid', '') == request.auth.uid
+          && get(eventPath).data.get('eventType', '') == qualityInitialEventType(recordData)
           && request.resource.data.get('status', '') == qualityInitialStatus(recordData)
           && request.resource.data.get('updatedByUid', '') == request.auth.uid
           && request.resource.data.get('updatedByName', '') is string
@@ -513,11 +513,11 @@ service cloud.firestore {
       }
       function validQualityEventCreateForDoc() {
         let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
-        let recordData = getAfter(recordPath).data;
-        let isInitial = recordData.get('createdAt', null) == request.time;
+        let recordData = get(recordPath).data;
+        let hasPreviousEvent = request.resource.data.keys().hasAny(['previousEventId']);
         let eventType = request.resource.data.get('eventType', '');
         return signedIn()
-          && existsAfter(recordPath)
+          && exists(recordPath)
           && recordData.get('orgId', '') == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
@@ -528,11 +528,10 @@ service cloud.firestore {
           && request.resource.data.get('actorName', '') is string
           && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
-          && (isInitial
-            ? (eventType == qualityInitialEventType(recordData)
-              && !request.resource.data.keys().hasAny(['previousEventId']))
-            : (request.resource.data.get('previousEventId', '') is string
-              && request.resource.data.get('previousEventId', '').size() > 0))
+          && (hasPreviousEvent
+            ? (request.resource.data.get('previousEventId', '') is string
+              && request.resource.data.get('previousEventId', '').size() > 0)
+            : eventType == qualityInitialEventType(recordData))
           && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
             ? (request.resource.data.get('comment', '') is string
               && request.resource.data.get('comment', '').size() > 0
