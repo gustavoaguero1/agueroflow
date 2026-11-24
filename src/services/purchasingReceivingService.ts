@@ -48,12 +48,13 @@ export interface RegisterPurchaseReceiptResult {
 const cleanIdPart = (value: string) =>
   value.trim().replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 90);
 
-export function purchaseReceiptId(input: Pick<RegisterPurchaseReceiptInput, 'organizationId' | 'purchaseOrderId' | 'invoiceNumber' | 'invoiceKey'>, supplierCnpj: string): string {
+export function purchaseReceiptId(input: Pick<RegisterPurchaseReceiptInput, 'organizationId' | 'invoiceNumber' | 'invoiceKey'>, supplierCnpj: string): string {
   const invoiceToken = input.invoiceKey?.trim() || `${cleanIdPart(supplierCnpj || 'sem_cnpj')}_${cleanIdPart(input.invoiceNumber)}`;
-  return `rec_${cleanIdPart(input.organizationId)}_${cleanIdPart(input.purchaseOrderId)}_${cleanIdPart(invoiceToken)}`;
+  // One NF-e can be applied only once per organization; this prevents reusing it against another PO.
+  return `rec_${cleanIdPart(input.organizationId)}_${cleanIdPart(invoiceToken)}`;
 }
 
-const normalizeUnit = (value: string) => value.trim().replace(/\\s+/g, ' ').toLocaleUpperCase('pt-BR');
+const normalizeUnit = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase('pt-BR');
 const round4 = (value: number) => Math.round(value * 10000) / 10000;
 const safe = <T extends object>(value: T) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
@@ -71,10 +72,11 @@ export async function registerPurchaseReceipt(
   if (!input.organizationId.trim()) throw new Error('Empresa não identificada.');
   if (!input.purchaseOrderId.trim()) throw new Error('Selecione uma Ordem de Compra.');
   if (!invoiceNumber) throw new Error('Informe o número da NF-e.');
-  if (input.invoiceKey && !/^\\d{44}$/.test(input.invoiceKey.trim())) {
+  if (input.invoiceKey && !/^\d{44}$/.test(input.invoiceKey.trim())) {
     throw new Error('A chave de acesso da NF-e deve conter exatamente 44 dígitos.');
   }
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(input.receiptDate) || Number.isNaN(Date.parse(`${input.receiptDate}T00:00:00`))) {
+  const parsedReceiptDate = new Date(`${input.receiptDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.receiptDate) || Number.isNaN(parsedReceiptDate.getTime()) || parsedReceiptDate.toISOString().slice(0, 10) !== input.receiptDate) {
     throw new Error('Data de recebimento inválida.');
   }
   if (!input.receivedBy.trim() || !input.receivedByName.trim()) {
@@ -126,7 +128,7 @@ export async function registerPurchaseReceipt(
         if (!orderItem) throw new Error('Um dos itens informados não pertence a esta Ordem de Compra.');
         const alreadyReceived = Number(orderItem.quantityReceived || 0);
         const remaining = Number(orderItem.quantityOrdered) - alreadyReceived;
-        if (!Number.isFinite(orderItem.quantityOrdered) || remaining < -0.0001) {
+        if (!Number.isFinite(orderItem.quantityOrdered) || orderItem.quantityOrdered <= 0 || !Number.isFinite(alreadyReceived) || alreadyReceived < 0 || remaining < -0.0001) {
           throw new Error(`A quantidade recebida anteriormente de "${orderItem.description}" é inválida.`);
         }
         if (line.quantityReceived > remaining + 0.0001) {
@@ -139,7 +141,7 @@ export async function registerPurchaseReceipt(
         if (stockEligible && (!input.stockUnitId || !input.stockUnitId.trim())) {
           throw new Error('Selecione a unidade de destino do estoque.');
         }
-        if (stockEligible && (!Number.isFinite(orderItem.unitPrice) || orderItem.unitPrice < 0)) {
+        if (stockEligible && (!Number.isFinite(orderItem.unitPrice) || orderItem.unitPrice < 0 || !Number.isFinite(order.freightValue || 0) || (order.freightValue || 0) < 0)) {
           throw new Error(`O custo unitário de "${orderItem.description}" na OC é inválido.`);
         }
         return { line, orderItem, stockEligible };
@@ -182,7 +184,7 @@ export async function registerPurchaseReceipt(
     balanceSnaps.forEach((snap, index) => {
       const data = snap.data();
       const quantity = Number(data?.currentBalance ?? 0);
-      if (!Number.isFinite(quantity) || quantity < 0) throw new Error('O saldo atual do estoque está inválido; corrija-o antes de receber.');
+      if (!Number.isFinite(quantity) || quantity < 0 || (data?.averageCost !== undefined && (!Number.isFinite(Number(data.averageCost)) || Number(data.averageCost) < 0))) throw new Error('O saldo ou custo médio atual do estoque está inválido; corrija-o antes de receber.');
       balanceById.set(catalogIds[index], {
         ref: balanceRefs[index],
         quantity,
@@ -193,6 +195,17 @@ export async function registerPurchaseReceipt(
     movementSnaps.forEach((snap) => {
       if (snap.exists()) throw new Error('Este recebimento já possui uma movimentação de estoque registrada.');
     });
+
+    const orderSubtotal = Number(order.subtotal) > 0
+      ? Number(order.subtotal)
+      : order.items.reduce((sum, item) => sum + (Number(item.totalPrice) || Number(item.quantityOrdered) * Number(item.unitPrice)), 0);
+    const landedUnitCost = (orderItem: PurchaseOrder['items'][number]) => {
+      const baseCost = Number(orderItem.unitPrice);
+      if (order.freightType !== 'FOB' || !(Number(order.freightValue) > 0) || !(orderSubtotal > 0)) return round4(baseCost);
+      const lineTotal = Number(orderItem.totalPrice) || Number(orderItem.quantityOrdered) * baseCost;
+      const freightPerUnit = Number(order.freightValue) * (lineTotal / orderSubtotal) / Number(orderItem.quantityOrdered);
+      return round4(baseCost + freightPerUnit);
+    };
 
     const receiptLines = requestedLines.map(({ line, orderItem, stockEligible }) => {
       const catalogItem = stockEligible ? catalogById.get(line.catalogItemId!) : undefined;
@@ -215,7 +228,7 @@ export async function registerPurchaseReceipt(
         catalogItemId: catalogItem?.id,
         catalogItemSku: catalogItem?.sku,
         stockUnitId: stockEligible ? input.stockUnitId : undefined,
-        unitCost: stockEligible ? orderItem.unitPrice : undefined,
+        unitCost: input.status !== 'rejeitado' && line.isConform ? landedUnitCost(orderItem) : undefined,
         quantityAccepted: accepted ? line.quantityReceived : 0,
         quantityInStock: stockEligible ? line.quantityReceived : 0,
         stockMovementId: stockMovement?.id,
@@ -245,7 +258,7 @@ export async function registerPurchaseReceipt(
         averageCost: current.averageCost,
       };
       total.quantity += line.quantityReceived;
-      total.totalCost += line.quantityReceived * orderItem.unitPrice;
+      total.totalCost += line.quantityReceived * landedUnitCost(orderItem);
       stockTotals.set(item.id, total);
     }
 
@@ -280,6 +293,8 @@ export async function registerPurchaseReceipt(
         invoiceNumber: string;
         supplierName: string;
         sourceRef: string;
+        unitCost: number;
+        totalCost: number;
       } = {
         id: movement.id,
         orgId: input.organizationId,
@@ -300,6 +315,8 @@ export async function registerPurchaseReceipt(
         invoiceNumber,
         supplierName: order.supplierName,
         sourceRef: `receipt:${receiptId}:${orderItem.id}`,
+        unitCost: landedUnitCost(orderItem),
+        totalCost: round4(line.quantityReceived * landedUnitCost(orderItem)),
       };
       tx.set(movement.ref, safe(movementDoc));
       movementIds.push(movement.id);
