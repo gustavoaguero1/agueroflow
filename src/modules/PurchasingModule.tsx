@@ -361,6 +361,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
         suppliers={suppliers}
         currentOrgId={currentOrgId}
         currentUserName={currentUserName}
+        workOrders={workOrders}
         onOrderCreated={loadAllData}
       />
     </div>
