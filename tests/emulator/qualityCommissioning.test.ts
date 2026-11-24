@@ -137,10 +137,12 @@ async function createQualityRecord(
   const db = dbFor(uid, role);
   const record = validQualityRecord(uid, recordOverrides);
   const initialEvent = initialEventFor(record);
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'quality_records', recordId), record);
-  batch.set(doc(db, 'quality_record_events', initialEventId), validQualityEvent(uid, initialEvent));
-  batch.set(doc(db, 'quality_record_states', recordId), {
+  await assertSucceeds(setDoc(doc(db, 'quality_records', recordId), record));
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events', initialEventId),
+    validQualityEvent(uid, initialEvent),
+  ));
+  await assertSucceeds(setDoc(doc(db, 'quality_record_states', recordId), {
     id: recordId,
     orgId: 'org_a',
     unitId: 'unit_a',
@@ -151,8 +153,7 @@ async function createQualityRecord(
     updatedByUid: uid,
     updatedByName: 'Inspetor',
     updatedAt: serverTimestamp(),
-  });
-  await batch.commit();
+  }));
   return db;
 }
 
@@ -229,16 +230,18 @@ async function attemptOutOfOrderTransition(
   assert.equal(unchanged.data()?.latestEventId, state.latestEventId);
 }
 
-test('Operations editor creates a quality record, initial event and state atomically', async () => {
+test('Operations editor creates a quality record, initial event and state in sequence', async () => {
   await seedReferences();
   const db = dbFor('inspector_1', 'Operacional');
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'quality_records', recordId), validQualityRecord('inspector_1', {
+  await assertSucceeds(setDoc(doc(db, 'quality_records', recordId), validQualityRecord('inspector_1', {
     engineeringDocumentId: 'eng_org_a_ISO-101_A',
     engineeringDocumentCode: 'ISO-101 Rev. A',
-  }));
-  batch.set(doc(db, 'quality_record_events', initialEventId), validQualityEvent('inspector_1', 'submitted_for_review'));
-  batch.set(doc(db, 'quality_record_states', recordId), {
+  })));
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events', initialEventId),
+    validQualityEvent('inspector_1', 'submitted_for_review'),
+  ));
+  await assertSucceeds(setDoc(doc(db, 'quality_record_states', recordId), {
     id: recordId,
     orgId: 'org_a',
     unitId: 'unit_a',
@@ -249,8 +252,7 @@ test('Operations editor creates a quality record, initial event and state atomic
     updatedByUid: 'inspector_1',
     updatedByName: 'Inspetor',
     updatedAt: serverTimestamp(),
-  });
-  await assertSucceeds(batch.commit());
+  }));
 
   const saved = await assertSucceeds(getDoc(doc(db, 'quality_records', recordId)));
   assert.equal(saved.data()?.recordCode, 'QLD-2026-ABC12345');
