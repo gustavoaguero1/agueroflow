@@ -6,6 +6,8 @@ test('padrões por perfil: RH fechado para a maioria, Admin edita tudo', () => {
   assert.equal(ROLE_DEFAULTS.Admin.rh, 2);
   assert.equal(ROLE_DEFAULTS.Gerente.rh, 1);
   assert.equal(ROLE_DEFAULTS.Supervisor.rh, 0);
+  // Supervisor já lançava contas e dava baixa: Financeiro continua em "editar" (o perfil limita o resto).
+  assert.equal(ROLE_DEFAULTS.Supervisor.financeiro, 2);
   assert.equal(ROLE_DEFAULTS.Operacional.rh, 0);
   assert.equal(ROLE_DEFAULTS.Visualizador.rh, 0);
   assert.ok(AREA_IDS.every((a) => ROLE_DEFAULTS.Admin[a] === 2));

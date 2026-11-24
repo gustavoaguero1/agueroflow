@@ -60,7 +60,9 @@ export function createPeopleSource(orgId: string, track: (u: Unsub) => Unsub, ac
     // Só obra/código: as regras deixam Operações mudar esses campos no RH, nada mais.
     const patch = { unitId, codigoObra: code, updatedAt: new Date().toISOString() };
     await updateDoc(doc(db, 'rh_employees', rhId), patch);
-    await setDoc(doc(db, 'rh_directory', rhId), { orgId, ...patch }, { merge: true });
+    // Diretório ainda sem a pessoa (antes do RH abrir pela 1ª vez): o RH recria ao sincronizar.
+    await setDoc(doc(db, 'rh_directory', rhId), { orgId, ...patch }, { merge: true })
+      .catch((e) => console.warn('Diretório de pessoas não atualizado:', e));
     if (!canSeeSalaries) return; // equipe de campo leva o valor hora; quem não vê salário não regrava
     const emp = await getDoc(doc(db, 'rh_employees', rhId));
     if (emp.exists()) await syncRhEmployeeToFieldWorker({ ...(emp.data() as RhEmployee), id: rhId });

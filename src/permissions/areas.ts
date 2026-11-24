@@ -36,7 +36,7 @@ const row = (v: number[]): AreaLevels => Object.fromEntries(AREA_IDS.map((a, i) 
 export const ROLE_DEFAULTS: Record<UserRole, AreaLevels> = {
   Admin: row([2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]),
   Gerente: row([2, 2, 2, 2, 2, 1, 2, 2, 2, 1, 2]),
-  Supervisor: row([1, 2, 2, 1, 1, 0, 2, 1, 1, 0, 2]),
+  Supervisor: row([1, 2, 2, 1, 2, 0, 2, 1, 1, 0, 2]),
   Operacional: row([1, 2, 1, 0, 0, 0, 1, 0, 1, 0, 2]),
   Visualizador: row([1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 2]),
 };

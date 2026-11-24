@@ -41,11 +41,12 @@ test('ninguém acessa a base de outra empresa', async () => {
   await assertFails(getDoc(doc(as('anon'), 'ops_orgs/org_a/obras/o1')));
 });
 
-test('salários só para Admin/Gerente', async () => {
+test('salários seguem a área RH: Gerente vê, Admin edita, Operacional nada', async () => {
   await assertFails(getDoc(doc(op(), 'ops_orgs/org_a/salarios/c1')));
   await assertFails(setDoc(doc(op(), 'ops_orgs/org_a/salarios/c2'), { salario: 1 }));
   await assertSucceeds(getDoc(doc(ger(), 'ops_orgs/org_a/salarios/c1')));
-  await assertSucceeds(setDoc(doc(ger(), 'ops_orgs/org_a/salarios/c2'), { salario: 1 }));
+  await assertFails(setDoc(doc(ger(), 'ops_orgs/org_a/salarios/c2'), { salario: 1 }));
+  await assertSucceeds(setDoc(doc(as('member_adm', { org_a: 'Admin' }), 'ops_orgs/org_a/salarios/c2'), { salario: 1 }));
 });
 
 test('equipe e parâmetros: escrita só de Admin/Gerente', async () => {

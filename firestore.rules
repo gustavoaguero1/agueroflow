@@ -31,6 +31,27 @@ service cloud.firestore {
     function canUpdate() { return sameOwner() && (isMaster() || ownerOk(resource.data)); }
     function canDelete() { return isMaster() || ownerOk(resource.data); }
 
+    // ---- Acesso por área (src/permissions/areas.ts) ------------------------------
+    // Token: areas[org] = um dígito por área (0 sem acesso, 1 ver, 2 editar), na ordem abaixo.
+    // Sem `areas` para a empresa: padrão do perfil (mesma tabela de ROLE_DEFAULTS; tests/areaRulesSync.test.ts confere).
+    // Ordem: painel 0, operacoes 1, estoque 2, comercial 3, financeiro 4, rh 5, whatsapp 6, relatorios 7, estrutura 8, configuracoes 9, suporte 10
+    function roleAreas(role) {
+      return {
+        'Admin': '22222222222',
+        'Gerente': '22222122212',
+        'Supervisor': '12212021102',
+        'Operacional': '12100010102',
+        'Visualizador': '11110011102'
+      }.get(role, '00000000000');
+    }
+    function areaCode(org) { return request.auth.token.get('areas', {}).get(org, roleAreas(orgClaims()[org])); }
+    function areaLevel(org, i) { return isMaster() ? 2 : (isMemberOf(org) ? int(areaCode(org)[i:i + 1]) : 0); }
+    function areaOk(org, i, lvl) { return isMaster() || areaLevel(org, i) >= lvl; }
+    function A_OPS() { return 1; }
+    function A_COM() { return 3; }
+    function A_FIN() { return 4; }
+    function A_RH() { return 5; }
+
     // ---- Server-only (Admin SDK) -------------------------------------------
     match /member_credentials/{id} { allow read, write: if false; }
     match /first_access_tokens/{id} { allow read, write: if false; }
@@ -55,7 +76,9 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow read: if signedIn();
       allow create, delete: if isMaster();
-      allow update: if isMaster() || hasRole(orgId, ['Admin']);
+      // Padrões de acesso por área: só pelo servidor (PUT /api/org/areas), que também renova os logins.
+      allow update: if isMaster() || (hasRole(orgId, ['Admin'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['areaDefaults']));
     }
 
     // ---- Members --------------------------------------------------------------
@@ -73,11 +96,12 @@ service cloud.firestore {
         || (signedIn() && request.auth.token.get('email_verified', false) == true
             && request.auth.token.get('email', null) is string
             && resource.data.get('userEmail', '') == request.auth.token.email.lower());
-      allow create: if !('passwordHash' in request.resource.data)
+      // Ajuste de acesso por área: só pelo servidor (PUT /api/org/members/:id/areas).
+      allow create: if !request.resource.data.keys().hasAny(['passwordHash', 'areaOverrides', 'areasUpdatedAt'])
         && request.resource.data.get('userId', '') in ['', request.auth.uid]
         && manages(request.resource.data.get('orgId', ''))
         && roleOk(request.resource.data.get('orgId', ''), request.resource.data);
-      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId'])
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'])
         && (isMaster()
           || (manages(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId
               && roleOk(resource.data.orgId, resource.data) && roleOk(resource.data.orgId, request.resource.data))
@@ -98,14 +122,29 @@ service cloud.firestore {
 
     // ---- Operações (public/operacoes, ponte em src/modules/operations/opsBridge.ts) ----
     // Cada empresa tem a própria base em ops_orgs/{orgId}/<coleção>/<doc>.
-    // Salários: só Admin/Gerente. Equipe (membros) e parâmetros (config): escrita só Admin/Gerente.
-    // Visualizador só lê. Demais perfis da empresa leem e escrevem.
+    // Salários: área RH (ver/editar). Equipe (membros) e parâmetros (config): escrita só Admin/Gerente.
+    // Demais coleções: área Operações (ver lê, editar grava).
     match /ops_orgs/{orgId}/{coll}/{docId} {
       function opsManager() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente']); }
-      function opsWriter() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente', 'Supervisor', 'Operacional']); }
       function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
-      allow read: if coll == 'salarios' ? opsManager() : (isMaster() || isMemberOf(orgId));
-      allow write: if coll == 'salarios' || managerOnlyWrite() ? opsManager() : opsWriter();
+      allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : areaOk(orgId, A_OPS(), 1);
+      allow write: if coll == 'salarios' ? areaOk(orgId, A_RH(), 2)
+        : (managerOnlyWrite() ? opsManager() && areaOk(orgId, A_OPS(), 2) : areaOk(orgId, A_OPS(), 2));
+    }
+
+    // ---- Diretório de pessoas (sem salários; gravado pelo RH) -------------------
+    // Operações vê quem é quem; aloca em obra mudando só obra/código.
+    match /rh_directory/{id} {
+      function dirOrg(d) { return d.get('orgId', ''); }
+      function allocation() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
+      }
+      allow read: if resource == null ? signedIn()
+        : (areaOk(dirOrg(resource.data), A_RH(), 1) || areaOk(dirOrg(resource.data), A_OPS(), 1));
+      allow create: if areaOk(dirOrg(request.resource.data), A_RH(), 2);
+      allow update: if dirOrg(request.resource.data) == dirOrg(resource.data)
+        && (areaOk(dirOrg(resource.data), A_RH(), 2) || (areaOk(dirOrg(resource.data), A_OPS(), 2) && allocation()));
+      allow delete: if areaOk(dirOrg(resource.data), A_RH(), 2);
     }
 
     // ---- Org-scoped by orgId / organizationId field ----------------------------
@@ -132,13 +171,26 @@ service cloud.firestore {
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
-      allow read: if (orgScoped() || immutable()) && canRead(resource);
+      // Área da coleção: RH e Comercial pedem acesso à área (ver lê, editar grava); as demais, só ser da empresa.
+      function collArea() {
+        return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
+          : (coll.matches('commercial_.*') ? A_COM() : -1);
+      }
+      function areaRead(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 1); }
+      function areaWrite(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 2); }
+      // Operações aloca a pessoa numa obra: no RH muda só obra/código.
+      function rhAllocation() {
+        return coll == 'rh_employees' && areaOk(orgOf(resource.data), A_OPS(), 2)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
+      }
+
+      allow read: if (orgScoped() || immutable()) && canRead(resource) && (resource == null || areaRead(resource.data));
       // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
       function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
       function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk();
-      allow update: if orgScoped() && canUpdate();
-      allow delete: if orgScoped() && canDelete();
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk() && areaWrite(request.resource.data);
+      allow update: if orgScoped() && canUpdate() && (areaWrite(resource.data) || rhAllocation());
+      allow delete: if orgScoped() && canDelete() && areaWrite(resource.data);
 
       // Finance: members read; Admin/Gerente/Supervisor create/update; Admin/Gerente delete.
       function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules']; }
@@ -151,16 +203,20 @@ service cloud.firestore {
           && resource.data.get('status', '') == 'aberto' && request.resource.data.get('status', '') == 'pago'
           && request.resource.data.get('pagoPor', '') == request.auth.uid;
       }
-      allow read: if finance() && canRead(resource);
+      // Financeiro: ver lê; editar grava (dentro do que o perfil já permite). Supervisor que só vê ainda pode dar baixa.
+      function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
+      allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
       allow create: if finance() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+        && fin(request.resource.data, 2)
         && (!isPayable() || request.resource.data.get('createdBy', '') == request.auth.uid);
       allow update: if finance() && canUpdate()
-        && (isPayable() ? (financeRole(resource.data, ['Admin', 'Gerente']) || supervisorPays())
-                        : financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']));
-      allow delete: if finance() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']);
+        && (isPayable() ? ((financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)) || (supervisorPays() && fin(resource.data, 1)))
+                        : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2)));
+      allow delete: if finance() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
-      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId));
-      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId))
+      function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
         && (request.method == 'delete'
             || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
     }
@@ -177,8 +233,8 @@ service cloud.firestore {
         return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
       }
       function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
-      allow read: if canRead(resource);
-      allow update: if canUpdate()
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_FIN(), 2)
         && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
         && ((move() in ['aguardando_classificacao>classificando', 'erro_classificacao>classificando']
@@ -186,7 +242,7 @@ service cloud.firestore {
           || (move() == 'classificando>classificada' && ownRun())
           || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
     }
-    match /nfe_sync/{orgId} { allow read: if isMaster() || isMemberOf(orgId); }
+    match /nfe_sync/{orgId} { allow read: if areaOk(orgId, A_FIN(), 1); }
 
     // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
     match /commercial_proposal_items/{itemId} {
@@ -198,10 +254,12 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/commercial_proposals/$(request.resource.data.proposalId))
           && parentOrg(request.resource.data) == request.resource.data.get('organizationId', '');
       }
-      allow read: if canRead(resource) || isMemberOf(parentOrg(resource.data));
-      allow create: if canCreate() && matchesParent();
-      allow update: if canUpdate() && matchesParent();
-      allow delete: if canDelete() || isMemberOf(parentOrg(resource.data));
+      function itemOrg(d) { return d.get('organizationId', '') != '' ? d.organizationId : parentOrg(d); }
+      allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
+        && (resource == null || areaOk(itemOrg(resource.data), A_COM(), 1));
+      allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && areaOk(itemOrg(resource.data), A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(itemOrg(resource.data), A_COM(), 2);
     }
 
     // ---- WhatsApp bridge mirror ----------------------------------------------

@@ -25,7 +25,7 @@
 | operacoes | ordens, checklists, inspecoes, ocorrencias, operacoes, ops-*, obras, viagens-*, bens-* | 2/2/2/2/1 |
 | estoque | pecas-servicos, estoque, compras | 2/2/2/1/1 |
 | comercial | comercial-*, marketing | 2/2/1/0/1 |
-| financeiro | financeiro-* | 2/2/1/0/0 |
+| financeiro | financeiro-* | 2/2/2/0/0 (Supervisor: o perfil já limita a lançar e dar baixa) |
 | rh | rh-* | 2/1/0/0/0 |
 | whatsapp | whatsapp-* | 2/2/2/1/1 |
 | relatorios | relatorios, ia | 2/2/1/0/1 |

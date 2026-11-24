@@ -39,9 +39,11 @@ beforeEach(async () => {
   });
 });
 
-const as = (uid: string, orgs: Record<string, string> = {}, master = false) =>
-  env.authenticatedContext(uid, { master, orgs }).firestore();
-const member = () => as('member_m_op', { org_a: 'Operacional' });
+const as = (uid: string, orgs: Record<string, string> = {}, master = false, areas?: Record<string, string>) =>
+  env.authenticatedContext(uid, { master, orgs, ...(areas ? { areas } : {}) }).firestore();
+// Operacional com acesso liberado a Comercial (editar) e Financeiro (ver): o perfil continua limitando o resto.
+// Os padrões por área (sem liberação) estão em areaRules.test.ts.
+const member = () => as('member_m_op', { org_a: 'Operacional' }, false, { org_a: '12121010102' });
 const admin = () => as('member_m_adm', { org_a: 'Admin' });
 const gerente = () => as('member_m_ger', { org_a: 'Gerente' });
 const master = () => as('master_x', {}, true);
