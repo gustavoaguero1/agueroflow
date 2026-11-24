@@ -84,6 +84,8 @@ export function resumeSavedWhatsAppSessions() {
 export const runInWhatsAppSession = waContext.runInSession;
 export const runAsOrgWhatsAppSender = waContext.runAsOrgSender;
 export const currentWhatsAppSession = waContext.currentSession;
+/** Empresa do WhatsApp do contexto (quem recebeu a mensagem / empresa da requisição). */
+export const orgOfWhatsAppContext = waContext.orgOfContext;
 
 export const {
   downloadCachedRawMessageMedia,

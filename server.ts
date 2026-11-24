@@ -47,11 +47,12 @@ import {
   runInWhatsAppSession,
   runAsOrgWhatsAppSender,
   currentWhatsAppSession,
+  orgOfWhatsAppContext,
   waRegistry,
   getOfficialSessionKey,
   setOfficialSessionKey,
 } from './server/whatsappRuntime';
-import { sessionForRequest } from './server/whatsappRouting';
+import { sessionForRequest, addTag } from './server/whatsappRouting';
 import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
   buildOutlookOAuthAuthorizationUrl,
@@ -2552,6 +2553,9 @@ Sua tarefa:
         notes: input.notes !== undefined ? input.notes : prev.notes,
         lastMessageAt: input.lastMessageAt || prev.lastMessageAt,
         source: input.source && prev.source !== 'manual' ? input.source : prev.source,
+        // Quais WhatsApps (sessões) e empresas já falaram com este contato.
+        sessionKeys: addTag((prev as { sessionKeys?: string[] }).sessionKeys, currentWhatsAppSession()?.key),
+        orgIds: addTag((prev as { orgIds?: string[] }).orgIds, orgOfWhatsAppContext()),
         updatedAt: nowIso,
       };
       whatsAppContacts[idx] = next;
@@ -2588,6 +2592,8 @@ Sua tarefa:
       notes: input.notes || '',
       lastMessageAt: input.lastMessageAt,
       source: input.source || 'whatsapp_sync',
+      sessionKeys: addTag(undefined, currentWhatsAppSession()?.key),
+      orgIds: addTag(undefined, orgOfWhatsAppContext()),
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -2749,7 +2755,7 @@ Sua tarefa:
     const createdAtIso = msg.createdAt || new Date().toISOString();
     const record = {
       id: msg.id || `wamsg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: effectiveOrg(msg.organizationId),
+      organizationId: msg.organizationId ? effectiveOrg(msg.organizationId) : orgOfWhatsAppContext(),
       direction: msg.direction || 'outbound',
       contactPhone: formattedPhone,
       contactName: msg.contactName || formattedPhone || 'Contato WhatsApp',
@@ -2776,6 +2782,8 @@ Sua tarefa:
       linkedProposalCode: msg.linkedProposalCode,
       linkedReceiptId: msg.linkedReceiptId,
       sentByUserName: msg.sentByUserName,
+      // WhatsApp (sessão) e empresa por onde a mensagem passou.
+      sessionKey: currentWhatsAppSession()?.key || '',
       createdAt: createdAtIso,
     };
 
@@ -2841,7 +2849,7 @@ Sua tarefa:
   const defaultReceipts: any[] = [
     {
       id: 'rec_001',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213401',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2866,7 +2874,7 @@ Sua tarefa:
     },
     {
       id: 'rec_002',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213402',
       employeeName: 'André Luiz Souza',
       employeePhone: '+55 19 98456-7890',
@@ -2889,7 +2897,7 @@ Sua tarefa:
     },
     {
       id: 'rec_003',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213403',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2913,7 +2921,7 @@ Sua tarefa:
     },
     {
       id: 'rec_004',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213404',
       employeeName: 'Marcos Roberto Santos',
       employeePhone: '+55 19 98234-5678',
@@ -4715,7 +4723,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newReceipt = {
         id: `rec_${Date.now()}`,
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         whatsappMessageId: `manual_${Date.now()}`,
         employeeName: employeeName || 'Carlos Eduardo Silva',
         employeePhone: employeePhone || '+55 19 98123-4567',
@@ -5481,7 +5489,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
         const newRec = {
           id: `rec_batch_${Date.now()}_${i}`,
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           whatsappMessageId: `batch_${Date.now()}_${i}`,
           employeeName: employeeName || f.employeeName || 'Carlos Eduardo Silva',
           employeePhone: employeePhone || f.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber,
@@ -5595,7 +5603,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newRec = {
         id: `rec_test_${Date.now()}`,
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         whatsappMessageId: `test_wa_${Date.now()}`,
         employeeName: 'Gustavo Aguero (Administrador)',
         employeePhone: whatsAppReceiptsConfig.connectedPhoneNumber || process.env.OWNER_PHONE || '',
@@ -6279,7 +6287,7 @@ Avalie rigorosamente:
 
     if (sendRes.success) {
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: 'outbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -6944,7 +6952,7 @@ INSTRUÇÕES:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           direction: 'outbound',
           contactPhone: job.targetJidOrPhone,
           contactName: job.targetLabel || job.targetJidOrPhone,
@@ -7935,7 +7943,7 @@ Classifique e extraia em JSON estrito:
         });
         if (sendRes.success) {
           recordWhatsAppMessage({
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
             direction: 'outbound',
             contactPhone: resolvedTarget.jidOrPhone,
             contactName: resolvedTarget.label,
@@ -7964,7 +7972,7 @@ Classifique e extraia em JSON estrito:
             canUseErpTools({ isOwner, senderDigits, authorizedPhones: (whatsAppReceiptsConfig.authorizedPhones || []).map((p: string) => normalizeWhatsAppPhone(p)) }) &&
             ERP_QUESTION.test(userQuestion)) {
           try {
-            const text = await answerWithTools(erpH, effectiveOrg(undefined), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 1, timeoutMs: 25_000 })).response);
+            const text = await answerWithTools(erpH, orgOfWhatsAppContext(), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 1, timeoutMs: 25_000 })).response);
             if (text) { aiResult = { intent: 'answer', replyText: text }; erpAnswered = true; }
           } catch (e: any) {
             lastAiErrorMessage = String(e?.message || e || '');
@@ -8215,7 +8223,7 @@ DIRETRIZES ESSENCIAIS:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           direction: 'outbound',
           contactPhone: useOwnerDm && ownerDigits ? formatWhatsAppPhoneDisplay(ownerDigits) : params.isGroup ? params.remoteJid : params.senderPhone,
           contactName: useOwnerDm ? 'Meu WhatsApp (Resposta @aguero)' : params.isGroup ? params.groupName || params.remoteJid : params.senderName,
@@ -8741,7 +8749,7 @@ DIRETRIZES ESSENCIAIS:
     onHistoryMessage: (histEvt) => {
       // Passive read-only archival of offline/synced WhatsApp messages so @aguero summaries NEVER miss offline history!
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: histEvt.fromMe ? 'outbound' : 'inbound',
         contactPhone: histEvt.isGroup ? histEvt.remoteJid : histEvt.senderPhone,
         contactName: histEvt.isGroup ? histEvt.groupName || histEvt.remoteJid : histEvt.senderName,
@@ -8846,7 +8854,7 @@ DIRETRIZES ESSENCIAIS:
 
           const newRec = {
             id: `rec_wa_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
             whatsappMessageId: evt.messageId,
             employeeName: evt.senderName,
             employeePhone: evt.senderPhone,
@@ -8907,7 +8915,7 @@ DIRETRIZES ESSENCIAIS:
             if (replyRes.success) {
               didSendOcrConfirmation = true;
               recordWhatsAppMessage({
-                organizationId: effectiveOrg(undefined),
+                organizationId: orgOfWhatsAppContext(),
                 direction: 'outbound',
                 contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
                 contactName: evt.isGroup ? evt.groupName : evt.senderName,
@@ -8934,7 +8942,7 @@ DIRETRIZES ESSENCIAIS:
 
       // Record chat message in unified WhatsApp hub inbox
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: evt.fromMe ? 'outbound' : 'inbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -10375,7 +10383,7 @@ DIRETRIZES ESSENCIAIS:
           ...createDefaultNdRuleForGroup({
             groupJid: '',
             groupName: 'Teste / Gerador Avulso',
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
           }),
           id: 'wand_rule_default_test',
           nextProjNumber: Math.max(4925, maxExistingProj + 1),
@@ -11644,7 +11652,7 @@ Retorne JSON estrito.`;
     const nowIso = new Date().toISOString();
     const newRec = {
       id: `rec_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       employeeName: String(body.employeeName || body.editedBy || 'Lançamento Manual').trim(),
       employeePhone: String(body.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber || '').trim(),
       receiptDate: String(body.receiptDate || nowIso.slice(0, 10)).trim(),

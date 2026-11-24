@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionForRequest, pickOrgSender } from '../server/whatsappRouting';
+import { sessionForRequest, pickOrgSender, addTag } from '../server/whatsappRouting';
+
+test('addTag: acrescenta a sessão sem repetir e ignora vazio', () => {
+  assert.deepEqual(addTag(undefined, 'u_a'), ['u_a']);
+  assert.deepEqual(addTag(['u_a'], 'u_a'), ['u_a']);
+  assert.deepEqual(addTag(['u_a'], 'u_b'), ['u_a', 'u_b']);
+  assert.deepEqual(addTag(['u_a'], undefined), ['u_a']);
+  assert.deepEqual(addTag(undefined, undefined), []);
+});
 
 test('sessionForRequest: sem usuário → 401', () => {
   assert.deepEqual(sessionForRequest({ orgId: 'o' }), { error: 'Entre no AgueroFlow para usar o WhatsApp.', status: 401 });

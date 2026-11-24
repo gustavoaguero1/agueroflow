@@ -16,6 +16,9 @@ export interface SessionContext {
 
 type Registry = Pick<SessionRegistry, 'get' | 'meta' | 'list' | 'ensure'>;
 
+/** Contexto de automação de uma empresa sem nenhum WhatsApp conectado. */
+const NO_SENDER = '__sem_whatsapp__';
+
 export function createWhatsAppContext(opts: {
   registry: Registry;
   defaultOrgId: string;
@@ -65,9 +68,25 @@ export function createWhatsAppContext(opts: {
 
   const currentSession = (): SessionContext | undefined => als.getStore();
 
+  /** Avisa (no máximo a cada 5 min por empresa) quando uma automação não tem por onde enviar. */
+  const lastWarn = new Map<string, number>();
+  const warnNoSender = (orgId: string) => {
+    const now = Date.now();
+    if (now - (lastWarn.get(orgId) || 0) < 5 * 60_000) return;
+    lastWarn.set(orgId, now);
+    console.warn(`⚠️ [WhatsApp] Sem WhatsApp conectado para a empresa ${orgId}: avisos e automações não serão enviados.`);
+  };
+
+  /** Empresa do contexto atual (sessão que recebeu ou empresa da requisição); sem contexto, a padrão. */
+  const orgOfContext = (): string => als.getStore()?.orgId || opts.defaultOrgId;
+
   /** Conexão do contexto atual; sem contexto, o número da empresa padrão; sem nada, a em branco. */
   const resolve = (): WhatsAppBridge => {
     const s = als.getStore();
+    if (s?.key === NO_SENDER) {
+      warnNoSender(s.orgId);
+      return opts.blank;
+    }
     if (s) return opts.registry.get(s.key) || opts.blank;
     const k = senderKey(opts.defaultOrgId);
     return (k && opts.registry.get(k)) || opts.blank;
@@ -77,7 +96,7 @@ export function createWhatsAppContext(opts: {
 
   const runAsOrgSender = <T,>(orgId: string, fn: () => T): T => {
     const k = senderKey(orgId);
-    return als.run({ key: k || '__sem_whatsapp__', orgId, uid: (k && opts.registry.meta(k)?.uid) ?? null }, fn);
+    return als.run({ key: k || NO_SENDER, orgId, uid: (k && opts.registry.meta(k)?.uid) ?? null }, fn);
   };
 
   type Fn<K extends keyof WhatsAppBridge> = WhatsAppBridge[K];
@@ -120,7 +139,7 @@ export function createWhatsAppContext(opts: {
     },
   };
 
-  return { api, runInSession, runAsOrgSender, currentSession, attach, attachAll, senderKey };
+  return { api, runInSession, runAsOrgSender, currentSession, orgOfContext, attach, attachAll, senderKey };
 }
 
 export type WhatsAppContext = ReturnType<typeof createWhatsAppContext>;

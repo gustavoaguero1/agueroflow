@@ -73,6 +73,27 @@ test('runAsOrgSender usa o número da empresa pedida', async () => {
   assert.deepEqual(r, { success: true, via: 'u_c' });
 });
 
+test('orgOfContext: empresa da sessão atual; sem contexto, a empresa padrão', () => {
+  const { ctx } = setup([{ key: 'u_c', orgId: 'org2', uid: 'c', connected: true }]);
+  assert.equal(ctx.orgOfContext(), 'org1');
+  assert.equal(ctx.runInSession({ key: 'u_c', orgId: 'org2', uid: 'c' }, () => ctx.orgOfContext()), 'org2');
+  assert.equal(ctx.runAsOrgSender('org7', () => ctx.orgOfContext()), 'org7');
+});
+
+test('automação de empresa sem WhatsApp conectado avisa no log em vez de enviar por outra empresa', async () => {
+  const { ctx } = setup([{ key: 'u_c', orgId: 'org2', uid: 'c', connected: true }]);
+  const warns: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: string) => { warns.push(String(m)); };
+  try {
+    const r = await ctx.runAsOrgSender('org9', () => ctx.api.getWhatsAppBridgeStatus());
+    assert.equal((r as unknown as { key: string }).key, 'blank');
+  } finally {
+    console.warn = orig;
+  }
+  assert.ok(warns.some((w) => w.includes('Sem WhatsApp conectado para a empresa org9')));
+});
+
 test('ganchos registrados uma vez valem para todas as conexões, e rodam no contexto de quem recebeu', async () => {
   const { reg, ctx } = setup([{ key: 'u_a', orgId: 'org1', uid: 'a', connected: true }]);
   const seen: unknown[] = [];

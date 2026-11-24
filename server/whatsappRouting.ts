@@ -11,6 +11,13 @@ export function sessionForRequest(req: {
   return { key: sessionKeyForUser(uid), orgId: req.orgId, uid };
 }
 
+/** Lista de marcas (ex.: sessões que viram um contato) sem repetir. */
+export function addTag(list: string[] | undefined, tag: string | undefined): string[] {
+  const out = [...(list || [])];
+  if (tag && !out.includes(tag)) out.push(tag);
+  return out;
+}
+
 /**
  * Remetente das automações da empresa (NDs, comandos, resumo semanal): o número oficial se estiver
  * conectado; senão outra conexão da mesma empresa (a sessão antiga primeiro, depois a mais antiga);
