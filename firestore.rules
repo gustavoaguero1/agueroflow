@@ -322,22 +322,25 @@ service cloud.firestore {
       function qualityReferencesBelongToOrg(d) {
         let unitPath = /databases/$(database)/documents/units/$(d.get('unitId', ''));
         let contractPath = /databases/$(database)/documents/contracts/$(d.get('contractId', ''));
-        let engineeringPath = /databases/$(database)/documents/engineering_documents/$(d.get('engineeringDocumentId', ''));
-        let checklistPath = /databases/$(database)/documents/checklist_runs/$(d.get('checklistRunId', ''));
-        return exists(unitPath) && exists(contractPath)
-          && get(unitPath).data.get('orgId', '') == orgOf(d)
-          && get(contractPath).data.get('orgId', '') == orgOf(d)
-          && (d.get('engineeringDocumentId', '') == ''
-            || (exists(engineeringPath)
-              && get(engineeringPath).data.get('orgId', '') == orgOf(d)
-              && get(engineeringPath).data.get('unitId', '') == d.get('unitId', '')
-              && get(engineeringPath).data.get('contractId', '') == d.get('contractId', '')))
-          && (d.get('checklistRunId', '') == ''
-            || (exists(checklistPath)
-              && get(checklistPath).data.get('orgId', '') == orgOf(d)
-              && (get(checklistPath).data.get('unitId', '') == null
-                || get(checklistPath).data.get('unitId', '') == ''
-                || get(checklistPath).data.get('unitId', '') == d.get('unitId', ''))));
+        let engineeringId = d.get('engineeringDocumentId', '');
+        let checklistId = d.get('checklistRunId', '');
+        let engineeringPath = /databases/$(database)/documents/engineering_documents/$(engineeringId);
+        let checklistPath = /databases/$(database)/documents/checklist_runs/$(checklistId);
+        let unitData = get(unitPath).data;
+        let contractData = get(contractPath).data;
+        let engineeringData = engineeringId == '' ? {} : get(engineeringPath).data;
+        let checklistData = checklistId == '' ? {} : get(checklistPath).data;
+        return unitData.get('orgId', '') == orgOf(d)
+          && contractData.get('orgId', '') == orgOf(d)
+          && (engineeringId == ''
+            || (engineeringData.get('orgId', '') == orgOf(d)
+              && engineeringData.get('unitId', '') == d.get('unitId', '')
+              && engineeringData.get('contractId', '') == d.get('contractId', '')))
+          && (checklistId == ''
+            || (checklistData.get('orgId', '') == orgOf(d)
+              && (checklistData.get('unitId', null) == null
+                || checklistData.get('unitId', '') == ''
+                || checklistData.get('unitId', '') == d.get('unitId', ''))));
       }
       function validQualityRecordCreate() {
         return coll != 'quality_records' || (
@@ -412,14 +415,16 @@ service cloud.firestore {
       function validQualityEventCreate() {
         let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
         let eventType = request.resource.data.get('eventType', '');
-        let recordType = getAfter(recordPath).data.get('recordType', '');
+        let recordExists = existsAfter(recordPath);
+        let recordData = recordExists ? getAfter(recordPath).data : {};
+        let recordType = recordData.get('recordType', '');
         return coll != 'quality_record_events' || (
           signedIn()
           && request.resource.data.get('recordId', '') is string
-          && existsAfter(recordPath)
-          && getAfter(recordPath).data.get('orgId', '') == orgOf(request.resource.data)
-          && getAfter(recordPath).data.get('unitId', '') == request.resource.data.get('unitId', '')
-          && getAfter(recordPath).data.get('contractId', '') == request.resource.data.get('contractId', '')
+          && recordExists
+          && recordData.get('orgId', '') == orgOf(request.resource.data)
+          && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
+          && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
           && request.resource.data.get('unitId', '') is string
           && request.resource.data.get('contractId', '') is string
           && eventType in ['submitted_for_review', 'opened', 'approved', 'rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
@@ -428,11 +433,11 @@ service cloud.firestore {
           && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
           && (eventType == 'submitted_for_review'
-            ? (getAfter(recordPath).data.get('createdAt', null) == request.time
+            ? (recordData.get('createdAt', null) == request.time
               && recordType in ['visual_inspection', 'weld_inspection', 'dimensional_inspection', 'material_receipt', 'hydrostatic_test', 'leak_test', 'functional_test', 'commissioning'])
             : true)
           && (eventType == 'opened'
-            ? (getAfter(recordPath).data.get('createdAt', null) == request.time
+            ? (recordData.get('createdAt', null) == request.time
               && recordType in ['nonconformity', 'punch_item'])
             : true)
           && (eventType in ['approved', 'rejected']
