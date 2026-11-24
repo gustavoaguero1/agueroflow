@@ -1,6 +1,8 @@
 name: Validar AgueroFlow
 
 on:
+  push:
+    branches: ['feature/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
