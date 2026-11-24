@@ -33,6 +33,7 @@ import type { UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
 import { createPeopleSource } from './peopleSource';
 import { createObrasSource } from './obrasSource';
+import { syncDiarioToTimeLogs } from './diarioSync';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -101,6 +102,18 @@ export function createOpsBridge(ctx: OpsContext) {
     if (col === 'colaboradores' && id) return wrapVirtualDoc(people.colabDoc(id));
     if (col === 'salarios' && id) return wrapVirtualDoc(people.salarioDoc(id));
     if (col === 'obras' && id) return wrapVirtualDoc(obras.obraDoc(id));
+    if (col === 'diario' && /^\d{4}-\d{2}-\d{2}$/.test(id)) return withDiarioSync(docApiRaw(path), id);
+    return docApiRaw(path);
+  };
+
+  /** Diário gravado → apontamento de jornada do dia (falha no espelho não desfaz o diário). */
+  const withDiarioSync = (d: any, iso: string) => {
+    const after = (p: Promise<unknown>) =>
+      p.then((r) => { syncDiarioToTimeLogs(ctx.orgId, iso).catch((e) => console.warn('[operacoes] apontamento do diário', e)); return r; });
+    return { ...d, set: (...a: any[]) => after(d.set(...a)), update: (...a: any[]) => after(d.update(...a)) };
+  };
+
+  const docApiRaw = (path: string): any => {
     const r = doc(db, base(path));
     return {
       id: r.id,
