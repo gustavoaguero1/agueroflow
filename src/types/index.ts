@@ -9,6 +9,8 @@ export interface Organization {
   phone?: string;
   createdAt: string;
   updatedAt: string;
+  /** Acesso por área ajustado pela empresa, por perfil (ver src/permissions/areas.ts). */
+  areaDefaults?: Partial<Record<UserRole, Partial<Record<string, 0 | 1 | 2>>>>;
 }
 
 export interface OrgMember {
@@ -23,6 +25,10 @@ export interface OrgMember {
   passwordSet?: boolean;
   passwordSetAt?: string;
   initialPasswordSetByAdmin?: boolean;
+  /** Ajuste de acesso só desta pessoa, por cima do padrão do perfil. */
+  areaOverrides?: Partial<Record<string, 0 | 1 | 2>>;
+  /** Muda quando o acesso da pessoa muda; o navegador renova o login ao ver a mudança. */
+  areasUpdatedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

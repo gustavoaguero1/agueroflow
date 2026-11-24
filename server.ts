@@ -79,7 +79,8 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { memberOrgOf, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { createAreaRouter } from './server/areaRoutes';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
@@ -559,6 +560,7 @@ async function main() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
+  app.use('/api/org', createAreaRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
@@ -664,7 +666,7 @@ async function main() {
   };
 
   // 1. Generate one-time registration link
-  app.post('/api/hr/onboarding/generate-link', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  app.post('/api/hr/onboarding/generate-link', requireArea('rh', 2), async (req: Request, res: Response) => {
     try {
       const organizationId = req.orgId;
       const createdBy = req.user!.email || req.user!.uid;
@@ -861,7 +863,7 @@ async function main() {
   });
 
   // 4. List all onboarding invitations for HR
-  app.get('/api/hr/onboarding/list', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  app.get('/api/hr/onboarding/list', requireArea('rh', 1), async (req: Request, res: Response) => {
     try {
       const orgId = req.orgId; // undefined only for master without orgId: lists all
       const list = readOnboardingsStore()
@@ -874,7 +876,7 @@ async function main() {
   });
 
   // 5. Update status (Approve / Reject / Efetivar)
-  app.post('/api/hr/onboarding/:id/status', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  app.post('/api/hr/onboarding/:id/status', requireArea('rh', 2), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, reviewNotes, reviewedBy, resultingEmployeeId } = req.body;
@@ -907,7 +909,7 @@ async function main() {
   });
 
   // 6. Delete onboarding link record
-  app.delete('/api/hr/onboarding/:id', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  app.delete('/api/hr/onboarding/:id', requireArea('rh', 2), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const all = readOnboardingsStore();

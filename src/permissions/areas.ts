@@ -67,6 +67,37 @@ export function resolveAreas(
   return out;
 }
 
+/** Níveis no token: um dígito por área, na ordem de AREA_IDS (o token tem limite de tamanho). */
+export function encodeAreas(levels: AreaLevels): string {
+  return AREA_IDS.map((a) => String(levels[a] ?? 0)).join('');
+}
+
+export function decodeAreas(s: unknown): AreaLevels | null {
+  if (typeof s !== 'string' || !new RegExp(`^[012]{${AREA_IDS.length}}$`).test(s)) return null;
+  const out = {} as AreaLevels;
+  AREA_IDS.forEach((a, i) => { out[a] = Number(s[i]) as AreaLevel; });
+  return out;
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Ajuste vindo de fora (tela, banco): só áreas conhecidas com nível 0, 1 ou 2. */
+export function sanitizeOverrides(v: unknown): AreaOverrides {
+  const out: AreaOverrides = {};
+  if (!isPlainObject(v)) return out;
+  for (const a of AREA_IDS) if (isLevel(v[a])) out[a] = v[a] as AreaLevel;
+  return out;
+}
+
+export function sanitizeOrgDefaults(v: unknown): Partial<Record<UserRole, AreaOverrides>> {
+  const out: Partial<Record<UserRole, AreaOverrides>> = {};
+  if (!isPlainObject(v)) return out;
+  for (const role of Object.keys(ROLE_DEFAULTS) as UserRole[]) {
+    if (role in v) out[role] = sanitizeOverrides(v[role]);
+  }
+  return out;
+}
+
 export function areaOfSection(section: string): AreaId | null {
   const s = String(section || '');
   for (const area of AREAS) {
