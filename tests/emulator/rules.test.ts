@@ -24,6 +24,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
+    await setDoc(doc(db, 'purchasing_quotations/q_a'), { organizationId: 'org_a', total: 1 });
+    await setDoc(doc(db, 'purchasing_receipts/r_a'), { organizationId: 'org_a', total: 1 });
+    await setDoc(doc(db, 'purchasing_requisitions/req_a'), { organizationId: 'org_a', total: 1 });
+    await setDoc(doc(db, 'purchasing_suppliers/s_a'), { organizationId: 'org_a', name: 'Fornecedor A' });
     await setDoc(doc(db, 'overtime_rules/org_a'), { organizationId: 'org_a' });
     await setDoc(doc(db, 'commercial_proposals/p_a'), { organizationId: 'org_a' });
     await setDoc(doc(db, 'commercial_proposal_items/i_a'), { organizationId: 'org_a', proposalId: 'p_a' });
@@ -89,6 +93,34 @@ test('list query by organizationId allowed for member', async () => {
   const db = member();
   await assertSucceeds(getDocs(query(collection(db, 'purchasing_orders'), where('organizationId', '==', 'org_a'))));
   await assertFails(getDocs(query(collection(db, 'purchasing_orders'), where('organizationId', '==', 'org_b'))));
+});
+
+test('estoque: acesso por área nas coleções de compras', async () => {
+  const viewOnly = as('stock_view', { org_a: 'Operacional' }, false, { org_a: '12121010112' });
+  const editor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12221010112' });
+  const noAccess = as('stock_none', { org_a: 'Operacional' }, false, { org_a: '12021010112' });
+  const collections = [
+    'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts',
+    'purchasing_requisitions', 'purchasing_suppliers',
+  ];
+
+  for (const name of collections) {
+    const existingId = ({
+      purchasing_orders: 'po_a', purchasing_quotations: 'q_a', purchasing_receipts: 'r_a',
+      purchasing_requisitions: 'req_a', purchasing_suppliers: 's_a',
+    } as Record<string, string>)[name];
+
+    await assertSucceeds(getDoc(doc(viewOnly, `${name}/${existingId}`)), `${name}: ver permitido`);
+    await assertFails(getDoc(doc(noAccess, `${name}/${existingId}`)), `${name}: sem acesso deve bloquear leitura`);
+    await assertFails(updateDoc(doc(viewOnly, `${name}/${existingId}`), { total: 2 }), `${name}: ver não pode editar`);
+    await assertFails(setDoc(doc(viewOnly, `${name}/view_create`), { organizationId: 'org_a' }), `${name}: ver não pode criar`);
+    await assertSucceeds(updateDoc(doc(editor, `${name}/${existingId}`), { total: 3 }), `${name}: editar permitido`);
+    await assertSucceeds(setDoc(doc(editor, `${name}/editor_create`), { organizationId: 'org_a' }), `${name}: criação permitida`);
+    await assertSucceeds(deleteDoc(doc(editor, `${name}/editor_create`)), `${name}: exclusão permitida`);
+  }
+
+  await assertSucceeds(getDocs(query(collection(viewOnly, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
+  await assertFails(getDocs(query(collection(noAccess, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
 });
 
 test('list query without org filter denied', async () => {
