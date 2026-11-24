@@ -56,8 +56,17 @@ export function purchaseReceiptId(input: Pick<RegisterPurchaseReceiptInput, 'org
 
 const normalizeUnit = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase('pt-BR');
 const round4 = (value: number) => Math.round(value * 10000) / 10000;
-const safe = <T extends object>(value: T) =>
-  Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T;
+const safe = <T>(value: T): T => {
+  if (Array.isArray(value)) return value.map((item) => safe(item)) as T;
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, safe(item)]),
+    ) as T;
+  }
+  return value;
+};
 
 /**
  * Registers a physical receipt and, in the same Firestore transaction, updates
