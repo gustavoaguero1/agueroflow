@@ -48,6 +48,7 @@ service cloud.firestore {
     function areaLevel(org, i) { return isMaster() ? 2 : (isMemberOf(org) ? int(areaCode(org)[i:i + 1]) : 0); }
     function areaOk(org, i, lvl) { return isMaster() || areaLevel(org, i) >= lvl; }
     function A_OPS() { return 1; }
+    function A_STOCK() { return 2; }
     function A_COM() { return 3; }
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
@@ -180,10 +181,12 @@ service cloud.firestore {
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
-      // Área da coleção: RH e Comercial pedem acesso à área (ver lê, editar grava); as demais, só ser da empresa.
+      // Área da coleção: RH, Estoque/Compras e Comercial exigem acesso (ver lê, editar grava).
+      // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll.matches('commercial_.*') ? A_COM() : -1);
+          : (coll.matches('commercial_.*') ? A_COM()
+            : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1));
       }
       function areaRead(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 1); }
       function areaWrite(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 2); }
