@@ -462,6 +462,15 @@ service cloud.firestore {
       function validQualityStateUpdateForDoc() {
         let eventId = request.resource.data.get('latestEventId', '');
         let eventPath = /databases/$(database)/documents/quality_record_events/$(eventId);
+        let recordPath = /databases/$(database)/documents/quality_records/$(resource.data.get('recordId', ''));
+        let recordData = get(recordPath).data;
+        let eventExists = existsAfter(eventPath);
+        let eventData = eventExists ? getAfter(eventPath).data : {};
+        let currentStatus = resource.data.get('status', '');
+        let eventType = eventData.get('eventType', '');
+        let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
+          || recordData.get('result', '') == 'nao_conforme' || currentStatus == 'rejected';
+        let nextStatus = qualityStatusAfter(currentStatus, eventType);
         return signedIn()
           && request.resource.data.get('id', '') == docId
           && request.resource.data.get('recordId', '') == resource.data.get('recordId', '')
@@ -473,29 +482,42 @@ service cloud.firestore {
           && request.resource.data.get('updatedByName', '') is string
           && request.resource.data.get('updatedByName', '').size() > 0
           && request.resource.data.get('updatedAt', null) == request.time
-          && existsAfter(eventPath)
-          && getAfter(eventPath).data.get('recordId', '') == resource.data.get('recordId', '')
-          && getAfter(eventPath).data.get('previousEventId', '') == resource.data.get('latestEventId', '')
-          && getAfter(eventPath).data.get('actorUid', '') == request.auth.uid
-          && request.resource.data.get('status', '') == qualityStatusAfter(resource.data.get('status', ''), getAfter(eventPath).data.get('eventType', ''))
-          && request.resource.data.get('status', '') != '';
+          && eventExists
+          && eventData.get('recordId', '') == resource.data.get('recordId', '')
+          && eventData.get('orgId', '') == orgOf(resource.data)
+          && eventData.get('unitId', '') == resource.data.get('unitId', '')
+          && eventData.get('contractId', '') == resource.data.get('contractId', '')
+          && eventData.get('previousEventId', '') == resource.data.get('latestEventId', '')
+          && eventData.get('actorUid', '') == request.auth.uid
+          && eventData.get('actorName', '') is string
+          && eventData.get('actorName', '').size() > 0
+          && eventData.get('recordedAt', null) == request.time
+          && request.resource.data.get('status', '') == nextStatus
+          && nextStatus != ''
+          && (eventType in ['approved', 'rejected']
+            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+              && !finding && recordData.get('result', '') != 'pendente')
+            : true)
+          && (eventType in ['verified', 'closed', 'reopened']
+            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']) && finding)
+            : true)
+          && (eventType == 'corrective_action_submitted' ? finding : true)
+          && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
+            ? (eventData.get('comment', '') is string
+              && eventData.get('comment', '').size() > 0
+              && eventData.get('comment', '').size() <= 1500)
+            : true);
       }
       function validQualityStateUpdate() {
         return coll != 'quality_record_states' || validQualityStateUpdateForDoc();
       }
       function validQualityEventCreateForDoc() {
-        let statePath = /databases/$(database)/documents/quality_record_states/$(request.resource.data.get('recordId', ''));
-        let stateExistsBefore = exists(statePath);
-        let stateBefore = stateExistsBefore ? get(statePath).data : {};
-        let recordData = getAfter(/databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''))).data;
+        let recordPath = /databases/$(database)/documents/quality_records/$(request.resource.data.get('recordId', ''));
+        let recordData = getAfter(recordPath).data;
         let isInitial = recordData.get('createdAt', null) == request.time;
         let eventType = request.resource.data.get('eventType', '');
-        let nextStatus = isInitial ? qualityInitialStatus(recordData) : qualityStatusAfter(stateBefore.get('status', 'unknown'), eventType);
-        let finding = recordData.get('recordType', '') in ['nonconformity', 'punch_item']
-          || recordData.get('result', '') == 'nao_conforme' || stateBefore.get('status', 'unknown') == 'rejected';
         return signedIn()
-          && request.resource.data.get('recordId', '') is string
-          && request.resource.data.get('recordId', '').size() > 0
+          && existsAfter(recordPath)
           && recordData.get('orgId', '') == orgOf(request.resource.data)
           && recordData.get('unitId', '') == request.resource.data.get('unitId', '')
           && recordData.get('contractId', '') == request.resource.data.get('contractId', '')
@@ -507,21 +529,10 @@ service cloud.firestore {
           && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
           && (isInitial
-            ? (!stateExistsBefore
-              && eventType == qualityInitialEventType(recordData)
+            ? (eventType == qualityInitialEventType(recordData)
               && !request.resource.data.keys().hasAny(['previousEventId']))
-            : (stateExistsBefore
-              && request.resource.data.get('previousEventId', '') == stateBefore.get('latestEventId', '')
-              && nextStatus != ''))
-          && (eventType in ['approved', 'rejected']
-            ? (hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
-              && !finding
-              && recordData.get('result', '') != 'pendente')
-            : true)
-          && (eventType in ['verified', 'closed', 'reopened']
-            ? (hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor']) && finding)
-            : true)
-          && (eventType == 'corrective_action_submitted' ? finding : true)
+            : (request.resource.data.get('previousEventId', '') is string
+              && request.resource.data.get('previousEventId', '').size() > 0))
           && (eventType in ['rejected', 'corrective_action_submitted', 'verified', 'closed', 'reopened', 'note_added']
             ? (request.resource.data.get('comment', '') is string
               && request.resource.data.get('comment', '').size() > 0
