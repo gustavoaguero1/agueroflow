@@ -400,7 +400,7 @@ export const PurchasingReceivingManager: React.FC<PurchasingReceivingManagerProp
                     inputMode="numeric"
                     maxLength={44}
                     value={invoiceKey}
-                    onChange={(e) => setInvoiceKey(e.target.value.replace(/\\D/g, '').slice(0, 44))}
+                    onChange={(e) => setInvoiceKey(e.target.value.replace(/\D/g, '').slice(0, 44))}
                     placeholder="44 dígitos"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
                   />
