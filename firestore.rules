@@ -188,7 +188,12 @@ service cloud.firestore {
           : (coll.matches('commercial_.*') ? A_COM()
             : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1));
       }
-      function areaRead(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 1); }
+      // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
+      function areaRead(d) {
+        return coll in ['purchasing_orders', 'purchasing_receipts']
+          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+          : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1));
+      }
       function areaWrite(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 2); }
       // Operações aloca a pessoa numa obra: no RH muda só obra/código.
       function rhAllocation() {

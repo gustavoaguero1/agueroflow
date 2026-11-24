@@ -60,6 +60,66 @@ test('classify twice applies once', async () => {
   assert.equal(bal.averageCost, 26.8784); // 255 × (585 / 555) / 10: freight etc. spread into stock cost
 });
 
+test('NF-e linked to an OC defers stock until physical receipt and carries the OS into payables', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'purchasing_orders/po_a'), {
+      id: 'po_a', organizationId: 'org_a', code: 'OC-2026-001',
+      supplierName: 'FORNECEDOR', supplierCnpj: '11111111000111',
+      linkedWorkOrderId: 'wo_a', linkedWorkOrderNumber: 'OS-2026-014',
+      status: 'emitida', totalValue: 585, items: [],
+    });
+  });
+  await classifyNfe(db(), { ...input, purchaseOrderId: 'po_a' });
+  assert.equal(await balance(), undefined, 'classification must not add stock before physical receipt');
+  assert.equal((await registeredEntries(db(), 'org_a', await nfe() as any)).size, 0);
+  const ps = await payables();
+  assert.equal(ps.length, 2);
+  assert.equal(ps[0].purchaseOrderId, 'po_a');
+  assert.equal(ps[0].purchaseOrderCode, 'OC-2026-001');
+  assert.equal(ps[0].workOrderId, 'wo_a');
+  assert.equal(ps[0].workOrderNumber, 'OS-2026-014');
+  const classification = (await nfe()).classificacao;
+  assert.equal(classification.purchaseOrderId, 'po_a');
+  assert.equal(classification.stockControlledByReceipt, true);
+});
+
+test('NF-e already received by Compras creates payables without duplicating stock', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const adminDb = ctx.firestore();
+    await setDoc(doc(adminDb, 'purchasing_orders/po_a'), {
+      id: 'po_a', organizationId: 'org_a', code: 'OC-2026-001',
+      supplierName: 'FORNECEDOR', supplierCnpj: '11111111000111',
+      linkedWorkOrderId: 'wo_a', linkedWorkOrderNumber: 'OS-2026-014',
+      status: 'recebida_total', totalValue: 585, items: [],
+    });
+    await setDoc(doc(adminDb, 'purchasing_receipts/rec_org_a_K1'), {
+      id: 'rec_org_a_K1', organizationId: 'org_a', purchaseOrderId: 'po_a',
+      purchaseOrderCode: 'OC-2026-001', supplierName: 'FORNECEDOR',
+      invoiceNumber: '1234', invoiceKey: 'K1', receiptDate: '2026-11-24',
+      stockMovementIds: ['existing_receipt_movement'], status: 'conforme',
+    });
+    await setDoc(doc(adminDb, 'stock_balances/bal_u_a_it1'), {
+      id: 'bal_u_a_it1', orgId: 'org_a', unitId: 'u_a', itemId: 'it1', currentBalance: 10, averageCost: 26,
+    });
+  });
+  await classifyNfe(db(), input);
+  assert.equal(await balance(), 10, 'NF-e classification must not add a second stock entry');
+  assert.equal((await registeredEntries(db(), 'org_a', await nfe() as any)).size, 0);
+  const ps = await payables();
+  assert.equal(ps.length, 2);
+  assert.equal(ps[0].purchaseOrderId, 'po_a');
+  assert.equal(ps[0].receiptId, 'rec_org_a_K1');
+  assert.equal((await nfe()).classificacao.receiptId, 'rec_org_a_K1');
+});
+
+test('a selected purchase order from another supplier is rejected before classification starts', async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'purchasing_orders/po_wrong'), {
+    id: 'po_wrong', organizationId: 'org_a', code: 'OC-ERRADA', supplierCnpj: '22222222000122', status: 'emitida',
+  }));
+  await assert.rejects(classifyNfe(db(), { ...input, purchaseOrderId: 'po_wrong' }), /fornecedor da Ordem de Compra não corresponde/);
+  assert.equal((await nfe()).status, 'aguardando_classificacao');
+});
+
 test('payables failure marks error; retry does not duplicate stock', async () => {
   // Make payables fail: a paid payable with the same id but another org blocks the transaction (read denied).
   await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'finance_payables/pay_org_a_K1_001'), { orgId: 'org_b' }));

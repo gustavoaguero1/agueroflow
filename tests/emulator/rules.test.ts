@@ -132,6 +132,18 @@ test('estoque: acesso por área nas coleções de compras', async () => {
   await assertSucceeds(getDocs(query(collection(viewOnly, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
   await assertFails(getDocs(query(collection(noAccess, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
 });
+test('Financeiro can read OCs/receipts for reconciliation but cannot modify them', async () => {
+  const financeView = as('finance_view', { org_a: 'Operacional' }, false, { org_a: '00001000000' });
+  await assertSucceeds(getDoc(doc(financeView, 'purchasing_orders/po_a')));
+  await assertSucceeds(getDoc(doc(financeView, 'purchasing_receipts/r_a')));
+  await assertSucceeds(getDocs(query(collection(financeView, 'purchasing_orders'), where('organizationId', '==', 'org_a'))));
+  await assertSucceeds(getDocs(query(collection(financeView, 'purchasing_receipts'), where('organizationId', '==', 'org_a'))));
+  await assertFails(updateDoc(doc(financeView, 'purchasing_orders/po_a'), { total: 3 }));
+  await assertFails(updateDoc(doc(financeView, 'purchasing_receipts/r_a'), { notes: 'alterado' }));
+  await assertFails(setDoc(doc(financeView, 'purchasing_orders/finance_create'), { organizationId: 'org_a' }));
+  await assertFails(setDoc(doc(financeView, 'purchasing_receipts/finance_create'), { organizationId: 'org_a' }));
+});
+
 test('list query without org filter denied', async () => {
   const db = member();
   await assertFails(getDocs(collection(db, 'work_orders')));

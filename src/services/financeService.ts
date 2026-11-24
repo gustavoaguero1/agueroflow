@@ -2,7 +2,9 @@ import {
   collection, deleteField, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type Firestore,
 } from 'firebase/firestore';
 import { applyStockMovement, movementIdFor } from './stockService';
+import { purchaseReceiptLookupIds } from './purchasingReceivingService';
 import type { Item } from '../types';
+import type { MaterialReceiptRecord, PurchaseOrder } from '../types/purchasing';
 import type {
   CategoryGroup, ClassifyLine, Destino, FinanceCategory, FinancePayable, FinanceRule, NfeDocument, NfeItem, Rateio,
 } from '../types/finance';
@@ -143,7 +145,7 @@ export function parcelasOf(nfe: Pick<NfeDocument, 'duplicatas' | 'valorTotal' | 
 export function buildPayables(
   nfe: Pick<NfeDocument, 'chave' | 'numero' | 'emitidaEm' | 'valorTotal' | 'emitente' | 'itens' | 'duplicatas'>,
   lines: ClassifyLine[],
-  opts: { orgId: string; user: { uid: string; name: string }; now: string; vencimentos?: Record<string, string>; purchaseOrderId?: string },
+  opts: { orgId: string; user: { uid: string; name: string }; now: string; vencimentos?: Record<string, string>; purchaseOrderId?: string; purchaseOrderCode?: string; receiptId?: string; workOrderNumber?: string },
 ): FinancePayable[] {
   const value = new Map((nfe.itens ?? []).map((i) => [i.n, lineCost(i)]));
   const groups = new Map<string, Rateio>();
@@ -177,6 +179,9 @@ export function buildPayables(
     workOrderId: only('workOrderId'),
     nfeChave: nfe.chave,
     purchaseOrderId: opts.purchaseOrderId,
+    purchaseOrderCode: opts.purchaseOrderCode,
+    receiptId: opts.receiptId,
+    workOrderNumber: opts.workOrderNumber,
     rateio: allocate(p.valor, [...groups.values()]),
     createdAt: opts.now,
     createdBy: opts.user.uid,
@@ -256,6 +261,32 @@ export async function registeredEntries(db: Firestore, orgId: string, nfe: Pick<
   return out;
 }
 
+export interface PurchaseReceiptMatch { receipt: MaterialReceiptRecord; purchaseOrder: PurchaseOrder; }
+const invoiceNumberKey = (value: unknown) => digits(value).replace(/^0+(?=\d)/, '');
+
+/** Finds and validates the receipt already registered for a supplier invoice. */
+export async function findPurchaseReceiptForNfe(
+  db: Firestore, orgId: string, nfe: Pick<NfeDocument, 'chave' | 'numero' | 'emitente'>,
+): Promise<PurchaseReceiptMatch | null> {
+  if (!nfe.chave || !nfe.numero || !nfe.emitente?.cnpj) return null;
+  const ids = purchaseReceiptLookupIds({ organizationId: orgId, invoiceNumber: nfe.numero, invoiceKey: nfe.chave }, nfe.emitente.cnpj);
+  const snapshots = await Promise.all(ids.map((id) => getDoc(doc(db, 'purchasing_receipts', id))));
+  const found = snapshots.filter((snapshot) => snapshot.exists());
+  if (found.length > 1) throw new Error('Há mais de um recebimento associado a esta NF-e. Verifique os registros antes de classificar.');
+  if (!found.length) return null;
+  const receipt = { id: found[0].id, ...(found[0].data() ?? {}) } as MaterialReceiptRecord;
+  if (receipt.organizationId !== orgId) throw new Error('O recebimento encontrado pertence a outra empresa.');
+  if (invoiceNumberKey(receipt.invoiceNumber) !== invoiceNumberKey(nfe.numero)) throw new Error('O número da NF-e não corresponde ao recebimento registrado.');
+  if (receipt.invoiceKey && digits(receipt.invoiceKey) !== digits(nfe.chave)) throw new Error('A chave de acesso da NF-e não corresponde ao recebimento registrado.');
+  const orderSnap = await getDoc(doc(db, 'purchasing_orders', receipt.purchaseOrderId));
+  if (!orderSnap.exists()) throw new Error('A Ordem de Compra vinculada ao recebimento não foi encontrada.');
+  const purchaseOrder = { id: orderSnap.id, ...(orderSnap.data() ?? {}) } as PurchaseOrder;
+  if (purchaseOrder.organizationId !== orgId || digits(purchaseOrder.supplierCnpj) !== digits(nfe.emitente.cnpj)) {
+    throw new Error('A empresa ou o fornecedor da Ordem de Compra não corresponde à NF-e.');
+  }
+  return { receipt, purchaseOrder };
+}
+
 /** Ends run `runId` with `patch` only if it still owns the note (not released / superseded). Returns false when stale. */
 export async function finalizeRun(db: Firestore, nfeId: string, runId: string, patch: Record<string, unknown>): Promise<boolean> {
   const ref = doc(db, 'nfe_documents', nfeId);
@@ -274,64 +305,108 @@ export async function finalizeRun(db: Firestore, nfeId: string, runId: string, p
  */
 export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<void> {
   const ref = doc(db, 'nfe_documents', input.nfeId);
-  const lines = clean(input.lines);
-  const runId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const autoItem = new Set<number>(); // stock lines without a catalog item: created in the run under a per-line id
-  const nfe = await runTransaction(db, async (tx) => {
+  let lines = clean(input.lines);
+  const runId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const autoItem = new Set<number>();
+
+  const context = await runTransaction(db, async (tx) => {
     const s = await tx.get(ref);
     const d = s.data() as NfeDocument | undefined;
     if (!d || d.orgId !== input.orgId) throw new Error('Nota não encontrada.');
     if (d.status !== 'aguardando_classificacao' && d.status !== 'erro_classificacao') throw new Error('Nota já classificada');
     const excess = duplicatasExcess(d);
-    if (excess > 0) throw new Error(`As duplicatas somam ${brl.format(excess)} a mais que o total da nota; corrija com o fornecedor antes de classificar.`);
+    if (excess > 0) throw new Error('As duplicatas somam ' + brl.format(excess) + ' a mais que o total da nota; corrija com o fornecedor antes de classificar.');
+
+    const receiptIds = d.numero && d.emitente?.cnpj
+      ? purchaseReceiptLookupIds({ organizationId: input.orgId, invoiceNumber: d.numero, invoiceKey: d.chave }, d.emitente.cnpj)
+      : [];
+    const receiptSnapshots = await Promise.all(receiptIds.map((id) => tx.get(doc(db, 'purchasing_receipts', id))));
+    const matches = receiptSnapshots.filter((snapshot) => snapshot.exists());
+    if (matches.length > 1) throw new Error('Há mais de um recebimento associado a esta NF-e. Verifique os registros antes de classificar.');
+    const receipt = matches.length
+      ? ({ id: matches[0].id, ...(matches[0].data() ?? {}) } as MaterialReceiptRecord)
+      : undefined;
+    if (receipt) {
+      if (receipt.organizationId !== input.orgId) throw new Error('O recebimento encontrado pertence a outra empresa.');
+      if (invoiceNumberKey(receipt.invoiceNumber) !== invoiceNumberKey(d.numero)) throw new Error('O número da NF-e não corresponde ao recebimento registrado.');
+      if (receipt.invoiceKey && digits(receipt.invoiceKey) !== digits(d.chave)) throw new Error('A chave de acesso da NF-e não corresponde ao recebimento registrado.');
+      if (input.purchaseOrderId && input.purchaseOrderId !== receipt.purchaseOrderId) throw new Error('A NF-e já está vinculada a outro recebimento/OC.');
+    }
+
+    const resolvedPoId = receipt?.purchaseOrderId || input.purchaseOrderId;
+    let purchaseOrder: PurchaseOrder | undefined;
+    if (resolvedPoId) {
+      const orderSnap = await tx.get(doc(db, 'purchasing_orders', resolvedPoId));
+      if (!orderSnap.exists()) throw new Error('Ordem de Compra vinculada não encontrada.');
+      purchaseOrder = { id: orderSnap.id, ...(orderSnap.data() ?? {}) } as PurchaseOrder;
+      if (purchaseOrder.organizationId !== input.orgId) throw new Error('A Ordem de Compra não pertence à empresa selecionada.');
+      if (digits(purchaseOrder.supplierCnpj) !== digits(d.emitente?.cnpj)) throw new Error('O fornecedor da Ordem de Compra não corresponde ao emitente da NF-e.');
+      if (!receipt && purchaseOrder.status === 'cancelada') throw new Error('Não é possível vincular uma NF-e a uma Ordem de Compra cancelada.');
+      if (receipt && receipt.purchaseOrderId !== purchaseOrder.id) throw new Error('O recebimento não pertence à Ordem de Compra selecionada.');
+    }
+
     for (const it of d.itens ?? []) {
       const l = lines.find((x) => x.n === it.n);
-      if (!l?.categoriaId) throw new Error(`Item ${it.n}: informe a categoria.`);
-      if (l.destino === 'estoque' && !l.unitId) throw new Error(`Item ${it.n}: estoque exige unidade (almoxarifado).`);
-      // Resolve the auto-created item id now, so a retry compares against what an earlier attempt registered.
-      if (l.destino === 'estoque' && (!l.itemId || autoItem.has(l.n))) {
-        l.itemId = `item_nfe_${input.orgId}_${d.chave}_${l.n}`;
-        autoItem.add(l.n);
-      }
-      // A previous attempt may already have put this line in stock: it must stay there, same item and unit.
-      const m = (await tx.get(doc(db, 'stock_movements', movementIdFor(input.orgId, `nfe:${d.chave}:${it.n}`)))).data();
-      if (m && (l.destino !== 'estoque' || l.itemId !== m.itemId || l.unitId !== m.unitId)) {
-        throw new Error(`Item ${it.n}: entrada em estoque já registrada; mantenha destino estoque, mesmo item e unidade.`);
+      if (!l?.categoriaId) throw new Error('Item ' + it.n + ': informe a categoria.');
+      const movement = (await tx.get(doc(db, 'stock_movements', movementIdFor(input.orgId, 'nfe:' + d.chave + ':' + it.n)))).data();
+      if (movement) {
+        if (l.destino !== 'estoque' || (l.itemId && l.itemId !== movement.itemId) || (l.unitId && l.unitId !== movement.unitId)) {
+          throw new Error('Item ' + it.n + ': entrada em estoque já registrada; mantenha destino estoque, mesmo item e unidade.');
+        }
+        if (!l.itemId) l.itemId = movement.itemId;
+        if (!l.unitId) l.unitId = movement.unitId;
+      } else {
+        if (l.destino === 'estoque' && !l.unitId && !purchaseOrder) throw new Error('Item ' + it.n + ': estoque exige unidade (almoxarifado).');
+        if (l.destino === 'estoque' && (!l.itemId || autoItem.has(l.n)) && !receipt) {
+          l.itemId = 'item_nfe_' + input.orgId + '_' + d.chave + '_' + l.n;
+          autoItem.add(l.n);
+        }
       }
     }
-    tx.update(ref, {
-      status: 'classificando', classificacao: { runId, by: input.user.uid, startedAt: serverTimestamp() }, updatedAt: new Date().toISOString(),
-    });
-    return { ...d, id: s.id };
+
+    tx.update(ref, { status: 'classificando', classificacao: { runId, by: input.user.uid, startedAt: serverTimestamp() }, updatedAt: new Date().toISOString() });
+    return { nfe: { ...d, id: s.id }, receipt, purchaseOrder };
   });
+
+  const nfe = context.nfe;
+  const receipt = context.receipt;
+  const purchaseOrder = context.purchaseOrder;
+  if (purchaseOrder?.linkedWorkOrderId) {
+    lines = lines.map((line) => ({ ...line, workOrderId: line.workOrderId || purchaseOrder.linkedWorkOrderId }));
+  }
 
   try {
     const byN = new Map((nfe.itens ?? []).map((i) => [i.n, i]));
     for (const l of lines.filter((x) => x.destino === 'estoque')) {
       const it = byN.get(l.n)!;
-      // No catalog match: create the item now (inside the run); create-if-absent, so a retry reuses it.
       if (autoItem.has(l.n)) await createCatalogItem(db, input.orgId, it, nfe, l.itemId);
+      if (purchaseOrder) continue; // physical receiving is the only stock entry when an OC is linked
       const cat = (await getDoc(doc(db, 'items', l.itemId!))).data() as Item | undefined;
-      if (!cat) throw new Error(`Item ${l.n}: item do catálogo não encontrado.`);
+      if (!cat) throw new Error('Item ' + l.n + ': item do catálogo não encontrado.');
       try {
         await applyStockMovement(db, {
           orgId: input.orgId, unitId: l.unitId!, type: 'entrada', quantity: it.quantidade,
           item: { id: l.itemId!, sku: cat.sku, name: cat.name, unitOfMeasure: cat.unitOfMeasure },
           unitCost: it.quantidade > 0 ? stockUnitCost(nfe, it) : undefined,
-          reason: `Entrada NF-e ${nfe.numero ?? ''} - ${nfe.emitente.nome}`.trim(),
-          sourceRef: `nfe:${nfe.chave}:${l.n}`, user: input.user,
+          reason: ('Entrada NF-e ' + (nfe.numero ?? '') + ' - ' + nfe.emitente.nome).trim(),
+          sourceRef: 'nfe:' + nfe.chave + ':' + l.n, user: input.user,
         });
       } catch (e) {
-        if (!(e instanceof Error && e.message === 'Movimento já registrado')) throw e; // applied by an earlier attempt
+        if (!(e instanceof Error && e.message === 'Movimento já registrado')) throw e;
       }
     }
 
     const now = new Date().toISOString();
-    const payables = buildPayables(nfe, lines, { orgId: input.orgId, user: input.user, now, vencimentos: input.vencimentos, purchaseOrderId: input.purchaseOrderId });
+    const payableLines = lines.map((line) => ({ ...line, workOrderId: line.workOrderId || purchaseOrder?.linkedWorkOrderId }));
+    const payables = buildPayables(nfe, payableLines, {
+      orgId: input.orgId, user: input.user, now, vencimentos: input.vencimentos,
+      purchaseOrderId: purchaseOrder?.id, purchaseOrderCode: purchaseOrder?.code,
+      receiptId: receipt?.id, workOrderNumber: purchaseOrder?.linkedWorkOrderNumber,
+    });
     await runTransaction(db, async (tx) => {
       const refs = payables.map((p) => doc(db, 'finance_payables', p.id));
       const snaps = await Promise.all(refs.map((r) => tx.get(r)));
-      snaps.forEach((s, i) => { if (!s.exists()) tx.set(refs[i], payables[i]); }); // never overwrite (may be paid already)
+      snaps.forEach((s, i) => { if (!s.exists()) tx.set(refs[i], payables[i]); });
     });
 
     if (input.rememberRules) {
@@ -340,8 +415,8 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
       for (const l of lines) {
         const ncm = byN.get(l.n)?.ncm;
         if (!ncm) continue;
-        const chave = `cnpj_ncm:${cnpj}_${ncm}`;
-        b.set(doc(db, 'finance_rules', `rule_${input.orgId}_${cnpj}_${safeId(ncm)}`), clean<FinanceRule>({
+        const chave = 'cnpj_ncm:' + cnpj + '_' + ncm;
+        b.set(doc(db, 'finance_rules', 'rule_' + input.orgId + '_' + cnpj + '_' + safeId(ncm)), clean<FinanceRule>({
           orgId: input.orgId, chave, destino: l.destino, categoriaId: l.categoriaId, centroCustoId: l.centroCustoId, itemId: l.itemId, updatedAt: now,
         }));
       }
@@ -350,9 +425,10 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
 
     await finalizeRun(db, input.nfeId, runId, {
       status: 'classificada',
-      classificacao: clean({ runId, lines, at: now, by: input.user.uid, byName: input.user.name, purchaseOrderId: input.purchaseOrderId }),
-      erroClassificacao: deleteField(),
-      updatedAt: now,
+      classificacao: clean({ runId, lines, at: now, by: input.user.uid, byName: input.user.name,
+        purchaseOrderId: purchaseOrder?.id, purchaseOrderCode: purchaseOrder?.code,
+        receiptId: receipt?.id, stockControlledByReceipt: Boolean(purchaseOrder) }),
+      erroClassificacao: deleteField(), updatedAt: now,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -360,7 +436,6 @@ export async function classifyNfe(db: Firestore, input: ClassifyInput): Promise<
     throw e;
   }
 }
-
 export const STUCK_MS = 2 * 60_000;
 
 /** Admin/Gerente: frees a note left 'classificando' ≥ 2 min (rules check server time); the stale run then cannot finish. */
