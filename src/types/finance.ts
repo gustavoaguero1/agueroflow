@@ -72,6 +72,8 @@ export interface FinanceReconciliationCaseSnapshot {
   acceptedQuantity: number;
   stockQuantity: number;
   invoiceNumbers: string[];
+  /** NF-e access keys; optional for legacy cases created before payable authorization. */
+  invoiceKeys?: string[];
   receiptIds: string[];
   sourceIssues: string[];
 }
@@ -99,6 +101,33 @@ export interface FinanceReconciliationCase {
   reviewedByName?: string;
   reviewedAt?: unknown;
   resolutionNotes?: string;
+}
+
+export interface FinancePayableAuthorization {
+  id: string;
+  orgId: string;
+  payableId: string;
+  caseId: string;
+  purchaseOrderId: string;
+  purchaseOrderCode: string;
+  nfeChave: string;
+  documento: string;
+  parcela?: string;
+  fornecedorNome: string;
+  fornecedorCnpj: string;
+  authorizedValue: number;
+  dueDate: string;
+  payableStatusAtAuthorization: 'aberto';
+  authorizationStatus: 'registrada';
+  issueTitle: string;
+  resolutionNotes: string;
+  approvedBy: string;
+  approvedByName: string;
+  approvedAt: unknown;
+  authorizedBy: string;
+  authorizedByName: string;
+  authorizedAt: unknown;
+  createdAt: unknown;
 }
 
 export interface NfeItem {

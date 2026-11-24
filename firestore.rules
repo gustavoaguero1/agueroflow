@@ -210,10 +210,11 @@ service cloud.firestore {
       allow delete: if orgScoped() && canDelete() && areaWrite(resource.data);
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
-      function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases']; }
+      function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations']; }
       function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
       function isPayable() { return coll == 'finance_payables'; }
       function isReconciliationCase() { return coll == 'finance_reconciliation_cases'; }
+      function isPayableAuthorization() { return coll == 'finance_payable_authorizations'; }
       function reconciliationCaseUpdate() {
         let oldStatus = resource.data.get('status', '');
         let newStatus = request.resource.data.get('status', '');
@@ -238,7 +239,7 @@ service cloud.firestore {
       // Financeiro: ver lê; editar grava (dentro do que o perfil já permite). Supervisor que só vê ainda pode dar baixa.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      allow create: if finance() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      allow create: if finance() && !isPayableAuthorization() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || request.resource.data.get('createdBy', '') == request.auth.uid)
         && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
@@ -253,13 +254,13 @@ service cloud.firestore {
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
           && request.resource.data.get('updatedAt', null) == request.time));
-      allow update: if finance() && canUpdate()
+      allow update: if finance() && !isPayableAuthorization() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
           : (isPayable()
             ? ((financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)) || (supervisorPays() && fin(resource.data, 1)))
             : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
-      allow delete: if finance() && !isReconciliationCase() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
+      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);

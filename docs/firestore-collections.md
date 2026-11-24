@@ -37,8 +37,9 @@ Owner kinds:
 | counters | orgId | getDoc | `{orgId}_work_orders` sequence for OS numbers (written in a transaction by `markProposalWon`) |
 | field_workers | orgId | `orgId ==` | |
 | finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
-| finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades fica preservado; não bloqueia nem libera títulos automaticamente. |
+| finance_payable_authorizations | orgId | `orgId ==` | Backend autenticado via Admin SDK é o único escritor; clientes apenas leem. Uma autorização documental por título (`paya_{orgId}_{payableId}`), criada por Admin/Gerente com Financeiro nível 2 a partir de ocorrência aprovada e título NF-e em aberto da mesma OC/fornecedor/chave. Registra valor e vencimento no momento; imutável, sem excluir/editar e sem marcar pagamento. |
 | finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller; Admin/Gerente update; Supervisor only aberto→pago (`status`/`pagoEm`/`pagoPor`/`updatedAt`); NF-e payables ids `pay_{orgId}_{chave}_{parcela}` (create-if-absent); titles preserve OC, OS and receipt references when linked |
+| finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades, incluindo as chaves das NF-e, fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
 | inspections | orgId | `orgId ==` | |
@@ -90,6 +91,8 @@ Server-only (denied to every client, master included): `member_credentials` (mas
 `first_access_tokens`, `system_security` (old master-password doc), `users` (unused).
 
 ## Compras → Financeiro / NF-e
+A autorização documental de Contas a Pagar (`finance_payable_authorizations`) é criada pelo backend autenticado com Admin SDK, por título, vinculada a uma ocorrência aprovada e a uma parcela NF-e em aberto da mesma empresa, OC, fornecedor e chave de acesso. O ID determinístico impede autorizações duplicadas para a mesma parcela. Clientes apenas leem a coleção; gravação direta via Firestore é negada. O registro preserva o valor e vencimento no momento, o gerente que aprovou a divergência e o usuário que registrou o vínculo. É imutável e não altera o estado do título, não gera pagamento e não substitui comprovante bancário.
+
 A tela de conciliação OC × NF-e é uma visão derivada, somente leitura, calculada a partir das OCs, documentos `nfe_documents` e `purchasing_receipts`. Não cria coleção nem título paralelo. A associação automática de item exige código compatível ou descrição e unidade exatas; ambiguidade fica explicitamente sem vínculo. Compara quantidade pedida, faturada, fisicamente recebida, aceita pela qualidade e efetivamente lançada no estoque. O comparativo financeiro de produtos é separado de impostos e frete; não substitui a conferência de duplicatas, pagamento ou escrituração no Protheus.
 
 

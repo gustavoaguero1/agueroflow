@@ -4,7 +4,7 @@ import { CheckCircle2, Plus, Wallet } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { brl, payableKpis } from '../../services/financeService';
-import type { FinanceCategory, FinancePayable } from '../../types/finance';
+import type { FinanceCategory, FinancePayable, FinancePayableAuthorization } from '../../types/finance';
 import { btnGhost, btnPrimary, card, fmtDate, input, label, msgErr, today } from './ui';
 
 const STATUS_CLS: Record<FinancePayable['status'], string> = {
@@ -17,17 +17,26 @@ const emptyForm = { nome: '', cnpj: '', documento: '', valor: '', vencimento: ''
 export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory[] }> = ({ orgId, categories }) => {
   const { user, contracts, isSupervisorOrAbove } = useAuth();
   const [ps, setPs] = useState<FinancePayable[]>([]);
+  const [authorizations, setAuthorizations] = useState<FinancePayableAuthorization[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({ status: 'aberto', de: '', ate: '', categoriaId: '', contractId: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => onSnapshot(
-    query(collection(db, 'finance_payables'), where('orgId', '==', orgId)),
-    (s) => setPs(s.docs.map((d) => ({ ...(d.data() as FinancePayable), id: d.id })).sort((a, b) => a.vencimento.localeCompare(b.vencimento))),
-    (e) => setError(`Falha ao carregar contas a pagar: ${e.message}`),
-  ), [orgId]);
+  useEffect(() => {
+    const stopPayables = onSnapshot(
+      query(collection(db, 'finance_payables'), where('orgId', '==', orgId)),
+      (snapshot) => setPs(snapshot.docs.map((d) => ({ ...(d.data() as FinancePayable), id: d.id })).sort((a, b) => a.vencimento.localeCompare(b.vencimento))),
+      (err) => setError(`Falha ao carregar contas a pagar: ${err.message}`),
+    );
+    const stopAuthorizations = onSnapshot(
+      query(collection(db, 'finance_payable_authorizations'), where('orgId', '==', orgId)),
+      (snapshot) => setAuthorizations(snapshot.docs.map((d) => ({ ...(d.data() as FinancePayableAuthorization), id: d.id }))),
+      (err) => setError(`Falha ao carregar autorizações de pagamento: ${err.message}`),
+    );
+    return () => { stopPayables(); stopAuthorizations(); };
+  }, [orgId]);
 
   const t = today();
   const kpis = useMemo(() => payableKpis(ps, t), [ps, t]);
@@ -144,6 +153,15 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {shown.map((p) => {
             const late = p.status === 'aberto' && p.vencimento < t;
+            const authorization = authorizations.find((entry) => entry.payableId === p.id);
+            const currentSupplierCnpj = String(p.fornecedor.cnpj || '').replace(/\D/g, '');
+            const authorizedSupplierCnpj = String(authorization?.fornecedorCnpj || '').replace(/\D/g, '');
+            const changedAfterAuthorization = !!authorization && (
+              p.valor !== authorization.authorizedValue
+              || p.vencimento !== authorization.dueDate
+              || p.fornecedor.nome.trim().toLocaleLowerCase('pt-BR') !== authorization.fornecedorNome.trim().toLocaleLowerCase('pt-BR')
+              || currentSupplierCnpj !== authorizedSupplierCnpj
+            );
             return (
               <div key={p.id} className={`${card} space-y-2`} data-testid="payable-card">
                 <div className="flex items-start justify-between gap-2">
@@ -164,6 +182,16 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
                   </div>
                   <p className="text-base font-extrabold text-white font-mono shrink-0">{brl.format(p.valor)}</p>
                 </div>
+                {authorization && (
+                  <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-2 space-y-1" data-testid="payable-authorization">
+                    <p className="text-[10px] font-semibold text-emerald-300">Decisão de divergência vinculada</p>
+                    <p className="text-[10px] text-slate-300">{authorization.issueTitle} · OC {authorization.purchaseOrderCode}</p>
+                    <p className="text-[10px] text-slate-400">Autorização {authorization.id} · aprovada por {authorization.approvedByName} · registrada por {authorization.authorizedByName} · {brl.format(authorization.authorizedValue)} · {fmtDate(String(authorization.dueDate))}</p>
+                    {changedAfterAuthorization && <p className="text-[10px] text-amber-300">Atenção: valor, vencimento ou fornecedor do título mudou após a autorização. Revalidar antes de qualquer pagamento.</p>}
+                    {p.status !== 'aberto' && <p className="text-[10px] text-slate-400">A autorização foi registrada quando o título estava em aberto. Status atual: {p.status === 'pago' ? 'pago' : 'cancelado'}.</p>}
+                    <p className="text-[9px] text-slate-500">Registro documental; não representa comprovante bancário nem baixa automática.</p>
+                  </div>
+                )}
                 {isSupervisorOrAbove && p.status === 'aberto' && (
                   <button type="button" className={`${btnGhost} w-full`} onClick={() => pay(p)}><CheckCircle2 className="w-3.5 h-3.5" />Marcar como pago</button>
                 )}
