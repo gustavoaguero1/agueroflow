@@ -32,7 +32,8 @@ export const OperationsModule: React.FC<{
   /** Abre outra tela do AgueroFlow (ex.: 'rh-funcionarios'), pedida pela página. */
   onNavigate?: (section: string) => void;
 }> = ({ route = 'inicio', onRouteChange, onNavigate }) => {
-  const { user, organization, member, role, isMaster, isManagerOrAbove } = useAuth();
+  const { user, organization, member, role, isMaster, isManagerOrAbove, areaLevel } = useAuth();
+  const rhLevel = areaLevel('rh');
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -48,10 +49,10 @@ export const OperationsModule: React.FC<{
       userName: member?.userName || user.displayName || '',
       role,
       isManager: isMaster || isManagerOrAbove,
-      canSeeSalaries: isMaster || isManagerOrAbove,
-      canEditRh: isMaster || isManagerOrAbove,
+      canSeeSalaries: rhLevel >= 1,
+      canEditRh: rhLevel === 2,
     });
-  }, [user, orgId, member?.userName, role, isMaster, isManagerOrAbove]);
+  }, [user, orgId, member?.userName, role, isMaster, isManagerOrAbove, rhLevel]);
 
   // Publica a ponte antes do iframe carregar; troca de empresa recarrega a página.
   if (bridge) window.__agueroOps = bridge.api;

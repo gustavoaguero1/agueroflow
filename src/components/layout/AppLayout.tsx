@@ -20,6 +20,7 @@ import {
   FileText,
   Database,
   EyeOff,
+  Eye,
   HardHat,
   Search,
   PackageCheck,
@@ -37,6 +38,7 @@ import {
 import { GatLogo } from '../common/GatLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { useTheme } from '../../contexts/ThemeContext';
+import { areaOfSection, visibleNav } from '../../permissions/areas';
 
 export type NavSection =
   | 'painel'
@@ -167,6 +169,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     isAdmin,
     isManagerOrAbove,
     canViewFinancials,
+    areaLevels,
     selectedUnitId,
     setSelectedUnitId,
     selectedContractId,
@@ -227,7 +230,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     });
   };
 
-  const navItems = [
+  const allNavItems = [
     {
       id: 'painel' as NavSection,
       label: 'Painel',
@@ -355,26 +358,23 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'bens-relatorios' as NavSection, label: 'Relatórios' },
       ],
     },
-    ...(isAdmin || isManagerOrAbove || role === 'Visualizador'
-      ? [
-          {
-            id: 'rh-salarios' as NavSection,
-            label: 'RH / Salários',
-            icon: Calculator,
-            hasSubmenu: true,
-            subItems: [
-              { id: 'rh-painel' as NavSection, label: 'Painel RH/Salários' },
-              { id: 'rh-funcionarios' as NavSection, label: 'Funcionários' },
-              { id: 'rh-admissoes' as NavSection, label: 'Admissão Digital (Links)' },
-              { id: 'rh-importacao' as NavSection, label: 'Importação de Planilha' },
-              { id: 'rh-calculo' as NavSection, label: 'Cálculo do 13º' },
-              { id: 'rh-historico' as NavSection, label: 'Histórico de Cálculos' },
-              { id: 'rh-relatorios' as NavSection, label: 'Relatórios' },
-              { id: 'rh-holerites' as NavSection, label: 'Demonstrativos/Holerites' },
-            ],
-          },
-        ]
-      : []),
+    // Quem vê o RH é decidido pelo acesso por área (filtro abaixo).
+    {
+      id: 'rh-salarios' as NavSection,
+      label: 'RH / Salários',
+      icon: Calculator,
+      hasSubmenu: true,
+      subItems: [
+        { id: 'rh-painel' as NavSection, label: 'Painel RH/Salários' },
+        { id: 'rh-funcionarios' as NavSection, label: 'Funcionários' },
+        { id: 'rh-admissoes' as NavSection, label: 'Admissão Digital (Links)' },
+        { id: 'rh-importacao' as NavSection, label: 'Importação de Planilha' },
+        { id: 'rh-calculo' as NavSection, label: 'Cálculo do 13º' },
+        { id: 'rh-historico' as NavSection, label: 'Histórico de Cálculos' },
+        { id: 'rh-relatorios' as NavSection, label: 'Relatórios' },
+        { id: 'rh-holerites' as NavSection, label: 'Demonstrativos/Holerites' },
+      ],
+    },
     {
       id: 'comercial' as NavSection,
       label: 'Comercial (OrçaÁgil)',
@@ -438,6 +438,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       ],
     },
   ];
+  // Só o que a pessoa pode ver (acesso por área; Configurações → Acessos por área).
+  const navItems = visibleNav(allNavItems, areaLevels);
+  const currentArea = areaOfSection(currentSection);
 
   const getSectionTitle = (id: NavSection) => {
     switch (id) {
@@ -949,6 +952,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <h1 className="text-[15px] font-semibold text-[#1D1D1F] dark:text-[#F5F5F7] tracking-[-0.015em] truncate hidden md:block">
               {getSectionTitle(currentSection)}
             </h1>
+            {currentArea && areaLevels[currentArea] === 1 && (
+              <span
+                className="hidden md:inline-flex items-center gap-1 rounded-full bg-black/[0.05] dark:bg-white/[0.1] px-2.5 py-0.5 text-[11px] font-medium text-[#6E6E73] dark:text-[#98989D] shrink-0"
+                title="Você pode ver esta área, mas não alterar. Peça ao administrador se precisar editar."
+              >
+                <Eye className="w-3 h-3" />
+                Somente leitura
+              </span>
+            )}
           </div>
 
           {/* Spotlight Search Bar */}

@@ -76,6 +76,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     selectedUnitId,
     selectedContractId,
     logAudit,
+    areaLevel,
   } = useAuth();
 
   // Tab State
@@ -119,8 +120,9 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
   // Role Security Check
   // Super Admin/Master, Admin, RH/Gestor autorizado têm acesso; Operador/Almoxarife não têm acesso
-  const isAuthorized = isAdmin || isManagerOrAbove || role === 'Visualizador';
-  const canEdit = isAdmin || isManagerOrAbove;
+  // Acesso por área: "ver" abre o RH, "editar" grava (Configurações → Acessos por área).
+  const isAuthorized = areaLevel('rh') >= 1;
+  const canEdit = areaLevel('rh') === 2;
 
   // Sync tab with props
   useEffect(() => {
@@ -151,7 +153,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
     setLoading(true);
     // Mantém o diretório de pessoas (sem salários) em dia para as outras áreas.
-    syncRhDirectory(organization.id).catch((err) => console.warn('Diretório de pessoas não atualizado:', err));
+    if (canEdit) syncRhDirectory(organization.id).catch((err) => console.warn('Diretório de pessoas não atualizado:', err));
     const unsubEmployees = subscribeRhEmployees(organization.id, (data) => {
       setEmployees(data);
     });
@@ -175,7 +177,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
       unsubBatches();
       unsubImports();
     };
-  }, [organization?.id, referenceYear, isAuthorized]);
+  }, [organization?.id, referenceYear, isAuthorized, canEdit]);
 
   // Save Employee
   const handleSaveEmployee = async (employee: RhEmployee) => {
