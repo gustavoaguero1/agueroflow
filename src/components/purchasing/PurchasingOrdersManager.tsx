@@ -46,7 +46,8 @@ export const PurchasingOrdersManager: React.FC<PurchasingOrdersManagerProps> = (
     const matchesSearch =
       o.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (o.requisitionCode && o.requisitionCode.toLowerCase().includes(searchTerm.toLowerCase()));
+      (o.requisitionCode && o.requisitionCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (o.linkedWorkOrderNumber && o.linkedWorkOrderNumber.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = statusFilter === 'todos' || o.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -228,6 +229,7 @@ export const PurchasingOrdersManager: React.FC<PurchasingOrdersManagerProps> = (
                       <div className="text-[11px] text-slate-400 font-mono">{order.supplierCnpj}</div>
                     </td>
                     <td className="p-3.5 font-mono text-slate-400">
+                      {order.linkedWorkOrderNumber ? <span className="block text-cyan-300">OS: {order.linkedWorkOrderNumber}</span> : null}
                       {order.requisitionCode ? (
                         <span className="text-slate-300">RC: {order.requisitionCode}</span>
                       ) : (
@@ -288,6 +290,7 @@ export const PurchasingOrdersManager: React.FC<PurchasingOrdersManagerProps> = (
                 <h3 className="text-base font-bold text-white mt-1">
                   Fornecedor: {selectedOrder.supplierName}
                 </h3>
+                {selectedOrder.linkedWorkOrderNumber && <p className="text-xs text-cyan-300 mt-1">Origem: OS {selectedOrder.linkedWorkOrderNumber} — {selectedOrder.linkedWorkOrderTitle || 'Ordem de Serviço'}</p>}
                 <p className="text-xs text-slate-400">
                   Comprador: {selectedOrder.buyerName} • Emitida em{' '}
                   {new Date(selectedOrder.emissionDate).toLocaleDateString('pt-BR')}
