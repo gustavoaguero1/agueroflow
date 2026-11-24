@@ -264,7 +264,8 @@ test('Operations editor creates a quality record, initial event and state in seq
 
 test('a failed inspection/test opens a corrective-action workflow instead of approval', async () => {
   await seedReferences();
-  const db = await createQualityRecord('inspector_1', 'Operacional', {
+  const db = dbFor('inspector_1', 'Operacional');
+  const failedRecord = validQualityRecord('inspector_1', {
     recordType: 'hydrostatic_test',
     result: 'nao_conforme',
     measuredValue: 8.5,
@@ -276,6 +277,27 @@ test('a failed inspection/test opens a corrective-action workflow instead of app
     responsibleName: 'Encarregado',
     dueDate: '2026-11-28',
   });
+  console.log('quality-debug: failed hydrostatic record create');
+  await assertSucceeds(setDoc(doc(db, 'quality_records', recordId), failedRecord));
+  console.log('quality-debug: failed hydrostatic initial event create');
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events', initialEventId),
+    validQualityEvent('inspector_1', 'opened'),
+  ));
+  console.log('quality-debug: failed hydrostatic state create');
+  await assertSucceeds(setDoc(doc(db, 'quality_record_states', recordId), {
+    id: recordId,
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    contractId: 'contract_a',
+    recordId,
+    status: 'open',
+    latestEventId: initialEventId,
+    updatedByUid: 'inspector_1',
+    updatedByName: 'Inspetor',
+    updatedAt: serverTimestamp(),
+  }));
+  console.log('quality-debug: failed hydrostatic created');
   const state = await assertSucceeds(getDoc(doc(db, 'quality_record_states', recordId)));
   assert.equal(state.data()?.status, 'open');
   await assertFails(setDoc(
