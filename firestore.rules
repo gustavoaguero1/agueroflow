@@ -303,7 +303,7 @@ service cloud.firestore {
             ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
             : (isPayable()
               ? ((financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2)) || (supervisorPays() && fin(resource.data, 1)))
-              : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
+              : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2)))));
       allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
