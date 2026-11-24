@@ -19,6 +19,7 @@ import {
 } from '../../types/purchasing';
 import { savePurchaseRequisition } from '../../services/purchasingService';
 import type { WorkOrder } from '../../types';
+import { workOrderLinkFields } from '../../services/purchasingLinks';
 
 interface PurchasingRequisitionsProps {
   organizationId: string;
@@ -123,9 +124,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
         neededByDate,
         items: validItems.map((v) => ({ ...v, quantity: Number(v.quantity) || 1 })),
         status: 'pendente',
-        linkedWorkOrderId: linkedWorkOrderId || undefined,
-        linkedWorkOrderNumber: workOrders.find((wo) => wo.id === linkedWorkOrderId)?.orderNumber,
-        linkedWorkOrderTitle: workOrders.find((wo) => wo.id === linkedWorkOrderId)?.title,
+        ...workOrderLinkFields(workOrders.find((wo) => wo.id === linkedWorkOrderId)),
         notes: notes.trim() || undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
