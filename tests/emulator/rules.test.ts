@@ -110,19 +110,26 @@ test('estoque: acesso por área nas coleções de compras', async () => {
       purchasing_requisitions: 'req_a', purchasing_suppliers: 's_a',
     } as Record<string, string>)[name];
 
-    await assertSucceeds(getDoc(doc(viewOnly, `${name}/${existingId}`)), `${name}: ver permitido`);
-    await assertFails(getDoc(doc(noAccess, `${name}/${existingId}`)), `${name}: sem acesso deve bloquear leitura`);
-    await assertFails(updateDoc(doc(viewOnly, `${name}/${existingId}`), { total: 2 }), `${name}: ver não pode editar`);
-    await assertFails(setDoc(doc(viewOnly, `${name}/view_create`), { organizationId: 'org_a' }), `${name}: ver não pode criar`);
-    await assertSucceeds(updateDoc(doc(editor, `${name}/${existingId}`), { total: 3 }), `${name}: editar permitido`);
-    await assertSucceeds(setDoc(doc(editor, `${name}/editor_create`), { organizationId: 'org_a' }), `${name}: criação permitida`);
-    await assertSucceeds(deleteDoc(doc(editor, `${name}/editor_create`)), `${name}: exclusão permitida`);
+    await assertSucceeds(getDoc(doc(viewOnly, `${name}/${existingId}`)));
+    await assertFails(getDoc(doc(noAccess, `${name}/${existingId}`)));
+    await assertFails(updateDoc(doc(viewOnly, `${name}/${existingId}`), { total: 2 }));
+    await assertFails(deleteDoc(doc(viewOnly, `${name}/${existingId}`)));
+    await assertFails(setDoc(doc(viewOnly, `${name}/view_create`), { organizationId: 'org_a' }));
+
+    await assertFails(getDoc(doc(noAccess, `${name}/${existingId}`)));
+    await assertFails(updateDoc(doc(noAccess, `${name}/${existingId}`), { total: 2 }));
+    await assertFails(deleteDoc(doc(noAccess, `${name}/${existingId}`)));
+    await assertFails(setDoc(doc(noAccess, `${name}/no_access_create`), { organizationId: 'org_a' }));
+
+    await assertSucceeds(updateDoc(doc(editor, `${name}/${existingId}`), { total: 3 }));
+    await assertSucceeds(setDoc(doc(editor, `${name}/editor_create`), { organizationId: 'org_a' }));
+    await assertSucceeds(deleteDoc(doc(editor, `${name}/editor_create`)));
+    await assertFails(setDoc(doc(editor, `${name}/foreign_create`), { organizationId: 'org_b' }));
   }
 
   await assertSucceeds(getDocs(query(collection(viewOnly, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
   await assertFails(getDocs(query(collection(noAccess, 'purchasing_requisitions'), where('organizationId', '==', 'org_a'))));
 });
-
 test('list query without org filter denied', async () => {
   const db = member();
   await assertFails(getDocs(collection(db, 'work_orders')));
