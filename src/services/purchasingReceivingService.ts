@@ -94,6 +94,9 @@ export async function registerPurchaseReceipt(
   if (!Array.isArray(input.itemsReceived) || input.itemsReceived.length === 0) {
     throw new Error('Informe ao menos um item recebido.');
   }
+  if (input.status === 'conforme' && input.itemsReceived.some((line) => !line.isConform)) {
+    throw new Error('Há linhas não conformes. Altere o parecer geral para "Conforme com Ressalva" ou "Rejeitado".');
+  }
   if (input.status === 'rejeitado' && (input.notes || '').trim().length < 5) {
     throw new Error('Informe o motivo da rejeição (mínimo 5 caracteres).');
   }
@@ -124,6 +127,9 @@ export async function registerPurchaseReceipt(
     if (order.organizationId !== input.organizationId) throw new Error('A Ordem de Compra não pertence à empresa selecionada.');
     if (order.status === 'cancelada') throw new Error('Não é possível receber uma Ordem de Compra cancelada.');
 
+    if (!Number.isFinite(Number(order.freightValue || 0)) || Number(order.freightValue || 0) < 0) {
+      throw new Error('O valor do frete registrado na OC é inválido.');
+    }
     const receiptId = purchaseReceiptId(input, order.supplierCnpj);
     const receiptRef = doc(firestore, 'purchasing_receipts', receiptId);
     const receiptSnap = await tx.get(receiptRef);
@@ -211,7 +217,8 @@ export async function registerPurchaseReceipt(
     const landedUnitCost = (orderItem: PurchaseOrder['items'][number]) => {
       const baseCost = Number(orderItem.unitPrice);
       if (order.freightType !== 'FOB' || !(Number(order.freightValue) > 0) || !(orderSubtotal > 0)) return round4(baseCost);
-      const lineTotal = Number(orderItem.totalPrice) || Number(orderItem.quantityOrdered) * baseCost;
+      const savedLineTotal = Number(orderItem.totalPrice);
+      const lineTotal = Number.isFinite(savedLineTotal) && savedLineTotal > 0 ? savedLineTotal : Number(orderItem.quantityOrdered) * baseCost;
       const freightPerUnit = Number(order.freightValue) * (lineTotal / orderSubtotal) / Number(orderItem.quantityOrdered);
       return round4(baseCost + freightPerUnit);
     };
