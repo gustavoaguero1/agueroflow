@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { EngineeringDocumentsPanel } from '../components/construction/EngineeringDocumentsPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -99,9 +100,9 @@ const createEmptyRdoWorkforceDrafts = (): RdoWorkforceDraft[] => [
 ];
 
 export const ConstructionModule: React.FC = () => {
-  const { user, organization, units, contracts, logAudit, canViewFinancials } = useAuth();
+  const { user, organization, units, contracts, logAudit, canViewFinancials, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs'
+    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs' | 'documentos_engenharia'
   >('rdo');
 
   const [reports, setReports] = useState<ConstructionDailyReport[]>([]);
@@ -584,6 +585,17 @@ export const ConstructionModule: React.FC = () => {
             Alertas & Certificados
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab('documentos_engenharia')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'documentos_engenharia'
+              ? 'bg-cyan-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-cyan-400" />
+          <span>7. Engenharia & Documentos</span>
+        </button>
       </div>
 
       {/* TAB 1: RDO (Relatório Diário de Obra) */}
@@ -928,6 +940,20 @@ export const ConstructionModule: React.FC = () => {
       {activeTab === 'painel_nrs' && organization && (
         <NRComplianceDashboard
           organizationId={organization.id}
+        />
+      )}
+
+      {/* TAB 7: Controle de desenhos, revisões e aprovações de engenharia */}
+      {activeTab === 'documentos_engenharia' && organization && (
+        <EngineeringDocumentsPanel
+          organizationId={organization.id}
+          units={units}
+          contracts={contracts}
+          currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
+          currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Equipe de Engenharia'}
+          canEdit={areaLevel('operacoes') >= 2}
+          canApprove={isMaster || isSupervisorOrAbove}
+          logAudit={logAudit}
         />
       )}
 
