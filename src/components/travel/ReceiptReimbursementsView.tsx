@@ -600,7 +600,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
           <strong className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4" /> Online & Ativo
           </strong>
-          <span className="text-[10px] text-slate-400 block font-mono">{config?.connectedPhoneNumber || '+55 11 91789-7747'}</span>
+          <span className="text-[10px] text-slate-400 block font-mono">{config?.connectedPhoneNumber || 'Nenhum WhatsApp conectado'}</span>
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { WhatsAppSessionsPanel } from './WhatsAppSessionsPanel';
 import {
   MessageSquare,
   Send,
@@ -163,7 +164,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
   const [wabaId, setWabaId] = useState('');
   const [entityId, setEntityId] = useState('aguero_inox_comercial');
   const [authConfigId, setAuthConfigId] = useState('');
-  const [connectedPhoneNumber, setConnectedPhoneNumber] = useState('+55 11 91789-7747');
+  const [connectedPhoneNumber, setConnectedPhoneNumber] = useState('');
   const [autoReplyConfirmation, setAutoReplyConfirmation] = useState(false);
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
 
@@ -223,7 +224,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
         setWabaId(st.config.composioWabaId || '');
         setEntityId(st.config.composioEntityId || 'aguero_inox_comercial');
         setAuthConfigId(st.config.composioAuthConfigId || '');
-        setConnectedPhoneNumber(st.config.connectedPhoneNumber || '+55 11 91789-7747');
+        setConnectedPhoneNumber(st.config.connectedPhoneNumber || '');
         setAutoReplyConfirmation(st.config.autoReplyConfirmation === true);
         setRealtimeEnabled(st.config.composioRealtimeEnabled ?? true);
       }
@@ -1701,6 +1702,10 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
       {/* TAB 2: CONEXÃO (DISPOSITIVOS CONECTADOS QR + COMPOSIO API OFICIAL) */}
       {subTab === 'conexao' && (
         <div className="space-y-6">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Este é o <strong>seu</strong> WhatsApp: cada pessoa conecta o próprio número lendo o QR Code abaixo.
+          </p>
+          <WhatsAppSessionsPanel />
           {/* Channel Switcher */}
           <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-2 inline-flex flex-wrap gap-1.5">
             <button
@@ -1939,7 +1944,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                           type="text"
                           value={pairingPhoneInput}
                           onChange={(e) => setPairingPhoneInput(e.target.value)}
-                          placeholder="Ex: 5511917897747 (DDI + DDD + Número)"
+                          placeholder="Ex: 5511900000000 (DDI + DDD + Número)"
                           className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono tabular-nums focus:outline-none focus:border-cyan-500"
                         />
                         <button
@@ -2145,7 +2150,7 @@ export const WhatsAppBusinessHub: React.FC<WhatsAppBusinessHubProps> = ({
                       type="text"
                       value={connectedPhoneNumber}
                       onChange={(e) => setConnectedPhoneNumber(e.target.value)}
-                      placeholder="+55 11 91789-7747"
+                      placeholder="+55 11 90000-0000"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono tabular-nums focus:outline-none focus:border-cyan-500"
                     />
                   </div>

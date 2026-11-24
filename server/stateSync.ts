@@ -11,7 +11,7 @@ export interface StateStore {
   delete(name: string): Promise<void>;
 }
 
-export const STATE_PATHS = ['data_whatsapp_auth/', 'data_nd_pdfs/', 'data_*.json'];
+export const STATE_PATHS = ['data_whatsapp_auth/', 'data_whatsapp_bridge_state/', 'data_nd_pdfs/', 'data_*.json'];
 const PREFIX = 'server-state/';
 
 export function bucketStore(bucket: AdminHandles['bucket']): StateStore {

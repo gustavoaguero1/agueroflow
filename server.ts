@@ -43,7 +43,20 @@ import {
   startWhatsAppBridgeSession,
   stopWhatsAppBridgeSession,
   syncChatHistoryOnDemand,
-} from './src/services/whatsappWebBridgeServer';
+  resumeSavedWhatsAppSessions,
+  runInWhatsAppSession,
+  runAsOrgWhatsAppSender,
+  isCompanyWhatsApp,
+  resumeOrgSessions,
+  currentWhatsAppSession,
+  orgOfWhatsAppContext,
+  waRegistry,
+  getOfficialSessionKey,
+  setOfficialSessionKey,
+} from './server/whatsappRuntime';
+import { sessionForRequest, addTag } from './server/whatsappRouting';
+import { createWhatsAppMiddlewares } from './server/whatsappMiddleware';
+import { LEGACY_SESSION_KEY } from './server/whatsappSessions';
 import {
   buildOutlookOAuthAuthorizationUrl,
   createDefaultNdRuleForGroup,
@@ -64,7 +77,7 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
 import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
@@ -544,6 +557,12 @@ async function main() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
+
+  // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
+  // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
+  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender });
+  app.use('/api', waMiddlewares.companyContext);
+  app.use('/api/whatsapp/bridge', waMiddlewares.ownSessionContext);
   app.use('/api/nfe', nfeRouter);
   app.use('/api/nfe', nfeSyncRouter);
   app.use('/api/protheus', protheusProbeRouter);
@@ -2532,6 +2551,9 @@ Sua tarefa:
         notes: input.notes !== undefined ? input.notes : prev.notes,
         lastMessageAt: input.lastMessageAt || prev.lastMessageAt,
         source: input.source && prev.source !== 'manual' ? input.source : prev.source,
+        // Quais WhatsApps (sessões) e empresas já falaram com este contato.
+        sessionKeys: addTag((prev as { sessionKeys?: string[] }).sessionKeys, currentWhatsAppSession()?.key),
+        orgIds: addTag((prev as { orgIds?: string[] }).orgIds, orgOfWhatsAppContext()),
         updatedAt: nowIso,
       };
       whatsAppContacts[idx] = next;
@@ -2568,6 +2590,8 @@ Sua tarefa:
       notes: input.notes || '',
       lastMessageAt: input.lastMessageAt,
       source: input.source || 'whatsapp_sync',
+      sessionKeys: addTag(undefined, currentWhatsAppSession()?.key),
+      orgIds: addTag(undefined, orgOfWhatsAppContext()),
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -2729,7 +2753,7 @@ Sua tarefa:
     const createdAtIso = msg.createdAt || new Date().toISOString();
     const record = {
       id: msg.id || `wamsg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: effectiveOrg(msg.organizationId),
+      organizationId: msg.organizationId ? effectiveOrg(msg.organizationId) : orgOfWhatsAppContext(),
       direction: msg.direction || 'outbound',
       contactPhone: formattedPhone,
       contactName: msg.contactName || formattedPhone || 'Contato WhatsApp',
@@ -2756,6 +2780,8 @@ Sua tarefa:
       linkedProposalCode: msg.linkedProposalCode,
       linkedReceiptId: msg.linkedReceiptId,
       sentByUserName: msg.sentByUserName,
+      // WhatsApp (sessão) e empresa por onde a mensagem passou.
+      sessionKey: currentWhatsAppSession()?.key || '',
       createdAt: createdAtIso,
     };
 
@@ -2821,7 +2847,7 @@ Sua tarefa:
   const defaultReceipts: any[] = [
     {
       id: 'rec_001',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213401',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2846,7 +2872,7 @@ Sua tarefa:
     },
     {
       id: 'rec_002',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213402',
       employeeName: 'André Luiz Souza',
       employeePhone: '+55 19 98456-7890',
@@ -2869,7 +2895,7 @@ Sua tarefa:
     },
     {
       id: 'rec_003',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213403',
       employeeName: 'Carlos Eduardo Silva',
       employeePhone: '+55 19 98123-4567',
@@ -2893,7 +2919,7 @@ Sua tarefa:
     },
     {
       id: 'rec_004',
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       whatsappMessageId: 'wam_987213404',
       employeeName: 'Marcos Roberto Santos',
       employeePhone: '+55 19 98234-5678',
@@ -4716,7 +4742,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newReceipt = {
         id: `rec_${Date.now()}`,
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         whatsappMessageId: `manual_${Date.now()}`,
         employeeName: employeeName || 'Carlos Eduardo Silva',
         employeePhone: employeePhone || '+55 19 98123-4567',
@@ -5482,7 +5508,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
         const newRec = {
           id: `rec_batch_${Date.now()}_${i}`,
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           whatsappMessageId: `batch_${Date.now()}_${i}`,
           employeeName: employeeName || f.employeeName || 'Carlos Eduardo Silva',
           employeePhone: employeePhone || f.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber,
@@ -5596,7 +5622,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
 
       const newRec = {
         id: `rec_test_${Date.now()}`,
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         whatsappMessageId: `test_wa_${Date.now()}`,
         employeeName: 'Gustavo Aguero (Administrador)',
         employeePhone: whatsAppReceiptsConfig.connectedPhoneNumber || process.env.OWNER_PHONE || '',
@@ -6280,7 +6306,7 @@ Avalie rigorosamente:
 
     if (sendRes.success) {
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: 'outbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -6945,7 +6971,7 @@ INSTRUÇÕES:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           direction: 'outbound',
           contactPhone: job.targetJidOrPhone,
           contactName: job.targetLabel || job.targetJidOrPhone,
@@ -7936,7 +7962,7 @@ Classifique e extraia em JSON estrito:
         });
         if (sendRes.success) {
           recordWhatsAppMessage({
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
             direction: 'outbound',
             contactPhone: resolvedTarget.jidOrPhone,
             contactName: resolvedTarget.label,
@@ -7965,7 +7991,7 @@ Classifique e extraia em JSON estrito:
             canUseErpTools({ isOwner, senderDigits, authorizedPhones: (whatsAppReceiptsConfig.authorizedPhones || []).map((p: string) => normalizeWhatsAppPhone(p)) }) &&
             ERP_QUESTION.test(userQuestion)) {
           try {
-            const text = await answerWithTools(erpH, effectiveOrg(undefined), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 1, timeoutMs: 25_000 })).response);
+            const text = await answerWithTools(erpH, orgOfWhatsAppContext(), userQuestion, [], async (p) => (await generateContentWithFallback({ ...p, maxRetriesPerModel: 1, timeoutMs: 25_000 })).response);
             if (text) { aiResult = { intent: 'answer', replyText: text }; erpAnswered = true; }
           } catch (e: any) {
             lastAiErrorMessage = String(e?.message || e || '');
@@ -8216,7 +8242,7 @@ DIRETRIZES ESSENCIAIS:
 
       if (sendRes.success) {
         recordWhatsAppMessage({
-          organizationId: effectiveOrg(undefined),
+          organizationId: orgOfWhatsAppContext(),
           direction: 'outbound',
           contactPhone: useOwnerDm && ownerDigits ? formatWhatsAppPhoneDisplay(ownerDigits) : params.isGroup ? params.remoteJid : params.senderPhone,
           contactName: useOwnerDm ? 'Meu WhatsApp (Resposta @aguero)' : params.isGroup ? params.groupName || params.remoteJid : params.senderName,
@@ -8646,6 +8672,9 @@ DIRETRIZES ESSENCIAIS:
     };
   };
 
+  /** Qual conexão abriu como número da empresa, por empresa (para saber se a queda é dela). */
+  const companyWhatsAppKeyByOrg = new Map<string, string>();
+
   registerWhatsAppBridgeHooks({
     isPriorityMonitoredJid: (remoteJid) => {
       if (!remoteJid) return false;
@@ -8696,6 +8725,20 @@ DIRETRIZES ESSENCIAIS:
       return false;
     },
     onConnectionOpen: ({ connectedNumber, connectedName }) => {
+      // WhatsApp pessoal: só registra. A configuração e as varreduras da empresa ficam com o número da empresa.
+      if (!isCompanyWhatsApp()) {
+        addWebhookLog({
+          method: 'WA_WEB_BRIDGE',
+          event: 'dispositivo_conectado',
+          senderPhone: connectedNumber,
+          senderName: connectedName,
+          hasMedia: false,
+          status: 'sucesso',
+          summary: `WhatsApp pessoal conectado (${connectedNumber} · ${connectedName}).`,
+        });
+        return;
+      }
+      companyWhatsAppKeyByOrg.set(orgOfWhatsAppContext(), currentWhatsAppSession()?.key || '');
       whatsAppReceiptsConfig = {
         ...whatsAppReceiptsConfig,
         provider: 'baileys_web_bridge',
@@ -8727,7 +8770,9 @@ DIRETRIZES ESSENCIAIS:
       }, 45000);
     },
     onConnectionClose: (reason) => {
-      if (whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
+      // Só a queda do número da empresa muda o status do canal da empresa.
+      const wasCompany = companyWhatsAppKeyByOrg.get(orgOfWhatsAppContext()) === currentWhatsAppSession()?.key;
+      if (wasCompany && whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
         whatsAppReceiptsConfig.status = 'desconectado';
         persistWaConfig();
       }
@@ -8742,7 +8787,7 @@ DIRETRIZES ESSENCIAIS:
     onHistoryMessage: (histEvt) => {
       // Passive read-only archival of offline/synced WhatsApp messages so @aguero summaries NEVER miss offline history!
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: histEvt.fromMe ? 'outbound' : 'inbound',
         contactPhone: histEvt.isGroup ? histEvt.remoteJid : histEvt.senderPhone,
         contactName: histEvt.isGroup ? histEvt.groupName || histEvt.remoteJid : histEvt.senderName,
@@ -8769,6 +8814,7 @@ DIRETRIZES ESSENCIAIS:
       const msgTsMs = new Date(histEvt.timestampIso || 0).getTime();
       const txt = String(histEvt.text || '').trim();
       if (
+        isCompanyWhatsApp() && // ND só pelo número da empresa
         Number.isFinite(msgTsMs) &&
         Date.now() - msgTsMs <= 4 * 60 * 60 * 1000 &&
         txt.length >= 8 &&
@@ -8819,6 +8865,35 @@ DIRETRIZES ESSENCIAIS:
       }
       schedulePersistWaContacts();
 
+      // WhatsApp pessoal: só guarda a conversa. OCR de recibos, NDs, respostas automáticas e @aguero
+      // rodam apenas no número da empresa (evita recibo em dobro, ND saindo do número de um funcionário
+      // e acesso ao ERP por quem não tem perfil para isso).
+      if (!isCompanyWhatsApp()) {
+        recordWhatsAppMessage({
+          organizationId: orgOfWhatsAppContext(),
+          direction: evt.fromMe ? 'outbound' : 'inbound',
+          contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
+          contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
+          contactType: isEmployee ? 'funcionario' : 'cliente',
+          category: isEmployee ? 'orientacao_equipe' : 'atendimento',
+          text: evt.text,
+          chatJid: evt.remoteJid,
+          isGroup: evt.isGroup,
+          groupName: evt.groupName,
+          participantPhone: evt.senderPhone,
+          participantName: evt.senderName,
+          sourceBridge: 'baileys_web',
+          hasMedia: Boolean(evt.mediaBase64),
+          mediaMimeType: evt.mediaMimeType,
+          externalMessageId: evt.messageId,
+          status: evt.fromMe ? 'enviado' : 'recebido',
+          sentByUserName: evt.fromMe ? evt.senderName : undefined,
+          createdAt: evt.timestampIso,
+          deferPersist: true,
+        });
+        return;
+      }
+
       // STRICT OCR OPT-IN: NEVER run OCR or auto-reply unless this exact group/contact is explicitly enabled/locked!
       const senderContact = !evt.isGroup ? findManagedContact(evt.senderPhone) : undefined;
       const pinnedGroupJid = whatsAppReceiptsConfig.targetGroupJid || '';
@@ -8847,7 +8922,7 @@ DIRETRIZES ESSENCIAIS:
 
           const newRec = {
             id: `rec_wa_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
             whatsappMessageId: evt.messageId,
             employeeName: evt.senderName,
             employeePhone: evt.senderPhone,
@@ -8908,7 +8983,7 @@ DIRETRIZES ESSENCIAIS:
             if (replyRes.success) {
               didSendOcrConfirmation = true;
               recordWhatsAppMessage({
-                organizationId: effectiveOrg(undefined),
+                organizationId: orgOfWhatsAppContext(),
                 direction: 'outbound',
                 contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
                 contactName: evt.isGroup ? evt.groupName : evt.senderName,
@@ -8935,7 +9010,7 @@ DIRETRIZES ESSENCIAIS:
 
       // Record chat message in unified WhatsApp hub inbox
       recordWhatsAppMessage({
-        organizationId: effectiveOrg(undefined),
+        organizationId: orgOfWhatsAppContext(),
         direction: evt.fromMe ? 'outbound' : 'inbound',
         contactPhone: evt.isGroup ? evt.remoteJid : evt.senderPhone,
         contactName: evt.isGroup ? evt.groupName || evt.remoteJid : evt.senderName,
@@ -9160,12 +9235,8 @@ DIRETRIZES ESSENCIAIS:
     },
   });
 
-  // Auto-resume existing Linked Device session silently if already paired
-  if (hasPersistedBridgeSession()) {
-    startWhatsAppBridgeSession().catch((err) => {
-      console.warn('⚠️ [WhatsApp Web Bridge] Falha ao retomar sessão salva:', err?.message || err);
-    });
-  }
+  // Cada WhatsApp conectado (um por usuário) volta sozinho, cada um na própria sessão.
+  resumeSavedWhatsAppSessions();
 
   // Lightweight 45-second background safety net: checks in-memory archived messages from the last 4h
   // for active ND rule groups (<1ms when idle; skips already-processed and non-ND chatter IDs)
@@ -9179,7 +9250,8 @@ DIRETRIZES ESSENCIAIS:
 
   // Ultra-fast keep-alive heartbeat endpoint (keeps Cloud Run warm & WhatsApp bridge alive while ERP is open)
   app.get('/api/whatsapp/bridge/keepalive', (_req: Request, res: Response) => {
-    ensureWhatsAppBridgeResumed();
+    // Retoma todas as conexões salvas da empresa que caíram (não só as que estão online).
+    resumeOrgSessions(orgOfWhatsAppContext());
     const status = getWhatsAppBridgeStatus();
     if (status.state === 'conectado' && whatsAppNdRules.some((r) => r.active && r.groupJid)) {
       scanArchivedMessagesForPendingNds(4).catch(() => undefined);
@@ -9208,7 +9280,10 @@ DIRETRIZES ESSENCIAIS:
   });
 
   // Bridge Connect (QR Code or 8-digit Pairing Code)
-  app.post('/api/whatsapp/bridge/connect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  // Cada usuário conecta o próprio WhatsApp (QR ou código), na empresa selecionada.
+  app.post('/api/whatsapp/bridge/connect', async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const { phoneNumberForPairing, forceFreshQr } = req.body || {};
       const status = await startWhatsAppBridgeSession({
@@ -9226,18 +9301,21 @@ DIRETRIZES ESSENCIAIS:
             : 'Iniciando conexão WhatsApp Web para gerar o QR Code...',
       });
     } catch (err: any) {
-      res.status(500).json({
+      res.status(err?.status === 429 ? 429 : 500).json({
         success: false,
         error: err?.message || 'Erro ao iniciar conexão WhatsApp Web.',
       });
     }
   });
 
-  // Bridge Disconnect / Logout
-  app.post('/api/whatsapp/bridge/disconnect', requireRole('Admin', 'Gerente'), async (req: Request, res: Response) => {
+  // Desconectar o PRÓPRIO WhatsApp (desvincular apaga as credenciais desta sessão).
+  app.post('/api/whatsapp/bridge/disconnect', async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
     try {
       const logout = Boolean(req.body?.logout);
       const status = await stopWhatsAppBridgeSession(logout);
+      if (logout && waRegistry.get(who.key)) await waRegistry.remove(who.key);
       if (whatsAppReceiptsConfig.provider === 'baileys_web_bridge') {
         whatsAppReceiptsConfig.status = 'desconectado';
         persistWaConfig();
@@ -9251,6 +9329,54 @@ DIRETRIZES ESSENCIAIS:
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err?.message || 'Erro ao desconectar ponte.' });
+    }
+  });
+
+  // WhatsApps conectados da empresa (Admin/Gerente): número, nome, quem conectou e qual é o oficial.
+  app.get('/api/whatsapp/bridge/sessions', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
+    const orgId = effectiveOrg(req.orgId);
+    const official = getOfficialSessionKey(orgId) || '';
+    const sessions = waRegistry
+      .list()
+      .filter((s) => req.user!.master || s.orgId === orgId)
+      .map((s) => {
+        const st = waRegistry.get(s.key)?.getWhatsAppBridgeStatus();
+        return {
+          key: s.key,
+          uid: s.uid,
+          legacy: s.key === LEGACY_SESSION_KEY,
+          state: st?.state || 'desconectado',
+          connectedNumber: st?.connectedNumber || '',
+          connectedName: (st as { connectedName?: string } | undefined)?.connectedName || '',
+          official: s.key === official,
+        };
+      });
+    res.json({ success: true, sessions, officialKey: official, mySessionKey: currentWhatsAppSession()?.key || '' });
+  });
+
+  // Número oficial da empresa para avisos e automações (Admin). Sem `key`: usa o WhatsApp de quem chama.
+  app.post('/api/whatsapp/bridge/official', requireRole('Admin'), (req: Request, res: Response) => {
+    const orgId = effectiveOrg(req.orgId);
+    const key = String(req.body?.key || currentWhatsAppSession()?.key || '');
+    const m = key ? waRegistry.meta(key) : undefined;
+    if (!m || m.orgId !== orgId) return res.status(400).json({ success: false, error: 'Escolha um WhatsApp conectado desta empresa.' });
+    setOfficialSessionKey(orgId, key);
+    res.json({ success: true, officialKey: key });
+  });
+
+  // Admin assume a sessão antiga (o número que era único para todos) como o próprio WhatsApp.
+  app.post('/api/whatsapp/bridge/sessions/legacy/claim', requireRole('Admin'), async (req: Request, res: Response) => {
+    const who = sessionForRequest({ user: req.user, orgId: memberOrgOf(req) });
+    if (!('key' in who)) return res.status(who.status).json({ success: false, error: who.error });
+    const legacy = waRegistry.meta(LEGACY_SESSION_KEY);
+    if (!legacy || legacy.orgId !== who.orgId) return res.status(404).json({ success: false, error: 'Não há sessão antiga nesta empresa.' });
+    try {
+      const b = await waRegistry.rename(LEGACY_SESSION_KEY, who.key, { orgId: who.orgId, uid: who.uid });
+      if (getOfficialSessionKey(who.orgId) === LEGACY_SESSION_KEY) setOfficialSessionKey(who.orgId, who.key);
+      const status = b ? await runInWhatsAppSession(who, () => startWhatsAppBridgeSession()) : undefined;
+      res.json({ success: true, bridge: status, message: 'O WhatsApp antigo agora é o seu.' });
+    } catch (err: any) {
+      res.status(409).json({ success: false, error: err?.message || 'Não foi possível assumir a sessão antiga.' });
     }
   });
 
@@ -9915,6 +10041,7 @@ DIRETRIZES ESSENCIAIS:
 
   // Trigger manual catch-up / status check on WhatsApp Web Bridge
   app.post('/api/whatsapp/bridge/catch-up', async (req: Request, res: Response) => {
+    resumeOrgSessions(orgOfWhatsAppContext());
     const br = getWhatsAppBridgeStatus();
     if (br.state !== 'conectado') {
       if (br.hasSavedSession) {
@@ -10326,7 +10453,7 @@ DIRETRIZES ESSENCIAIS:
           ...createDefaultNdRuleForGroup({
             groupJid: '',
             groupName: 'Teste / Gerador Avulso',
-            organizationId: effectiveOrg(undefined),
+            organizationId: orgOfWhatsAppContext(),
           }),
           id: 'wand_rule_default_test',
           nextProjNumber: Math.max(4925, maxExistingProj + 1),
@@ -11595,7 +11722,7 @@ Retorne JSON estrito.`;
     const nowIso = new Date().toISOString();
     const newRec = {
       id: `rec_manual_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: effectiveOrg(undefined),
+      organizationId: orgOfWhatsAppContext(),
       employeeName: String(body.employeeName || body.editedBy || 'Lançamento Manual').trim(),
       employeePhone: String(body.employeePhone || whatsAppReceiptsConfig.connectedPhoneNumber || '').trim(),
       receiptDate: String(body.receiptDate || nowIso.slice(0, 10)).trim(),

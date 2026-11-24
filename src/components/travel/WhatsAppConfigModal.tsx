@@ -44,7 +44,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
   onSyncSuccess,
 }) => {
   const [provider, setProvider] = useState<WhatsAppReceiptsConfig['provider']>(config.provider || 'evolution_api');
-  const [phoneNumber, setPhoneNumber] = useState(config.connectedPhoneNumber || '+55 11 91789-7747');
+  const [phoneNumber, setPhoneNumber] = useState(config.connectedPhoneNumber || '');
   const [groupName, setGroupName] = useState(config.targetGroupName || 'REEMBOLSOS AGUERO INOX');
   const [groupJid, setGroupJid] = useState(config.targetGroupJid || '1203632948192841@g.us');
   const [verifyToken, setVerifyToken] = useState(config.verifyToken || 'aguero_reembolsos_token_2025');
@@ -769,7 +769,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
                         type="text"
                         value={pairingPhone}
                         onChange={(e) => setPairingPhone(e.target.value)}
-                        placeholder="Ex: 5511917897747"
+                        placeholder="Ex: 5511900000000"
                         className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono"
                       />
                       <button
@@ -1197,7 +1197,7 @@ export const WhatsAppConfigModal: React.FC<WhatsAppConfigModalProps> = ({
                     type="text"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="+55 (11) 91789-7747"
+                    placeholder="+55 (11) 90000-0000"
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>

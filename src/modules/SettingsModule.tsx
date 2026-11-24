@@ -493,19 +493,12 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
                   <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 text-[11px] flex items-center justify-center font-bold">1</span>
                   <span>Seu Número do WhatsApp</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setWaConfig((prev) => ({ ...prev, connectedPhoneNumber: '+55 11 91789-7747' }))}
-                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
-                >
-                  Usar +55 11 91789-7747
-                </button>
               </div>
               <input
                 type="text"
                 value={waConfig.connectedPhoneNumber}
                 onChange={(e) => setWaConfig({ ...waConfig, connectedPhoneNumber: e.target.value })}
-                placeholder="+55 11 91789-7747"
+                placeholder="+55 11 90000-0000"
                 className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-medium text-xs focus:outline-none focus:border-emerald-500"
               />
               <p className="text-[10px] text-slate-400">

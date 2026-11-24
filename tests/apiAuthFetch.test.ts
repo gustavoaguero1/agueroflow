@@ -20,6 +20,18 @@ function setup(token: string | null) {
   return { target: { fetch: fetchFn }, calls, auth };
 }
 
+test('rotas do WhatsApp levam a empresa selecionada (orgId), as demais não', async () => {
+  const calls: string[] = [];
+  const target = { location: { origin: 'http://app.test' }, fetch: async (i: unknown) => { calls.push(String(i)); return new Response('ok'); } };
+  const f = createApiFetch(async () => 'tok', target, () => 'org9');
+  await f('/api/whatsapp/bridge/connect');
+  await f('/api/whatsapp/bridge/status?orgId=outra');
+  await f('/api/rh/x');
+  assert.equal(new URL(calls[0]).searchParams.get('orgId'), 'org9');
+  assert.equal(new URL(calls[1]).searchParams.get('orgId'), 'outra');
+  assert.equal(new URL(calls[2]).searchParams.get('orgId'), null);
+});
+
 test('adds bearer to /api calls', async () => {
   const { target, auth } = setup('tok');
   await target.fetch('/api/x');

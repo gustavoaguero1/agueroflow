@@ -79,6 +79,15 @@ export function orgIdOf(req: Request): string | undefined | null {
   return orgs.length === 1 ? orgs[0] : undefined;
 }
 
+/** Empresa da requisição em que a pessoa é membro (master: qualquer uma); senão undefined. Não muda req. */
+export function memberOrgOf(req: Request): string | undefined {
+  const u = req.user;
+  if (!u) return undefined;
+  const org = orgIdOf(req);
+  if (!org) return undefined;
+  return u.master || u.orgs?.[org] ? org : undefined;
+}
+
 /** Passes master or a member whose role in the target org is allowed; sets req.orgId to the authorized org. */
 export function requireRole(...roles: Role[]): RequestHandler {
   return (req, res, next) => {
