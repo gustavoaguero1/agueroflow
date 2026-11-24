@@ -67,6 +67,19 @@ export interface QualityRecordEvent {
   comment?: string;
 }
 
+export interface QualityRecordState {
+  id: string;
+  orgId: string;
+  unitId: string;
+  contractId: string;
+  recordId: string;
+  status: QualityRecordStatus;
+  latestEventId: string;
+  updatedByUid: string;
+  updatedByName: string;
+  updatedAt: unknown;
+}
+
 export type QualityRecordStatus =
   | 'review_pending'
   | 'open'
