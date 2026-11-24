@@ -18,11 +18,14 @@ import {
   RequisitionUrgency,
 } from '../../types/purchasing';
 import { savePurchaseRequisition } from '../../services/purchasingService';
+import type { WorkOrder } from '../../types';
+import { workOrderLinkFields } from '../../services/purchasingLinks';
 
 interface PurchasingRequisitionsProps {
   organizationId: string;
   requisitions: PurchaseRequisition[];
   userName: string;
+  workOrders: WorkOrder[];
   onRefresh: () => Promise<void>;
   onCreateQuotationFromRequisition: (req: PurchaseRequisition) => void;
 }
@@ -31,6 +34,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
   organizationId,
   requisitions,
   userName,
+  workOrders,
   onRefresh,
   onCreateQuotationFromRequisition,
 }) => {
@@ -48,6 +52,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
   const [department, setDepartment] = useState<PurchaseRequisition['department']>('Obras & Montagem');
   const [urgency, setUrgency] = useState<RequisitionUrgency>('normal');
   const [costCenter, setCostCenter] = useState('');
+  const [linkedWorkOrderId, setLinkedWorkOrderId] = useState('');
   const [neededByDate, setNeededByDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
@@ -119,6 +124,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
         neededByDate,
         items: validItems.map((v) => ({ ...v, quantity: Number(v.quantity) || 1 })),
         status: 'pendente',
+        ...workOrderLinkFields(workOrders.find((wo) => wo.id === linkedWorkOrderId)),
         notes: notes.trim() || undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -128,6 +134,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
       setIsModalOpen(false);
       setTitle('');
       setCostCenter('');
+      setLinkedWorkOrderId('');
       setNotes('');
       setItems([
         {
@@ -252,6 +259,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
                   <th className="py-2.5 px-3">Código</th>
                   <th className="py-2.5 px-3">Título / Finalidade</th>
                   <th className="py-2.5 px-3">Departamento</th>
+                  <th className="py-2.5 px-3">Ordem de Serviço</th>
                   <th className="py-2.5 px-3">Urgência</th>
                   <th className="py-2.5 px-3">Prazo Necessário</th>
                   <th className="py-2.5 px-3 text-center">Itens</th>
@@ -268,6 +276,7 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
                       <span className="text-[10px] text-slate-400">Solicitante: {r.requestedByName}</span>
                     </td>
                     <td className="py-3 px-3 font-sans text-slate-300 text-[11px]">{r.department}</td>
+                    <td className="py-3 px-3 font-sans text-[11px]">{r.linkedWorkOrderNumber ? <span className="text-cyan-300">{r.linkedWorkOrderNumber}</span> : <span className="text-slate-500">Sem vínculo</span>}</td>
                     <td className="py-3 px-3 font-sans">
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded font-semibold ${
@@ -379,6 +388,15 @@ export const PurchasingRequisitions: React.FC<PurchasingRequisitionsProps> = ({
                     <option value="urgente_parada_obra">Urgente (Parada de Obra / Fábrica)</option>
                     <option value="baixa">Baixa (Reposição Futura)</option>
                   </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-300 mb-1 font-medium">Vincular à Ordem de Serviço (opcional)</label>
+                  <select value={linkedWorkOrderId} onChange={(e) => setLinkedWorkOrderId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    <option value="">Sem vínculo com OS</option>
+                    {workOrders.map((wo) => <option key={wo.id} value={wo.id}>{wo.orderNumber} — {wo.title}</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1">A RC ficará rastreável à OS e esse vínculo seguirá para cotação e pedido.</p>
                 </div>
 
                 <div>

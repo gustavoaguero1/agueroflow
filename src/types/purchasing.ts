@@ -49,6 +49,8 @@ export interface PurchaseRequisition {
   items: PurchaseRequisitionItem[];
   status: RequisitionStatus;
   linkedWorkOrderId?: string;
+  linkedWorkOrderNumber?: string;
+  linkedWorkOrderTitle?: string;
   linkedProposalId?: string;
   notes?: string;
   createdAt: string;
@@ -91,6 +93,9 @@ export interface PurchaseQuotationMap {
   title: string;
   requisitionId?: string;
   requisitionCode?: string;
+  linkedWorkOrderId?: string;
+  linkedWorkOrderNumber?: string;
+  linkedWorkOrderTitle?: string;
   items: PurchaseRequisitionItem[];
   bids: SupplierBid[];
   winningSupplierId?: string;
@@ -133,6 +138,9 @@ export interface PurchaseOrder {
   code: string; // Ex: OC-2026-0042
   requisitionCode?: string;
   quotationMapCode?: string;
+  linkedWorkOrderId?: string;
+  linkedWorkOrderNumber?: string;
+  linkedWorkOrderTitle?: string;
   supplierId: string;
   supplierName: string;
   supplierCnpj: string;
