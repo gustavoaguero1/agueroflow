@@ -55,7 +55,7 @@ Owner kinds:
 | overtime_rules | doc id | getDoc / onSnapshot | |
 | purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
-| purchasing_receipts | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
+| purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_requisitions | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_suppliers | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | recurring_orders | orgId | `orgId ==` | |
@@ -64,7 +64,7 @@ Owner kinds:
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | |
-| stock_movements | orgId (immutable) | `orgId ==` | |
+| stock_movements | orgId (immutable) | `orgId ==` | Append-only; entradas por recebimento registram OC, NF-e, recibo, custo unitário/total e referência idempotente. | |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
