@@ -183,19 +183,20 @@ async function transitionQualityRecord(
   const status = nextStatus(String(state.status), eventType);
   assert.ok(status, `Transition ${state.status} -> ${eventType} should be invalid in this helper.`);
 
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'quality_record_events', eventId), validQualityEvent(uid, eventType, {
-    previousEventId: state.latestEventId,
-    comment,
-  }));
-  batch.update(stateRef, {
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events', eventId),
+    validQualityEvent(uid, eventType, {
+      previousEventId: state.latestEventId,
+      comment,
+    }),
+  ));
+  await assertSucceeds(updateDoc(stateRef, {
     status,
     latestEventId: eventId,
     updatedByUid: uid,
     updatedByName: 'Responsável',
     updatedAt: serverTimestamp(),
-  });
-  await batch.commit();
+  }));
   return db;
 }
 
@@ -210,19 +211,22 @@ async function attemptOutOfOrderTransition(
   const stateRef = doc(db, 'quality_record_states', recordId);
   const stateSnapshot = await getDoc(stateRef);
   const state = stateSnapshot.data()!;
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'quality_record_events', eventId), validQualityEvent(uid, eventType, {
-    previousEventId: state.latestEventId,
-    comment: 'Tentativa fora de ordem.',
-  }));
-  batch.update(stateRef, {
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events', eventId),
+    validQualityEvent(uid, eventType, {
+      previousEventId: state.latestEventId,
+      comment: 'Tentativa fora de ordem.',
+    }),
+  ));
+  await assertFails(updateDoc(stateRef, {
     status: attemptedStatus,
     latestEventId: eventId,
     updatedByUid: uid,
     updatedByName: 'Responsável',
     updatedAt: serverTimestamp(),
-  });
-  await assertFails(batch.commit());
+  }));
+  const unchanged = await assertSucceeds(getDoc(stateRef));
+  assert.equal(unchanged.data()?.latestEventId, state.latestEventId);
 }
 
 test('Operations editor creates a quality record, initial event and state atomically', async () => {
@@ -456,19 +460,22 @@ test('concurrent or stale workflow events cannot overwrite the latest state', as
   const db = dbFor('supervisor_1', 'Supervisor');
   const stateRef = doc(db, 'quality_record_states', recordId);
   const state = (await getDoc(stateRef)).data()!;
-  const batch = writeBatch(db);
-  batch.set(doc(db, 'quality_record_events/stale_approval'), validQualityEvent('supervisor_1', 'approved', {
-    previousEventId: 'old_event_id',
-  }));
-  batch.update(stateRef, {
+  await assertSucceeds(setDoc(
+    doc(db, 'quality_record_events/stale_approval'),
+    validQualityEvent('supervisor_1', 'approved', {
+      previousEventId: 'old_event_id',
+    }),
+  ));
+  assert.notEqual(state.latestEventId, 'old_event_id');
+  await assertFails(updateDoc(stateRef, {
     status: 'approved',
     latestEventId: 'stale_approval',
     updatedByUid: 'supervisor_1',
     updatedByName: 'Supervisor',
     updatedAt: serverTimestamp(),
-  });
-  assert.notEqual(state.latestEventId, 'old_event_id');
-  await assertFails(batch.commit());
+  }));
+  const unchanged = await assertSucceeds(getDoc(stateRef));
+  assert.equal(unchanged.data()?.latestEventId, state.latestEventId);
 });
 
 test('another organization cannot read a quality record, its event history or current state', async () => {
