@@ -21,7 +21,7 @@ export const LEVEL_LABELS: Record<AreaLevel, string> = { 0: 'Sem acesso', 1: 'Ve
 export const AREAS: Array<{ id: AreaId; label: string; description: string; sections: string[]; enforcedInDatabase: boolean }> = [
   { id: 'painel', label: 'Painel', description: 'Visão geral e pendências. Todo mundo vê.', sections: ['painel'], enforcedInDatabase: false },
   { id: 'operacoes', label: 'Operações', description: 'OS, checklists, inspeções, ocorrências, obras e RDO, diário, viagens, reembolsos e bens coletivos.', sections: ['ordens', 'checklists', 'inspecoes', 'ocorrencias', 'operacoes', 'ops', 'obras', 'viagens', 'bens'], enforcedInDatabase: true },
-  { id: 'estoque', label: 'Estoque e compras', description: 'Peças e serviços, estoque e compras.', sections: ['pecas', 'servicos', 'mao', 'subcategorias', 'estoque', 'compras'], enforcedInDatabase: false },
+  { id: 'estoque', label: 'Estoque e compras', description: 'Catálogo de peças e serviços, saldos, movimentações e compras. Acesso verificado também no Firestore.', sections: ['pecas', 'servicos', 'mao', 'subcategorias', 'estoque', 'compras'], enforcedInDatabase: true },
   { id: 'comercial', label: 'Comercial', description: 'Propostas, clientes, composições e marketing.', sections: ['comercial', 'marketing'], enforcedInDatabase: true },
   { id: 'financeiro', label: 'Financeiro', description: 'Contas a pagar, categorias e notas fiscais.', sections: ['financeiro'], enforcedInDatabase: true },
   { id: 'rh', label: 'RH e salários', description: 'Funcionários, salários, admissões, 13º e relatórios de RH.', sections: ['rh'], enforcedInDatabase: true },
