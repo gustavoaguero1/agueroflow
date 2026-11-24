@@ -148,8 +148,8 @@ export function buildRdoReportNumber(date: string, documentId: string): string {
   const validDate = parsedDate && Number.isFinite(parsedDate.getTime())
     && parsedDate.toISOString().slice(0, 10) === date;
 
-  if (!validDate || documentId.trim().length < 8) {
+  if (!validDate || documentId.trim().length < 12) {
     throw new Error('Não foi possível gerar o identificador do RDO.');
   }
-  return 'RDO-' + date.slice(0, 4) + '-' + documentId.slice(-8).toUpperCase();
+  return 'RDO-' + date.slice(0, 4) + '-' + documentId.toUpperCase();
 }
