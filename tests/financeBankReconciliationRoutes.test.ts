@@ -224,14 +224,13 @@ test('credit reconciliation rejects wrong direction, amount mismatch, foreign co
     'finance_bank_transactions/wrong': { id: 'wrong', orgId: 'org_a', date: '2026-11-24', amount: 401, direction: 'credit' },
     'finance_bank_transactions/foreign': { id: 'foreign', orgId: 'org_b', date: '2026-11-24', amount: 400, direction: 'credit' },
     'finance_bank_transactions/credit2': { id: 'credit2', orgId: 'org_a', date: '2026-11-24', amount: 400, direction: 'credit' },
-    'finance_bank_reconciliations/already-used': {
-      id: 'already-used', orgId: 'org_a', transactionId: 'credit1', receiptId,
-    },
+    'finance_bank_transactions/credit3': { id: 'credit3', orgId: 'org_a', date: '2026-11-24', amount: 400, direction: 'credit' },
   };
   await withApi(seed, async (base) => {
     assert.equal((await post(base, '/debit/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
     assert.equal((await post(base, '/wrong/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
     assert.equal((await post(base, '/foreign/match-receipt', { orgId: 'org_a', receiptId })).status, 403);
-    assert.equal((await post(base, '/credit2/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
+    assert.equal((await post(base, '/credit2/match-receipt', { orgId: 'org_a', receiptId })).status, 201);
+    assert.equal((await post(base, '/credit3/match-receipt', { orgId: 'org_a', receiptId })).status, 409);
   });
 });
