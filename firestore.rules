@@ -210,12 +210,14 @@ service cloud.firestore {
       allow delete: if orgScoped() && canDelete() && areaWrite(resource.data);
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
-      function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements']; }
+      function finance() { return coll in ['finance_payables', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
       function financeRole(d, roles) { return isMaster() || hasRole(orgOf(d), roles); }
       function isPayable() { return coll == 'finance_payables'; }
       function isReconciliationCase() { return coll == 'finance_reconciliation_cases'; }
       function isPayableAuthorization() { return coll == 'finance_payable_authorizations'; }
       function isPayableSettlement() { return coll == 'finance_payable_settlements'; }
+      function isBankTransaction() { return coll == 'finance_bank_transactions'; }
+      function isBankReconciliation() { return coll == 'finance_bank_reconciliations'; }
       // Paid-state changes are server-only so the immutable settlement event and payable update stay atomic.
       function payableClientUpdate() {
         return resource.data.get('status', '') == 'aberto'
@@ -245,7 +247,7 @@ service cloud.firestore {
       // Financeiro: members read; immutable settlement events are written only by the backend.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || payableClientCreate())
         && (!isReconciliationCase() || (request.resource.data.get('id', '') == docId
@@ -260,13 +262,13 @@ service cloud.firestore {
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
           && request.resource.data.get('updatedAt', null) == request.time));
-      allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && canUpdate()
+      allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
           : (isPayable()
             ? payableClientUpdate()
             : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
-      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
+      allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
