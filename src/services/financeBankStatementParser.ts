@@ -116,7 +116,7 @@ function ofxTag(block: string, tag: string): string {
 }
 
 function parseOfx(text: string): FinanceBankStatementRow[] {
-  const blocks = [...text.matchAll(/<STMTTRN>([\s\\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>|$))/gi)].map((match) => match[1]);
+  const blocks = [...text.matchAll(/<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>|$))/gi)].map((match) => match[1]);
   if (!blocks.length) throw new Error('Não encontrei lançamentos STMTTRN no arquivo OFX.');
   const rows: FinanceBankStatementRow[] = [];
   blocks.forEach((block, index) => {
