@@ -77,6 +77,22 @@ export function mergeObra(unit: Unit | null, overlay: Overlay | null): Row {
   };
 }
 
+/** Todas as unidades (com ou sem complemento) + complementos sem unidade. */
+export function joinObras(units: Unit[], overlays: Overlay[]): Row[] {
+  const byUnit = new Map(overlays.filter((o) => o.unitId).map((o) => [o.unitId as string, o]));
+  const ids = new Set(units.map((u) => u.id));
+  return [
+    ...units.map((u) => mergeObra(u, byUnit.get(u.id) || null)),
+    ...overlays.filter((o) => !o.unitId || !ids.has(o.unitId)).map((o) => mergeObra(null, o)),
+  ];
+}
+
+/** Próximo código de obra: maior código numérico + 1 ("1" se não houver). */
+export function nextUnitCode(existing: string[]): string {
+  const nums = existing.map((c) => Number(c)).filter((n) => Number.isInteger(n) && n >= 0);
+  return String((nums.length ? Math.max(...nums) : 0) + 1);
+}
+
 const OBRA_TO_UNIT: Record<string, keyof Unit> = { nome: 'name', os: 'code', coordenador: 'managerName' };
 
 export function splitObraWrite(data: Record<string, unknown>): { unitPatch: Partial<Unit>; overlay: Record<string, unknown> } {

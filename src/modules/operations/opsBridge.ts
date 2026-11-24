@@ -32,6 +32,7 @@ import { apiFetch } from '../../apiAuthFetch';
 import type { UserRole } from '../../types';
 import { INOX_COLLECTIONS, rewriteUrls, type InoxBackup } from './inoxBackup';
 import { createPeopleSource } from './peopleSource';
+import { createObrasSource } from './obrasSource';
 
 export { parseInoxBackup, summarizeInoxBackup, type InoxBackup } from './inoxBackup';
 
@@ -88,6 +89,7 @@ export function createOpsBridge(ctx: OpsContext) {
   // Pessoas e salários vêm do RH (ver peopleSource.ts); demais coleções ficam em ops_orgs/{orgId}.
   const track = (u: Unsub) => { subs.add(u); return () => { u(); subs.delete(u); }; };
   const people = createPeopleSource(ctx.orgId, track);
+  const obras = createObrasSource(ctx.orgId, track);
   const split = (path: string) => {
     const p = String(path).replace(/^\/+|\/+$/g, '');
     const i = p.indexOf('/');
@@ -98,6 +100,7 @@ export function createOpsBridge(ctx: OpsContext) {
     const { col, id } = split(path);
     if (col === 'colaboradores' && id) return wrapVirtualDoc(people.colabDoc(id));
     if (col === 'salarios' && id) return wrapVirtualDoc(people.salarioDoc(id));
+    if (col === 'obras' && id) return wrapVirtualDoc(obras.obraDoc(id));
     const r = doc(db, base(path));
     return {
       id: r.id,
@@ -118,6 +121,7 @@ export function createOpsBridge(ctx: OpsContext) {
     const { col } = split(path);
     if (col === 'colaboradores') return people.colaboradores;
     if (col === 'salarios') return people.salarios;
+    if (col === 'obras') return obras.obras;
     const c = collection(db, base(path));
     return {
       doc: (id?: string) => docApi(`${path}/${id || doc(c).id}`),

@@ -8,7 +8,23 @@ import {
   splitObraWrite,
   joinColabs,
   joinSalarios,
+  joinObras,
+  nextUnitCode,
 } from '../src/modules/operations/unifiedCollections';
+
+test('nextUnitCode: maior código numérico + 1; ignora códigos não numéricos', () => {
+  assert.equal(nextUnitCode(['198', '12', 'A3']), '199');
+  assert.equal(nextUnitCode([]), '1');
+});
+
+test('joinObras: unidade sem complemento vira un_<id>; complemento órfão continua aparecendo', () => {
+  const rows = joinObras(
+    [{ id: 'u1', orgId: 'org', name: 'Usina', code: '198', createdAt: '', updatedAt: '' }],
+    [{ id: 'o-velha', nome: 'Obra antiga' }],
+  );
+  assert.deepEqual(rows.map((r) => r.id), ['un_u1', 'o-velha']);
+  assert.equal(rows[1].semUnidade, true);
+});
 import type { RhEmployee } from '../src/types/rhPayroll';
 import type { Unit } from '../src/types';
 
