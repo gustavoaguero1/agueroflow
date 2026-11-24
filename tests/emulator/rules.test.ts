@@ -338,7 +338,7 @@ test('finance categories/rules: members read, Supervisor+ write, Admin/Gerente d
   }
 });
 
-test('finance_payables: createdBy is the caller; Supervisor only settles aberto → pago; Admin/Gerente edit', async () => {
+test('finance_payables: createdBy is caller; payment state can only change through backend settlement; Admin/Gerente can edit title fields', async () => {
   const c = 'finance_payables';
   await seedAs((db) => setDoc(doc(db, `${c}/a`), { orgId: 'org_a', valor: 10, status: 'aberto', createdBy: 'x' }));
   await seedAs((db) => setDoc(doc(db, `${c}/b`), { orgId: 'org_b', valor: 10, status: 'aberto' }));
@@ -350,10 +350,10 @@ test('finance_payables: createdBy is the caller; Supervisor only settles aberto 
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', valor: 1 }));
   await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'cancelado' }));
-  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'someone', updatedAt: 'x' }));
-  await assertSucceeds(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_sup', updatedAt: 'x' }));
-  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'aberto' }));
-  await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { status: 'aberto', valor: 12 }));
+  await assertFails(updateDoc(doc(supervisor(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_sup', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { status: 'pago', pagoEm: '2026-11-21', pagoPor: 'member_m_ger', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(gerente(), `${c}/a`), { settlementId: 'forged' }));
+  await assertSucceeds(updateDoc(doc(gerente(), `${c}/a`), { valor: 12 }));
   await assertFails(updateDoc(doc(gerente(), `${c}/a`), { orgId: 'org_b' }));
   await assertFails(updateDoc(doc(member(), `${c}/a`), { status: 'pago' }));
   await assertFails(deleteDoc(doc(supervisor(), `${c}/pay_org_a_n`)));
@@ -435,6 +435,22 @@ test('finance_reconciliation_cases: org-scoped, created by actor, manager-only d
   }));
 });
 
+
+test('finance_payable_settlements: members read only their company; client writes are always denied', async () => {
+  const path = 'finance_payable_settlements';
+  await seedAs((db) => setDoc(doc(db, path + '/pays_org_a_title1'), { id: 'pays_org_a_title1', orgId: 'org_a', payableId: 'pay_org_a_title1', settledValue: 125, paymentDate: '2026-11-24', paymentMethod: 'pix' }));
+  await seedAs((db) => setDoc(doc(db, path + '/pays_org_b_title2'), { id: 'pays_org_b_title2', orgId: 'org_b', payableId: 'pay_org_b_title2', settledValue: 200, paymentDate: '2026-11-24', paymentMethod: 'boleto' }));
+  await assertSucceeds(getDoc(doc(member(), path + '/pays_org_a_title1')));
+  await assertFails(getDoc(doc(member(), path + '/pays_org_b_title2')));
+  await assertSucceeds(getDocs(query(collection(member(), path), where('orgId', '==', 'org_a'))));
+  await assertFails(getDocs(query(collection(member(), path), where('orgId', '==', 'org_b'))));
+  const record = { id: 'pays_org_a_new', orgId: 'org_a', payableId: 'pay_org_a_new', settledValue: 5 };
+  await assertFails(setDoc(doc(supervisor(), path + '/pays_org_a_new'), record));
+  await assertFails(setDoc(doc(gerente(), path + '/pays_org_a_new'), record));
+  await assertFails(setDoc(doc(master(), path + '/pays_org_a_new'), record));
+  await assertFails(updateDoc(doc(admin(), path + '/pays_org_a_title1'), { settledValue: 1 }));
+  await assertFails(deleteDoc(doc(admin(), path + '/pays_org_a_title1')));
+});
 
 test('finance_payable_authorizations: only Admin/Gerente can create one per approved case and open matching NF-e payable; immutable', async () => {
   const casePath = 'finance_reconciliation_cases/rcase_org_a_case1';
