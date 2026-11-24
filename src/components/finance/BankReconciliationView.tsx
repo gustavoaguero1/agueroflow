@@ -3,10 +3,10 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { ArrowLeftRight, CheckCircle2, FileUp } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import type { FinancePayableSettlement } from '../../types/finance';
+import type { FinancePayableSettlement, FinanceReceivableReceipt } from '../../types/finance';
 import { parseFinanceBankStatement, type FinanceBankStatementRow } from '../../services/financeBankStatementParser';
 import {
-  importFinanceBankTransactions, matchFinanceBankTransaction,
+  importFinanceBankTransactions, matchFinanceBankTransaction, matchFinanceBankReceiptTransaction,
   type FinanceBankMatch, type FinanceBankTransaction,
 } from '../../services/financeBankReconciliationService';
 import { brl } from '../../services/financeService';
@@ -17,12 +17,14 @@ const dateDistance = (a: string, b: string) => Math.abs(Date.parse(a + 'T00:00:0
 const dateLabel = (value: string) => value.split('-').reverse().join('/');
 
 type Candidate = FinancePayableSettlement & { id: string };
+type ReceiptCandidate = FinanceReceivableReceipt & { id: string };
 
 export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) => {
   const { role, isMaster, areaLevel } = useAuth();
   const canManage = isMaster || ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2);
   const [transactions, setTransactions] = useState<FinanceBankTransaction[]>([]);
   const [settlements, setSettlements] = useState<Candidate[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptCandidate[]>([]);
   const [matches, setMatches] = useState<FinanceBankMatch[]>([]);
   const [fileName, setFileName] = useState('');
   const [accountLabel, setAccountLabel] = useState('');
@@ -44,16 +46,22 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
       (snapshot) => setSettlements(snapshot.docs.map((d) => ({ ...(d.data() as Candidate), id: d.id }))),
       (err) => setError('Falha ao carregar pagamentos: ' + err.message),
     );
+    const stopReceipts = onSnapshot(
+      query(collection(db, 'finance_receivable_receipts'), where('orgId', '==', orgId)),
+      (snapshot) => setReceipts(snapshot.docs.map((d) => ({ ...(d.data() as ReceiptCandidate), id: d.id }))),
+      (err) => setError('Falha ao carregar recebimentos: ' + err.message),
+    );
     const stopMatches = onSnapshot(
       query(collection(db, 'finance_bank_reconciliations'), where('orgId', '==', orgId)),
       (snapshot) => setMatches(snapshot.docs.map((d) => ({ ...(d.data() as FinanceBankMatch), id: d.id }))),
       (err) => setError('Falha ao carregar conciliações: ' + err.message),
     );
-    return () => { stopTransactions(); stopSettlements(); stopMatches(); };
+    return () => { stopTransactions(); stopSettlements(); stopReceipts(); stopMatches(); };
   }, [orgId]);
 
   const matchedByTransaction = useMemo(() => new Map(matches.map((match) => [match.transactionId, match])), [matches]);
-  const matchedSettlements = useMemo(() => new Set(matches.map((match) => match.settlementId)), [matches]);
+  const matchedSettlements = useMemo(() => new Set(matches.map((match) => match.settlementId).filter((id): id is string => !!id)), [matches]);
+  const matchedReceipts = useMemo(() => new Set(matches.map((match) => match.receiptId).filter((id): id is string => !!id)), [matches]);
   const pendingCount = transactions.filter((item) => item.direction === 'debit' && !matchedByTransaction.has(item.id)).length;
   const matchedCount = matches.length;
 
@@ -95,6 +103,24 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
       && dateDistance(settlement.paymentDate, transaction.date) <= 7)
     .sort((a, b) => dateDistance(a.paymentDate, transaction.date) - dateDistance(b.paymentDate, transaction.date))
     .slice(0, 5);
+
+  const receiptCandidatesFor = (transaction: FinanceBankTransaction) => receipts
+    .filter((receipt) => !matchedReceipts.has(receipt.id)
+      && receipt.receiptAmount > 0
+      && cents(receipt.receiptAmount) === cents(transaction.amount)
+      && dateDistance(receipt.receiptDate, transaction.date) <= 7)
+    .sort((a, b) => dateDistance(a.receiptDate, transaction.date) - dateDistance(b.receiptDate, transaction.date))
+    .slice(0, 5);
+
+  const confirmReceiptMatch = async (transaction: FinanceBankTransaction, receipt: ReceiptCandidate) => {
+    setMatchingId(transaction.id); setError(''); setNotice('');
+    try {
+      const id = await matchFinanceBankReceiptTransaction({ orgId, transactionId: transaction.id, receiptId: receipt.id });
+      setNotice('Conciliação de recebimento registrada. Evento ' + id + '. Nenhuma conta foi baixada ou alterada por esta ação.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível conciliar o crédito bancário.');
+    } finally { setMatchingId(''); }
+  };
 
   const confirmMatch = async (transaction: FinanceBankTransaction, settlement: Candidate) => {
     setMatchingId(transaction.id); setError(''); setNotice('');
@@ -160,9 +186,23 @@ export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) =
                     <div className="text-right"><p className={'font-mono text-sm font-bold ' + (transaction.direction === 'debit' ? 'text-rose-300' : 'text-emerald-300')}>{transaction.direction === 'debit' ? '−' : '+'}{brl.format(transaction.amount)}</p><p className="text-[9px] text-slate-500">{transaction.direction === 'debit' ? 'Débito' : 'Crédito'}</p></div>
                   </div>
                   {match ? (
-                    <div className="flex items-center gap-2 rounded-md bg-emerald-950/40 px-2 py-2 text-[10px] text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />Conciliado com pagamento {match.settlementId}</div>
+                    <div className="flex items-center gap-2 rounded-md bg-emerald-950/40 px-2 py-2 text-[10px] text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" />{match.receiptId ? 'Conciliado com recebimento ' + match.receiptId : 'Conciliado com pagamento ' + (match.settlementId || '')}</div>
                   ) : transaction.direction === 'credit' ? (
-                    <p className="text-[10px] text-slate-500">Crédito importado. A conciliação de recebimentos não faz parte desta etapa.</p>
+                    <div className="space-y-2">
+                      {receiptCandidatesFor(transaction).length === 0 ? (
+                        <p className="text-[10px] text-slate-500">Crédito sem sugestão: registre o recebimento correspondente em Contas a Receber. Nenhuma associação foi feita.</p>
+                      ) : (
+                        <>
+                          <p className="text-[10px] text-cyan-300">Possíveis recebimentos (valor exato e data em até 7 dias):</p>
+                          {receiptCandidatesFor(transaction).map((receipt) => (
+                            <div key={receipt.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-800 px-2 py-2">
+                              <div><p className="text-[10px] font-semibold text-slate-200">{receipt.receivableSnapshot?.clientName || 'Cliente'} · {receipt.receivableSnapshot?.documento || receipt.receivableId}</p><p className="text-[9px] text-slate-500">Recebimento {dateLabel(receipt.receiptDate)} · {brl.format(receipt.receiptAmount)}</p></div>
+                              <button type="button" className={btnPrimary} disabled={!canManage || matchingId === transaction.id} onClick={() => void confirmReceiptMatch(transaction, receipt)}>{matchingId === transaction.id ? 'Confirmando...' : 'Confirmar conciliação'}</button>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {candidates.length === 0 ? <p className="text-[10px] text-slate-500">Sem sugestão automática: procure o pagamento correspondente no histórico. Nenhuma associação foi feita.</p> : (

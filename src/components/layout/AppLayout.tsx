@@ -117,6 +117,7 @@ export type NavSection =
   | 'financeiro'
   | 'financeiro-notas'
   | 'financeiro-pagar'
+  | 'financeiro-receber'
   | 'financeiro-plano'
   | 'viagens'
   | 'viagens-painel'
@@ -417,6 +418,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       subItems: [
         { id: 'financeiro-notas' as NavSection, label: 'Caixa de Notas' },
         { id: 'financeiro-pagar' as NavSection, label: 'Contas a Pagar' },
+        { id: 'financeiro-receber' as NavSection, label: 'Contas a Receber' },
         { id: 'financeiro-plano' as NavSection, label: 'Plano de Contas' },
       ],
     },
@@ -589,6 +591,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Caixa de Notas (NF-e)';
       case 'financeiro-pagar':
         return 'Contas a Pagar';
+      case 'financeiro-receber':
+        return 'Contas a Receber';
       case 'financeiro-plano':
         return 'Plano de Contas';
       case 'viagens':
