@@ -8,6 +8,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { Item, StockMovement, Unit } from '../types';
+import { db } from '../firebase';
 import type { MaterialReceiptRecord, PurchaseOrder } from '../types/purchasing';
 import { weightedAverageCost, movementIdFor } from './stockService';
 
@@ -223,7 +224,7 @@ export async function registerPurchaseReceipt(
       return round4(baseCost + freightPerUnit);
     };
 
-    const receiptLines = requestedLines.map(({ line, orderItem, stockEligible }) => {
+    const receiptLines: MaterialReceiptRecord['itemsReceived'] = requestedLines.map(({ line, orderItem, stockEligible }) => {
       const catalogItem = stockEligible ? catalogById.get(line.catalogItemId!) : undefined;
       if (catalogItem && normalizeUnit(catalogItem.unitOfMeasure) !== normalizeUnit(orderItem.unit)) {
         throw new Error(`A unidade do catálogo (${catalogItem.unitOfMeasure}) não corresponde à unidade da OC (${orderItem.unit}) para "${orderItem.description}".`);
