@@ -471,6 +471,9 @@ test('finance bank statement and reconciliation collections are company-scoped a
   await seedAs((db) => setDoc(doc(db, matches + '/bmatch_org_a_one'), {
     id: 'bmatch_org_a_one', orgId: 'org_a', transactionId: 'btxn_org_a_one', settlementId: 'settlement_a',
   }));
+  await seedAs((db) => setDoc(doc(db, matches + '/bmatch_org_b_two'), {
+    id: 'bmatch_org_b_two', orgId: 'org_b', transactionId: 'btxn_org_b_two', settlementId: 'settlement_b',
+  }));
   await assertSucceeds(getDoc(doc(member(), transactions + '/btxn_org_a_one')));
   await assertFails(getDoc(doc(member(), transactions + '/btxn_org_b_two')));
   await assertSucceeds(getDocs(query(collection(member(), transactions), where('orgId', '==', 'org_a'))));
