@@ -66,15 +66,15 @@ test('concilia por código exato e soma NF-e e recebimentos parciais da mesma OC
 });
 
 test('classifies quantity invoiced above the OC as divergence', () => {
-  const over = invoice({ itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 120, valorUnitario: 25, valorTotal: 3000 }] });
+  const over = invoice({ itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 120, valorUnitario: 25, valorTotal: 3000, ncm: '7219', cfop: '5102' }] });
   const result = buildPurchaseReconciliation(order(), [over], []);
   assert.equal(result?.status, 'divergente');
   assert.ok(result?.issues.some((issue) => issue.includes('acima do pedido')));
 });
 
 test('marks price differences and conservative unmatched invoice lines', () => {
-  const price = invoice({ itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 100, valorUnitario: 27, valorTotal: 2700 }] });
-  const unmatched = invoice({ id: 'org1_KEY2', chave: 'KEY2', numero: '1002', itens: [{ n: 2, codigo: 'OUTRO', descricao: 'Válvula sanitária', unidade: 'UN', quantidade: 2, valorUnitario: 50, valorTotal: 100 }] });
+  const price = invoice({ itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 100, valorUnitario: 27, valorTotal: 2700, ncm: '7219', cfop: '5102' }] });
+  const unmatched = invoice({ id: 'org1_KEY2', chave: 'KEY2', numero: '1002', itens: [{ n: 2, codigo: 'OUTRO', descricao: 'Válvula sanitária', unidade: 'UN', quantidade: 2, valorUnitario: 50, valorTotal: 100, ncm: '7219', cfop: '5102' }] });
   const result = buildPurchaseReconciliation(order(), [price, unmatched], []);
   assert.equal(result?.status, 'divergente');
   assert.equal(result?.unmatchedInvoiceItems.length, 1);
@@ -101,11 +101,11 @@ test('distinguishes pending physical receipt from quality hold', () => {
 
 test('matches exact normalized descriptions and common units, but never fuzzy descriptions', () => {
   const byDescription = invoice({
-    itens: [{ n: 1, codigo: 'FORN-XYZ', descricao: 'CHAPA INÓX 304 2MM', unidade: 'quilograma', quantidade: 100, valorUnitario: 25, valorTotal: 2500 }],
+    itens: [{ n: 1, codigo: 'FORN-XYZ', descricao: 'CHAPA INÓX 304 2MM', unidade: 'quilograma', quantidade: 100, valorUnitario: 25, valorTotal: 2500, ncm: '7219', cfop: '5102' }],
   });
   const matched = buildPurchaseReconciliation(order(), [byDescription], []);
   assert.equal(matched?.unmatchedInvoiceItems.length, 0);
-  const fuzzy = invoice({ itens: [{ n: 1, codigo: 'FORN-XYZ', descricao: 'Chapa inox 304 2mm polida', unidade: 'KG', quantidade: 100, valorUnitario: 25, valorTotal: 2500 }] });
+  const fuzzy = invoice({ itens: [{ n: 1, codigo: 'FORN-XYZ', descricao: 'Chapa inox 304 2mm polida', unidade: 'KG', quantidade: 100, valorUnitario: 25, valorTotal: 2500, ncm: '7219', cfop: '5102' }] });
   const unmatched = buildPurchaseReconciliation(order(), [fuzzy], []);
   assert.equal(unmatched?.unmatchedInvoiceItems.length, 1);
 });
@@ -119,7 +119,7 @@ test('receipt without matching XML is clearly identified', () => {
 
 test('flags accumulated product-value differences even below the unit-price tolerance', () => {
   const smallUnitDelta = invoice({
-    itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 100, valorUnitario: 25.01, valorTotal: 2501 }],
+    itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 100, valorUnitario: 25.01, valorTotal: 2501, ncm: '7219', cfop: '5102' }],
   });
   const result = buildPurchaseReconciliation(order(), [smallUnitDelta], []);
   assert.equal(result?.status, 'divergente');
@@ -130,12 +130,12 @@ test('flags accumulated product-value differences even below the unit-price tole
 test('does not import linked invoices from a different supplier or organization', () => {
   const foreign = invoice({
     id: 'org2_KEY1', orgId: 'org2', emitente: { cnpj: '22222222000122', nome: 'Outro Fornecedor' },
-    valorTotal: 5000, itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 200, valorUnitario: 25, valorTotal: 5000 }],
+    valorTotal: 5000, itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 200, valorUnitario: 25, valorTotal: 5000, ncm: '7219', cfop: '5102' }],
     classificacao: { purchaseOrderId: 'po1', purchaseOrderCode: 'OC-2026-001' },
   });
   const foreignSupplier = invoice({
     id: 'org1_KEY3', chave: 'KEY3', emitente: { cnpj: '22222222000122', nome: 'Outro Fornecedor' },
-    valorTotal: 9000, itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 300, valorUnitario: 30, valorTotal: 9000 }],
+    valorTotal: 9000, itens: [{ n: 1, codigo: 'MP-001', descricao: 'Chapa inox 304 2mm', unidade: 'KG', quantidade: 300, valorUnitario: 30, valorTotal: 9000, ncm: '7219', cfop: '5102' }],
     classificacao: { purchaseOrderId: 'po1', purchaseOrderCode: 'OC-2026-001' },
   });
   const result = buildPurchaseReconciliation(order(), [invoice(), foreign, foreignSupplier], []);
