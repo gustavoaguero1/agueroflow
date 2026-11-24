@@ -3,9 +3,27 @@ import { FieldValue, type DocumentSnapshot, type Transaction, type WriteBatch } 
 import type { AdminHandles } from './firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import type { OrgMember, Organization, UserRole } from '../src/types/index.ts';
+import { encodeAreas, resolveAreas, sanitizeOrgDefaults, sanitizeOverrides } from '../src/permissions/areas.ts';
 
 export type Role = UserRole;
-export type Claims = { master: boolean; orgs: { [orgId: string]: Role } };
+/** `areas`: níveis por área em cada empresa, codificados por encodeAreas (um dígito por área). */
+export type Claims = { master: boolean; orgs: { [orgId: string]: Role }; areas?: { [orgId: string]: string } };
+
+type MemberAccess = { orgId: string; role: Role; areaOverrides?: unknown };
+
+/** Perfil e áreas de cada empresa da pessoa: padrão do perfil → padrão da empresa → ajuste da pessoa. */
+export function claimsFromMembers(members: MemberAccess[], orgDefaults: Record<string, unknown>): Claims {
+  const orgs: Claims['orgs'] = {};
+  const areas: NonNullable<Claims['areas']> = {};
+  for (const m of members) {
+    if (!m.orgId) continue;
+    orgs[m.orgId] = m.role;
+    const code = encodeAreas(resolveAreas(m.role, sanitizeOrgDefaults(orgDefaults[m.orgId]), sanitizeOverrides(m.areaOverrides)));
+    // Igual ao padrão do perfil: fica fora do token (quem lê cai no mesmo padrão).
+    if (code !== encodeAreas(resolveAreas(m.role))) areas[m.orgId] = code;
+  }
+  return Object.keys(areas).length ? { master: false, orgs, areas } : { master: false, orgs };
+}
 
 type LoginResult =
   | { ok: true; token: string; uid: string; isMaster: boolean; member?: OrgMember; org?: Organization }
@@ -225,18 +243,17 @@ async function activeMemberDocs(h: AdminHandles, uid: string, email: string | nu
   return [...byUid, ...emailDocs.filter((d, i) => ok[i] && !seen.has(d.id))];
 }
 
-function claimsFor(uid: string, email: string | null, docs: DocumentSnapshot[]): Claims {
+async function claimsFor(h: AdminHandles, uid: string, email: string | null, docs: DocumentSnapshot[]): Promise<Claims> {
   const master = isMasterEmail(email) || masterEmails().some((e) => fallbackMasterUid(e) === uid);
-  return master ? { master: true, orgs: {} } : orgClaims(docs);
+  return master ? { master: true, orgs: {} } : orgClaims(h, docs);
 }
 
-function orgClaims(docs: DocumentSnapshot[]): Claims {
-  const orgs: Claims['orgs'] = {};
-  for (const d of docs) {
-    const m = toMember(d);
-    if (m.orgId) orgs[m.orgId] = m.role;
-  }
-  return { master: false, orgs };
+async function orgClaims(h: AdminHandles, docs: DocumentSnapshot[]): Promise<Claims> {
+  const members = docs.map((d) => ({ ...toMember(d), areaOverrides: d.get('areaOverrides') }));
+  const orgIds = [...new Set(members.map((m) => m.orgId).filter((o) => o && !o.includes('/')))];
+  const orgDocs = await Promise.all(orgIds.map((o) => h.db.doc(`organizations/${o}`).get()));
+  const defaults = Object.fromEntries(orgDocs.map((d, i) => [orgIds[i], d.exists ? d.get('areaDefaults') : undefined]));
+  return claimsFromMembers(members, defaults);
 }
 
 // Password users (uid member_<id>) carry exactly their own active doc; no email lookup, no binding.
@@ -254,9 +271,9 @@ export async function buildClaims(
   h: AdminHandles, uid: string, email?: string | null, emailVerified = false,
 ): Promise<Claims> {
   const own = await ownMemberDocs(h, uid);
-  if (own) return orgClaims(own);
+  if (own) return orgClaims(h, own);
   const e = emailVerified ? email ?? null : null;
-  return claimsFor(uid, e, await activeMemberDocs(h, uid, e));
+  return claimsFor(h, uid, e, await activeMemberDocs(h, uid, e));
 }
 
 export async function syncSession(
@@ -264,14 +281,14 @@ export async function syncSession(
 ): Promise<{ claims: Claims; member: OrgMember | null }> {
   const own = await ownMemberDocs(h, uid);
   if (own) {
-    const claims = orgClaims(own);
+    const claims = await orgClaims(h, own);
     await h.auth.setCustomUserClaims(uid, claims);
     return { claims, member: own[0] ? toMember(own[0]) : null };
   }
   const email = emailVerified ? rawEmail ?? null : null;
   const docs = await activeMemberDocs(h, uid, email);
   await Promise.all(docs.filter((d) => d.get('userId') !== uid).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
-  const claims = claimsFor(uid, email, docs);
+  const claims = await claimsFor(h, uid, email, docs);
   await h.auth.setCustomUserClaims(uid, claims);
   return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: uid } : null };
 }

@@ -10,7 +10,11 @@ import {
   getDoc,
   addDoc,
   updateDoc,
+  onSnapshot,
 } from 'firebase/firestore';
+import {
+  canSeeSection, effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels,
+} from '../permissions/areas';
 import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
 import { postJson, setApiOrgGetter } from '../apiAuthFetch';
 import {
@@ -35,6 +39,11 @@ interface AuthContextType {
   isManagerOrAbove: boolean;
   isSupervisorOrAbove: boolean;
   canViewFinancials: boolean;
+
+  // Acesso por área (src/permissions/areas.ts): 0 sem acesso, 1 ver, 2 editar
+  areaLevels: AreaLevels;
+  areaLevel: (area: AreaId) => AreaLevel;
+  canSeeSection: (section: string) => boolean;
 
   // Global Context Multiempresa (Hierarchy: Org -> Contract -> Unit)
   selectedUnitId: string;
@@ -1038,6 +1047,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user?.email?.toLowerCase().trim() === MASTER_EMAIL ||
     member?.userEmail?.toLowerCase().trim() === MASTER_EMAIL;
   const role: UserRole = isMasterUser ? 'Admin' : (member?.role || 'Visualizador');
+
+  // Acesso por área: vem do token (o servidor grava); sem áreas no token, padrão do perfil.
+  const [tokenAreas, setTokenAreas] = useState<Record<string, string>>({});
+  const tokenIssuedAt = useRef<string>('');
+  const readTokenAreas = useCallback(async (u: User, force = false) => {
+    try {
+      const r = await u.getIdTokenResult(force);
+      tokenIssuedAt.current = r.issuedAtTime;
+      const a = r.claims.areas;
+      setTokenAreas(a && typeof a === 'object' ? (a as Record<string, string>) : {});
+    } catch (err) {
+      console.warn('Não foi possível ler o acesso por área do login:', err);
+    }
+  }, []);
+  useEffect(() => {
+    if (user) readTokenAreas(user);
+    else setTokenAreas({});
+  }, [user, organization?.id, readTokenAreas]);
+  // Quando o Admin muda o acesso da pessoa, o servidor marca areasUpdatedAt: renova o login aqui.
+  useEffect(() => {
+    if (!user || !member?.id || isMasterUser) return;
+    return onSnapshot(
+      doc(db, 'org_members', member.id),
+      (s) => {
+        if (needsTokenRefresh(s.get('areasUpdatedAt'), tokenIssuedAt.current)) readTokenAreas(user, true);
+      },
+      () => {},
+    );
+  }, [user, member?.id, isMasterUser, readTokenAreas]);
+  const areaLevels = effectiveLevels(isMasterUser, role, organization ? tokenAreas[organization.id] : undefined);
+  const areaLevel = (area: AreaId): AreaLevel => areaLevels[area];
+  const canSeeSectionFn = (section: string) => canSeeSection(section, areaLevels);
   const isAdmin = isMasterUser || role === 'Admin';
   const isManagerOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente';
   const isSupervisorOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente' || role === 'Supervisor';
@@ -1058,6 +1099,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isManagerOrAbove,
         isSupervisorOrAbove,
         canViewFinancials,
+        areaLevels,
+        areaLevel,
+        canSeeSection: canSeeSectionFn,
         selectedUnitId,
         setSelectedUnitId,
         selectedContractId,

@@ -17,7 +17,7 @@ export async function syncDiarioToTimeLogs(orgId: string, isoDate: string): Prom
   const linhas = ((d.exists() && d.data().linhas) || {}) as Record<string, DiarioLinha>;
 
   const [rh, colOv, units, obraOv, existing, workers] = await Promise.all([
-    rows(query(collection(db, 'rh_employees'), where('orgId', '==', orgId))),
+    rows(query(collection(db, 'rh_directory'), where('orgId', '==', orgId))),
     rows(collection(db, `ops_orgs/${orgId}/colaboradores`)),
     rows(query(collection(db, 'units'), where('orgId', '==', orgId))),
     rows(collection(db, `ops_orgs/${orgId}/obras`)),
@@ -25,13 +25,14 @@ export async function syncDiarioToTimeLogs(orgId: string, isoDate: string): Prom
     rows(query(collection(db, 'field_workers'), where('orgId', '==', orgId))),
   ]);
   const rhById = new Map((rh as unknown as RhEmployee[]).map((e) => [e.id, e]));
-  const fw = workers as unknown as Array<{ id: string; name: string }>;
+  // Valor hora vem da equipe de campo (custo de mão de obra), não do cadastro com salários.
+  const fw = workers as unknown as Array<{ id: string; name: string; hourlyRate?: number }>;
+  const fwById = new Map(fw.map((w) => [w.id, w]));
   const colabs = new Map(
     joinColabs(rh as unknown as RhEmployee[], colOv as never).map((c) => {
       const e = c.rhId ? rhById.get(String(c.rhId)) : undefined;
-      const extra = e
-        ? { workerId: fieldWorkerIdFor(e, fw), hourlyRate: (e.hourlyRateCarteira || 0) + (e.hourlyRatePorFora || 0) }
-        : {};
+      const workerId = e ? fieldWorkerIdFor(e, fw) : '';
+      const extra = e ? { workerId, hourlyRate: fwById.get(workerId)?.hourlyRate || 0 } : {};
       return [c.id, { ...c, ...extra } as never];
     }),
   );

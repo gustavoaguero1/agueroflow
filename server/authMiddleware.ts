@@ -3,8 +3,12 @@ import type { Request, RequestHandler } from 'express';
 import type { Auth } from 'firebase-admin/auth';
 import { getAdmin } from './firebaseAdmin.ts';
 import type { Role } from './authService.ts';
+import { decodeAreas, resolveAreas, type AreaId, type AreaLevel } from '../src/permissions/areas.ts';
 
-export type AuthUser = { uid: string; email?: string; emailVerified?: boolean; master: boolean; orgs: Record<string, Role> };
+export type AuthUser = {
+  uid: string; email?: string; emailVerified?: boolean; master: boolean; orgs: Record<string, Role>;
+  areas?: Record<string, string>;
+};
 
 declare global {
   namespace Express {
@@ -54,6 +58,7 @@ export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.a
       req.user = {
         uid: d.uid, email: d.email, emailVerified: d.email_verified === true,
         master: d.master === true, orgs: d.orgs && typeof d.orgs === 'object' ? d.orgs : {},
+        ...(d.areas && typeof d.areas === 'object' ? { areas: d.areas } : {}),
       };
     } catch (e) {
       // Distinct from "no token" so a host misconfiguration (e.g. missing IAM role) is diagnosable.
@@ -95,6 +100,33 @@ export function requireRole(...roles: Role[]): RequestHandler {
     if (!u) return res.status(401).json({ error: 'unauthenticated' });
     const org = orgIdOf(req);
     if (org === null || (!u.master && !(org && roles.includes(u.orgs[org])))) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    req.orgId = org;
+    next();
+  };
+}
+
+/**
+ * Nível da pessoa numa área da empresa. Master: 2. Não é da empresa: 0.
+ * Token antigo (sem áreas) cai no padrão do perfil — RH fica só com Admin e Gerente.
+ */
+export function areaLevelOf(u: AuthUser | undefined, org: string | undefined | null, area: AreaId): AreaLevel {
+  if (!u) return 0;
+  if (u.master) return 2;
+  const role = org ? u.orgs?.[org] : undefined;
+  if (!org || !role) return 0;
+  const levels = decodeAreas(u.areas?.[org]) ?? resolveAreas(role);
+  return levels[area] ?? 0;
+}
+
+/** Passa quem tem pelo menos `level` na área da empresa da requisição; marca req.orgId. */
+export function requireArea(area: AreaId, level: 1 | 2): RequestHandler {
+  return (req, res, next) => {
+    const u = req.user;
+    if (!u) return res.status(401).json({ error: 'unauthenticated' });
+    const org = orgIdOf(req);
+    if (org === null || (!u.master && areaLevelOf(u, org, area) < level)) {
       return res.status(403).json({ error: 'forbidden' });
     }
     req.orgId = org;

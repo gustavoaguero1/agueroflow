@@ -43,7 +43,7 @@ import { Building2, LogOut } from 'lucide-react';
 import { apiFetch } from './apiAuthFetch';
 
 function MainRouter() {
-  const { user, loading, organization, role, isMaster, clearActiveOrganization, signOut } = useAuth();
+  const { user, loading, organization, role, isMaster, clearActiveOrganization, signOut, canSeeSection } = useAuth();
 
   // Route state: default is 'login' (Public presentation site is kept on standby via ?site=apresentacao or /apresentacao)
   const [currentRoute, setCurrentRoute] = useState<'landing' | 'login' | 'master-panel' | 'app' | 'admissao'>('login');
@@ -213,9 +213,11 @@ function MainRouter() {
   }
 
   // 5. Protected Company ERP Workspace
+  // Seção de uma área sem acesso (link antigo, acesso retirado): mostra o Painel.
+  const section: NavSection = canSeeSection(currentNavSection) ? currentNavSection : 'painel';
   return (
     <AppLayout
-      currentSection={currentNavSection}
+      currentSection={section}
       onNavigate={(sec, payload) => {
         setCurrentNavSection(sec);
         setNavPayload(payload);
@@ -229,157 +231,157 @@ function MainRouter() {
           : undefined
       }
     >
-      {currentNavSection === 'painel' && <DashboardModule onNavigate={(s) => setCurrentNavSection(s)} />}
-      {currentNavSection === 'ordens' && (
+      {section === 'painel' && <DashboardModule onNavigate={(s) => setCurrentNavSection(s)} />}
+      {section === 'ordens' && (
         <WorkOrdersModule
           initialSearchQuery={navPayload?.searchQuery}
           initialOrderId={navPayload?.targetId}
         />
       )}
-      {currentNavSection === 'ordens-aprovacoes' && <LpuApprovalsModule />}
-      {currentNavSection === 'ordens-recorrencias' && <RecurringOrdersModule />}
-      {currentNavSection === 'checklists' && (
+      {section === 'ordens-aprovacoes' && <LpuApprovalsModule />}
+      {section === 'ordens-recorrencias' && <RecurringOrdersModule />}
+      {section === 'checklists' && (
         <ChecklistsModule
           initialSearchQuery={navPayload?.searchQuery}
           initialTemplateId={navPayload?.targetId}
         />
       )}
-      {currentNavSection === 'inspecoes' && <InspectionsModule />}
-      {(currentNavSection === 'pecas-servicos' ||
-        currentNavSection === 'pecas-catalogo' ||
-        currentNavSection === 'servicos-catalogo' ||
-        currentNavSection === 'mao-de-obra' ||
-        currentNavSection === 'subcategorias-servicos') && (
+      {section === 'inspecoes' && <InspectionsModule />}
+      {(section === 'pecas-servicos' ||
+        section === 'pecas-catalogo' ||
+        section === 'servicos-catalogo' ||
+        section === 'mao-de-obra' ||
+        section === 'subcategorias-servicos') && (
         <ItemsServicesModule
           initialSearchQuery={navPayload?.searchQuery}
           initialTab={
-            currentNavSection === 'pecas-catalogo'
+            section === 'pecas-catalogo'
               ? 'peca'
-              : currentNavSection === 'servicos-catalogo'
+              : section === 'servicos-catalogo'
               ? 'servico'
-              : currentNavSection === 'mao-de-obra'
+              : section === 'mao-de-obra'
               ? 'mao_de_obra'
-              : currentNavSection === 'subcategorias-servicos'
+              : section === 'subcategorias-servicos'
               ? 'categorias'
               : 'peca'
           }
         />
       )}
-      {currentNavSection === 'estoque' && <StockModule />}
-      {currentNavSection === 'ocorrencias' && (
+      {section === 'estoque' && <StockModule />}
+      {section === 'ocorrencias' && (
         <OccurrencesModule
           initialSearchQuery={navPayload?.searchQuery}
           initialOccId={navPayload?.targetId}
         />
       )}
-      {currentNavSection === 'relatorios' && <ReportsModule />}
-      {currentNavSection === 'suporte' && <SupportModule />}
-      {currentNavSection === 'ia' && (
+      {section === 'relatorios' && <ReportsModule />}
+      {section === 'suporte' && <SupportModule />}
+      {section === 'ia' && (
         <AiAssistantModule onNavigate={(sec) => setCurrentNavSection(sec as NavSection)} />
       )}
-      {(currentNavSection === 'estrutura' ||
-        currentNavSection === 'contratos' ||
-        currentNavSection === 'auditoria') && (
+      {(section === 'estrutura' ||
+        section === 'contratos' ||
+        section === 'auditoria') && (
         <StructureModule
           initialTab={
-            currentNavSection === 'contratos'
+            section === 'contratos'
               ? 'contratos'
-              : currentNavSection === 'auditoria'
+              : section === 'auditoria'
               ? 'auditoria'
               : 'organizacao'
           }
         />
       )}
-      {currentNavSection === 'configuracoes' && (
+      {section === 'configuracoes' && (
         <SettingsModule onNavigate={(sec) => setCurrentNavSection(sec as NavSection)} />
       )}
-      {currentNavSection.startsWith('whatsapp-') && (
+      {section.startsWith('whatsapp-') && (
         <WhatsAppAutomationModule
           activeSubSection={
-            currentNavSection === 'whatsapp-automacao'
+            section === 'whatsapp-automacao'
               ? 'whatsapp-central'
-              : (currentNavSection as WhatsAppAutomationSubSection)
+              : (section as WhatsAppAutomationSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
         />
       )}
-      {currentNavSection === 'obras' && <ConstructionModule />}
-      {(currentNavSection === 'operacoes' || currentNavSection.startsWith('ops-')) && (
+      {section === 'obras' && <ConstructionModule />}
+      {(section === 'operacoes' || section.startsWith('ops-')) && (
         <OperationsModule
-          route={currentNavSection === 'operacoes' ? 'inicio' : currentNavSection.slice(4)}
+          route={section === 'operacoes' ? 'inicio' : section.slice(4)}
           onRouteChange={(r) => setCurrentNavSection(`ops-${r}` as NavSection)}
           onNavigate={(s) => setCurrentNavSection(s as NavSection)}
         />
       )}
-      {currentNavSection.startsWith('bens') && (
+      {section.startsWith('bens') && (
         <CollectiveAssetsModule
           currentOrganizationId={organization?.id}
           activeSubSection={
-            currentNavSection === 'bens-coletivos'
+            section === 'bens-coletivos'
               ? 'bens-painel'
-              : (currentNavSection as CollectiveAssetsSubSection)
+              : (section as CollectiveAssetsSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
           userRole={role}
           userEmail={user?.email || ''}
         />
       )}
-      {(currentNavSection.startsWith('rh-') || currentNavSection === 'rh-salarios') && (
+      {(section.startsWith('rh-') || section === 'rh-salarios') && (
         <RhPayrollModule
           activeSubSection={
-            currentNavSection === 'rh-salarios'
+            section === 'rh-salarios'
               ? 'rh-painel'
-              : (currentNavSection as RhSubSection)
+              : (section as RhSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
         />
       )}
-      {(currentNavSection.startsWith('comercial') || currentNavSection === 'comercial') && (
+      {(section.startsWith('comercial') || section === 'comercial') && (
         <CommercialModule
           activeSubSection={
-            currentNavSection === 'comercial'
+            section === 'comercial'
               ? 'comercial-painel'
-              : (currentNavSection as CommercialSubSection)
+              : (section as CommercialSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
         />
       )}
-      {(currentNavSection.startsWith('compras') || currentNavSection === 'compras') && (
+      {(section.startsWith('compras') || section === 'compras') && (
         <PurchasingModule
           currentSubSection={
-            currentNavSection === 'compras'
+            section === 'compras'
               ? 'compras-painel'
-              : (currentNavSection as PurchasingSubSection)
+              : (section as PurchasingSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
           currentOrgId={organization?.id || 'org_aguero_default'}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Comprador Industrial'}
         />
       )}
-      {currentNavSection.startsWith('financeiro') && (
+      {section.startsWith('financeiro') && (
         <FinanceModule
-          currentSubSection={currentNavSection === 'financeiro' ? 'financeiro-notas' : (currentNavSection as FinanceSubSection)}
+          currentSubSection={section === 'financeiro' ? 'financeiro-notas' : (section as FinanceSubSection)}
         />
       )}
-      {(currentNavSection.startsWith('viagens') || currentNavSection === 'viagens') && (
+      {(section.startsWith('viagens') || section === 'viagens') && (
         <TravelModule
           currentSubSection={
-            currentNavSection === 'viagens'
+            section === 'viagens'
               ? 'viagens-painel'
-              : (currentNavSection as TravelSubSection)
+              : (section as TravelSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
           currentOrgId={organization?.id || 'org_aguero_default'}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Gestor de Viagens'}
         />
       )}
-      {(currentNavSection.startsWith('marketing') || currentNavSection === 'marketing') && (
+      {(section.startsWith('marketing') || section === 'marketing') && (
         <MarketingModule
           currentOrgId={organization?.id || 'org_aguero_default'}
           currentSubSection={
-            currentNavSection === 'marketing'
+            section === 'marketing'
               ? 'marketing-painel'
-              : (currentNavSection as MarketingSubSection)
+              : (section as MarketingSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
         />
