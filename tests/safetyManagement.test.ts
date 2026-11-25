@@ -78,6 +78,17 @@ test('accepts multiple separately described hazards in one APR', () => {
   assert.deepEqual(errors, []);
 });
 
+test('requires PT to reference an APR and prevents APR-to-APR links', () => {
+  const missingLink = validateSafetyPermitInput({ ...validPermit, documentType: 'pt' });
+  assert.ok(missingLink.some((message) => message.includes('APR aprovada')));
+  const aprWithLink = validateSafetyPermitInput({ ...validPermit, relatedAprId: 'apr_123' });
+  assert.ok(aprWithLink.some((message) => message.includes('APR não pode')));
+  assert.deepEqual(
+    validateSafetyPermitInput({ ...validPermit, documentType: 'pt', relatedAprId: 'apr_approved_01' }),
+    [],
+  );
+});
+
 test('requires specialized controls for height, confined-space, electrical and lifting work', () => {
   const required = (type: Parameters<typeof requiredSafetyControls>[0]) =>
     requiredSafetyControls(type).map((item) => item.key);
