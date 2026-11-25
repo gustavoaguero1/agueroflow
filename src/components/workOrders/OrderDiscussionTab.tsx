@@ -4,9 +4,10 @@ import {
   query,
   where,
   onSnapshot,
-  addDoc,
   doc,
+  collection,
   updateDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
@@ -215,10 +216,15 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || isSending) return;
+    if (content.trim().length > 4000) {
+      alert('A mensagem deve ter no máximo 4.000 caracteres.');
+      return;
+    }
 
     setIsSending(true);
     try {
       const senderName = currentUser.displayName || currentUser.email || 'Usuário';
+      const now = new Date().toISOString();
       const newMsg: Omit<OrderMessage, 'id'> = {
         orgId: organizationId,
         orderId: order.id,
@@ -227,69 +233,89 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
         senderRole: activeRole,
         messageType: activeType,
         content: content.trim(),
-        createdAt: new Date().toISOString(),
+        createdAt: now,
       };
 
+      const autoResolveReply = !!(
+        replyingTo
+        && (activeRole === 'Superior' || activeRole === 'Supervisor')
+        && replyingTo.messageType === 'pergunta'
+      );
       if (replyingTo) {
         newMsg.replyToId = replyingTo.id;
         newMsg.replyToAuthor = replyingTo.senderName;
         newMsg.replyToContent = replyingTo.content.substring(0, 80);
-
-        // If superior is answering a question, automatically mark the replied question as resolved
-        if (
-          (activeRole === 'Superior' || activeRole === 'Supervisor') &&
-          replyingTo.messageType === 'pergunta'
-        ) {
-          await updateDoc(doc(db, 'order_messages', replyingTo.id), {
-            resolved: true,
-            resolvedAt: new Date().toISOString(),
-            resolvedBy: senderName,
-          });
-        }
       }
 
-      const msgRef = await addDoc(collection(db, 'order_messages'), newMsg);
-
-      // Audit and Timeline event
+      const orderRef = doc(db, 'work_orders', order.id);
+      const messageRef = doc(collection(db, 'order_messages'));
+      const eventRef = doc(collection(db, 'order_events'));
+      const replyRef = replyingTo ? doc(db, 'order_messages', replyingTo.id) : null;
       const timelineDesc = replyingTo
         ? `[Diálogo] ${activeRole} (${senderName}) respondeu a ${replyingTo.senderName}: "${content.trim()}"`
         : `[Diálogo] ${activeRole} (${senderName}) enviou ${activeType}: "${content.trim()}"`;
 
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organizationId,
-        orderId: order.id,
-        userId: currentUser.uid,
-        userName: senderName,
-        eventType: 'dialogo',
-        description: timelineDesc,
-        timestamp: new Date().toISOString(),
-        meta: {
-          messageId: msgRef.id,
-          role: activeRole,
-          type: activeType,
-        },
-      });
+      const updates = await runTransaction(db, async (tx) => {
+        const reads = [tx.get(orderRef)];
+        if (replyRef) reads.push(tx.get(replyRef));
+        const snapshots = await Promise.all(reads);
+        const orderSnap = snapshots[0];
+        const currentOrder = orderSnap.data() as WorkOrder | undefined;
+        if (!orderSnap.exists() || currentOrder?.orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
 
-      // Update work order metadata for counters
-      const updatedPending = messages.filter(
-        (m) => m.messageType === 'pergunta' && !m.resolved && m.id !== replyingTo?.id
-      ).length + (activeType === 'pergunta' ? 1 : 0);
+        let shouldResolve = false;
+        if (replyRef) {
+          const replySnap = snapshots[1];
+          const replyMessage = replySnap.data() as OrderMessage | undefined;
+          if (!replySnap.exists() || replyMessage?.orgId !== organizationId || replyMessage.orderId !== order.id) {
+            throw new Error('A mensagem respondida não pertence a esta OS.');
+          }
+          shouldResolve = autoResolveReply && replyMessage.messageType === 'pergunta' && !replyMessage.resolved;
+        }
 
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        messageCount: messages.length + 1,
-        pendingQuestionCount: updatedPending,
-        lastDiscussionAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        const baseMessageCount = Math.max(currentOrder.messageCount || 0, messages.length);
+        const basePendingCount = Math.max(currentOrder.pendingQuestionCount || 0, 0);
+        const nextMessageCount = baseMessageCount + 1;
+        const nextPendingCount = Math.max(
+          0,
+          basePendingCount + (activeType === 'pergunta' ? 1 : 0) - (shouldResolve ? 1 : 0)
+        );
+        const orderUpdates: Partial<WorkOrder> = {
+          messageCount: nextMessageCount,
+          pendingQuestionCount: nextPendingCount,
+          lastDiscussionAt: now,
+          updatedAt: now,
+        };
 
-      if (onOrderUpdated) {
-        onOrderUpdated({
-          messageCount: messages.length + 1,
-          pendingQuestionCount: updatedPending,
-          lastDiscussionAt: new Date().toISOString(),
+        tx.set(messageRef, newMsg);
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: senderName,
+          eventType: 'dialogo',
+          description: timelineDesc,
+          timestamp: now,
+          meta: {
+            messageId: messageRef.id,
+            role: activeRole,
+            type: activeType,
+          },
         });
-      }
+        tx.update(orderRef, orderUpdates);
+        if (shouldResolve && replyRef) {
+          tx.update(replyRef, {
+            resolved: true,
+            resolvedAt: now,
+            resolvedBy: senderName,
+          });
+        }
+        return orderUpdates;
+      });
 
+      if (onOrderUpdated) onOrderUpdated(updates);
       if (logAudit) {
         await logAudit(
           'Ordens de Serviço',
@@ -303,6 +329,7 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
       setReplyingTo(null);
     } catch (err) {
       console.error('Erro ao enviar mensagem:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível enviar a mensagem.');
     } finally {
       setIsSending(false);
     }
