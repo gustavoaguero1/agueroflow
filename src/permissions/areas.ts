@@ -27,7 +27,7 @@ export const AREAS: Array<{ id: AreaId; label: string; description: string; sect
   { id: 'rh', label: 'RH e salários', description: 'Funcionários, salários, admissões, 13º e relatórios de RH.', sections: ['rh'], enforcedInDatabase: true },
   { id: 'whatsapp', label: 'WhatsApp', description: 'Central de conversas, automações, NDs e recibos.', sections: ['whatsapp'], enforcedInDatabase: true },
   { id: 'relatorios', label: 'Relatórios e IA', description: 'Relatórios gerais e assistente de IA.', sections: ['relatorios', 'ia'], enforcedInDatabase: false },
-  { id: 'estrutura', label: 'Estrutura', description: 'Unidades, contratos, equipes e auditoria.', sections: ['estrutura', 'contratos', 'auditoria'], enforcedInDatabase: false },
+  { id: 'estrutura', label: 'Estrutura', description: 'Unidades, contratos, equipes e auditoria.', sections: ['estrutura', 'contratos', 'auditoria'], enforcedInDatabase: true },
   { id: 'configuracoes', label: 'Configurações', description: 'Tema e dispositivos (todo mundo); empresa, equipe e acessos (quem edita).', sections: ['configuracoes'], enforcedInDatabase: true },
   { id: 'suporte', label: 'Suporte', description: 'Chamados de suporte. Todo mundo usa.', sections: ['suporte'], enforcedInDatabase: false },
 ];

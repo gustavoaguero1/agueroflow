@@ -4208,6 +4208,9 @@ export async function executeMultiSourceTravelSearch(
 export async function saveTravelSearchRecord(
   record: TravelSearchRecord
 ): Promise<string> {
+  if (!record.organizationId?.trim()) {
+    throw new Error('Empresa inválida para salvar histórico de pesquisa de viagem.');
+  }
   const id = record.id || `search_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const docRef = doc(db, 'travel_searches', id);
   const payload = cleanFirestoreData({
@@ -4216,41 +4219,22 @@ export async function saveTravelSearchRecord(
     queriedAt: record.queriedAt || new Date().toISOString(),
   });
 
-  try {
-    await setDoc(docRef, payload);
-    // Also save in local storage for instantaneous offline resilience
-    const local = JSON.parse(localStorage.getItem('gat_travel_searches_local') || '[]');
-    localStorage.setItem('gat_travel_searches_local', JSON.stringify([payload, ...local.slice(0, 30)]));
-  } catch (err) {
-    console.warn('Salvando histórico de pesquisa localmente por indisponibilidade:', err);
-    const local = JSON.parse(localStorage.getItem('gat_travel_searches_local') || '[]');
-    localStorage.setItem('gat_travel_searches_local', JSON.stringify([payload, ...local.slice(0, 30)]));
-  }
+  await setDoc(docRef, payload);
   return id;
 }
 
 export async function getTravelSearchHistory(
   organizationId: string
 ): Promise<TravelSearchRecord[]> {
-  try {
-    const q = query(
-      collection(db, 'travel_searches'),
-      where('organizationId', '==', organizationId)
-    );
-    const snap = await getDocs(q);
-    const list: TravelSearchRecord[] = [];
-    snap.forEach((d) => list.push(d.data() as TravelSearchRecord));
-
-    if (list.length > 0) {
-      return list.sort((a, b) => new Date(b.queriedAt).getTime() - new Date(a.queriedAt).getTime());
-    }
-  } catch (err) {
-    console.warn('Erro ao consultar histórico de viagens no Firestore, usando local:', err);
-  }
-
-  // Local fallback
-  const local = JSON.parse(localStorage.getItem('gat_travel_searches_local') || '[]');
-  return local.filter((s: TravelSearchRecord) => !s.organizationId || s.organizationId === organizationId);
+  if (!organizationId?.trim()) return [];
+  const q = query(
+    collection(db, 'travel_searches'),
+    where('organizationId', '==', organizationId)
+  );
+  const snap = await getDocs(q);
+  const list: TravelSearchRecord[] = [];
+  snap.forEach((d) => list.push(d.data() as TravelSearchRecord));
+  return list.sort((a, b) => new Date(b.queriedAt).getTime() - new Date(a.queriedAt).getTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -4260,6 +4244,9 @@ export async function getTravelSearchHistory(
 export async function saveTravelRequest(
   request: TravelRequest
 ): Promise<string> {
+  if (!request.organizationId?.trim()) {
+    throw new Error('Empresa inválida para salvar solicitação de viagem.');
+  }
   const id = request.id || `req_via_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const docRef = doc(db, 'travel_requests', id);
   const now = new Date().toISOString();
@@ -4270,41 +4257,22 @@ export async function saveTravelRequest(
     updatedAt: now,
   });
 
-  try {
-    await setDoc(docRef, payload);
-    const local = JSON.parse(localStorage.getItem('gat_travel_requests_local') || '[]');
-    const filtered = local.filter((r: any) => r.id !== id);
-    localStorage.setItem('gat_travel_requests_local', JSON.stringify([payload, ...filtered.slice(0, 40)]));
-  } catch (err) {
-    console.warn('Salvando solicitação de viagem localmente:', err);
-    const local = JSON.parse(localStorage.getItem('gat_travel_requests_local') || '[]');
-    const filtered = local.filter((r: any) => r.id !== id);
-    localStorage.setItem('gat_travel_requests_local', JSON.stringify([payload, ...filtered.slice(0, 40)]));
-  }
+  await setDoc(docRef, payload);
   return id;
 }
 
 export async function getTravelRequests(
   organizationId: string
 ): Promise<TravelRequest[]> {
-  try {
-    const q = query(
-      collection(db, 'travel_requests'),
-      where('organizationId', '==', organizationId)
-    );
-    const snap = await getDocs(q);
-    const list: TravelRequest[] = [];
-    snap.forEach((d) => list.push(d.data() as TravelRequest));
-
-    if (list.length > 0) {
-      return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }
-  } catch (err) {
-    console.warn('Erro ao consultar solicitações de viagem no Firestore:', err);
-  }
-
-  const local = JSON.parse(localStorage.getItem('gat_travel_requests_local') || '[]');
-  return local.filter((r: TravelRequest) => !r.organizationId || r.organizationId === organizationId);
+  if (!organizationId?.trim()) return [];
+  const q = query(
+    collection(db, 'travel_requests'),
+    where('organizationId', '==', organizationId)
+  );
+  const snap = await getDocs(q);
+  const list: TravelRequest[] = [];
+  snap.forEach((d) => list.push(d.data() as TravelRequest));
+  return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export async function updateTravelRequestStatus(
@@ -4313,25 +4281,18 @@ export async function updateTravelRequestStatus(
   approverName?: string,
   approvalNotes?: string
 ): Promise<void> {
-  const now = new Date().toISOString();
-  try {
-    const docRef = doc(db, 'travel_requests', id);
-    await updateDoc(docRef, cleanFirestoreData({
-      status,
-      approverName,
-      approvedAt: status === 'aprovada' ? now : undefined,
-      approvalNotes,
-      updatedAt: now,
-    }));
-  } catch (err) {
-    console.warn('Atualizando status localmente:', err);
+  if (!id?.trim()) {
+    throw new Error('Identificador de solicitação de viagem inválido.');
   }
-
-  const local = JSON.parse(localStorage.getItem('gat_travel_requests_local') || '[]');
-  const updated = local.map((r: TravelRequest) =>
-    r.id === id ? { ...r, status, approverName, approvalNotes, updatedAt: now } : r
-  );
-  localStorage.setItem('gat_travel_requests_local', JSON.stringify(updated));
+  const now = new Date().toISOString();
+  const docRef = doc(db, 'travel_requests', id);
+  await updateDoc(docRef, cleanFirestoreData({
+    status,
+    approverName,
+    approvedAt: status === 'aprovada' ? now : undefined,
+    approvalNotes,
+    updatedAt: now,
+  }));
 }
 
 // ---------------------------------------------------------------------------

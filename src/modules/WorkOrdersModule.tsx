@@ -573,68 +573,56 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     setIsSubmitting(true);
 
     try {
-      const orderId = `os_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const targetStatus = formStatus || statuses.find((s) => s.isInitial)?.id || 'aberto';
       const statusCfg = getStatusConfig(targetStatus, statuses);
-      const createdAt = new Date().toISOString();
-
-      const newOrder: WorkOrder = {
-        id: orderId,
-        orgId: organization.id,
-        unitId: formUnitId,
-        contractId: formContractId || undefined,
-        costCenterId: formCostCenterId || undefined,
-        assetId: formAssetId || undefined,
-        orderNumber: formNumber.trim(),
-        title: formTitle.trim(),
-        description: formDescription.trim(),
-        orderType: formType,
-        priority: formPriority,
-        status: targetStatus,
-        requesterId: user.uid,
-        requesterName: user.displayName || user.email || 'Solicitante',
-        assignedTeam: formAssignedTeam || undefined,
-        assignedTo: formAssignedTo.trim() || undefined,
-        scheduledStartDate: formScheduledStart || undefined,
-        scheduledEndDate: formScheduledEnd || undefined,
-        estimatedHours: parseFloat(formEstimatedHours) || 0,
-        estimatedCost: canViewFinancials ? parseFloat(formEstimatedCost) || 0 : 0,
-        isRework: formIsRework,
-        reworkReason: formIsRework ? formReworkReason.trim() : undefined,
-        notes: formNotes.trim() || undefined,
-        createdAt,
-        updatedAt: createdAt,
-      };
-
-      // Untouched preview -> allocate the real number and create the OS + timeline event atomically.
       const autoNumber = formNumber.trim() === previewNumber;
-      const creationEvent: OrderEvent = {
-        id: `${orderId}_created`,
-        orgId: organization.id,
-        orderId,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Usuário',
-        eventType: 'criacao',
-        description: `Demanda / OS ${newOrder.orderNumber} cadastrada no estado "${statusCfg.name}".`,
-        newStatus: targetStatus,
-        timestamp: createdAt,
-      };
-      await runTransaction(db, async (tx) => {
-        if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
-        tx.set(doc(db, 'work_orders', orderId), JSON.parse(JSON.stringify(newOrder))); // Firestore rejects undefined fields
-        tx.set(doc(db, 'order_events', creationEvent.id), creationEvent);
-      });
 
+      const response = await apiFetch('/api/work-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organization.id,
+          unitId: formUnitId,
+          contractId: formContractId || undefined,
+          costCenterId: formCostCenterId || undefined,
+          assetId: formAssetId || undefined,
+          orderNumber: autoNumber ? undefined : formNumber.trim(),
+          autoNumber,
+          title: formTitle.trim(),
+          description: formDescription.trim(),
+          orderType: formType,
+          priority: formPriority,
+          status: targetStatus,
+          assignedTeam: formAssignedTeam || undefined,
+          assignedTo: formAssignedTo.trim() || undefined,
+          scheduledStartDate: formScheduledStart || undefined,
+          scheduledEndDate: formScheduledEnd || undefined,
+          estimatedHours: parseFloat(formEstimatedHours) || 0,
+          estimatedCost: canViewFinancials ? parseFloat(formEstimatedCost) || 0 : 0,
+          canViewFinancials,
+          isRework: formIsRework,
+          reworkReason: formIsRework ? formReworkReason.trim() : undefined,
+          notes: formNotes.trim() || undefined,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        alert(result?.error || 'Não foi possível criar a ordem de serviço.');
+        return;
+      }
+
+      const createdOrder = result.order as WorkOrder;
       await logAudit(
         'Ordens de Serviço',
         'Criar OS',
-        `Criação da OS ${newOrder.orderNumber} - ${newOrder.title} no status "${statusCfg.name}"`,
-        orderId
+        `Criação da OS ${createdOrder.orderNumber} - ${createdOrder.title} no status "${statusCfg.name}"`,
+        createdOrder.id
       );
 
       setShowCreateModal(false);
     } catch (err) {
       console.error('Erro ao criar OS:', err);
+      alert('Erro ao criar ordem de serviço. Verifique sua conexão e tente novamente.');
     } finally {
       setIsSubmitting(false);
     }

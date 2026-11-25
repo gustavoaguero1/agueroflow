@@ -50,7 +50,7 @@ interface PurchasingModuleProps {
 export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
   currentSubSection = 'compras-painel',
   onNavigateSubSection,
-  currentOrgId = 'org_aguero_default',
+  currentOrgId = '',
   currentUserName = 'Comprador Industrial',
 }) => {
   const [activeTab, setActiveTab] = useState<PurchasingSubSection>(currentSubSection);

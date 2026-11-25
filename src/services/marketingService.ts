@@ -1,4 +1,15 @@
 import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import {
   CalendarEventDate,
   RadarOpportunity,
   MarketingCampaign,
@@ -895,239 +906,195 @@ const INITIAL_DEMO_ASSETS: CreativeAsset[] = [
   },
 ];
 
+function stripUndefined<T extends Record<string, any>>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
 export const MarketingService = {
   // --------------------------------------------------------------------------
-  // CAMPAIGNS
+  // CAMPAIGNS (Firestore multiusuário — sem localStorage / sem seed demo)
   // --------------------------------------------------------------------------
-  listCampaigns(orgId: string = 'org_aguero_default'): MarketingCampaign[] {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.CAMPAIGNS);
-      if (stored) {
-        const list: MarketingCampaign[] = JSON.parse(stored);
-        return list.filter((c) => c.organizationId === orgId);
-      }
-    } catch (e) {
-      console.warn('Erro ao ler campanhas do localStorage', e);
+  async fetchCampaigns(orgId: string): Promise<MarketingCampaign[]> {
+    if (!orgId?.trim()) return [];
+    const snap = await getDocs(
+      query(collection(db, 'marketing_campaigns'), where('organizationId', '==', orgId))
+    );
+    return snap.docs
+      .map((d) => ({ ...(d.data() as MarketingCampaign), id: d.id }))
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  },
+
+  async saveCampaign(campaign: MarketingCampaign): Promise<MarketingCampaign> {
+    if (!campaign.organizationId?.trim()) {
+      throw new Error('Empresa inválida para salvar campanha.');
     }
-    // Return demo seed
-    return INITIAL_DEMO_CAMPAIGNS;
+    const now = new Date().toISOString();
+    const record: MarketingCampaign = {
+      ...campaign,
+      id: campaign.id || `camp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: campaign.createdAt || now,
+      updatedAt: now,
+    };
+    await setDoc(doc(db, 'marketing_campaigns', record.id), stripUndefined(record));
+    return record;
   },
 
-  saveCampaign(campaign: MarketingCampaign): MarketingCampaign {
-    try {
-      const current = this.listCampaigns(campaign.organizationId);
-      const idx = current.findIndex((c) => c.id === campaign.id);
-      let updated: MarketingCampaign[];
-      const now = new Date().toISOString();
-
-      if (idx >= 0) {
-        current[idx] = { ...campaign, updatedAt: now };
-        updated = [...current];
-      } else {
-        const newRecord = { ...campaign, createdAt: campaign.createdAt || now, updatedAt: now };
-        updated = [newRecord, ...current];
-      }
-
-      localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(updated));
-      return idx >= 0 ? current[idx] : updated[0];
-    } catch (e) {
-      console.error('Erro ao salvar campanha', e);
-      return campaign;
+  async deleteCampaign(id: string, orgId: string): Promise<void> {
+    if (!id?.trim() || !orgId?.trim()) return;
+    const ref = doc(db, 'marketing_campaigns', id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    if (snap.data()?.organizationId !== orgId) {
+      throw new Error('Campanha não pertence à empresa selecionada.');
     }
-  },
-
-  deleteCampaign(id: string, orgId: string = 'org_aguero_default'): void {
-    const list = this.listCampaigns(orgId).filter((c) => c.id !== id);
-    localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(list));
+    await deleteDoc(ref);
   },
 
   // --------------------------------------------------------------------------
-  // EVENTS
+  // EVENTS (Firestore multiusuário)
   // --------------------------------------------------------------------------
-  listEvents(orgId: string = 'org_aguero_default'): CorporateEvent[] {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
-      if (stored) {
-        const list: CorporateEvent[] = JSON.parse(stored);
-        return list.filter((e) => e.organizationId === orgId);
-      }
-    } catch (e) {
-      console.warn('Erro ao ler eventos do localStorage', e);
+  async fetchEvents(orgId: string): Promise<CorporateEvent[]> {
+    if (!orgId?.trim()) return [];
+    const snap = await getDocs(
+      query(collection(db, 'marketing_events'), where('organizationId', '==', orgId))
+    );
+    return snap.docs
+      .map((d) => ({ ...(d.data() as CorporateEvent), id: d.id }))
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  },
+
+  async saveEvent(event: CorporateEvent): Promise<CorporateEvent> {
+    if (!event.organizationId?.trim()) {
+      throw new Error('Empresa inválida para salvar evento.');
     }
-    return INITIAL_DEMO_EVENTS;
+    const now = new Date().toISOString();
+    const record: CorporateEvent = {
+      ...event,
+      id: event.id || `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: event.createdAt || now,
+      updatedAt: now,
+    };
+    await setDoc(doc(db, 'marketing_events', record.id), stripUndefined(record));
+    return record;
   },
 
-  saveEvent(event: CorporateEvent): CorporateEvent {
-    try {
-      const current = this.listEvents(event.organizationId);
-      const idx = current.findIndex((e) => e.id === event.id);
-      let updated: CorporateEvent[];
-      const now = new Date().toISOString();
-
-      if (idx >= 0) {
-        current[idx] = { ...event, updatedAt: now };
-        updated = [...current];
-      } else {
-        const newRecord = { ...event, createdAt: event.createdAt || now, updatedAt: now };
-        updated = [newRecord, ...current];
-      }
-
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
-      return idx >= 0 ? current[idx] : updated[0];
-    } catch (e) {
-      console.error('Erro ao salvar evento', e);
-      return event;
+  async deleteEvent(id: string, orgId: string): Promise<void> {
+    if (!id?.trim() || !orgId?.trim()) return;
+    const ref = doc(db, 'marketing_events', id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    if (snap.data()?.organizationId !== orgId) {
+      throw new Error('Evento não pertence à empresa selecionada.');
     }
-  },
-
-  deleteEvent(id: string, orgId: string = 'org_aguero_default'): void {
-    const list = this.listEvents(orgId).filter((e) => e.id !== id);
-    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(list));
+    await deleteDoc(ref);
   },
 
   // --------------------------------------------------------------------------
-  // CREATIVE ASSETS (STUDIO)
+  // CREATIVE ASSETS (STUDIO — Firestore multiusuário)
   // --------------------------------------------------------------------------
-  listAssets(orgId: string = 'org_aguero_default'): CreativeAsset[] {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.ASSETS);
-      if (stored) {
-        const list: CreativeAsset[] = JSON.parse(stored);
-        return list.filter((a) => a.organizationId === orgId);
-      }
-    } catch (e) {
-      console.warn('Erro ao ler assets criativos do localStorage', e);
+  async fetchAssets(orgId: string): Promise<CreativeAsset[]> {
+    if (!orgId?.trim()) return [];
+    const snap = await getDocs(
+      query(collection(db, 'marketing_assets'), where('organizationId', '==', orgId))
+    );
+    return snap.docs
+      .map((d) => ({ ...(d.data() as CreativeAsset), id: d.id }))
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  },
+
+  async saveAsset(asset: CreativeAsset): Promise<CreativeAsset> {
+    if (!asset.organizationId?.trim()) {
+      throw new Error('Empresa inválida para salvar asset criativo.');
     }
-    return INITIAL_DEMO_ASSETS;
+    const now = new Date().toISOString();
+    const record: CreativeAsset = {
+      ...asset,
+      id: asset.id || `ast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: asset.createdAt || now,
+      updatedAt: now,
+    };
+    await setDoc(doc(db, 'marketing_assets', record.id), stripUndefined(record));
+    return record;
   },
 
-  saveAsset(asset: CreativeAsset): CreativeAsset {
-    try {
-      const current = this.listAssets(asset.organizationId);
-      const idx = current.findIndex((a) => a.id === asset.id);
-      let updated: CreativeAsset[];
-      const now = new Date().toISOString();
-
-      if (idx >= 0) {
-        current[idx] = { ...asset, updatedAt: now };
-        updated = [...current];
-      } else {
-        const newRecord = { ...asset, createdAt: asset.createdAt || now, updatedAt: now };
-        updated = [newRecord, ...current];
-      }
-
-      localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(updated));
-      return idx >= 0 ? current[idx] : updated[0];
-    } catch (e) {
-      console.error('Erro ao salvar asset criativo', e);
-      return asset;
+  async deleteAsset(id: string, orgId: string): Promise<void> {
+    if (!id?.trim() || !orgId?.trim()) return;
+    const ref = doc(db, 'marketing_assets', id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    if (snap.data()?.organizationId !== orgId) {
+      throw new Error('Asset criativo não pertence à empresa selecionada.');
     }
-  },
-
-  deleteAsset(id: string, orgId: string = 'org_aguero_default'): void {
-    const list = this.listAssets(orgId).filter((a) => a.id !== id);
-    localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(list));
+    await deleteDoc(ref);
   },
 
   // --------------------------------------------------------------------------
-  // BRAND IDENTITY
+  // BRAND IDENTITY (Firestore multiusuário — doc id = organizationId)
   // --------------------------------------------------------------------------
-  getBrandIdentity(orgId: string = 'org_aguero_default'): BrandIdentityConfig {
-    try {
-      const stored = localStorage.getItem(`${STORAGE_KEYS.BRAND}_${orgId}`);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar marca do localStorage', e);
+  getDefaultBrandIdentity(orgId: string): BrandIdentityConfig {
+    return { ...DEFAULT_BRAND_IDENTITY, organizationId: orgId || '' };
+  },
+
+  async fetchBrandIdentity(orgId: string): Promise<BrandIdentityConfig> {
+    if (!orgId?.trim()) {
+      return { ...DEFAULT_BRAND_IDENTITY, organizationId: '' };
+    }
+    const snap = await getDoc(doc(db, 'marketing_brand_configs', orgId));
+    if (snap.exists()) {
+      return { ...(snap.data() as BrandIdentityConfig), organizationId: orgId };
     }
     return { ...DEFAULT_BRAND_IDENTITY, organizationId: orgId };
   },
 
-  saveBrandIdentity(brand: BrandIdentityConfig): BrandIdentityConfig {
-    try {
-      const updated = { ...brand, updatedAt: new Date().toISOString() };
-      localStorage.setItem(`${STORAGE_KEYS.BRAND}_${brand.organizationId}`, JSON.stringify(updated));
-      return updated;
-    } catch (e) {
-      console.error('Erro ao salvar marca', e);
-      return brand;
+  async saveBrandIdentity(brand: BrandIdentityConfig): Promise<BrandIdentityConfig> {
+    if (!brand.organizationId?.trim()) {
+      throw new Error('Empresa inválida para salvar identidade visual.');
     }
+    const updated: BrandIdentityConfig = {
+      ...brand,
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, 'marketing_brand_configs', brand.organizationId), stripUndefined(updated));
+    return updated;
   },
 
   // --------------------------------------------------------------------------
-  // ANALYTICS OVERVIEW (TRAFFIC, SOCIAL & ADS)
+  // ANALYTICS OVERVIEW (Sem métricas fabricadas: exige integração real)
   // --------------------------------------------------------------------------
   getAnalyticsOverview(): MarketingAnalyticsOverview {
     return {
       periodDays: 30,
       socialMedia: {
-        totalFollowers: 4280,
-        followersGrowthPercent: 12.4,
-        impressionsTotal: 68400,
-        reachTotal: 41200,
-        engagementRatePercent: 4.8,
-        totalLikes: 1940,
-        totalComments: 218,
-        totalShares: 142,
-        topPosts: [
-          {
-            id: 'post_1',
-            platform: 'linkedin',
-            title: 'Montagem de Skid Sanitário em Inox 316L com Ra < 0.4 µm',
-            date: '2026-03-28',
-            reach: 14200,
-            interactions: 680,
-            format: 'Carrossel Técnico (1080x1350)',
-          },
-          {
-            id: 'post_2',
-            platform: 'instagram',
-            title: 'Bastidores de Solda TIG com Purga de Argônio no Galpão',
-            date: '2026-04-02',
-            reach: 9800,
-            interactions: 520,
-            format: 'Reels / Vídeo Curto (9:16)',
-          },
-          {
-            id: 'post_3',
-            platform: 'linkedin',
-            title: 'Dia Mundial da Água e a Proteção das Redes Sanitárias',
-            date: '2026-03-22',
-            reach: 8400,
-            interactions: 310,
-            format: 'Post Feed (1080x1080)',
-          },
-        ],
+        totalFollowers: 0,
+        followersGrowthPercent: 0,
+        impressionsTotal: 0,
+        reachTotal: 0,
+        engagementRatePercent: 0,
+        totalLikes: 0,
+        totalComments: 0,
+        totalShares: 0,
+        topPosts: [],
       },
       website: {
-        totalSessions: 14500,
-        uniqueUsers: 9800,
-        pageViews: 32400,
-        bounceRatePercent: 41.2,
-        avgSessionDurationSecs: 145,
-        contactLeadsSubmitted: 38,
-        trafficSources: [
-          { source: 'Busca Orgânica Google (SEO)', sessions: 6800, percentage: 46.9 },
-          { source: 'LinkedIn Institucional', sessions: 3900, percentage: 26.9 },
-          { source: 'Tráfego Pago (Google Ads)', sessions: 2200, percentage: 15.2 },
-          { source: 'Acesso Direto / E-mail', sessions: 1600, percentage: 11.0 },
-        ],
+        totalSessions: 0,
+        uniqueUsers: 0,
+        pageViews: 0,
+        bounceRatePercent: 0,
+        avgSessionDurationSecs: 0,
+        contactLeadsSubmitted: 0,
+        trafficSources: [],
       },
       paidTraffic: {
-        totalInvestment: 3200,
-        impressions: 48900,
-        clicks: 1840,
-        ctrPercent: 3.76,
-        avgCpc: 1.74,
-        leadsGenerated: 24,
-        costPerLead: 133.33,
+        totalInvestment: 0,
+        impressions: 0,
+        clicks: 0,
+        ctrPercent: 0,
+        avgCpc: 0,
+        leadsGenerated: 0,
+        costPerLead: 0,
       },
       aiInsights: [
-        'Posts técnicos no LinkedIn mostrando os testes de líquido penetrante e acabamento sanitário tiveram taxa de engajamento 3.2x maior do que comunicados gerais.',
-        'O custo por lead no Google Ads caiu de R$ 180 para R$ 133,33 após o direcionamento para palavras-chave de "fabricação de tanques de inox" e "tubulações sanitárias".',
-        'Há oportunidade iminente de criar conteúdo em torno do "Dia do Soldador" e "Abril Verde", alavancando os depoimentos da equipe técnica de campo.',
-        'A página de orçamento com cálculo direto (OrçaÁgil) converteu 38 contatos qualificados neste mês, um crescimento de 22% em relação ao período anterior.',
+        'Nenhuma fonte externa (Google Analytics, LinkedIn, Instagram ou Google Ads) conectada. Conecte integrações reais para exibir indicadores de tráfego e conversão.',
       ],
     };
   },
@@ -1135,7 +1102,10 @@ export const MarketingService = {
   // --------------------------------------------------------------------------
   // 1-CLICK CONVERSION: RADAR OPPORTUNITY -> CAMPAIGN
   // --------------------------------------------------------------------------
-  convertOpportunityToCampaign(opp: RadarOpportunity, orgId: string = 'org_aguero_default'): MarketingCampaign {
+  async convertOpportunityToCampaign(opp: RadarOpportunity, orgId: string): Promise<MarketingCampaign> {
+    if (!orgId?.trim()) {
+      throw new Error('Empresa inválida para converter oportunidade em campanha.');
+    }
     const newCamp: MarketingCampaign = {
       id: `camp_${Date.now()}`,
       organizationId: orgId,
@@ -1149,7 +1119,7 @@ export const MarketingService = {
       endDate: opp.dateReference,
       department: opp.category === 'saude_seguranca' ? 'SST & Recursos Humanos' : 'Marketing & Comercial',
       responsibleName: 'Responsável Designado',
-      estimatedBudget: opp.priority === 'alta' ? 2500 : 1000,
+      estimatedBudget: 0,
       actualBudgetSpent: 0,
       channels: opp.recommendedChannels,
       status: 'planejamento',
@@ -1178,7 +1148,10 @@ export const MarketingService = {
   // --------------------------------------------------------------------------
   // 1-CLICK CONVERSION: RADAR OPPORTUNITY -> EVENT
   // --------------------------------------------------------------------------
-  convertOpportunityToEvent(opp: RadarOpportunity, orgId: string = 'org_aguero_default'): CorporateEvent {
+  async convertOpportunityToEvent(opp: RadarOpportunity, orgId: string): Promise<CorporateEvent> {
+    if (!orgId?.trim()) {
+      throw new Error('Empresa inválida para converter oportunidade em evento.');
+    }
     const newEvent: CorporateEvent = {
       id: `evt_${Date.now()}`,
       organizationId: orgId,
@@ -1188,17 +1161,15 @@ export const MarketingService = {
       eventDate: opp.dateReference,
       startTime: '09:00',
       endTime: '12:00',
-      location: 'Auditório / Refeitório Aguero Inox',
+      location: '',
       audience: opp.audience,
-      estimatedAttendees: 50,
+      estimatedAttendees: 0,
       responsibleName: 'Comitê de Eventos',
-      estimatedBudget: opp.priority === 'alta' ? 3500 : 1200,
+      estimatedBudget: 0,
       actualBudgetSpent: 0,
       status: 'planejamento',
       participants: [],
-      suppliers: [
-        { id: `sup_${Date.now()}`, name: 'Fornecedor de Alimentação / Coffee', serviceCategory: 'Coffee Break', estimatedCost: 800, status: 'cotacao' },
-      ],
+      suppliers: [],
       tasks:
         opp.structuredSchedule && opp.structuredSchedule.length > 0
           ? opp.structuredSchedule.map((s, i) => ({

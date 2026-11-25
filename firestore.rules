@@ -53,6 +53,7 @@ service cloud.firestore {
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
     function A_WA() { return 6; }
+    function A_EST() { return 8; }
 
     // ---- Segurança do Trabalho & SMS ----------------------------------------
       function safetyRiskRank(level) {
@@ -486,19 +487,23 @@ service cloud.firestore {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
           : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
-              : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
+              : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK()
+                : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? A_EST() : -1))));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
+      // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
       function areaRead(d) {
         return coll == 'projects'
           ? (areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1) || areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-          : (coll in ['items', 'item_categories']
-            ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
-            : (coll in ['stock_balances', 'stock_movements']
-              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
-              : (coll in ['purchasing_orders', 'purchasing_receipts']
-                ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-                : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1)))));
+          : (coll == 'audit_logs'
+            ? areaOk(orgOf(d), A_EST(), 1)
+            : (coll in ['items', 'item_categories']
+              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+              : (coll in ['stock_balances', 'stock_movements']
+                ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+                : (coll in ['purchasing_orders', 'purchasing_receipts']
+                  ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+                  : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))))));
       }
       function areaWrite(d) {
         return coll == 'projects'
@@ -1396,6 +1401,31 @@ service cloud.firestore {
       }
       allow read: if canRead(resource) && (resource == null || bmEventCanRead(resource.data));
       allow create, update, delete: if false;
+    }
+
+    // ---- Marketing multiusuário (área Comercial A_COM()) ----------------------
+    match /marketing_campaigns/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+    }
+    match /marketing_events/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+    }
+    match /marketing_assets/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+    }
+    match /marketing_brand_configs/{orgId} {
+      allow read: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 1));
+      allow create, update: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2) && orgOf(request.resource.data) == orgId);
+      allow delete: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2));
     }
   }
 }

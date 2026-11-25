@@ -8,6 +8,10 @@ import {
   isRiskWorkOrder,
   type WorkOrderSafetyGateResult,
 } from '../src/services/workOrderSafetyGate.ts';
+import {
+  buildWorkOrderAndCreationEvent,
+  validateWorkOrderCreateInput,
+} from '../src/services/workOrderCreateRules.ts';
 import type { SafetyPermitRecord, SafetyPermitState } from '../src/types/safety.ts';
 import type {
   SafetyComplianceSnapshot,
@@ -29,6 +33,9 @@ const validId = (value: unknown): value is string =>
 
 const transitionOperationId = (orgId: string, orderId: string, key: string): string =>
   createHash('sha256').update(`${orgId}:${orderId}:${key}`).digest('hex');
+
+const formatOrderNumber = (seq: number): string =>
+  `OS-${new Date().getFullYear()}-${String(seq).padStart(4, '0')}`;
 
 type TransitionRequest = {
   orgId: string;
@@ -98,6 +105,127 @@ async function loadSafetyGateResult(
 
 export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
+
+  router.post('/', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    if (!orgId || !actor || (req.body?.orgId && req.body.orgId !== orgId)) {
+      return res.status(400).json({ ok: false, error: 'Empresa inválida para criação da OS.' });
+    }
+    const validation = validateWorkOrderCreateInput({ ...(req.body || {}), orgId });
+    if (!validation.valid || !validation.normalized) {
+      return res.status(400).json({ ok: false, error: validation.errors[0] || 'Dados inválidos para criação da OS.', errors: validation.errors });
+    }
+    const admin = getH();
+    if (!admin) return res.status(503).json({ ok: false, error: 'Serviço de dados indisponível.' });
+
+    const normalized = validation.normalized;
+    const autoNumber = req.body?.autoNumber !== false && !normalized.orderNumber;
+    const requestedOrderId = validId(req.body?.id) ? String(req.body.id).trim() : `os_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const canViewFinancials = req.body?.canViewFinancials !== false;
+
+    try {
+      const result = await admin.db.runTransaction(async (tx) => {
+        const unitRef = admin.db.collection('units').doc(normalized.unitId);
+        const contractRef = normalized.contractId ? admin.db.collection('contracts').doc(normalized.contractId) : null;
+        const ccRef = normalized.costCenterId ? admin.db.collection('cost_centers').doc(normalized.costCenterId) : null;
+        const projectRef = normalized.projectId ? admin.db.collection('projects').doc(normalized.projectId) : null;
+        const assetRef = normalized.assetId ? admin.db.collection('assets').doc(normalized.assetId) : null;
+        const statusesQuery = admin.db.collection('work_order_statuses').where('orgId', '==', orgId);
+        const counterRef = admin.db.collection('org_counters').doc(`${orgId}_work_orders`);
+        const orderRef = admin.db.collection('work_orders').doc(requestedOrderId);
+
+        const [unitSnap, contractSnap, ccSnap, projectSnap, assetSnap, statusesSnap, counterSnap, existingOrderSnap] =
+          await Promise.all([
+            tx.get(unitRef),
+            contractRef ? tx.get(contractRef) : Promise.resolve(null),
+            ccRef ? tx.get(ccRef) : Promise.resolve(null),
+            projectRef ? tx.get(projectRef) : Promise.resolve(null),
+            assetRef ? tx.get(assetRef) : Promise.resolve(null),
+            tx.get(statusesQuery),
+            tx.get(counterRef),
+            tx.get(orderRef),
+          ]);
+
+        if (existingOrderSnap.exists) {
+          throw new RouteError(409, 'Já existe uma OS com este identificador.');
+        }
+        if (!unitSnap.exists || (unitSnap.data()?.orgId ?? unitSnap.data()?.organizationId) !== orgId) {
+          throw new RouteError(400, 'Unidade operacional não encontrada nesta empresa.');
+        }
+        if (contractRef && (!contractSnap?.exists || (contractSnap.data()?.orgId ?? contractSnap.data()?.organizationId) !== orgId)) {
+          throw new RouteError(400, 'Contrato informado não pertence a esta empresa.');
+        }
+        if (ccRef && (!ccSnap?.exists || (ccSnap.data()?.orgId ?? ccSnap.data()?.organizationId) !== orgId)) {
+          throw new RouteError(400, 'Centro de custo informado não pertence a esta empresa.');
+        }
+        if (projectRef && (!projectSnap?.exists || (projectSnap.data()?.orgId ?? projectSnap.data()?.organizationId) !== orgId)) {
+          throw new RouteError(400, 'Projeto/Obra informado não pertence a esta empresa.');
+        }
+        if (assetRef && (!assetSnap?.exists || (assetSnap.data()?.orgId ?? assetSnap.data()?.organizationId) !== orgId)) {
+          throw new RouteError(400, 'Ativo/equipamento informado não pertence a esta empresa.');
+        }
+
+        const statuses: Array<{ id: string; name?: string; isInitial?: boolean }> = statusesSnap.docs.map((d) => {
+          const data = d.data() as Record<string, any>;
+          return { id: d.id, name: typeof data.name === 'string' ? data.name : d.id, isInitial: data.isInitial === true };
+        });
+        let chosenStatus: { id: string; name?: string; isInitial?: boolean } | undefined;
+        if (normalized.status) {
+          chosenStatus = statuses.find((s) => s.id === normalized.status);
+          if (!chosenStatus && statuses.length === 0 && normalized.status === 'aberto') {
+            chosenStatus = { id: 'aberto', name: 'Aberto', isInitial: true };
+          }
+          if (!chosenStatus) {
+            throw new RouteError(400, 'Status inicial informado não existe nesta empresa.');
+          }
+          if (statuses.length > 0 && chosenStatus.isInitial !== true) {
+            throw new RouteError(400, 'A criação de OS exige um status configurado como inicial (isInitial: true).');
+          }
+        } else {
+          chosenStatus = statuses.find((s) => s.isInitial === true)
+            || (statuses.length === 0 ? { id: 'aberto', name: 'Aberto', isInitial: true } : undefined);
+          if (!chosenStatus) {
+            throw new RouteError(400, 'Configure um status inicial explícito (isInitial: true) antes de criar OS.');
+          }
+        }
+
+        let orderNumber = normalized.orderNumber || '';
+        if (autoNumber || !orderNumber) {
+          const prevSeq = Number(counterSnap.data()?.seq) || 0;
+          const nextSeq = prevSeq + 1;
+          orderNumber = formatOrderNumber(nextSeq);
+          tx.set(counterRef, { orgId, seq: nextSeq, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+
+        const nowIso = new Date().toISOString();
+        const userName = actor.email || 'Usuário';
+        const { order, creationEvent } = buildWorkOrderAndCreationEvent({
+          orderId: requestedOrderId,
+          orgId,
+          orderNumber,
+          statusId: chosenStatus.id,
+          statusName: String(chosenStatus.name || chosenStatus.id),
+          normalized,
+          actor: { uid: actor.uid, name: userName },
+          nowIso,
+          canViewFinancials,
+        });
+
+        tx.create(orderRef, order);
+        tx.create(admin.db.collection('order_events').doc(creationEvent.id), creationEvent);
+        return { order, creationEvent };
+      });
+
+      return res.status(201).json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof RouteError) {
+        return res.status(error.status).json({ ok: false, error: error.message });
+      }
+      console.error('[work order create] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível criar a ordem de serviço no servidor.' });
+    }
+  });
 
   router.post('/:orderId/safety-check', requireArea('operacoes', 1), async (req: Request, res: Response) => {
     const orgId = req.orgId;

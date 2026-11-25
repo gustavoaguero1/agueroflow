@@ -44,14 +44,14 @@ export const TravelMissionComposerModal: React.FC<TravelMissionComposerModalProp
   onClose,
   onSaveMission,
   currentUser,
-  currentOrgId = 'org_aguero_default',
+  currentOrgId = '',
   corporateProjects = [],
 }) => {
   // Mission basic data
-  const [missionTitle, setMissionTitle] = useState('Montagem de Linha de Envase Inox 304');
-  const [clientName, setClientName] = useState('Cervejaria Ambev - Planta Jaguariúna');
-  const [plantAddress, setPlantAddress] = useState('Rodovia SP-340, km 127 - Jaguariúna, SP');
-  const [workOrderNumber, setWorkOrderNumber] = useState('OS-2025-042');
+  const [missionTitle, setMissionTitle] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [plantAddress, setPlantAddress] = useState('');
+  const [workOrderNumber, setWorkOrderNumber] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
 
   // Dates

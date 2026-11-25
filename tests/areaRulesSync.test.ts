@@ -32,6 +32,7 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
     ['A_FIN', 'financeiro'],
     ['A_RH', 'rh'],
     ['A_WA', 'whatsapp'],
+    ['A_EST', 'estrutura'],
   ]) {
     const v = new RegExp(`function ${fn}\\(\\) \\{ return (\\d+); \\}`).exec(rules)![1];
     assert.equal(Number(v), AREA_IDS.indexOf(id as never), fn);
@@ -57,13 +58,18 @@ test('acesso por área só muda pelo servidor', () => {
 
 test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e APIs', () => {
   const enforcedIds = AREAS.filter((a) => a.enforcedInDatabase).map((a) => a.id).sort();
-  assert.deepEqual(enforcedIds, ['comercial', 'configuracoes', 'estoque', 'financeiro', 'operacoes', 'rh', 'whatsapp']);
+  assert.deepEqual(enforcedIds, ['comercial', 'configuracoes', 'estoque', 'estrutura', 'financeiro', 'operacoes', 'rh', 'whatsapp']);
 
   // WhatsApp collections must not use legacy cross-tenant waMember()
   assert.doesNotMatch(rules, /function waMember\(/);
   assert.match(rules, /function waCanRead\(res\)/);
   assert.match(rules, /areaOk\(orgOf\(res\.data\), A_WA\(\), 1\)/);
   assert.match(waMiddleware, /areaLevelOf\(req\.user, org, 'whatsapp'\)/);
+
+  // Estrutura collections enforce A_EST()
+  assert.match(rules, /function A_EST\(\) \{ return 8; \}/);
+  assert.match(rules, /\['assets', 'contracts', 'cost_centers', 'teams', 'units'\] \? A_EST\(\)/);
+  assert.match(rules, /coll == 'audit_logs'\s*\?\s*areaOk\(orgOf\(d\), A_EST\(\), 1\)/);
 
   // Storage rules enforce Operações (index 1) and RH onboardings (index 5)
   assert.match(storageRules, /areaCode\(orgId\)\[1:2\]/);
