@@ -503,11 +503,32 @@ service cloud.firestore {
             ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
             : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2)));
       }
-      // New work orders must reference real records from the same company; default_unit is never valid for new records.
+      // New work orders must reference real records from the same company; default_unit is never valid.
       function workOrderReferencesValid(d) {
         let unitId = d.get('unitId', '');
         let unitPath = /databases/$(database)/documents/units/$(unitId);
-        let unitIdValid = unitId is string && unitId.matches('^[A-Za-z0-9_-]{1,180}
+        let unitIdValid = unitId is string && unitId.size() > 0 && unitId.size() <= 180 && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+');
+        let unitExists = unitIdValid && exists(unitPath);
+        let unitData = unitExists ? get(unitPath).data : {};
+        let contractId = d.get('contractId', '');
+        let contractPath = /databases/$(database)/documents/contracts/$(contractId);
+        let contractOptional = contractId == '' || contractId == null;
+        let contractExists = contractId is string && contractId.size() > 0 && contractId.size() <= 180 && contractId.matches('[A-Za-z0-9_-]+') && exists(contractPath);
+        let contractData = contractExists ? get(contractPath).data : {};
+        let contractValid = contractOptional || (contractExists && orgOf(contractData) == orgOf(d));
+        let assetId = d.get('assetId', '');
+        let assetPath = /databases/$(database)/documents/assets/$(assetId);
+        let assetOptional = assetId == '' || assetId == null;
+        let assetExists = assetId is string && assetId.size() > 0 && assetId.size() <= 180 && assetId.matches('[A-Za-z0-9_-]+') && exists(assetPath);
+        let assetData = assetExists ? get(assetPath).data : {};
+        let assetValid = assetOptional || (assetExists && orgOf(assetData) == orgOf(d) && (assetData.get('unitId', '') == '' || assetData.get('unitId', '') == unitId));
+        return coll != 'work_orders' || (unitExists && orgOf(unitData) == orgOf(d) && contractValid && assetValid);
+      }
+      function workOrderUpdateReferencesValid() {
+        return coll != 'work_orders'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unitId', 'contractId', 'assetId'])
+          || workOrderReferencesValid(request.resource.data);
+      }
       function rhAllocation() {
         return coll == 'rh_employees' && areaOk(orgOf(resource.data), A_OPS(), 2)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
