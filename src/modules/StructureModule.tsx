@@ -195,13 +195,17 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization) return;
+    if (!assetUnitId || !units.some((unit) => unit.id === assetUnitId)) {
+      alert('Selecione uma unidade cadastrada para vincular o ativo.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const astId = `ast_${Date.now()}`;
       const newAsset: Asset = {
         id: astId,
         orgId: organization.id,
-        unitId: assetUnitId || units[0]?.id || 'default_unit',
+        unitId: assetUnitId,
         tag: assetTag.trim().toUpperCase(),
         name: assetName.trim(),
         category: assetCategory.trim(),
