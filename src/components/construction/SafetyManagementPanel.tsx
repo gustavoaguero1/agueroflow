@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
-  getDoc,
   onSnapshot,
   query,
   runTransaction,
@@ -638,6 +637,7 @@ export const SafetyManagementPanel: React.FC = () => {
                   <div><span className="block text-slate-500">Obra/contrato</span><strong className="text-slate-200">{contracts.find((contract: Contract) => contract.id === selectedPermit.contractId)?.name || '—'}</strong></div>
                   <div><span className="block text-slate-500">Responsável da frente</span><strong className="text-slate-200">{selectedPermit.supervisorName}</strong></div>
                   <div><span className="block text-slate-500">Equipe</span><strong className="text-slate-200">{selectedPermit.teamMembers.length} participante(s)</strong></div>
+                  <div className="col-span-2"><span className="block text-slate-500">Equipe autorizada nesta APR/PT</span><strong className="text-slate-200">{selectedPermit.teamMembers.join(', ')}</strong></div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                   <p className="text-[10px] font-bold uppercase text-slate-500">Perigo e consequência</p>
@@ -649,6 +649,17 @@ export const SafetyManagementPanel: React.FC = () => {
                       <p className="mt-1 text-slate-300">{risk.controlMeasures}</p>
                     </div>
                   ))}
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                  <p className="text-[10px] font-bold uppercase text-slate-500">Controles pré-início</p>
+                  <div className="mt-2 space-y-1.5">
+                    {requiredSafetyControls(selectedPermit.permitType).map((item) => (
+                      <p key={item.key} className="flex items-center justify-between gap-2 text-[10px]">
+                        <span className="text-slate-300">{item.label}</span>
+                        <span className={selectedPermit.controls[item.key] ? 'font-bold text-emerald-300' : 'font-bold text-rose-300'}>{selectedPermit.controls[item.key] ? 'Confirmado' : 'Pendente'}</span>
+                      </p>
+                    ))}
+                  </div>
                 </div>
                 <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                   <p className="text-[10px] font-bold uppercase text-slate-500">Plano de emergência</p>
@@ -856,7 +867,7 @@ export const SafetyManagementPanel: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-[11px] text-slate-400">Unidade / planta
-                <select value={occurrenceDraft.unitId} onChange={(event) => patchOccurrence('unitId', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Selecione</option>{units.map((unit: Unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>
+                <select value={occurrenceDraft.unitId} onChange={(event) => { patchOccurrence('unitId', event.target.value); patchOccurrence('relatedPermitId', ''); }} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Selecione</option>{units.map((unit: Unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>
               </label>
               <label className="text-[11px] text-slate-400">Data da ocorrência
                 <input type="date" value={occurrenceDraft.incidentDate} onChange={(event) => patchOccurrence('incidentDate', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
@@ -879,7 +890,7 @@ export const SafetyManagementPanel: React.FC = () => {
                 <textarea value={occurrenceDraft.immediateAction} onChange={(event) => patchOccurrence('immediateAction', event.target.value)} rows={2} maxLength={1000} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
               </label>
               <label className="text-[11px] text-slate-400 sm:col-span-2">APR/PT relacionada (opcional)
-                <select value={occurrenceDraft.relatedPermitId} onChange={(event) => patchOccurrence('relatedPermitId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Sem vínculo</option>{permits.map((permit) => <option key={permit.id} value={permit.id}>{permit.permitCode} · {permit.activityTitle}</option>)}</select>
+                <select value={occurrenceDraft.relatedPermitId} onChange={(event) => patchOccurrence('relatedPermitId', event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"><option value="">Sem vínculo</option>{permits.filter((permit) => permit.unitId === occurrenceDraft.unitId).map((permit) => <option key={permit.id} value={permit.id}>{permit.permitCode} · {permit.activityTitle}</option>)}</select>
               </label>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-800 pt-3">
