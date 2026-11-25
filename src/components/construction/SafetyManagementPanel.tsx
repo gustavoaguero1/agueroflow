@@ -150,10 +150,6 @@ function formatDateTime(value: unknown): string {
   return date ? date.toLocaleString('pt-BR') : '—';
 }
 
-function timestampOrder(value: unknown): number {
-  return valueToDate(value)?.getTime() || 0;
-}
-
 function splitNames(value: string): string[] {
   return value.split(/\r?\n|,/).map((name) => name.trim()).filter(Boolean);
 }
@@ -230,9 +226,21 @@ export const SafetyManagementPanel: React.FC = () => {
 
   const selectedPermit = permits.find((permit) => permit.id === selectedPermitId) || null;
   const selectedState = states.find((state) => state.permitId === selectedPermitId) || null;
-  const selectedEvents = permitEvents
-    .filter((event) => event.permitId === selectedPermitId)
-    .sort((a, b) => timestampOrder(a.recordedAt) - timestampOrder(b.recordedAt));
+  const selectedEvents = useMemo(() => {
+    if (!selectedState || !selectedPermitId) return [];
+    const eventsById = new Map(permitEvents.map((event) => [event.id, event]));
+    const activeChain: SafetyPermitEvent[] = [];
+    const visited = new Set<string>();
+    let eventId = selectedState.latestEventId;
+    while (eventId && !visited.has(eventId)) {
+      visited.add(eventId);
+      const event = eventsById.get(eventId);
+      if (!event || event.permitId !== selectedPermitId) break;
+      activeChain.unshift(event);
+      eventId = event.previousEventId || '';
+    }
+    return activeChain;
+  }, [permitEvents, selectedPermitId, selectedState]);
 
   const awaitingApprovalCount = states.filter((state) => state.status === 'awaiting_approval').length;
   const activePermitCount = states.filter((state) => state.status === 'approved').length;
