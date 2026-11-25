@@ -397,7 +397,7 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
 
         <button
           onClick={() => {
-            setUnitId(units[0]?.id || '');
+            setUnitId('');
             setAssetId(assets[0]?.id || '');
             setShowCreateModal(true);
           }}
