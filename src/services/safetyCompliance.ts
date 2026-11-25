@@ -65,6 +65,7 @@ export interface SafetyTrainingRecord {
   issuingEntity?: string;
   certificateNumber?: string;
   certificateUrl?: string;
+  certificatePath?: string;
   certificateName?: string;
   notes?: string;
   createdByUid: string;
