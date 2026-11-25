@@ -62,6 +62,21 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Certificados de treinamentos e qualificações da equipe de Segurança & SMS.
+    // Novos arquivos são imutáveis e acessíveis apenas a membros da empresa na área Operações.
+    match /safety-certificates/{orgId}/{employeeId}/{fileId} {
+      allow read: if engineeringCanRead(orgId);
+      allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp)
+  }
+}
+);
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} { allow read, write: if false; }
   }
 }
