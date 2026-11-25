@@ -816,7 +816,7 @@ service cloud.firestore {
                     ? validSafetyPpeMovementCreate()
                     : (coll == 'safety_training_catalog'
                       ? (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyTrainingCatalogCreate())
-                      : (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyTrainingRecordCreate())))))))
+                      : validSafetyTrainingRecordCreate()))))))
         : (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory'])
           ? (signedIn() && isMemberOf(request.resource.data.get('orgId', ''))
             && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2) && validSafetyOccurrenceCreate())
@@ -833,7 +833,13 @@ service cloud.firestore {
             ? (areaOk(orgOf(resource.data), A_OPS(), 2) && validSafetyPermitStateUpdate())
             : (coll in ['safety_ppe_catalog', 'safety_training_catalog']
               ? (areaOk(orgOf(resource.data), A_OPS(), 2) && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
-                && request.resource.data.get('orgId', '') == orgOf(resource.data))
+                && request.resource.data.get('orgId', '') == orgOf(resource.data)
+                && request.resource.data.get('id', '') == docId
+                && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+                  coll == 'safety_ppe_catalog'
+                    ? ['name', 'category', 'caNumber', 'caExpiresAt', 'requiredForPermitTypes', 'active', 'notes', 'updatedAt']
+                    : ['code', 'title', 'requiredForPermitTypes', 'active', 'updatedAt']))
               : (coll == 'occurrences'
                 ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
                 : (areaWrite(resource.data) || rhAllocation())))));
