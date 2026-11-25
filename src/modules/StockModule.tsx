@@ -104,8 +104,12 @@ export const StockModule: React.FC = () => {
       return;
     }
 
-    const unit = units.find((u) => u.id === movUnitId) || units[0];
-    const unitIdTarget = unit?.id || 'default_unit';
+    const unit = units.find((u) => u.id === movUnitId);
+    if (!unit) {
+      setMovError('Selecione uma unidade cadastrada antes de movimentar o estoque.');
+      return;
+    }
+    const unitIdTarget = unit.id;
 
     if (movType === 'ajuste' && movReason.trim().length < 5) {
       setMovError('Ajuste de inventário exige justificativa (mínimo 5 caracteres).');
@@ -477,10 +481,12 @@ export const StockModule: React.FC = () => {
               <div>
                 <label className="block font-medium text-slate-300 mb-1">Unidade / Localidade</label>
                 <select
+                  required
                   value={movUnitId}
                   onChange={(e) => setMovUnitId(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                 >
+                  <option value="" disabled>Selecione a unidade</option>
                   {units.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.name}
