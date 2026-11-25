@@ -813,7 +813,7 @@ service cloud.firestore {
                 : (coll == 'safety_ppe_catalog'
                   ? (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyPpeCatalogCreate())
                   : (coll == 'safety_ppe_movements'
-                    ? validSafetyPpeMovementCreate()
+                    ? false
                     : (coll == 'safety_training_catalog'
                       ? (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyTrainingCatalogCreate())
                       : validSafetyTrainingRecordCreate())))))))
