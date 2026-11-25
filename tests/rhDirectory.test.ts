@@ -17,9 +17,9 @@ test('diretório de pessoas não leva nenhum valor de salário', () => {
   assert.equal(d.hourlyRateCarteira, undefined);
 });
 
-test('diretório leva o que Operações precisa: nome, função, situação, admissão, obra', () => {
+test('diretório leva o que Operações precisa: nome, função, situação, admissão, obra e rhEmployeeId estável', () => {
   assert.deepEqual(toDirectoryEntry(emp), {
-    id: 'e1', orgId: 'org', name: 'Ana', role: 'Soldadora', active: true, admissionDate: '2025-01-01',
+    id: 'e1', rhEmployeeId: 'e1', orgId: 'org', name: 'Ana', role: 'Soldadora', active: true, admissionDate: '2025-01-01',
     department: 'Obras', registrationNumber: '12', unitId: 'u1', codigoObra: '198', updatedAt: 'u',
   });
   assert.ok(DIRECTORY_FIELDS.includes('name'));

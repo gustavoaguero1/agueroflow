@@ -74,6 +74,14 @@ export interface CommercialMaterial {
   taxCost?: number;
   sourceDocumentRef?: string;
   importedBy?: string;
+  /** Vínculo explícito (confirmado por revisão humana) com o catálogo mestre `items`. */
+  masterItemId?: string | null;
+  masterItemSku?: string | null;
+  masterItemName?: string | null;
+  masterLinkStatus?: 'unlinked' | 'linked' | 'rejected';
+  masterLinkConfirmedBy?: string;
+  masterLinkConfirmedAt?: string;
+  masterLinkNotes?: string;
   createdAt: string;
   updatedAt?: string;
 }

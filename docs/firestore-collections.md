@@ -22,12 +22,12 @@ Owner kinds:
 | collective_asset_movements | orgId | `orgId ==`, `orgId ==` + `status in` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
 | collective_asset_policies | doc id | getDoc | written in transactions |
 | collective_asset_services | orgId | `orgId ==` | |
-| collective_asset_workers | orgId | `orgId ==` | |
+| collective_asset_workers | orgId | `orgId ==` | Projeção operacional de colaboradores para bens coletivos. Quando `rhEmployeeId` é informado, a regra valida existência e pertencimento em `rh_directory/{rhEmployeeId}` da mesma empresa; vínculos legados sem `rhEmployeeId` seguem legíveis para saneamento manual. |
 | collective_assets | orgId (+ optional `organizationId` alias) | `orgId ==` | AiAssistantModule fixed as above |
 | commercial_clients | organizationId | `organizationId ==` | |
 | commercial_cost_compositions | organizationId | `organizationId ==`, getDoc | |
 | commercial_imports | organizationId | `organizationId ==` | |
-| commercial_materials | organizationId | `organizationId ==` | |
+| commercial_materials | organizationId | `organizationId ==` | Catálogo comercial. Quando `masterItemId` é confirmado por revisão humana, a regra valida existência e pertencimento em `items/{masterItemId}` da mesma empresa. |
 | commercial_policies | doc id | getDoc | doc id = organizationId |
 | commercial_proposal_items | organizationId, parent `commercial_proposals/{proposalId}` | `proposalId ==` only | read/delete also allowed via the parent proposal's org (`get()`), so the proposalId-only query works; create/update need the parent to exist and share the item's organizationId |
 | commercial_proposals | organizationId | `organizationId ==`, getDoc | |

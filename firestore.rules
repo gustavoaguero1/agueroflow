@@ -1056,19 +1056,38 @@ service cloud.firestore {
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
           // Evaluate expensive validations only for the collection that needs them.
           && (coll != 'construction_reports' || validRdoCreate())
-          && (coll != 'quality_records' || validQualityRecordCreate())
-          && (coll != 'quality_record_events' || validQualityEventCreate())
-          && (coll != 'quality_record_states' || validQualityStateCreate())
           && (coll != 'work_orders' || workOrderReferencesValid(request.resource.data))
           && (coll != 'order_events' || validOrderEventCreate())
           && (coll != 'order_messages' || validOrderMessageCreate())
           && areaWrite(request.resource.data);
+      }
+      function collectiveWorkerRhLinkValid(d) {
+        let rhId = d.get('rhEmployeeId', '');
+        let rhPath = /databases/$(database)/documents/rh_directory/$(rhId);
+        return rhId == '' || rhId == null
+          || (rhId is string && rhId.size() > 0 && rhId.size() <= 180
+            && rhId.matches('[A-Za-z0-9_-]+')
+            && exists(rhPath) && orgOf(get(rhPath).data) == orgOf(d));
+      }
+      function commercialMaterialMasterItemValid(d) {
+        let itemId = d.get('masterItemId', '');
+        let itemPath = /databases/$(database)/documents/items/$(itemId);
+        return itemId == '' || itemId == null
+          || (itemId is string && itemId.size() > 0 && itemId.size() <= 180
+            && itemId.matches('[A-Za-z0-9_-]+')
+            && exists(itemPath) && orgOf(get(itemPath).data) == orgOf(d));
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
         // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
         && !(coll in ['inspections', 'checklist_templates', 'checklist_runs'])
         && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
         && (coll == 'work_orders' ? workOrderUpdateReferencesValid() : true)
+        && (coll != 'collective_asset_workers'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rhEmployeeId'])
+          || collectiveWorkerRhLinkValid(request.resource.data))
+        && (coll != 'commercial_materials'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['masterItemId'])
+          || commercialMaterialMasterItemValid(request.resource.data))
         && (coll == 'projects'
           ? (areaWrite(resource.data) && validProjectUpdate())
           : (coll == 'order_messages'
@@ -1170,20 +1189,30 @@ service cloud.firestore {
           || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
       allow update, delete: if perOrgMutation();
-      // Keep engineering and project writes on a narrow validation path; the wildcard branch handles other domains.
+      // Keep engineering, quality, project, and master-data link writes on a narrow validation path; the wildcard branch handles other domains.
       allow create: if coll == 'engineering_documents'
         ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringDocumentCreate())
         : (coll == 'engineering_document_events'
           ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringEventCreate())
-          : (coll == 'projects'
-            ? (canCreate() && areaWrite(request.resource.data) && validProjectCreate())
-            : (coll in [
-                'safety_permits', 'safety_permit_events', 'safety_permit_states',
-                'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
-              ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
-              ? false
-              : (finance() ? financeCreate()
-                : (perOrgDoc() ? perOrgCreate() : genericCreate())))));
+          : (coll == 'quality_records'
+            ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityRecordCreate())
+            : (coll == 'quality_record_events'
+              ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityEventCreate())
+              : (coll == 'quality_record_states'
+                ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityStateCreate())
+                : (coll == 'projects'
+                  ? (canCreate() && areaWrite(request.resource.data) && validProjectCreate())
+                  : (coll == 'collective_asset_workers'
+                    ? (canCreate() && areaWrite(request.resource.data) && collectiveWorkerRhLinkValid(request.resource.data))
+                    : (coll == 'commercial_materials'
+                      ? (canCreate() && areaWrite(request.resource.data) && commercialMaterialMasterItemValid(request.resource.data))
+                      : (coll in [
+                          'safety_permits', 'safety_permit_events', 'safety_permit_states',
+                          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
+                        ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+                        ? false
+                        : (finance() ? financeCreate()
+                          : (perOrgDoc() ? perOrgCreate() : genericCreate()))))))))));
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
