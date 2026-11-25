@@ -53,7 +53,7 @@ service firebase.storage {
         return request.resource.contentType.matches('^(image/jpeg|image/png|image/webp|application/pdf|application/json|application/octet-stream)$');
       }
       function legacyJsonBackup() {
-        return fileId.matches('^arquivos_[A-Za-z0-9_-]+[.]json$')
+        return fileId == 'arquivos_historico.json'
           && request.resource.contentType == 'application/json';
       }
       allow read: if engineeringCanRead(orgId);
