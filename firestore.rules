@@ -503,26 +503,35 @@ service cloud.firestore {
             ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
             : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2)));
       }
-      // New work orders must reference real records from the same company; default_unit is never valid.
-      function workOrderReferencesValid(d) {
+      // Validate each reference independently to stay under the Firestore Rules local-variable limit.
+      function workOrderUnitValid(d) {
         let unitId = d.get('unitId', '');
         let unitPath = /databases/$(database)/documents/units/$(unitId);
-        let unitIdValid = unitId is string && unitId.size() > 0 && unitId.size() <= 180 && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+');
-        let unitExists = unitIdValid && exists(unitPath);
-        let unitData = unitExists ? get(unitPath).data : {};
+        return unitId is string && unitId.size() > 0 && unitId.size() <= 180
+          && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+')
+          && exists(unitPath) && orgOf(get(unitPath).data) == orgOf(d);
+      }
+      function workOrderContractValid(d) {
         let contractId = d.get('contractId', '');
         let contractPath = /databases/$(database)/documents/contracts/$(contractId);
-        let contractOptional = contractId == '' || contractId == null;
-        let contractExists = contractId is string && contractId.size() > 0 && contractId.size() <= 180 && contractId.matches('[A-Za-z0-9_-]+') && exists(contractPath);
-        let contractData = contractExists ? get(contractPath).data : {};
-        let contractValid = contractOptional || (contractExists && orgOf(contractData) == orgOf(d));
+        return contractId == '' || contractId == null
+          || (contractId is string && contractId.size() > 0 && contractId.size() <= 180
+            && contractId.matches('[A-Za-z0-9_-]+') && exists(contractPath)
+            && orgOf(get(contractPath).data) == orgOf(d));
+      }
+      function workOrderAssetValid(d) {
+        let unitId = d.get('unitId', '');
         let assetId = d.get('assetId', '');
         let assetPath = /databases/$(database)/documents/assets/$(assetId);
-        let assetOptional = assetId == '' || assetId == null;
-        let assetExists = assetId is string && assetId.size() > 0 && assetId.size() <= 180 && assetId.matches('[A-Za-z0-9_-]+') && exists(assetPath);
-        let assetData = assetExists ? get(assetPath).data : {};
-        let assetValid = assetOptional || (assetExists && orgOf(assetData) == orgOf(d) && (assetData.get('unitId', '') == '' || assetData.get('unitId', '') == unitId));
-        return coll != 'work_orders' || (unitExists && orgOf(unitData) == orgOf(d) && contractValid && assetValid);
+        return assetId == '' || assetId == null
+          || (assetId is string && assetId.size() > 0 && assetId.size() <= 180
+            && assetId.matches('[A-Za-z0-9_-]+') && exists(assetPath)
+            && orgOf(get(assetPath).data) == orgOf(d)
+            && (get(assetPath).data.get('unitId', '') == '' || get(assetPath).data.get('unitId', '') == unitId));
+      }
+      function workOrderReferencesValid(d) {
+        return coll != 'work_orders'
+          || (workOrderUnitValid(d) && workOrderContractValid(d) && workOrderAssetValid(d));
       }
       function workOrderUpdateReferencesValid() {
         return coll != 'work_orders'
