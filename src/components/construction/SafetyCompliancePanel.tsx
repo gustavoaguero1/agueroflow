@@ -104,28 +104,38 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
       return;
     }
     setLoading(true);
+    const pendingSources = new Set(['rh', 'ppe', 'ppeMovements', 'trainingCatalog', 'trainingRecords', 'legacy']);
+    const markLoaded = (source: string) => {
+      pendingSources.delete(source);
+      if (pendingSources.size === 0) setLoading(false);
+    };
     const unsubscribers = [
       onSnapshot(query(collection(db, 'rh_directory'), where('orgId', '==', organizationId)), (snap) => {
         const list = snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyEmployee));
         list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
         setEmployees(list);
-        setLoading(false);
-      }, (err) => { console.error('Erro ao carregar diretório de RH para SMS:', err); setLoading(false); }),
+        markLoaded('rh');
+      }, (err) => { console.error('Erro ao carregar diretório de RH para SMS:', err); markLoaded('rh'); }),
       onSnapshot(query(collection(db, 'safety_ppe_catalog'), where('orgId', '==', organizationId)), (snap) => {
         setPpeCatalog(snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyPpeCatalogItem)));
-      }, (err) => console.error('Erro ao carregar catálogo de EPIs:', err)),
+        markLoaded('ppe');
+      }, (err) => { console.error('Erro ao carregar catálogo de EPIs:', err); markLoaded('ppe'); }),
       onSnapshot(query(collection(db, 'safety_ppe_movements'), where('orgId', '==', organizationId)), (snap) => {
         setPpeMovements(snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyPpeMovement)));
-      }, (err) => console.error('Erro ao carregar histórico de EPIs:', err)),
+        markLoaded('ppeMovements');
+      }, (err) => { console.error('Erro ao carregar histórico de EPIs:', err); markLoaded('ppeMovements'); }),
       onSnapshot(query(collection(db, 'safety_training_catalog'), where('orgId', '==', organizationId)), (snap) => {
         setTrainingCatalog(snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyTrainingCatalogItem)));
-      }, (err) => console.error('Erro ao carregar catálogo de treinamentos:', err)),
+        markLoaded('trainingCatalog');
+      }, (err) => { console.error('Erro ao carregar catálogo de treinamentos:', err); markLoaded('trainingCatalog'); }),
       onSnapshot(query(collection(db, 'safety_training_records'), where('orgId', '==', organizationId)), (snap) => {
         setTrainingRecords(snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyTrainingRecord)));
-      }, (err) => console.error('Erro ao carregar certificados SMS:', err)),
+        markLoaded('trainingRecords');
+      }, (err) => { console.error('Erro ao carregar certificados SMS:', err); markLoaded('trainingRecords'); }),
       onSnapshot(query(collection(db, 'field_workers'), where('orgId', '==', organizationId)), (snap) => {
         setLegacyWorkers(snap.docs.map((item) => ({ ...item.data(), id: item.id })) as typeof legacyWorkers);
-      }, (err) => console.error('Erro ao ler certificados legados de Obras:', err)),
+        markLoaded('legacy');
+      }, (err) => { console.error('Erro ao ler certificados legados de Obras:', err); markLoaded('legacy'); }),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   // Employee directory is intentionally read from RH and not copied to a safety employee collection.
