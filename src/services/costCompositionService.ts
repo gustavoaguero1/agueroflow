@@ -38,11 +38,6 @@ import {
 import { CommercialProposal, CommercialProposalItem } from '../types/commercial';
 import { getProposalItems, getProposals, saveProposal } from './commercialService';
 
-const STORAGE_KEYS = {
-  COMPOSITIONS: 'agueroflow_cost_compositions',
-  TEMPLATES: 'agueroflow_cost_templates',
-};
-
 // ----------------------------------------------------------------------------
 // DETERMINISTIC CALCULATION ENGINE
 // ----------------------------------------------------------------------------
