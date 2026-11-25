@@ -49,14 +49,24 @@ function validPermit(uid: string, id = 'permit_01', overrides: Overrides = {}) {
     validUntil: '2026-11-25T17:00',
     supervisorName: 'Encarregado de montagem',
     teamMembers: ['Soldador TIG', 'Ajudante'],
-    risks: [{
-      id: 'risk_1',
-      hazard: 'Projeção de fagulhas durante soldagem',
-      consequence: 'Queimaduras ou princípio de incêndio',
-      initialRisk: 'alto',
-      controlMeasures: 'Isolar a área, remover combustíveis e manter extintor e vigia de fogo.',
-      residualRisk: 'medio',
-    }],
+    risks: [
+      {
+        id: 'risk_1',
+        hazard: 'Projeção de fagulhas durante soldagem',
+        consequence: 'Queimaduras ou princípio de incêndio',
+        initialRisk: 'alto',
+        controlMeasures: 'Isolar a área, remover combustíveis e manter extintor e vigia de fogo.',
+        residualRisk: 'medio',
+      },
+      {
+        id: 'risk_2',
+        hazard: 'Contato com superfície aquecida',
+        consequence: 'Queimadura por contato durante a execução',
+        initialRisk: 'medio',
+        controlMeasures: 'Demarcar a superfície e aguardar resfriamento antes de liberar a área.',
+        residualRisk: 'baixo',
+      },
+    ],
     controls: {
       teamBriefed: true,
       ppeInspected: true,
@@ -281,6 +291,8 @@ test('SMS occurrences reuse the existing occurrences collection and validate rel
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }));
+  await assertFails(updateDoc(doc(db, 'occurrences/sms_incident_01'), { safetyCategory: 'ato_inseguro' }));
+  await assertFails(deleteDoc(doc(db, 'occurrences/sms_incident_01')));
   await assertFails(setDoc(doc(db, 'occurrences/sms_bad_category'), {
     id: 'sms_bad_category',
     orgId: 'org_a',
