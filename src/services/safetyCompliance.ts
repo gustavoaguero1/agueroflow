@@ -168,7 +168,7 @@ export function evaluateEmployeeSafetyCompliance(
     const currentRecord = [
       ...snapshot.trainingRecords.filter((item) => item.employeeId === employeeId && item.trainingCode.toUpperCase() === code),
       ...snapshot.legacyTrainingRecords.filter((item) => item.employeeId === employeeId && item.code.toUpperCase() === code),
-    ] .some((item) => trainingIsCurrent(item, activityStart, activityEnd));
+    ].some((item) => trainingIsCurrent(item, activityStart, activityEnd));
     if (!currentRecord) {
       blockers.push({ employeeId, employeeName: employee.name, category: 'treinamento',
         message: `${code} ausente ou vencido para ${employee.name}.` });
