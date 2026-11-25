@@ -471,10 +471,12 @@ export const InspectionsModule: React.FC = () => {
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Unidade</label>
                   <select
+                    required
                     value={unitId}
                     onChange={(e) => setUnitId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value="" disabled>Selecione a unidade</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
@@ -538,7 +540,7 @@ export const InspectionsModule: React.FC = () => {
             </form>
           </div>
         </div>
-     
+      )}
       {inspectionToComplete && (
         <div className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#121826] border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl">
@@ -571,7 +573,6 @@ export const InspectionsModule: React.FC = () => {
           </div>
         </div>
       )}
- )}
         </>
       )}
     </div>
