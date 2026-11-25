@@ -62,9 +62,9 @@ Owner kinds:
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
 | inspections | orgId | `orgId ==` | Fluxo criado e atualizado somente por `/api/inspections`; a transição gera evento imutável na mesma transação. Estados: agendada → em campo → aguardando revisão → aprovada/devolvida. |
-| item_categories | orgId | `orgId ==` | |
+| item_categories | orgId | `orgId ==` | Stock editor administra categorias; Operações e Comercial podem consultar. |
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
-| items | orgId | `orgId ==` | |
+| items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
@@ -86,8 +86,8 @@ Owner kinds:
 | rh_directory | orgId | `orgId ==` | Diretório sem salários publicado pelo RH; é a fonte oficial de pessoas para a equipe PT e movimentações de EPI. Os registros guardam `rhEmployeeId` para ligar a equipe operacional sem duplicar o colaborador. |
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
-| stock_balances | orgId | `orgId ==` | |
-| stock_movements | orgId (immutable) | `orgId ==` | Append-only; entradas por recebimento registram OC, NF-e, recibo, custo unitário/total e referência idempotente. | |
+| stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
+| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas por recebimento preservam OC, NF-e, recibo, custo e idempotência. | |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
