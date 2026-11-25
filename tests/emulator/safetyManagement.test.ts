@@ -102,28 +102,28 @@ function eventData(uid: string, permitId: string, eventType: string, overrides: 
 
 async function createPermit(uid = 'operator_1', role = 'Operacional', id = 'permit_01') {
   const db = dbFor(uid, role);
-  await assertSucceeds(setDoc(doc(db, 'safety_permits', id), validPermit(uid, id)));
   const initialEventId = id + '_created';
-  await assertSucceeds(setDoc(
-    doc(db, 'safety_permit_events', initialEventId),
-    eventData(uid, id, 'created'),
-  ));
-  await assertSucceeds(setDoc(doc(db, 'safety_permit_states', id), {
-    id,
-    orgId: 'org_a',
-    unitId: 'unit_a',
-    contractId: 'contract_a',
-    permitId: id,
-    status: 'draft',
-    latestEventId: initialEventId,
-    updatedByUid: uid,
-    updatedByName: uid === 'operator_1' ? 'Operador de Campo' : 'Supervisor SMS',
-    updatedAt: serverTimestamp(),
-  }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    const adminDb = context.firestore();
+    await setDoc(doc(adminDb, 'safety_permits', id), validPermit(uid, id));
+    await setDoc(doc(adminDb, 'safety_permit_events', initialEventId), eventData(uid, id, 'created'));
+    await setDoc(doc(adminDb, 'safety_permit_states', id), {
+      id,
+      orgId: 'org_a',
+      unitId: 'unit_a',
+      contractId: 'contract_a',
+      permitId: id,
+      status: 'draft',
+      latestEventId: initialEventId,
+      updatedByUid: uid,
+      updatedByName: uid === 'operator_1' ? 'Operador de Campo' : 'Supervisor SMS',
+      updatedAt: serverTimestamp(),
+    });
+  });
   return { db, initialEventId };
 }
 
-test('Operations editor creates an APR, initial event and state in sequence', async () => {
+test('APR/PT, event and state writes are server-only while records remain readable', async () => {
   const { db, initialEventId } = await createPermit();
   const savedPermit = await assertSucceeds(getDoc(doc(db, 'safety_permits/permit_01')));
   const savedEvent = await assertSucceeds(getDoc(doc(db, 'safety_permit_events', initialEventId)));
@@ -131,12 +131,14 @@ test('Operations editor creates an APR, initial event and state in sequence', as
   assert.equal(savedPermit.data()?.permitCode, 'APR-2026-ABC12345');
   assert.equal(savedPermit.data()?.documentType, 'apr');
   assert.equal(savedEvent.data()?.eventType, 'created');
-  await assertFails(setDoc(
-    doc(db, 'safety_permit_events/duplicate_created'),
-    eventData('operator_1', 'permit_01', 'created'),
-  ));
   assert.equal(savedState.data()?.status, 'draft');
-  assert.ok(db);
+  await assertFails(setDoc(doc(db, 'safety_permits/client_permit'), validPermit('operator_1', 'client_permit')));
+  await assertFails(setDoc(doc(db, 'safety_permit_events/client_event'), eventData('operator_1', 'permit_01', 'created')));
+  await assertFails(setDoc(doc(db, 'safety_permit_states/client_state'), {
+    id: 'client_state', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
+    permitId: 'client_state', status: 'draft', latestEventId: 'client_event',
+    updatedByUid: 'operator_1', updatedByName: 'Operador de Campo', updatedAt: serverTimestamp(),
+  }));
 });
 
 
