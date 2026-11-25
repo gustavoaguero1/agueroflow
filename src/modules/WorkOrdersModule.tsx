@@ -847,7 +847,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           body: JSON.stringify({
             orgId: organization.id,
             expectedStatus: ord.status,
-            targetStatusId: fallback,
+            targetStatusId: fallback!,
             notes: `Migração após exclusão do estado "${statusId}".`,
             idempotencyKey: `remove_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
           }),
