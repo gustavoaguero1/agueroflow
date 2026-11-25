@@ -590,7 +590,7 @@ service cloud.firestore {
           && d.get('createdAt', null) == request.time
         );
       }
-      function validSafetyPermitEventCreate() {
+      function validSafetyPermitEventCreateForDoc() {
         let permitId = request.resource.data.get('permitId', '');
         let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
         let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
@@ -598,24 +598,29 @@ service cloud.firestore {
         let permit = permitExists ? get(permitPath).data : {};
         let eventType = request.resource.data.get('eventType', '');
         let hasPrevious = request.resource.data.keys().hasAny(['previousEventId']);
-        return coll != 'safety_permit_events' || (
-          signedIn()
+        return signedIn()
           && permitExists
           && request.resource.data.get('orgId', '') == orgOf(permit)
           && request.resource.data.get('unitId', '') == permit.get('unitId', '')
           && request.resource.data.get('contractId', '') == permit.get('contractId', '')
           && eventType in ['created', 'submitted_for_approval', 'approved', 'rejected', 'closed', 'cancelled', 'note_added']
           && request.resource.data.get('actorUid', '') == request.auth.uid
-          && request.resource.data.get('actorName', '') is string && request.resource.data.get('actorName', '').size() > 0
+          && request.resource.data.get('actorName', '') is string
+          && request.resource.data.get('actorName', '').size() > 0
           && request.resource.data.get('recordedAt', null) == request.time
           && (eventType == 'created' ? !hasPrevious
-            : (hasPrevious && request.resource.data.get('previousEventId', '') is string && request.resource.data.get('previousEventId', '').size() > 0))
+            : (hasPrevious && request.resource.data.get('previousEventId', '') is string
+              && request.resource.data.get('previousEventId', '').size() > 0))
           && (eventType in ['rejected', 'closed', 'cancelled']
-            ? (request.resource.data.get('comment', '') is string && request.resource.data.get('comment', '').size() >= 5 && request.resource.data.get('comment', '').size() <= 1500)
-            : true)
-        );
+            ? (request.resource.data.get('comment', '') is string
+              && request.resource.data.get('comment', '').size() >= 5
+              && request.resource.data.get('comment', '').size() <= 1500)
+            : true);
       }
-      function validSafetyPermitStateCreate() {
+      function validSafetyPermitEventCreate() {
+        return coll != 'safety_permit_events' || validSafetyPermitEventCreateForDoc();
+      }
+      function validSafetyPermitStateCreateForDoc() {
         let permitPath = /databases/$(database)/documents/safety_permits/$(docId);
         let eventId = request.resource.data.get('latestEventId', '');
         let safeEventId = eventId is string && eventId.size() > 0 ? eventId : '__missing_event__';
@@ -624,8 +629,7 @@ service cloud.firestore {
         let permit = permitExists ? get(permitPath).data : {};
         let eventExists = exists(eventPath);
         let event = eventExists ? get(eventPath).data : {};
-        return coll != 'safety_permit_states' || (
-          signedIn()
+        return signedIn()
           && permitExists && eventExists
           && request.resource.data.get('id', '') == docId
           && request.resource.data.get('permitId', '') == docId
@@ -637,9 +641,12 @@ service cloud.firestore {
           && event.get('eventType', '') == 'created'
           && event.get('actorUid', '') == request.auth.uid
           && request.resource.data.get('updatedByUid', '') == request.auth.uid
-          && request.resource.data.get('updatedByName', '') is string && request.resource.data.get('updatedByName', '').size() > 0
-          && request.resource.data.get('updatedAt', null) == request.time
-        );
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time;
+      }
+      function validSafetyPermitStateCreate() {
+        return coll != 'safety_permit_states' || validSafetyPermitStateCreateForDoc();
       }
       function safetyStatusAfter(currentStatus, eventType) {
         return eventType == 'submitted_for_approval' && currentStatus in ['draft', 'rejected'] ? 'awaiting_approval'
