@@ -26,6 +26,7 @@ import { CollectiveWorkersManager } from '../components/collectiveAssets/Collect
 import { CollectiveReportsManager } from '../components/collectiveAssets/CollectiveReportsManager';
 import { CollectiveAssetDetailModal } from '../components/collectiveAssets/CollectiveAssetDetailModal';
 import { CollectivePolicyModal } from '../components/collectiveAssets/CollectivePolicyModal';
+import { CmmsReliabilityPanel } from '../components/collectiveAssets/CmmsReliabilityPanel';
 
 import {
   Boxes,
@@ -106,6 +107,7 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
   const [selectedAssetForDetail, setSelectedAssetForDetail] = useState<CollectiveAsset | null>(null);
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
   const [showOverview, setShowOverview] = useState(true);
+  const [maintenanceSubTab, setMaintenanceSubTab] = useState<'servicos' | 'cmms'>('servicos');
 
   // Subscriptions
   useEffect(() => {
@@ -395,17 +397,47 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
         )}
 
         {internalSubSection === 'bens-manutencoes' && (
-          <CollectiveServicesManager
-            organizationId={organizationId}
-            assets={enrichedAssets}
-            categories={categories}
-            services={services}
-            calculatedAssetsMap={calculatedAssetsMap}
-            canManage={canManage}
-            canOperate={canOperate}
-            userEmail={userEmail}
-            onOpenAssetDetail={(asset: CollectiveAsset) => setSelectedAssetForDetail(asset)}
-          />
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setMaintenanceSubTab('servicos')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  maintenanceSubTab === 'servicos'
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Serviços &amp; Calibração
+              </button>
+              <button
+                type="button"
+                onClick={() => setMaintenanceSubTab('cmms')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  maintenanceSubTab === 'cmms'
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                CMMS, Preventivas &amp; Confiabilidade (MTBF/MTTR)
+              </button>
+            </div>
+            {maintenanceSubTab === 'servicos' ? (
+              <CollectiveServicesManager
+                organizationId={organizationId}
+                assets={enrichedAssets}
+                categories={categories}
+                services={services}
+                calculatedAssetsMap={calculatedAssetsMap}
+                canManage={canManage}
+                canOperate={canOperate}
+                userEmail={userEmail}
+                onOpenAssetDetail={(asset: CollectiveAsset) => setSelectedAssetForDetail(asset)}
+              />
+            ) : (
+              <CmmsReliabilityPanel />
+            )}
+          </div>
         )}
 
         {internalSubSection === 'bens-categorias' && (

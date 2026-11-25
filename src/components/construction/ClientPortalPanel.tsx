@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ExternalLink, KeyRound, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
-import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { apiFetch } from '../apiAuthFetch';
-import type { Project } from '../types/project';
-import type { ClientPortalAuditEntry, ClientPortalGrant, ClientPortalScope } from '../types/clientPortal';
+import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiFetch } from '../../apiAuthFetch';
+import type { Project } from '../../types/project';
+import type { ClientPortalAuditEntry, ClientPortalGrant, ClientPortalScope } from '../../types/clientPortal';
 
 const ALL_SCOPES: Array<{ id: ClientPortalScope; label: string }> = [
   { id: 'schedule', label: 'Cronograma & Marcos' },
@@ -15,7 +15,11 @@ const ALL_SCOPES: Array<{ id: ClientPortalScope; label: string }> = [
   { id: 'acceptance', label: 'Registro de Aceite' },
 ];
 
-export const ClientPortalModule: React.FC = () => {
+export interface ClientPortalPanelProps {
+  selectedContractId?: string;
+}
+
+export const ClientPortalPanel: React.FC<ClientPortalPanelProps> = ({ selectedContractId }) => {
   const { organization } = useAuth();
   const orgId = organization?.id || '';
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,6 +50,12 @@ export const ClientPortalModule: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, [orgId]);
+
+  useEffect(() => {
+    if (!selectedContractId || projects.length === 0) return;
+    const match = projects.find((p) => p.contractId === selectedContractId);
+    if (match) setProjectId(match.id);
+  }, [selectedContractId, projects]);
 
   const toggleScope = (scope: ClientPortalScope) => {
     setSelectedScopes((prev) =>

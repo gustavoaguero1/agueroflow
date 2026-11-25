@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { EngineeringDocumentsPanel } from '../components/construction/EngineeringDocumentsPanel';
 import { SafetyManagementPanel } from '../components/construction/SafetyManagementPanel';
+import { IndustrialQualityPanel } from '../components/construction/IndustrialQualityPanel';
+import { ManufacturingPanel } from '../components/construction/ManufacturingPanel';
+import { ClientPortalPanel } from '../components/construction/ClientPortalPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -54,6 +57,9 @@ import {
   Settings,
   Award,
   ShieldCheck,
+  Flame,
+  Factory,
+  KeyRound,
 } from 'lucide-react';
 import { BrandLogo } from '../components/common/BrandLogo';
 import { FieldPersonnelManager } from '../components/construction/FieldPersonnelManager';
@@ -104,7 +110,17 @@ const createEmptyRdoWorkforceDrafts = (): RdoWorkforceDraft[] => [
 export const ConstructionModule: React.FC = () => {
   const { user, organization, units, contracts, logAudit, canViewFinancials, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs' | 'seguranca_sms' | 'documentos_engenharia'
+    | 'rdo'
+    | 'avanco'
+    | 'equipe_rh'
+    | 'apontamento_jornada'
+    | 'dashboard_custo'
+    | 'painel_nrs'
+    | 'seguranca_sms'
+    | 'documentos_engenharia'
+    | 'qualidade_industrial'
+    | 'fabricacao'
+    | 'portal_cliente'
   >('rdo');
 
   const [reports, setReports] = useState<ConstructionDailyReport[]>([]);
@@ -610,6 +626,42 @@ export const ConstructionModule: React.FC = () => {
           <FileText className="w-4 h-4 text-cyan-400" />
           <span>8. Engenharia & Documentos</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('qualidade_industrial')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'qualidade_industrial'
+              ? 'bg-orange-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Flame className="w-4 h-4 text-orange-400" />
+          <span>9. Solda, END & Data Book</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('fabricacao')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'fabricacao'
+              ? 'bg-indigo-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Factory className="w-4 h-4 text-indigo-400" />
+          <span>10. Fabricação / Oficina</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('portal_cliente')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'portal_cliente'
+              ? 'bg-sky-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <KeyRound className="w-4 h-4 text-sky-400" />
+          <span>11. Portal do Cliente</span>
+        </button>
       </div>
 
       {/* TAB 1: RDO (Relatório Diário de Obra) */}
@@ -972,6 +1024,21 @@ export const ConstructionModule: React.FC = () => {
           canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
           logAudit={logAudit}
         />
+      )}
+
+      {/* TAB 9: Solda, END, Lotes/Corrida, ITP e Data Book */}
+      {activeTab === 'qualidade_industrial' && organization && (
+        <IndustrialQualityPanel selectedContractId={selectedContractId} />
+      )}
+
+      {/* TAB 10: Produção & Fabricação em Oficina vinculada à Obra */}
+      {activeTab === 'fabricacao' && organization && (
+        <ManufacturingPanel selectedContractId={selectedContractId} />
+      )}
+
+      {/* TAB 11: Gestão de Acessos Externos do Cliente (Portal do Cliente) */}
+      {activeTab === 'portal_cliente' && organization && (
+        <ClientPortalPanel selectedContractId={selectedContractId} />
       )}
 
       {/* MODAL: Emitir Novo RDO */}

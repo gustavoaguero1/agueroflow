@@ -20,10 +20,6 @@ import { StructureModule } from './modules/StructureModule';
 import { SettingsModule } from './modules/SettingsModule';
 import { ConstructionModule } from './modules/ConstructionModule';
 import { MeasurementsModule } from './modules/MeasurementsModule';
-import { IndustrialQualityModule } from './modules/IndustrialQualityModule';
-import { ManufacturingModule } from './modules/ManufacturingModule';
-import { CmmsModule } from './modules/CmmsModule';
-import { ClientPortalModule } from './modules/ClientPortalModule';
 import { CollectiveAssetsModule, CollectiveAssetsSubSection } from './modules/CollectiveAssetsModule';
 import { RhPayrollModule, RhSubSection } from './modules/RhPayrollModule';
 import { CommercialModule, CommercialSubSection } from './modules/CommercialModule';
@@ -312,10 +308,6 @@ function MainRouter() {
       )}
       {section === 'obras' && <ConstructionModule />}
       {section === 'obras-medicoes' && <MeasurementsModule />}
-      {section === 'obras-qualidade-industrial' && <IndustrialQualityModule />}
-      {section === 'obras-fabricacao' && <ManufacturingModule />}
-      {section === 'obras-cmms' && <CmmsModule />}
-      {section === 'obras-portal-cliente' && <ClientPortalModule />}
       {(section === 'operacoes' || section.startsWith('ops-')) && (
         <OperationsModule
           route={section === 'operacoes' ? 'inicio' : section.slice(4)}

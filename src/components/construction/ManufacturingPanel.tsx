@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { Factory, PackageCheck, Plus } from 'lucide-react';
-import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { apiFetch } from '../apiAuthFetch';
-import type { Project } from '../types/project';
-import type { FabricationOrder } from '../types/manufacturing';
-import { computeFabricationMetrics } from '../services/manufacturingRules';
+import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiFetch } from '../../apiAuthFetch';
+import type { Project } from '../../types/project';
+import type { FabricationOrder } from '../../types/manufacturing';
+import { computeFabricationMetrics } from '../../services/manufacturingRules';
 
-export const ManufacturingModule: React.FC = () => {
+export interface ManufacturingPanelProps {
+  selectedContractId?: string;
+}
+
+export const ManufacturingPanel: React.FC<ManufacturingPanelProps> = ({ selectedContractId }) => {
   const { organization } = useAuth();
   const orgId = organization?.id || '';
   const [projects, setProjects] = useState<Project[]>([]);
@@ -34,6 +38,12 @@ export const ManufacturingModule: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, [orgId]);
+
+  useEffect(() => {
+    if (!selectedContractId || projects.length === 0) return;
+    const match = projects.find((p) => p.contractId === selectedContractId);
+    if (match) setProjectId(match.id);
+  }, [selectedContractId, projects]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

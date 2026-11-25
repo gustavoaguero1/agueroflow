@@ -12,10 +12,10 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { apiFetch } from '../apiAuthFetch';
-import type { Project } from '../types/project';
+import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiFetch } from '../../apiAuthFetch';
+import type { Project } from '../../types/project';
 import type {
   MaterialLot,
   NdtReport,
@@ -24,12 +24,16 @@ import type {
   WeldJoint,
   WelderQualification,
   WeldingProcedure,
-} from '../types/industrialQuality';
-import { compileProjectDataBook, traceHeatNumberApplications } from '../services/industrialQualityRules';
+} from '../../types/industrialQuality';
+import { compileProjectDataBook, traceHeatNumberApplications } from '../../services/industrialQualityRules';
 
 type IndustrialTab = 'soldas' | 'eps_soldadores' | 'end' | 'lotes' | 'itp' | 'databook';
 
-export const IndustrialQualityModule: React.FC = () => {
+export interface IndustrialQualityPanelProps {
+  selectedContractId?: string;
+}
+
+export const IndustrialQualityPanel: React.FC<IndustrialQualityPanelProps> = ({ selectedContractId }) => {
   const { organization } = useAuth();
   const orgId = organization?.id || '';
   const [activeTab, setActiveTab] = useState<IndustrialTab>('soldas');
@@ -52,6 +56,12 @@ export const IndustrialQualityModule: React.FC = () => {
   const [epsProcess, setEpsProcess] = useState<'TIG' | 'MIG' | 'MAG' | 'ER' | 'ORBITAL'>('TIG');
   const [epsBaseMetal, setEpsBaseMetal] = useState('');
   const [epsFillerMetal, setEpsFillerMetal] = useState('');
+
+  useEffect(() => {
+    if (!selectedContractId || projects.length === 0) return;
+    const match = projects.find((p) => p.contractId === selectedContractId);
+    if (match) setSelectedProjectId(match.id);
+  }, [selectedContractId, projects]);
 
   const loadAll = async () => {
     if (!orgId) return;

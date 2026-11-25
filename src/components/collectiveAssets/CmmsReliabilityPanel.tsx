@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { Activity, Play, Wrench } from 'lucide-react';
-import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { apiFetch } from '../apiAuthFetch';
-import type { Asset } from '../types';
-import type { CmmsMaintenanceRecord, CmmsPreventivePlan } from '../types/cmms';
-import { computeAssetReliabilityKpis } from '../services/cmmsRules';
+import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { apiFetch } from '../../apiAuthFetch';
+import type { Asset } from '../../types';
+import type { CmmsMaintenanceRecord, CmmsPreventivePlan } from '../../types/cmms';
+import { computeAssetReliabilityKpis } from '../../services/cmmsRules';
 
-export const CmmsModule: React.FC = () => {
+export const CmmsReliabilityPanel: React.FC = () => {
   const { organization } = useAuth();
   const orgId = organization?.id || '';
   const [assets, setAssets] = useState<Asset[]>([]);
