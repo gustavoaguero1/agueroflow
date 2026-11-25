@@ -21,7 +21,7 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'organizations/org_a'), { id: 'org_a', name: 'A' });
-    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A' });
+    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A', status: 'aberto' });
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
@@ -78,10 +78,25 @@ test('member read/write allowed', async () => {
   await assertSucceeds(getDocs(query(collection(db, 'work_orders'), where('orgId', '==', 'org_a'))));
   await assertSucceeds(setDoc(doc(db, 'work_orders/new'), { orgId: 'org_a', title: 'n' }));
   await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { title: 'x' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { status: 'em_execucao' }));
   await assertSucceeds(deleteDoc(doc(db, 'work_orders/new')));
   await assertSucceeds(getDoc(doc(db, 'overtime_rules/org_a')));
   await assertSucceeds(setDoc(doc(db, 'overtime_rules/org_a'), { organizationId: 'org_a', x: 1 }));
   await assertSucceeds(getDoc(doc(db, 'work_orders/missing')));
+});
+
+test('Operations area controls work orders, status config and timeline reads/writes', async () => {
+  const readOnly = as('ops_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(readOnly, 'work_orders/wo_a')));
+  await assertFails(setDoc(doc(readOnly, 'work_orders/read_only_create'), { orgId: 'org_a', status: 'aberto' }));
+  await assertFails(updateDoc(doc(readOnly, 'work_orders/wo_a'), { title: 'Sem permissão' }));
+  await assertFails(setDoc(doc(readOnly, 'order_events/read_only_event'), { orgId: 'org_a', orderId: 'wo_a' }));
+
+  const editor = member();
+  await assertSucceeds(setDoc(doc(editor, 'work_order_statuses/org_a_custom'), {
+    id: 'custom', orgId: 'org_a', name: 'Em análise',
+  }));
+  await assertSucceeds(setDoc(doc(editor, 'order_events/ops_event'), { orgId: 'org_a', orderId: 'wo_a' }));
 });
 
 test('organizationId-only docs readable by member; writes require Stock edit', async () => {
