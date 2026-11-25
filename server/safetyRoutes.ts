@@ -228,7 +228,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         const employeePpeHistory = toRows<Record<string, any>>(movementSnap).filter((item) => item.employeeId === employeeId && item.ppeId === ppeId);
         const latest = activeIssue(employeePpeHistory);
         if (eventType === 'entregue') {
-          if (employee.active !== true) throw new SafetyRouteError(409, 'Não é possível entregar EPI a colaborador inativo no RH.');
+          if (employee.active !== true || employee.dismissalDate) throw new SafetyRouteError(409, 'Não é possível entregar EPI a colaborador inativo ou desligado no RH.');
           if (ppe.active !== true) throw new SafetyRouteError(409, 'Este EPI está inativo no catálogo.');
           if (typeof ppe.caNumber !== 'string' || !ppe.caNumber.trim()
             || typeof ppe.caExpiresAt !== 'string' || ppe.caExpiresAt < dateToday()) {
@@ -290,7 +290,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         if (oldMovement.orgId !== orgId || oldMovement.employeeId !== employeeId || oldMovement.eventType !== 'entregue') {
           throw new SafetyRouteError(409, 'A entrega original não pertence ao colaborador ou não está válida.');
         }
-        if (employee.orgId !== orgId || employee.active !== true) {
+        if (employee.orgId !== orgId || employee.active !== true || employee.dismissalDate) {
           throw new SafetyRouteError(409, 'O colaborador está inativo ou não pertence à empresa.');
         }
         if (newPpe.orgId !== orgId || newPpe.active !== true || newPpeId === oldMovement.ppeId) {
@@ -404,7 +404,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
           tx.get(recordRef), tx.get(employeeRef), tx.get(trainingQuery),
         ]);
         if (recordSnap.exists) throw new SafetyRouteError(409, 'Este registro de certificado já foi criado.');
-        if (!employeeSnap.exists || employeeSnap.data()?.orgId !== orgId || employeeSnap.data()?.active !== true) {
+        if (!employeeSnap.exists || employeeSnap.data()?.orgId !== orgId || employeeSnap.data()?.active !== true || employeeSnap.data()?.dismissalDate) {
           throw new SafetyRouteError(409, 'O colaborador precisa estar ativo no diretório do RH desta empresa.');
         }
         const builtIns: Record<string, string> = {
