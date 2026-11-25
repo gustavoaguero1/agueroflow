@@ -301,6 +301,7 @@ export interface OrderMessage {
   resolved?: boolean;
   resolvedAt?: string;
   resolvedBy?: string;
+  resolvedByName?: string;
   createdAt: string;
 }
 
