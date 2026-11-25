@@ -773,6 +773,8 @@ service cloud.firestore {
       // Keep high-cost safety validation isolated from unrelated collection writes.
       // Firestore evaluates every matching allow expression; invoking all validators
       // for each collection can exceed the 1,000-expression budget.
+      // One create grant per wildcard match: Firestore OR-evaluates separate allow-create
+      // statements and can exhaust the 1,000-expression budget even when their guards are false.
       allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states']
         ? ((orgScoped() || immutable()) && canCreate() && areaWrite(request.resource.data)
           && (coll == 'safety_permits' ? validSafetyPermitCreate()
@@ -780,10 +782,12 @@ service cloud.firestore {
               : validSafetyPermitStateCreate())))
         : (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory'])
           ? (orgScoped() && canCreate() && areaWrite(request.resource.data) && validSafetyOccurrenceCreate())
-          : ((orgScoped() || immutable()) && canCreate() && nfeItemOk()
-            && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-            && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-            && areaWrite(request.resource.data)));
+          : (finance() ? financeCreate()
+            : (perOrgDoc() ? perOrgCreate()
+              : ((orgScoped() || immutable()) && canCreate() && nfeItemOk()
+                && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+                && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+                && areaWrite(request.resource.data)))));
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'quality_record_states'
           ? (areaWrite(resource.data) && validQualityStateUpdate())
@@ -837,7 +841,7 @@ service cloud.firestore {
       // Financeiro: members read; immutable settlement events are written only by the backend.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      function financeCreate() { return finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || payableClientCreate())
         && (!isReceivable() || (request.resource.data.get('id', '') == docId
@@ -868,7 +872,7 @@ service cloud.firestore {
           && request.resource.data.get('snapshot', null) is map
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
-          && request.resource.data.get('updatedAt', null) == request.time));
+          && request.resource.data.get('updatedAt', null) == request.time)); }
       allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
@@ -879,9 +883,13 @@ service cloud.firestore {
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
-      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && request.resource.data.get('orgId', docId) == docId
+        && request.resource.data.get('organizationId', docId) == docId; }
+      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
         && (request.method == 'delete'
-            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+          || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
+      allow update, delete: if perOrgMutation();
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
