@@ -653,6 +653,17 @@ export const SafetyManagementPanel: React.FC = () => {
                     {safetyPermitStatusLabel(selectedState.status)}
                   </span>
                 </div>
+                {selectedPermit.documentType === 'pt' && (
+                  <div className="rounded-lg border border-cyan-900/50 bg-cyan-950/20 p-3">
+                    <p className="text-[10px] font-bold uppercase text-cyan-300">APR de referência</p>
+                    <p className="mt-1 text-[11px] text-slate-200">
+                      {permits.find((permit) => permit.id === selectedPermit.relatedAprId)?.permitCode || 'APR vinculada não localizada'}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      A APR vinculada precisa permanecer aprovada para que a PT possa ser aprovada.
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div><span className="block text-slate-500">Unidade</span><strong className="text-slate-200">{units.find((unit: Unit) => unit.id === selectedPermit.unitId)?.name || '—'}</strong></div>
                   <div><span className="block text-slate-500">Obra/contrato</span><strong className="text-slate-200">{contracts.find((contract: Contract) => contract.id === selectedPermit.contractId)?.name || '—'}</strong></div>
@@ -695,7 +706,7 @@ export const SafetyManagementPanel: React.FC = () => {
                       )}
                       {selectedState.status === 'awaiting_approval' && canApprove && (
                         <>
-                          <button type="button" disabled={submitting || selectedPermit.createdByUid === user?.uid} onClick={() => transitionPermit(selectedPermit, 'approved')} className="rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50">Aprovar PT</button>
+                          <button type="button" disabled={submitting || selectedPermit.createdByUid === user?.uid} onClick={() => transitionPermit(selectedPermit, 'approved')} className="rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50">{selectedPermit.documentType === 'apr' ? 'Aprovar APR' : 'Aprovar PT'}</button>
                           <button type="button" disabled={submitting} onClick={() => transitionPermit(selectedPermit, 'rejected')} className="rounded-lg bg-rose-700 px-3 py-2 text-[10px] font-bold text-white disabled:opacity-50">Reprovar</button>
                         </>
                       )}
@@ -785,7 +796,7 @@ export const SafetyManagementPanel: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-[11px] text-slate-400">Documento
-                <select value={permitDraft.documentType} onChange={(event) => patchPermit('documentType', event.target.value as SafetyDocumentType)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                <select value={permitDraft.documentType} onChange={(event) => setPermitDraft((current) => ({ ...current, documentType: event.target.value as SafetyDocumentType, relatedAprId: '' }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
                   <option value="apr">APR — Análise Preliminar de Risco</option>
                   <option value="pt">PT — Permissão de Trabalho</option>
                 </select>
@@ -796,12 +807,12 @@ export const SafetyManagementPanel: React.FC = () => {
                 </select>
               </label>
               <label className="text-[11px] text-slate-400">Unidade / planta
-                <select value={permitDraft.unitId} onChange={(event) => patchPermit('unitId', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                <select value={permitDraft.unitId} onChange={(event) => setPermitDraft((current) => ({ ...current, unitId: event.target.value, relatedAprId: '' }))} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
                   <option value="">Selecione</option>{units.map((unit: Unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
                 </select>
               </label>
               <label className="text-[11px] text-slate-400">Obra / contrato
-                <select value={permitDraft.contractId} onChange={(event) => patchPermit('contractId', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                <select value={permitDraft.contractId} onChange={(event) => setPermitDraft((current) => ({ ...current, contractId: event.target.value, relatedAprId: '' }))} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
                   <option value="">Selecione</option>{contracts.map((contract: Contract) => <option key={contract.id} value={contract.id}>{contract.name}</option>)}
                 </select>
               </label>
