@@ -8,6 +8,7 @@ export type SafetyPermitType =
   | 'geral';
 
 export type SafetyRiskLevel = 'baixo' | 'medio' | 'alto' | 'critico';
+export type SafetyDocumentType = 'apr' | 'pt';
 
 export type SafetyPermitStatus =
   | 'draft'
@@ -64,6 +65,8 @@ export interface SafetyPermitRecord {
   unitId: string;
   contractId: string;
   workOrderId?: string;
+  documentType: SafetyDocumentType;
+  relatedAprId?: string;
   permitCode: string;
   permitDate: string;
   permitType: SafetyPermitType;
