@@ -108,6 +108,17 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Measurement Bulletin (BM) memory of calculation and evidences (private, immutable).
+    match /measurement-evidences/{orgId}/{bulletinId}/{fileId} {
+      allow read: if isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 1 || int(areaCode(orgId)[3:4]) >= 1 || int(areaCode(orgId)[4:5]) >= 1));
+      allow create: if (isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 2 || int(areaCode(orgId)[3:4]) >= 2)))
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp|application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet)$');
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

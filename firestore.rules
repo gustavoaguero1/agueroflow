@@ -1469,5 +1469,23 @@ service cloud.firestore {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
       allow create, update, delete: if false;
     }
+
+    // ---- Tabelas LPU versionadas e Alçadas/Aprovações de Compras (server-only) ----
+    match /lpu_tables/{tableId} {
+      function lpuCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_COM(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || lpuCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
+    match /purchasing_approval_rules/{ruleId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow create, update, delete: if false;
+    }
+    match /purchasing_approvals/{approvalId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow create, update, delete: if false;
+    }
   }
 }

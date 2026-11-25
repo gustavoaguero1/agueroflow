@@ -22,6 +22,9 @@ export interface MeasurementLineItem {
   description: string;
   unit: string;
   lpuItemId?: string;
+  workOrderId?: string;
+  stageName?: string;
+  evidenceDocRef?: string;
   contractedQuantity?: number;
   previousAccumulatedQuantity?: number;
   measuredQuantity: number;
@@ -33,11 +36,39 @@ export interface MeasurementLineItem {
   glosaReason?: string;
 }
 
+export interface LpuTableLine {
+  id: string;
+  itemCode: string;
+  description: string;
+  unit: string;
+  unitPrice: number;
+  contractedQuantity?: number;
+}
+
+export interface LpuPriceTable {
+  id: string;
+  orgId: string;
+  contractId: string;
+  code: string;
+  version: number;
+  effectiveFrom: string;
+  effectiveUntil?: string;
+  readjustmentIndex?: string;
+  readjustmentPercent?: number;
+  status: 'vigente' | 'substituida' | 'rascunho';
+  items: LpuTableLine[];
+  createdByUid: string;
+  createdByName: string;
+  createdAt: string;
+}
+
 export interface MeasurementBulletin {
   id: string;
   orgId: string;
   code: string;
   number: number;
+  revision?: number;
+  previousBulletinId?: string;
   title: string;
   contractId: string;
   contractTitle?: string;
@@ -50,10 +81,18 @@ export interface MeasurementBulletin {
   periodEnd: string;
   dueDate: string;
   status: MeasurementStatus;
+  lpuTableId?: string;
+  lpuVersionSnapshot?: number;
   items: MeasurementLineItem[];
   totalMeasuredAmount: number;
   totalApprovedAmount: number;
   totalGlosaAmount: number;
+  readjustmentPercent?: number;
+  readjustmentAmount?: number;
+  retentionPercent?: number;
+  retentionAmount?: number;
+  netApprovedReceivableAmount?: number;
+  evidenceStoragePaths?: string[];
   lpuApprovalIds?: string[];
   receivableId?: string;
   notes?: string;
