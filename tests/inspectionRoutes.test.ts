@@ -60,7 +60,15 @@ function seed(status = 'agendada') {
     'units/unit_a': { id: 'unit_a', orgId: 'org_a', name: 'Unidade A' },
     'assets/asset_a': { id: 'asset_a', orgId: 'org_a', unitId: 'unit_a', name: 'Bomba A' },
     'work_orders/wo_a': { id: 'wo_a', orgId: 'org_a', unitId: 'unit_a', status: 'aberto' },
-    ['inspections/' + inspection.id]: { ...inspection, status },
+    ['inspections/' + inspection.id]: {
+      ...inspection,
+      status,
+      ...(status === 'aguardando_revisao' ? {
+        result: 'conforme',
+        findings: 'Inspeção executada e conferida.',
+        completedAt: '2026-11-25T10:30:00.000Z',
+      } : {}),
+    },
   };
 }
 
@@ -210,6 +218,20 @@ test('non-conforming or pending results require findings before submission', asy
     assert.equal(body.inspection.result, 'nao_conforme');
     assert.ok(body.inspection.completedAt);
     assert.equal(body.inspection.reviewedAt, undefined);
+  });
+});
+
+test('incomplete legacy inspection cannot be approved even by a reviewer', async () => {
+  await withApi('Supervisor', {
+    ...seed('aguardando_revisao'),
+    ['inspections/' + inspection.id]: { ...inspection, status: 'aguardando_revisao', completedAt: undefined },
+  }, async (base, docs) => {
+    const response = await postTransition(base, {
+      orgId: 'org_a', expectedStatus: 'aguardando_revisao', action: 'approve',
+      idempotencyKey: 'inspection_approve_incomplete',
+    });
+    assert.equal(response.status, 400);
+    assert.equal((docs.get('inspections/' + inspection.id) as Record<string, unknown>).status, 'aguardando_revisao');
   });
 });
 
