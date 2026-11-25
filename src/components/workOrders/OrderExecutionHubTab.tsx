@@ -289,38 +289,89 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
   const saveSignature = async (target: 'tech' | 'client') => {
     const canvas = target === 'tech' ? techCanvasRef.current : clientCanvasRef.current;
     if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
+    const signerName = (target === 'tech' ? techName : clientName).trim();
+    if (!signerName) {
+      alert('Informe o nome de quem está assinando antes de salvar.');
+      return;
+    }
 
     try {
-      if (target === 'tech') {
-        await updateDoc(doc(db, 'work_orders', order.id), {
-          technicianSignatureUrl: dataUrl,
-          technicianSignedBy: techName,
-          technicianSignedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        onOrderUpdated({
-          technicianSignatureUrl: dataUrl,
-          technicianSignedBy: techName,
-          technicianSignedAt: new Date().toISOString(),
-        });
-        handleToggleChecklist('chk_5');
-      } else {
-        await updateDoc(doc(db, 'work_orders', order.id), {
-          clientSignatureUrl: dataUrl,
-          clientSignedBy: clientName,
-          clientSignedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        onOrderUpdated({
-          clientSignatureUrl: dataUrl,
-          clientSignedBy: clientName,
-          clientSignedAt: new Date().toISOString(),
-        });
-        handleToggleChecklist('chk_6');
+      const signatureBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+      if (!signatureBlob || signatureBlob.size === 0 || signatureBlob.size > 10 * 1024 * 1024) {
+        throw new Error('Não foi possível gerar uma assinatura válida ou o arquivo excede 10 MB.');
       }
+
+      const now = new Date().toISOString();
+      const path = `work-orders/${organizationId}/${order.id}/signature_${target}_${currentUser.uid}_${Date.now()}.png`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, signatureBlob, {
+        contentType: 'image/png',
+        customMetadata: {
+          orgId: organizationId,
+          orderId: order.id,
+          signerUid: currentUser.uid,
+          signerType: target,
+        },
+      });
+      const url = await getDownloadURL(fileRef);
+
+      const orderRef = doc(db, 'work_orders', order.id);
+      const eventRef = doc(collection(db, 'order_events'));
+      const taskId = target === 'tech' ? 'chk_5' : 'chk_6';
+      const updatedChecklist = checklist.map((item) => item.id === taskId
+        ? {
+          ...item,
+          status: 'concluido' as const,
+          completedAt: now,
+          completedBy: currentUser.displayName || currentUser.email || 'Usuário',
+        }
+        : item);
+      const signatureFields = target === 'tech'
+        ? {
+          technicianSignatureUrl: url,
+          technicianSignaturePath: path,
+          technicianSignedBy: signerName,
+          technicianSignedAt: now,
+        }
+        : {
+          clientSignatureUrl: url,
+          clientSignaturePath: path,
+          clientSignedBy: signerName,
+          clientSignedAt: now,
+        };
+
+      await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        tx.update(orderRef, {
+          ...signatureFields,
+          executionChecklist: updatedChecklist,
+          updatedAt: now,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || signerName,
+          eventType: 'assinatura',
+          description: `Assinatura ${target === 'tech' ? 'do técnico executor' : 'do responsável do cliente'} registrada em arquivo privado do Storage.`,
+          timestamp: now,
+          meta: { signerName, signerType: target, storagePath: path },
+        });
+      });
+
+      setChecklist(updatedChecklist);
+      onOrderUpdated({
+        ...signatureFields,
+        executionChecklist: updatedChecklist,
+      });
     } catch (err) {
       console.error('Erro ao salvar assinatura:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível salvar a assinatura.');
     }
   };
 
