@@ -84,6 +84,38 @@ export interface SafetyPermitInput {
   emergencyPlan: string;
 }
 
+
+export interface SafetyOccurrenceInput {
+  unitId: string;
+  incidentDate: string;
+  category: import('../types/safety').SafetyOccurrenceCategory;
+  title: string;
+  description: string;
+  immediateAction?: string;
+  urgency: 'baixa' | 'media' | 'alta' | 'critica';
+}
+
+function isValidSafetyOccurrenceDate(value: string): boolean {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+export function validateSafetyOccurrenceInput(input: SafetyOccurrenceInput): string[] {
+  const errors: string[] = [];
+  if (!input.unitId.trim()) errors.push('Selecione a unidade/local.');
+  if (!isValidSafetyOccurrenceDate(input.incidentDate)) errors.push('Informe uma data válida para a ocorrência.');
+  if (!['quase_acidente', 'condicao_insegura', 'ato_inseguro', 'incidente_sem_lesao', 'acidente_com_lesao', 'incidente_ambiental'].includes(input.category)) {
+    errors.push('Selecione uma classificação SMS válida.');
+  }
+  if (input.title.trim().length < 3 || input.title.trim().length > 150) errors.push('O título deve ter entre 3 e 150 caracteres.');
+  if (input.description.trim().length < 10 || input.description.trim().length > 2000) errors.push('Descreva a ocorrência em até 2.000 caracteres.');
+  if ((input.immediateAction || '').length > 1000) errors.push('A ação imediata deve ter até 1.000 caracteres.');
+  if (!['baixa', 'media', 'alta', 'critica'].includes(input.urgency)) errors.push('Selecione uma urgência válida.');
+  return errors;
+}
+
 export interface SafetyActor {
   uid: string;
   name: string;
@@ -229,8 +261,12 @@ export async function createSafetyPermit(
   const permitDate = input.validFrom.slice(0, 10);
   const permitCode = safetyPermitCode(input.documentType, permitDate, permitRef.id);
 
+  const { workOrderId, relatedAprId, ...permitInput } = input;
   const record = {
-    ...input,
+    ...permitInput,
+    ...(workOrderId?.trim() ? { workOrderId: workOrderId.trim() } : {}),
+    ...(relatedAprId?.trim() ? { relatedAprId: relatedAprId.trim() } : {}),
+    risks: input.risks.map((risk, index) => ({ id: 'risk_' + (index + 1), ...risk })),
     id: permitRef.id,
     orgId,
     permitCode,
