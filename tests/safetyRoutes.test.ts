@@ -182,6 +182,7 @@ test('PT approval passes only when RH, required NR, PPE delivery, CA and linked 
 test('PPE movement API validates CA, prevents duplicate delivery and closes only the current issue', async () => {
   const seed: Seed = {
     'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+    'rh_directory/employee_dismissed': { id: 'employee_dismissed', orgId: 'org_a', name: 'Desligado', active: true, dismissalDate: '2026-10-31' },
     'safety_ppe_catalog/ppe_01': {
       id: 'ppe_01', orgId: 'org_a', name: 'Capacete', active: true,
       caNumber: 'CA-12345', caExpiresAt: '2027-11-25',
@@ -287,6 +288,16 @@ test('official training records require a trusted role, active RH employee and a
     });
     assert.equal(invalidCode.status, 409);
     assert.equal(docs.has('safety_training_records/record_fake'), false);
+    const dismissed = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_dismissed', employeeId: 'employee_dismissed',
+        trainingCode: 'NR-35', issueDate: '2026-01-01', expirationDate: '2028-01-01',
+        certificateUrl: 'https://certificados.exemplo.com/arquivo.pdf',
+      }),
+    });
+    assert.equal(dismissed.status, 409);
+
 
     const invalidUrl = await fetch(base + '/api/safety/training-records', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
