@@ -199,6 +199,14 @@ export function createInspectionRouter(getH: () => AdminHandles | null = getAdmi
           throw new InspectionRouteError(409, 'A inspeção foi alterada por outra pessoa. Atualize a lista e tente novamente.');
         }
 
+        if (['approve', 'reject'].includes(action)) {
+          const complete = typeof current.completedAt === 'string'
+            && current.completedAt.length > 0
+            && ['conforme', 'nao_conforme', 'pendente'].includes(current.result)
+            && (current.result === 'conforme' || (typeof current.findings === 'string' && current.findings.trim().length >= 5));
+          if (!complete) throw new InspectionRouteError(400, 'A inspeção está incompleta e não pode ser revisada.');
+        }
+
         const next = { ...current, updatedAt: new Date().toISOString() };
         if (action === 'start' && expectedStatus === 'agendada') {
           next.status = 'em_campo';
