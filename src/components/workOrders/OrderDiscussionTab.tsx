@@ -5,7 +5,6 @@ import {
   where,
   onSnapshot,
   doc,
-  collection,
   updateDoc,
   runTransaction,
 } from 'firebase/firestore';
