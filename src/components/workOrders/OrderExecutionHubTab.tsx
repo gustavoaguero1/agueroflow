@@ -11,6 +11,7 @@ import {
   updateDoc,
   addDoc,
   collection,
+  runTransaction,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
@@ -122,19 +123,27 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         };
 
         try {
-          await updateDoc(doc(db, 'work_orders', order.id), {
-            executionGps: coords,
-            updatedAt: new Date().toISOString(),
-          });
-
-          await addDoc(collection(db, 'order_events'), {
-            orgId: organizationId,
-            orderId: order.id,
-            userId: currentUser.uid,
-            userName: currentUser.displayName || currentUser.email || 'Técnico',
-            eventType: 'gps',
-            description: `Validação de GPS de campo capturada: Lat ${coords.latitude.toFixed(4)}, Long ${coords.longitude.toFixed(4)} (Precisão: ±${coords.accuracy.toFixed(0)}m)`,
-            timestamp: new Date().toISOString(),
+          const now = new Date().toISOString();
+          const orderRef = doc(db, 'work_orders', order.id);
+          const eventRef = doc(collection(db, 'order_events'));
+          await runTransaction(db, async (tx) => {
+            const current = await tx.get(orderRef);
+            if (!current.exists() || current.data().orgId !== organizationId) {
+              throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+            }
+            tx.update(orderRef, {
+              executionGps: coords,
+              updatedAt: now,
+            });
+            tx.set(eventRef, {
+              orgId: organizationId,
+              orderId: order.id,
+              userId: currentUser.uid,
+              userName: currentUser.displayName || currentUser.email || 'Técnico',
+              eventType: 'gps',
+              description: `Validação de GPS de campo capturada: Lat ${coords.latitude.toFixed(4)}, Long ${coords.longitude.toFixed(4)} (Precisão: ±${coords.accuracy.toFixed(0)}m)`,
+              timestamp: now,
+            });
           });
 
           onOrderUpdated({ executionGps: coords });
@@ -148,13 +157,8 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         console.error('GPS error:', err);
         // Never invent coordinates: record no location and tell the user.
         setGpsError('Localização não autorizada');
-        updateDoc(doc(db, 'work_orders', order.id), {
-          executionGps: null,
-          updatedAt: new Date().toISOString(),
-        })
-          .then(() => onOrderUpdated({ executionGps: null }))
-          .catch((e) => console.error('Erro ao salvar GPS:', e))
-          .finally(() => setGpsLoading(false));
+        // A falha de geolocalização não apaga a última posição real registrada na OS.
+        setGpsLoading(false);
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
