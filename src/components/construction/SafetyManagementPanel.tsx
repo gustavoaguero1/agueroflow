@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
@@ -11,6 +11,8 @@ import {
 } from 'firebase/firestore';
 import { AlertTriangle, ClipboardCheck, FilePlus2, HardHat, ShieldCheck, Siren } from 'lucide-react';
 import { db } from '../../firebase';
+import { SafetyCompliancePanel } from './SafetyCompliancePanel';
+import { evaluateEmployeeSafetyCompliance, evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../../services/safetyCompliance';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Contract, Unit } from '../../types';
 import type {
@@ -60,6 +62,7 @@ interface PermitDraftState {
   validUntil: string;
   supervisorName: string;
   teamMembersText: string;
+  teamMemberIds: string[];
   risks: PermitRiskDraft[];
   emergencyPlan: string;
   controls: SafetyPermitControls;
@@ -89,6 +92,7 @@ const emptyPermitDraft = (unitId = '', contractId = ''): PermitDraftState => ({
   validUntil: '',
   supervisorName: '',
   teamMembersText: '',
+  teamMemberIds: [],
   risks: [{ hazard: '', consequence: '', initialRisk: 'alto', controlMeasures: '', residualRisk: 'medio' }],
   emergencyPlan: '',
   controls: {
@@ -169,7 +173,7 @@ export const SafetyManagementPanel: React.FC = () => {
   const [permitEvents, setPermitEvents] = useState<SafetyPermitEvent[]>([]);
   const [occurrences, setOccurrences] = useState<SafetyOccurrenceRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<'permissoes' | 'ocorrencias'>('permissoes');
+  const [activeView, setActiveView] = useState<'permissoes' | 'ocorrencias' | 'conformidade'>('permissoes');
   const [showPermitForm, setShowPermitForm] = useState(false);
   const [showOccurrenceForm, setShowOccurrenceForm] = useState(false);
   const [selectedPermitId, setSelectedPermitId] = useState('');
@@ -177,6 +181,9 @@ export const SafetyManagementPanel: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [permitDraft, setPermitDraft] = useState<PermitDraftState>(() => emptyPermitDraft());
   const [occurrenceDraft, setOccurrenceDraft] = useState<OccurrenceDraftState>(() => emptyOccurrenceDraft());
+  const [complianceSnapshot, setComplianceSnapshot] = useState<SafetyComplianceSnapshot>({ loading: true, employees: [], ppeCatalog: [], ppeMovements: [], trainingCatalog: [], trainingRecords: [], legacyTrainingRecords: [] });
+  const onComplianceSnapshotChange = useCallback((snapshot: SafetyComplianceSnapshot) => setComplianceSnapshot(snapshot), []);
+  const canManageSafetyCatalog = isMaster || isSupervisorOrAbove;
 
   useEffect(() => {
     if (!organizationId) {
@@ -294,7 +301,9 @@ export const SafetyManagementPanel: React.FC = () => {
     event.preventDefault();
     if (!organizationId || !user || !canEdit) return;
 
-    const teamMembers = splitNames(permitDraft.teamMembersText);
+    const isPt = permitDraft.documentType === 'pt';
+    const selectedEmployees = complianceSnapshot.employees.filter((employee) => permitDraft.teamMemberIds.includes(employee.id));
+    const teamMembers = isPt ? selectedEmployees.map((employee) => employee.name) : splitNames(permitDraft.teamMembersText);
     const input = {
       unitId: permitDraft.unitId,
       contractId: permitDraft.contractId,
@@ -313,6 +322,11 @@ export const SafetyManagementPanel: React.FC = () => {
       emergencyPlan: permitDraft.emergencyPlan,
     };
     const errors = validateSafetyPermitInput(input);
+    if (isPt) {
+      if (selectedEmployees.length !== permitDraft.teamMemberIds.length) errors.push('Há colaboradores selecionados que não estão mais no diretório ativo do RH. Atualize a equipe.');
+      const blockers = evaluateSafetyCrewCompliance(complianceSnapshot, permitDraft.teamMemberIds, permitDraft.permitType);
+      if (blockers.length) errors.push('LIBERAÇÃO BLOQUEADA — pendências de segurança:\n' + blockers.map((item) => '• ' + item.employeeName + ': ' + item.message).join('\n'));
+    }
     if (permitDraft.documentType === 'pt' && !eligibleAprs.some((apr) => apr.id === permitDraft.relatedAprId)) {
       errors.push('A PT deve estar vinculada a uma APR aprovada da mesma unidade e contrato.');
     }
@@ -347,6 +361,7 @@ export const SafetyManagementPanel: React.FC = () => {
         validUntil: permitDraft.validUntil,
         supervisorName: permitDraft.supervisorName.trim(),
         teamMembers,
+        ...(isPt ? { teamMemberIds: [...permitDraft.teamMemberIds] } : {}),
         risks: permitDraft.risks.map((risk, index) => ({
           id: 'risk_' + (index + 1),
           hazard: risk.hazard.trim(),
@@ -412,6 +427,13 @@ export const SafetyManagementPanel: React.FC = () => {
       return;
     }
     const nextStatus = getSafetyNextStatus(currentState.status, eventType);
+    if (permit.documentType === 'pt' && ['submitted_for_approval', 'approved'].includes(eventType)) {
+      const blockers = evaluateSafetyCrewCompliance(complianceSnapshot, permit.teamMemberIds || [], permit.permitType);
+      if (blockers.length) {
+        alert('PT bloqueada por pendências de conformidade:\n' + blockers.map((item) => item.employeeName + ': ' + item.message).join('\n'));
+        return;
+      }
+    }
     if (!nextStatus) {
       alert('Esta movimentação não é permitida para o status atual.');
       return;
@@ -558,7 +580,7 @@ export const SafetyManagementPanel: React.FC = () => {
             <div>
               <h2 className="text-base font-bold text-white">Segurança do Trabalho & SMS</h2>
               <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">
-                APR, Permissões de Trabalho, controles preventivos e registro de ocorrências de segurança.
+                APR, Permissões de Trabalho, EPIs, treinamentos, bloqueios preventivos e ocorrências de segurança.
               </p>
             </div>
           </div>
@@ -597,6 +619,13 @@ export const SafetyManagementPanel: React.FC = () => {
         <button type="button" onClick={() => setActiveView('ocorrencias')} className={'rounded-lg px-4 py-2 text-xs font-semibold ' + (activeView === 'ocorrencias' ? 'bg-rose-600 text-white' : 'border border-slate-800 bg-[#121826] text-slate-400 hover:text-white')}>
           Registros SMS ({occurrences.length})
         </button>
+        <button type="button" onClick={() => setActiveView('conformidade')} className={'rounded-lg px-4 py-2 text-xs font-semibold ' + (activeView === 'conformidade' ? 'bg-rose-600 text-white' : 'border border-slate-800 bg-[#121826] text-slate-400 hover:text-white')}>
+          EPIs & Treinamentos ({complianceSnapshot.employees.length})
+        </button>
+      </div>
+
+      <div className={activeView === 'conformidade' ? 'block' : 'hidden'}>
+        <SafetyCompliancePanel organizationId={organizationId} canEdit={canEdit} canManageCatalog={canManageSafetyCatalog} userId={user?.uid || ''} actorName={user?.displayName || user?.email || 'Responsável de campo'} onSnapshotChange={onComplianceSnapshotChange} logAudit={logAudit} />
       </div>
 
       {activeView === 'permissoes' ? (
@@ -744,7 +773,7 @@ export const SafetyManagementPanel: React.FC = () => {
             )}
           </div>
         </div>
-      ) : (
+      ) : activeView === 'ocorrencias' ? (
         <div className="overflow-hidden rounded-xl border border-slate-800 bg-[#121826]">
           <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
             <div>
@@ -779,7 +808,7 @@ export const SafetyManagementPanel: React.FC = () => {
             Para atribuir responsável, registrar causa raiz, acompanhar eficácia ou converter em OS corretiva, utilize a central de Ocorrências.
           </div>
         </div>
-      )}
+      ) : null}
 
       {!canEdit && (
         <p className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-[10px] text-slate-400">
@@ -837,9 +866,37 @@ export const SafetyManagementPanel: React.FC = () => {
               <label className="text-[11px] text-slate-400">Local / equipamento / linha
                 <input value={permitDraft.location} onChange={(event) => patchPermit('location', event.target.value)} required maxLength={180} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
               </label>
-              <label className="text-[11px] text-slate-400">Equipe (um nome por linha)
-                <textarea value={permitDraft.teamMembersText} onChange={(event) => patchPermit('teamMembersText', event.target.value)} required rows={2} placeholder="Nome do profissional 1&#10;Nome do profissional 2" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
-              </label>
+              {permitDraft.documentType === 'pt' ? (
+                <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 sm:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-white">Equipe vinculada ao RH *</p>
+                    <span className="text-[10px] text-slate-500">{permitDraft.teamMemberIds.length} selecionado(s)</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">A PT exige colaboradores ativos do RH. A equipe não pode ser informada apenas por texto.</p>
+                  {complianceSnapshot.loading ? <p className="mt-2 text-[10px] text-amber-300">Carregando cadastros de EPIs e treinamentos...</p> : (
+                    <div className="mt-2 max-h-52 space-y-1 overflow-y-auto">
+                      {complianceSnapshot.employees.filter((employee) => employee.active && !employee.dismissalDate).map((employee) => {
+                        const blockers = evaluateEmployeeSafetyCompliance(complianceSnapshot, employee.id, permitDraft.permitType);
+                        const selected = permitDraft.teamMemberIds.includes(employee.id);
+                        return (
+                          <label key={employee.id} className="flex items-start gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-[10px] text-slate-300">
+                            <input type="checkbox" checked={selected} onChange={(event) => patchPermit('teamMemberIds', event.target.checked ? [...permitDraft.teamMemberIds, employee.id] : permitDraft.teamMemberIds.filter((id) => id !== employee.id))} className="mt-0.5 accent-rose-500" />
+                            <span className="min-w-0 flex-1"><span className="font-semibold text-white">{employee.name}</span><span className="ml-1 text-slate-500">{employee.role || 'Colaborador'}</span>
+                              <span className={'ml-2 font-bold ' + (blockers.length ? 'text-rose-300' : 'text-emerald-300')}>{blockers.length ? blockers.length + ' pendência(s)' : 'Apto'}</span>
+                              {selected && blockers.length > 0 && <span className="mt-1 block text-rose-300">{blockers.map((item) => item.message).join(' · ')}</span>}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {complianceSnapshot.employees.filter((employee) => employee.active && !employee.dismissalDate).length === 0 && <p className="text-[10px] text-amber-300">Nenhum colaborador ativo encontrado no diretório do RH.</p>}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <label className="text-[11px] text-slate-400">Equipe planejada (um nome por linha)
+                  <textarea value={permitDraft.teamMembersText} onChange={(event) => patchPermit('teamMembersText', event.target.value)} required rows={2} placeholder="Nome do profissional 1&#10;Nome do profissional 2" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
+                </label>
+              )}
               <label className="text-[11px] text-slate-400">Início da validade
                 <input type="datetime-local" value={permitDraft.validFrom} onChange={(event) => patchPermit('validFrom', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
               </label>
@@ -897,6 +954,14 @@ export const SafetyManagementPanel: React.FC = () => {
                 <textarea value={permitDraft.emergencyPlan} onChange={(event) => patchPermit('emergencyPlan', event.target.value)} required rows={2} maxLength={1500} placeholder="Informe comunicação, responsáveis, recursos e resposta aplicável à frente." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white" />
               </label>
             </div>
+            {permitDraft.documentType === 'pt' && permitDraft.teamMemberIds.length > 0 && (
+              <div className="rounded-lg border border-rose-900/60 bg-rose-950/20 p-3">
+                <p className="text-[10px] font-bold text-rose-200">Conferência de liberação da equipe</p>
+                {evaluateSafetyCrewCompliance(complianceSnapshot, permitDraft.teamMemberIds, permitDraft.permitType).length > 0
+                  ? <p className="mt-1 text-[10px] text-rose-300">{evaluateSafetyCrewCompliance(complianceSnapshot, permitDraft.teamMemberIds, permitDraft.permitType).length} pendência(s). O envio para aprovação ficará bloqueado até regularização.</p>
+                  : <p className="mt-1 text-[10px] text-emerald-300">Equipe aprovada na conferência atual de RH, treinamentos, EPIs e CA.</p>}
+              </div>
+            )}
             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 pt-3">
               <button type="button" onClick={() => setShowPermitForm(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300">Cancelar</button>
               <button type="submit" disabled={submitting || !canEdit} className="rounded-lg bg-rose-600 px-5 py-2 text-xs font-bold text-white disabled:opacity-50">{submitting ? 'Salvando...' : 'Salvar APR/PT como rascunho'}</button>
