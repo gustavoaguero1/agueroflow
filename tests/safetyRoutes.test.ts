@@ -10,10 +10,16 @@ type Seed = Record<string, Record<string, any>>;
 function mockAdmin(seed: Seed) {
   const docs = new Map<string, Record<string, any>>(Object.entries(seed));
   let eventSequence = 0;
-  const collection = (name: string) => ({
-    doc: (id?: string) => ({ path: name + '/' + (id || 'generated_' + (++eventSequence)), id: id || 'generated_' + eventSequence }),
-    where: (field: string, op: string, value: unknown) => ({ query: true, name, field, op, value }),
-  });
+  const collection = (name: string) => {
+    const buildQuery = (filters: Array<{ field: string; op: string; value: unknown }>) => ({
+      query: true, name, filters,
+      where: (field: string, op: string, value: unknown) => buildQuery([...filters, { field, op, value }]),
+    });
+    return {
+      doc: (id?: string) => ({ path: name + '/' + (id || 'generated_' + (++eventSequence)), id: id || 'generated_' + eventSequence }),
+      where: (field: string, op: string, value: unknown) => buildQuery([{ field, op, value }]),
+    };
+  };
   const db: any = {
     collection,
     runTransaction: async (fn: (tx: any) => Promise<unknown>) => {
@@ -23,7 +29,8 @@ function mockAdmin(seed: Seed) {
         get: async (ref: any) => {
           if (ref.query) {
             const rows = [...docs.entries()].filter(([path, data]) =>
-              path.startsWith(ref.name + '/') && (ref.op !== '==' || data[ref.field] === ref.value));
+              path.startsWith(ref.name + '/') && (ref.filters || []).every((filter: any) =>
+                filter.op !== '==' || data[filter.field] === filter.value));
             return { docs: rows.map(([path, data]) => ({ id: path.split('/').pop(), data: () => data })) };
           }
           const data = docs.get(ref.path);
@@ -169,6 +176,82 @@ test('PT approval passes only when RH, required NR, PPE delivery, CA and linked 
     assert.equal(response.status, 200);
     assert.equal(docs.get('safety_permit_states/pt_01')?.status, 'approved');
     assert.ok([...docs.keys()].some((path) => path.startsWith('safety_permit_events/')));
+  });
+});
+
+test('PPE movement API validates CA, prevents duplicate delivery and closes only the current issue', async () => {
+  const seed: Seed = {
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+    'safety_ppe_catalog/ppe_01': {
+      id: 'ppe_01', orgId: 'org_a', name: 'Capacete', active: true,
+      caNumber: 'CA-12345', caExpiresAt: '2027-11-25',
+    },
+  };
+  await withApi('Supervisor', seed, async (base, docs) => {
+    const delivered = await fetch(base + '/api/safety/ppe-movements', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a', employeeId: 'employee_01', ppeId: 'ppe_01', eventType: 'entregue', movementDate: '2026-11-25' }),
+    });
+    assert.equal(delivered.status, 201);
+    const deliveryBody = await delivered.json() as { movementId: string };
+    const duplicated = await fetch(base + '/api/safety/ppe-movements', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a', employeeId: 'employee_01', ppeId: 'ppe_01', eventType: 'entregue', movementDate: '2026-11-25' }),
+    });
+    assert.equal(duplicated.status, 409);
+
+    const returned = await fetch(base + '/api/safety/ppe-movements', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a', employeeId: 'employee_01', ppeId: 'ppe_01', eventType: 'devolvido', movementDate: '2026-11-25', referenceMovementId: deliveryBody.movementId }),
+    });
+    assert.equal(returned.status, 201);
+    const current = [...docs.entries()].filter(([path]) => path.startsWith('safety_ppe_movements/'));
+    assert.equal(current.length, 2);
+    assert.ok(current.some(([, item]) => item.eventType === 'devolvido' && item.referenceMovementId === deliveryBody.movementId));
+  });
+});
+
+test('PPE delivery and replacement reject expired CA, foreign or stale movements', async () => {
+  const seed: Seed = {
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+    'safety_ppe_catalog/ppe_expired': {
+      id: 'ppe_expired', orgId: 'org_a', name: 'Capacete vencido', active: true,
+      caNumber: 'CA-EXP', caExpiresAt: '2026-11-24',
+    },
+    'safety_ppe_catalog/ppe_new': {
+      id: 'ppe_new', orgId: 'org_a', name: 'Capacete novo', active: true,
+      caNumber: 'CA-NEW', caExpiresAt: '2027-11-25',
+    },
+  };
+  await withApi('Supervisor', seed, async (base) => {
+    const expired = await fetch(base + '/api/safety/ppe-movements', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a', employeeId: 'employee_01', ppeId: 'ppe_expired', eventType: 'entregue', movementDate: '2026-11-25' }),
+    });
+    assert.equal(expired.status, 409);
+  });
+});
+
+test('PPE replacement writes the return and new delivery atomically after rechecking both histories', async () => {
+  await withApi('Supervisor', {
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+    'safety_ppe_catalog/ppe_old': { id: 'ppe_old', orgId: 'org_a', name: 'Capacete antigo', active: false, caNumber: 'CA-OLD', caExpiresAt: '2027-11-25' },
+    'safety_ppe_catalog/ppe_new': { id: 'ppe_new', orgId: 'org_a', name: 'Capacete novo', active: true, caNumber: 'CA-NEW', caExpiresAt: '2027-11-25' },
+    'safety_ppe_movements/delivery_old': {
+      id: 'delivery_old', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Profissional SMS',
+      ppeId: 'ppe_old', ppeName: 'Capacete antigo', eventType: 'entregue', movementDate: '2026-10-01',
+      createdAt: new Date('2026-10-01T08:00:00Z'),
+    },
+  }, async (base, docs) => {
+    const response = await fetch(base + '/api/safety/ppe-movements/replace', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a', employeeId: 'employee_01', oldMovementId: 'delivery_old', newPpeId: 'ppe_new', movementDate: '2026-11-25', notes: 'Desgaste do equipamento.' }),
+    });
+    assert.equal(response.status, 201);
+    const movements = [...docs.entries()].filter(([path]) => path.startsWith('safety_ppe_movements/')).map(([, value]) => value);
+    assert.equal(movements.length, 3);
+    assert.ok(movements.some((item) => item.eventType === 'devolvido' && item.referenceMovementId === 'delivery_old'));
+    assert.ok(movements.some((item) => item.eventType === 'entregue' && item.ppeId === 'ppe_new'));
   });
 });
 
