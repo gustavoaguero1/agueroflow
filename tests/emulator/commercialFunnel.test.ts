@@ -144,7 +144,7 @@ async function post(base: string, action: string, body: unknown, proposalId = 'p
   });
 }
 
-test('three concurrent wins create a single OS, counter and timeline event', async () => {
+test('three concurrent wins create a single Contract, Project with frozen baseline, OS, counter and timeline event', async () => {
   await withApi(seedData(), async (base, docs) => {
     const body = { orgId: 'org_a' };
     const responses = await Promise.all([
@@ -155,16 +155,34 @@ test('three concurrent wins create a single OS, counter and timeline event', asy
     const payloads = await Promise.all(responses.map((response) => response.json() as Promise<any>));
     assert.deepEqual(responses.map((response) => response.status), [200, 200, 200]);
     assert.equal(new Set(payloads.map((item) => item.workOrderId)).size, 1);
+    assert.equal(new Set(payloads.map((item) => item.projectId)).size, 1);
+    assert.equal(new Set(payloads.map((item) => item.contractId)).size, 1);
     assert.equal(payloads.filter((item) => item.replayed).length, 2);
 
     const orderId = 'os_prop_p1';
+    const contractId = 'ct_prop_p1';
+    const projectId = 'prj_prop_p1';
     const workOrder = docs.get('work_orders/' + orderId) as Record<string, any>;
+    const derivedContract = docs.get('contracts/' + contractId) as Record<string, any>;
+    const derivedProject = docs.get('projects/' + projectId) as Record<string, any>;
     const event = docs.get('order_events/' + orderId + '_created') as Record<string, any>;
     const savedProposal = docs.get('commercial_proposals/p1') as Record<string, any>;
     const counter = docs.get('counters/org_a_work_orders') as Record<string, any>;
 
+    assert.equal(derivedContract.orgId, 'org_a');
+    assert.deepEqual(derivedContract.unitIds, ['unit_a']);
+    assert.equal(derivedContract.value, 1000);
+    assert.equal(derivedProject.orgId, 'org_a');
+    assert.equal(derivedProject.contractId, contractId);
+    assert.equal(derivedProject.unitId, 'unit_a');
+    assert.equal(derivedProject.budgetBaseline.version, 1);
+    assert.equal(derivedProject.budgetBaseline.plannedDirectCost, 650);
+    assert.equal(derivedProject.budgetBaseline.contractedRevenue, 1000);
+
     assert.equal(workOrder.orgId, 'org_a');
     assert.equal(workOrder.unitId, 'unit_a');
+    assert.equal(workOrder.contractId, contractId);
+    assert.equal(workOrder.projectId, projectId);
     assert.equal(workOrder.status, 'aberto');
     assert.equal(workOrder.estimatedCost, 650);
     assert.equal(workOrder.proposalId, 'p1');
@@ -172,12 +190,42 @@ test('three concurrent wins create a single OS, counter and timeline event', asy
     assert.equal(event.userId, 'seller_1');
     assert.equal(event.newStatus, 'aberto');
     assert.equal(savedProposal.status, 'ganha');
+    assert.equal(savedProposal.contractId, contractId);
+    assert.equal(savedProposal.projectId, projectId);
     assert.equal(savedProposal.workOrderId, orderId);
     assert.equal(savedProposal.workOrderCode, workOrder.orderNumber);
+    assert.equal(savedProposal.approvedBaselineSnapshot.plannedDirectCost, 650);
     assert.equal(savedProposal.statusHistory.length, 1);
     assert.equal(counter.seq, 1);
     assert.equal([...docs.keys()].filter((path) => path.startsWith('work_orders/')).length, 1);
+    assert.equal([...docs.keys()].filter((path) => path.startsWith('projects/')).length, 1);
     assert.equal([...docs.keys()].filter((path) => path.startsWith('order_events/')).length, 1);
+  });
+});
+
+test('win reuses existing same-org contract and rejects default_unit', async () => {
+  await withApi({
+    ...seedData(),
+    'commercial_proposals/p1': { ...proposal, unitId: 'default_unit' },
+  }, async (base, docs) => {
+    const response = await post(base, 'win', { orgId: 'org_a' });
+    assert.equal(response.status, 400);
+    assert.match((await response.json() as any).error, /default_unit/i);
+    assert.equal(docs.has('projects/prj_prop_p1'), false);
+    assert.equal(docs.has('work_orders/os_prop_p1'), false);
+  });
+
+  await withApi({
+    ...seedData(),
+    'commercial_proposals/p1': { ...proposal, contractId: 'contract_a' },
+  }, async (base, docs) => {
+    const response = await post(base, 'win', { orgId: 'org_a' });
+    assert.equal(response.status, 200);
+    const body = await response.json() as any;
+    assert.equal(body.contractId, 'contract_a');
+    assert.equal(docs.has('contracts/ct_prop_p1'), false);
+    assert.equal((docs.get('projects/prj_prop_p1') as any).contractId, 'contract_a');
+    assert.equal((docs.get('work_orders/os_prop_p1') as any).contractId, 'contract_a');
   });
 });
 
@@ -192,6 +240,7 @@ test('win rejects a missing or cross-company unit and does not write any OS', as
     assert.equal(response.status, 400);
     assert.match(body.error, /não pertence à empresa/i);
     assert.equal([...docs.keys()].some((path) => path.startsWith('work_orders/')), false);
+    assert.equal([...docs.keys()].some((path) => path.startsWith('projects/')), false);
     assert.equal(docs.has('counters/org_a_work_orders'), false);
   });
 });
@@ -208,6 +257,7 @@ test('win requires an explicitly configured initial OS status', async () => {
     assert.equal(response.status, 400);
     assert.match((await response.json() as any).error, /estado inicial/i);
     assert.equal(docs.has('work_orders/os_prop_p1'), false);
+    assert.equal(docs.has('projects/prj_prop_p1'), false);
   });
 });
 
@@ -221,6 +271,7 @@ test('win rejects a contract from another company', async () => {
     assert.equal(response.status, 400);
     assert.match((await response.json() as any).error, /contrato.*não pertence/i);
     assert.equal(docs.has('work_orders/os_prop_p1'), false);
+    assert.equal(docs.has('projects/prj_prop_p1'), false);
   });
 });
 

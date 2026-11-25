@@ -204,6 +204,10 @@ export interface CommercialProposal {
   previsaoFechamento?: string;
   motivoPerda?: string;
   workOrderId?: string;
+  workOrderCode?: string;
+  projectCode?: string;
+  costCenterId?: string;
+  approvedBaselineSnapshot?: import('./project').ProjectBudgetBaseline;
   statusHistory?: Array<{ status: CommercialProposalStatus; at: string; by: string }>;
 
   history: Array<{
