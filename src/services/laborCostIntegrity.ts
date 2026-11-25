@@ -73,7 +73,7 @@ export function calculateLaborCost(input: LaborCostCalculationInput): LaborCostC
       totalLaborCost: recordedTotal > 0 ? recordedTotal : allowancesCost,
       totalHours,
       unpricedHours: totalHours,
-      unclassifiedRecordedCost: recordedTotal,
+      unclassifiedRecordedCost: Math.max(0, recordedTotal - allowancesCost),
       hasMissingHourlyRate,
     };
   }
