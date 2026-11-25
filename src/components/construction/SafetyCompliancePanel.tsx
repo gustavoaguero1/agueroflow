@@ -63,6 +63,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'epis' | 'treinamentos' | 'historico'>('epis');
+  const [historyEmployeeId, setHistoryEmployeeId] = useState('');
   const [showPpeForm, setShowPpeForm] = useState(false);
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
@@ -202,6 +203,19 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     if (!logAudit) return;
     try { await logAudit('Segurança & SMS', action, details, targetId); }
     catch (auditError) { console.error('Registro salvo, mas a auditoria de SMS falhou:', auditError); }
+  };
+
+  const openTrainingCertificate = async (path: string) => {
+    const popup = window.open('about:blank', '_blank');
+    try {
+      const url = await getDownloadURL(storageRef(storage, path));
+      if (popup) popup.location.href = url;
+      else window.location.href = url;
+    } catch (openError) {
+      popup?.close();
+      console.error('Não foi possível abrir certificado de treinamento:', openError);
+      setError('Não foi possível abrir o certificado. Verifique o acesso ao arquivo.');
+    }
   };
 
   const createPpe = async (event: React.FormEvent) => {
@@ -518,7 +532,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
               <div className="flex justify-end sm:col-span-2"><button disabled={saving || trainingOptions.length === 0} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-50">Registrar certificado</button></div>
             </form>}
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">NR / qualificação</th><th className="px-3 py-2">Emissão</th><th className="px-3 py-2">Validade</th><th className="px-3 py-2">Documento</th><th className="px-3 py-2">Origem</th></tr></thead>
-              <tbody className="divide-y divide-slate-800">{[...trainingRecords.map((item) => ({...item, sourceLabel:'SMS'})), ...legacyTrainingRecords.map((item, index) => ({id:'legacy_'+item.employeeId+'_'+index, employeeName:employees.find((e) => e.id === item.employeeId)?.name || item.employeeId, trainingCode:item.code, title:item.title, issueDate:item.issueDate || '', expirationDate:item.expirationDate || '', certificateUrl:item.documentUrl || '', certificateName:item.documentName || '', sourceLabel:'RH / Obras'}))].map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-semibold text-white">{item.employeeName}</td><td className="px-3 py-2"><p className="font-bold text-amber-300">{item.trainingCode}</p><p className="text-[10px] text-slate-500">{item.title}</p></td><td className="px-3 py-2">{item.issueDate || '—'}</td><td className="px-3 py-2"><span className={dateIsExpired(item.expirationDate) ? 'font-bold text-rose-300' : 'text-emerald-300'}>{item.expirationDate || 'Sem validade'}</span></td><td className="px-3 py-2">{item.certificateUrl ? <a href={item.certificateUrl} target="_blank" rel="noreferrer" className="text-cyan-300 hover:underline">{item.certificateName || 'Abrir certificado'}</a> : '—'}</td><td className="px-3 py-2 text-[10px] text-slate-500">{item.sourceLabel}</td></tr>)}
+              <tbody className="divide-y divide-slate-800">{[...trainingRecords.map((item) => ({...item, sourceLabel:'SMS'})), ...legacyTrainingRecords.map((item, index) => ({id:'legacy_'+item.employeeId+'_'+index, employeeId:item.employeeId, employeeName:employees.find((e) => e.id === item.employeeId)?.name || item.employeeId, trainingCode:item.code, title:item.title, issueDate:item.issueDate || '', expirationDate:item.expirationDate || '', certificateUrl:item.documentUrl || '', certificateName:item.documentName || '', sourceLabel:'RH / Obras'}))].map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-semibold text-white">{item.employeeName}</td><td className="px-3 py-2"><p className="font-bold text-amber-300">{item.trainingCode}</p><p className="text-[10px] text-slate-500">{item.title}</p></td><td className="px-3 py-2">{item.issueDate || '—'}</td><td className="px-3 py-2"><span className={dateIsExpired(item.expirationDate) ? 'font-bold text-rose-300' : 'text-emerald-300'}>{item.expirationDate || 'Sem validade'}</span></td><td className="px-3 py-2">{item.certificatePath ? <button type="button" onClick={() => openTrainingCertificate(item.certificatePath)} className="text-cyan-300 hover:underline">{item.certificateName || 'Abrir arquivo'}</button> : item.certificateUrl ? <a href={item.certificateUrl} target="_blank" rel="noreferrer" className="text-cyan-300 hover:underline">{item.certificateName || 'Abrir certificado'}</a> : '—'}</td><td className="px-3 py-2 text-[10px] text-slate-500">{item.sourceLabel}</td></tr>)}
               {trainingRecords.length + legacyTrainingRecords.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-[11px] text-slate-500">Nenhum certificado registrado.</td></tr>}</tbody></table></div>
           </div>
         </div>
@@ -530,7 +544,13 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
             <div className="rounded-xl border border-rose-900/60 bg-rose-950/20 p-3"><h4 className="flex items-center gap-2 text-xs font-bold text-rose-200"><ShieldAlert className="h-4 w-4" /> EPIs com CA vencido ou próximo</h4><div className="mt-2 space-y-1">{caAlerts.map((item) => <p key={item.id} className="text-[10px] text-slate-300">{item.name} · CA {item.caNumber} · validade {item.caExpiresAt || 'não informada'}</p>)}{caAlerts.length === 0 && <p className="text-[10px] text-emerald-300">Nenhum alerta de CA no catálogo.</p>}</div></div>
             <div className="rounded-xl border border-amber-900/60 bg-amber-950/20 p-3"><h4 className="flex items-center gap-2 text-xs font-bold text-amber-200"><AlertTriangle className="h-4 w-4" /> Treinamentos vencidos ou a vencer</h4><div className="mt-2 space-y-1">{trainingAlerts.map((item) => <p key={item.id} className="text-[10px] text-slate-300">{item.employeeName} · {item.trainingCode} · validade {item.expirationDate || 'não informada'}</p>)}{trainingAlerts.length === 0 && <p className="text-[10px] text-emerald-300">Nenhum certificado vencido ou com vencimento em 30 dias.</p>}</div></div>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Data</th><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">EPI</th><th className="px-3 py-2">Movimentação</th><th className="px-3 py-2">Responsável</th></tr></thead><tbody className="divide-y divide-slate-800">{ppeMovements.map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2">{item.movementDate}</td><td className="px-3 py-2">{item.employeeName}</td><td className="px-3 py-2">{item.ppeName}</td><td className="px-3 py-2">{item.eventType === 'entregue' ? <span className="text-emerald-300">Entregue</span> : <span className="text-amber-300">Devolvido</span>}</td><td className="px-3 py-2">{item.createdByName || '—'}</td></tr>)}{ppeMovements.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-[11px] text-slate-500">Sem movimentações de EPIs.</td></tr>}</tbody></table></div>
+          <label className="block max-w-sm text-[10px] text-slate-400">Filtrar histórico por colaborador
+            <select value={historyEmployeeId} onChange={(event) => setHistoryEmployeeId(event.target.value)} className={inputClass}>
+              <option value="">Todos os colaboradores</option>
+              {employees.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <div className="overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Data</th><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">EPI</th><th className="px-3 py-2">Movimentação</th><th className="px-3 py-2">Responsável</th></tr></thead><tbody className="divide-y divide-slate-800">{ppeMovements.filter((item) => !historyEmployeeId || item.employeeId === historyEmployeeId).map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2">{item.movementDate}</td><td className="px-3 py-2">{item.employeeName}</td><td className="px-3 py-2">{item.ppeName}</td><td className="px-3 py-2">{item.eventType === 'entregue' ? <span className="text-emerald-300">Entregue</span> : <span className="text-amber-300">Devolvido</span>}</td><td className="px-3 py-2">{item.createdByName || '—'}</td></tr>)}{ppeMovements.filter((item) => !historyEmployeeId || item.employeeId === historyEmployeeId).length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-[11px] text-slate-500">Sem movimentações de EPIs para o filtro selecionado.</td></tr>}</tbody></table></div>
         </div>
       )}
 
