@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Operações · AgueroFlow</title>
+<!-- Mesmas fontes do app (index.html da raiz): sem elas, fora do Mac a página cai para Arial. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <script>try{if(window.parent!==window&&window.parent.location.origin===location.origin)document.documentElement.classList.add("embedded")}catch(e){}</script>
 <style>
 /* Layout: barra superior fixa com navegação; conteúdo em largura de ferramenta (máx. 1280px); editor em painel lateral. */
@@ -108,9 +112,12 @@ legend{font-family:var(--display);font-weight:600;padding:0 6px}
   --bad:#C41C28; --bad-bg:#FFECEF; --bad-line:rgba(196,28,40,.22);
   --idle:#424245; --idle-bg:#F2F2F7; --idle-line:rgba(0,0,0,.08);
   --focus:rgba(0,113,227,.16); --shadow:0 1px 2px rgba(0,0,0,.04);
-  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Plus Jakarta Sans","Helvetica Neue",sans-serif;
+  --display:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", "Helvetica Neue", sans-serif;
   --body:var(--display);
+  --mono:"SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --r-card:20px; --r-ctl:12px; --r-seg:10px;
+  --btn2:rgba(0,0,0,.045); --btn2-hover:rgba(0,0,0,.08); --btn2-ink:#424245;
+  --shadow-card:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.025);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0B0C10; --surface:#1C1C1E; --surface-2:#2C2C2E; --ink:#F5F5F7; --ink-2:#D1D1D6; --muted:#98989D; --muted-2:#86868B;
@@ -120,7 +127,8 @@ legend{font-family:var(--display);font-weight:600;padding:0 6px}
   --warn:#FF9F0A; --warn-bg:rgba(255,159,10,.14); --warn-line:rgba(255,159,10,.30); --warn-num:#FF9F0A;
   --bad:#FF453A; --bad-bg:rgba(255,69,58,.14); --bad-line:rgba(255,69,58,.30);
   --idle:#D1D1D6; --idle-bg:rgba(255,255,255,.08); --idle-line:rgba(255,255,255,.10);
-  --focus:rgba(10,132,255,.25); --shadow:none;}}
+  --focus:rgba(10,132,255,.25); --shadow:none; --shadow-card:none;
+  --btn2:rgba(255,255,255,.08); --btn2-hover:rgba(255,255,255,.14); --btn2-ink:#D1D1D6;}}
 :root[data-theme="dark"]{
   --bg:#0B0C10; --surface:#1C1C1E; --surface-2:#2C2C2E; --ink:#F5F5F7; --ink-2:#D1D1D6; --muted:#98989D; --muted-2:#86868B;
   --line:rgba(255,255,255,.10); --line-row:rgba(255,255,255,.08); --line-ctl:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05); --seg:rgba(255,255,255,.08); --seg-on:#3A3A3C;
@@ -129,7 +137,8 @@ legend{font-family:var(--display);font-weight:600;padding:0 6px}
   --warn:#FF9F0A; --warn-bg:rgba(255,159,10,.14); --warn-line:rgba(255,159,10,.30); --warn-num:#FF9F0A;
   --bad:#FF453A; --bad-bg:rgba(255,69,58,.14); --bad-line:rgba(255,69,58,.30);
   --idle:#D1D1D6; --idle-bg:rgba(255,255,255,.08); --idle-line:rgba(255,255,255,.10);
-  --focus:rgba(10,132,255,.25); --shadow:none;}
+  --focus:rgba(10,132,255,.25); --shadow:none; --shadow-card:none;
+  --btn2:rgba(255,255,255,.08); --btn2-hover:rgba(255,255,255,.14); --btn2-ink:#D1D1D6;}
 html,body{font:14px/1.5 var(--body);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
 a{color:var(--link)}
 /* Títulos como no app: página text-xl bold, seção text-sm bold */
@@ -137,26 +146,27 @@ h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:-.02em;color:
 h1{font-size:20px} h2{font-size:17px} h3{font-size:14px;letter-spacing:-.01em}
 .muted{color:var(--muted)} .small{font-size:12px}
 /* Cards: rounded-[20px], borda fina, sombra leve */
-.card,.tile,fieldset{border-radius:var(--r-card);border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
+.card,.tile,fieldset{border-radius:var(--r-card);border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow-card)}
 .card{padding:20px}
 .tile{border-left:1px solid var(--line)}
 .tile:hover{border-color:var(--accent)}
 .tile b,.stat b,.big{font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-/* Botões: rounded-xl, text-xs semibold; principal azul com sombra azul */
-.btn{border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:12px;font-weight:600;padding:9px 14px;transition:background-color .15s,border-color .15s}
-.btn:hover{border-color:var(--line-ctl);background:var(--hover)}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(0,113,227,.3)}
+/* Botões como no app (Painel): secundário cinza sem borda, text-xs medium; principal azul semibold com sombra azul */
+.btn{border-radius:var(--r-ctl);border:1px solid transparent;background:var(--btn2);color:var(--btn2-ink);font-size:12px;font-weight:500;padding:8px 14px;line-height:1.35;transition:background-color .15s,border-color .15s}
+.btn:hover{background:var(--btn2-hover)}
+.btn.dang{color:var(--bad)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;box-shadow:0 1px 3px rgba(0,113,227,.28)}
 .btn.pri:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
 .btn.sm{padding:6px 10px;font-size:12px}
 /* Campos: rounded-xl, borda 14%, foco azul com halo */
-input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{border-radius:var(--r-ctl);border:1px solid var(--line-ctl);background:var(--surface);color:var(--ink);padding:8px 12px;font-size:13px}
+input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{border-radius:var(--r-ctl);border:1px solid var(--line-ctl);background:var(--surface);color:var(--ink);padding:8px 12px;font-size:12px;font-family:var(--body)}
 :root[data-theme="dark"] input[type=text],:root[data-theme="dark"] input[type=number],:root[data-theme="dark"] input[type=date],:root[data-theme="dark"] input[type=search],:root[data-theme="dark"] select,:root[data-theme="dark"] textarea{background:var(--surface-2)}
 input::placeholder,textarea::placeholder{color:var(--muted-2)}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
 label.f{font-size:11px;font-weight:500;color:var(--muted);gap:4px}
 /* Tabelas: cabeçalho cinza claro, linhas com divisória fina, hover suave */
 .tw{border-radius:14px;border:1px solid var(--line);background:var(--surface)}
-table{font-size:13px;font-variant-numeric:tabular-nums}
+table{font-size:12px;font-variant-numeric:tabular-nums}
 th,td{padding:10px 12px;border-bottom:1px solid var(--line-row)}
 th{background:var(--surface-2);color:var(--muted);font-size:11px;font-weight:600;letter-spacing:0;border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:none}
@@ -185,9 +195,10 @@ td{color:var(--ink)}
 html.embedded header.top{display:none}
 html.embedded main{max-width:none;padding:4px 4px 48px}
 html.embedded #main > .tabs:first-child:has(> a){display:none}
-input[type=file]{font-size:13px;color:var(--muted)}
-input[type=file]::file-selector-button{font:inherit;font-weight:500;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctl);padding:6px 12px;margin-right:10px;cursor:pointer}
-input[type=file]::file-selector-button:hover{border-color:var(--accent)}
+input[type=file]{font-size:12px;color:var(--muted)}
+input[type=file]::file-selector-button{font:inherit;font-weight:500;color:var(--btn2-ink);background:var(--btn2);border:1px solid transparent;border-radius:var(--r-ctl);padding:8px 14px;margin-right:10px;cursor:pointer}
+input[type=file]::file-selector-button:hover{background:var(--btn2-hover)}
+code,pre,kbd{font-family:var(--mono)}
 @media (prefers-reduced-motion:reduce){.btn{transition:none}}
 </style>
 <link rel="stylesheet" href="gases.css">

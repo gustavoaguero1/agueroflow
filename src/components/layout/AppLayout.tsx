@@ -34,7 +34,10 @@ import {
   MessageSquare,
   LayoutGrid,
   Workflow,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
+import { readSidebarCollapsed, writeSidebarCollapsed, isToggleSidebarShortcut } from './sidebarPref';
 import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -217,6 +220,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [seeding, setSeeding] = useState(false);
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Desktop: recolher a barra lateral para ganhar largura (lembrado no navegador).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readSidebarCollapsed(typeof window !== 'undefined' ? window.localStorage : null),
+  );
+  const toggleSidebarCollapsed = () => setSidebarCollapsed((prev) => !prev);
+  useEffect(() => {
+    writeSidebarCollapsed(window.localStorage, sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
+  // Ctrl+B / ⌘B recolhe ou abre a barra lateral (fora de campos de texto).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isToggleSidebarShortcut(e)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      e.preventDefault();
+      toggleSidebarCollapsed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Global Keyboard Shortcut: Ctrl+K or Cmd+K
   useEffect(() => {
@@ -672,7 +696,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <aside
         className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-[264px] shrink-0 bg-[#FBFBFD]/95 dark:bg-[#161618]/95 backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        } ${sidebarCollapsed ? 'lg:hidden' : ''}`}
       >
         <div className="flex flex-col min-h-0 flex-1">
           {/* Brand Bar */}
@@ -684,6 +708,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               title="Ir para o Painel"
             >
               <BrandLogo size="sm" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleSidebarCollapsed}
+              className="hidden lg:inline-flex p-1.5 rounded-lg text-[#6E6E73] hover:text-[#1D1D1F] hover:bg-black/[0.05] dark:hover:text-white dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
+              title="Ocultar menu lateral (Ctrl+B)"
+              aria-label="Ocultar menu lateral"
+            >
+              <PanelLeftClose className="w-[18px] h-[18px]" />
             </button>
             <button
               type="button"
@@ -976,6 +1009,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <Menu className="w-5 h-5" />
             </button>
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                onClick={toggleSidebarCollapsed}
+                className="hidden lg:inline-flex p-1.5 rounded-lg text-[#6E6E73] hover:text-[#1D1D1F] hover:bg-black/[0.05] dark:hover:text-white dark:hover:bg-white/[0.08] transition-colors shrink-0 cursor-pointer"
+                title="Mostrar menu lateral (Ctrl+B)"
+                aria-label="Mostrar menu lateral"
+              >
+                <PanelLeftOpen className="w-[18px] h-[18px]" />
+              </button>
+            )}
 
             <h1 className="text-[15px] font-semibold text-[#1D1D1F] dark:text-[#F5F5F7] tracking-[-0.015em] truncate hidden md:block">
               {getSectionTitle(currentSection)}
@@ -1087,7 +1131,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         </header>
 
         {/* Main Content Viewport */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto overflow-y-auto">
+        <main className={`flex-1 p-4 sm:p-6 lg:p-8 w-full mx-auto overflow-y-auto ${sidebarCollapsed ? 'lg:max-w-none' : ''} max-w-[1440px]`}>
           {children}
         </main>
       </div>
