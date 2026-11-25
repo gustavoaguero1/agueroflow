@@ -85,9 +85,10 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const [deliveryDate, setDeliveryDate] = useState(today());
   const [deliveryNotes, setDeliveryNotes] = useState('');
 
-  const [trainingCode, setTrainingCode] = useState('');
-  const [trainingTitle, setTrainingTitle] = useState('');
-  const [trainingActivities, setTrainingActivities] = useState<SafetyPermitType[]>([]);
+  const [trainingCatalogCode, setTrainingCatalogCode] = useState('');
+  const [trainingRecordCode, setTrainingRecordCode] = useState('');
+  const [trainingCatalogTitle, setTrainingCatalogTitle] = useState('');
+  const [trainingCatalogActivities, setTrainingCatalogActivities] = useState<SafetyPermitType[]>([]);
   const [trainingEmployeeId, setTrainingEmployeeId] = useState('');
   const [trainingIssueDate, setTrainingIssueDate] = useState(today());
   const [trainingExpirationDate, setTrainingExpirationDate] = useState('');
@@ -310,7 +311,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const createTrainingCatalog = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canManageCatalog || !userId || !organizationId) return;
-    if (trainingCode.trim().length < 2 || trainingTitle.trim().length < 3 || trainingActivities.length === 0) {
+    if (trainingCatalogCode.trim().length < 2 || trainingCatalogTitle.trim().length < 3 || trainingCatalogActivities.length === 0) {
       setError('Informe código, título e atividades que exigem esse treinamento.');
       return;
     }
@@ -318,12 +319,12 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     try {
       const ref = doc(collection(db, 'safety_training_catalog'));
       await setDoc(ref, {
-        id: ref.id, orgId: organizationId, code: trainingCode.trim().toUpperCase(),
-        title: trainingTitle.trim(), requiredForPermitTypes: trainingActivities,
+        id: ref.id, orgId: organizationId, code: trainingCatalogCode.trim().toUpperCase(),
+        title: trainingCatalogTitle.trim(), requiredForPermitTypes: trainingCatalogActivities,
         active: true, createdByUid: userId, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       });
-      await audit('Cadastrar requisito de treinamento', trainingCode.trim().toUpperCase() + ' · ' + trainingTitle.trim(), ref.id);
-      setTrainingCode(''); setTrainingTitle(''); setTrainingActivities([]); setShowTrainingForm(false);
+      await audit('Cadastrar requisito de treinamento', trainingCatalogCode.trim().toUpperCase() + ' · ' + trainingCatalogTitle.trim(), ref.id);
+      setTrainingCatalogCode(''); setTrainingCatalogTitle(''); setTrainingCatalogActivities([]); setShowTrainingForm(false);
     } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível cadastrar o requisito.'); }
     finally { setSaving(false); }
   };
@@ -332,7 +333,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     event.preventDefault();
     if (!canEdit || !userId || !organizationId) return;
     const employee = employees.find((item) => item.id === trainingEmployeeId);
-    const course = trainingOptions.find((item) => item.code === trainingCode);
+    const course = trainingOptions.find((item) => item.code === trainingRecordCode);
     if (!employee || !course || !trainingIssueDate || !trainingExpirationDate
       || trainingExpirationDate < trainingIssueDate) {
       setError('Selecione o colaborador e o treinamento e informe emissão/vencimento válidos.');
@@ -366,7 +367,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
         createdByUid: userId, createdByName: actorName, recordedAt: serverTimestamp(),
       });
       await audit('Registrar certificado', course.code + ' para ' + employee.name, ref.id);
-      setTrainingEmployeeId(''); setTrainingIssueDate(today()); setTrainingExpirationDate('');
+      setTrainingEmployeeId(''); setTrainingRecordCode(''); setTrainingIssueDate(today()); setTrainingExpirationDate('');
       setTrainingEntity(''); setTrainingCertificateNumber(''); setTrainingCertificateUrl('');
       setTrainingCertificateName(''); setTrainingCertificateFile(null); setTrainingNotes('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.'); }
@@ -479,9 +480,9 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
             {canManageCatalog && <button type="button" onClick={() => setShowTrainingForm((value) => !value)} className="rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-bold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Novo requisito</button>}
           </div>
           {showTrainingForm && <form onSubmit={createTrainingCatalog} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
-            <label className="text-[10px] text-slate-400">Código (NR/qualificação)<input value={trainingCode} onChange={(e) => setTrainingCode(e.target.value)} required maxLength={40} placeholder="Ex.: NR-11 / RIGGER" className={inputClass} /></label>
-            <label className="text-[10px] text-slate-400">Título<input value={trainingTitle} onChange={(e) => setTrainingTitle(e.target.value)} required maxLength={140} className={inputClass} /></label>
-            <div className="sm:col-span-2"><p className="mb-2 text-[10px] text-slate-400">Atividades em que será obrigatório</p>{activityChecks(trainingActivities, setTrainingActivities)}</div>
+            <label className="text-[10px] text-slate-400">Código (NR/qualificação)<input value={trainingCatalogCode} onChange={(e) => setTrainingCatalogCode(e.target.value)} required maxLength={40} placeholder="Ex.: NR-11 / RIGGER" className={inputClass} /></label>
+            <label className="text-[10px] text-slate-400">Título<input value={trainingCatalogTitle} onChange={(e) => setTrainingCatalogTitle(e.target.value)} required maxLength={140} className={inputClass} /></label>
+            <div className="sm:col-span-2"><p className="mb-2 text-[10px] text-slate-400">Atividades em que será obrigatório</p>{activityChecks(trainingCatalogActivities, setTrainingCatalogActivities)}</div>
             <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setShowTrainingForm(false)} className={buttonClass}>Cancelar</button><button disabled={saving} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white">Salvar requisito</button></div>
           </form>}
 
@@ -495,7 +496,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
           <div className="border-t border-slate-800 pt-4"><h4 className="text-xs font-bold text-white">Certificados individuais</h4>
             {canEdit && <form onSubmit={createTrainingRecord} className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
               <label className="text-[10px] text-slate-400">Colaborador do RH<select value={trainingEmployeeId} onChange={(e) => setTrainingEmployeeId(e.target.value)} required className={inputClass}><option value="">Selecione</option>{activeEmployees.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role || 'Colaborador'}</option>)}</select></label>
-              <label className="text-[10px] text-slate-400">Treinamento<select value={trainingCode} onChange={(e) => setTrainingCode(e.target.value)} required className={inputClass}><option value="">Selecione</option>{trainingOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.title}</option>)}</select></label>
+              <label className="text-[10px] text-slate-400">Treinamento<select value={trainingRecordCode} onChange={(e) => setTrainingRecordCode(e.target.value)} required className={inputClass}><option value="">Selecione</option>{trainingOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.title}</option>)}</select></label>
               <label className="text-[10px] text-slate-400">Data de emissão<input type="date" value={trainingIssueDate} onChange={(e) => setTrainingIssueDate(e.target.value)} required className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Data de vencimento<input type="date" value={trainingExpirationDate} onChange={(e) => setTrainingExpirationDate(e.target.value)} required className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Entidade / instrutor<input value={trainingEntity} onChange={(e) => setTrainingEntity(e.target.value)} maxLength={160} className={inputClass} /></label>
