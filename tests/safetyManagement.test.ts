@@ -46,6 +46,23 @@ test('validates an APR/PT for hot work with controls and risk assessment', () =>
   assert.equal(safetyPermitCode('2026-11-25', 'permit_abc12345'), 'PT-2026-ABC12345');
 });
 
+test('accepts multiple separately described hazards in one APR', () => {
+  const errors = validateSafetyPermitInput({
+    ...validPermit,
+    risks: [
+      ...validPermit.risks,
+      {
+        hazard: 'Contato com superfície aquecida',
+        consequence: 'Queimadura durante a atividade',
+        initialRisk: 'medio',
+        controlMeasures: 'Identificar e isolar a superfície até atingir temperatura segura.',
+        residualRisk: 'baixo',
+      },
+    ],
+  });
+  assert.deepEqual(errors, []);
+});
+
 test('requires specialized controls for height, confined-space, electrical and lifting work', () => {
   const required = (type: Parameters<typeof requiredSafetyControls>[0]) =>
     requiredSafetyControls(type).map((item) => item.key);
