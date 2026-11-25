@@ -74,3 +74,20 @@ test('engineering document uploads deny anonymous users and preserve master acce
   await assertFails(uploadBytes(ref(st(), path), pdf, { contentType: 'application/pdf' }));
   await assertSucceeds(uploadBytes(ref(st({ master: true }), path), pdf, { contentType: 'application/pdf' }));
 });
+
+
+test('safety training certificates are tenant-scoped, role-protected and immutable', async () => {
+  const supervisor = st({ orgs: { org_a: 'Supervisor' } }, 'supervisor');
+  const path = 'safety-certificates/org_a/employee_01/record_01_certificate.pdf';
+  await assertSucceeds(uploadBytes(ref(supervisor, path), pdf, { contentType: 'application/pdf' }));
+  await assertSucceeds(getBytes(ref(supervisor, path)));
+
+  const viewer = st({ orgs: { org_a: 'Visualizador' } }, 'viewer');
+  await assertSucceeds(getBytes(ref(viewer, path)));
+  await assertFails(uploadBytes(ref(viewer, 'safety-certificates/org_a/employee_01/record_02_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
+  await assertFails(getBytes(ref(st({ orgs: { org_b: 'Admin' } }), path)));
+  await assertFails(uploadBytes(ref(supervisor, 'safety-certificates/org_b/employee_01/record_03_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
+  await assertFails(uploadBytes(ref(supervisor, 'safety-certificates/org_a/employee_01/record_04_certificate.svg'), jpg, { contentType: 'image/svg+xml' }));
+  await assertFails(uploadBytes(ref(supervisor, path), pdf, { contentType: 'application/pdf' }));
+  await assertFails(deleteObject(ref(supervisor, path)));
+});
