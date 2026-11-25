@@ -402,6 +402,8 @@ export interface ChecklistTemplate {
   description: string;
   category: string;
   items: ChecklistItemDef[];
+  /** Revision number; existing templates without this field are treated as version 1. */
+  version?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -429,6 +431,9 @@ export interface ChecklistRun {
   nonConformityCount?: number;
   hasNonConformities?: boolean;
   answers: Record<string, ChecklistItemAnswer>;
+  /** Exact template revision and snapshot used for this completed execution. */
+  templateVersion?: number;
+  templateSnapshot?: ChecklistTemplate;
   status: 'em_andamento' | 'concluido' | 'cancelado';
   completedAt?: string;
   createdAt: string;
