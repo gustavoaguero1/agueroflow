@@ -14,6 +14,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { Contract, Unit } from '../../types';
 import type {
+  SafetyDocumentType,
   SafetyOccurrenceCategory,
   SafetyOccurrenceRecord,
   SafetyPermitControls,
@@ -47,6 +48,8 @@ interface PermitRiskDraft {
 }
 
 interface PermitDraftState {
+  documentType: SafetyDocumentType;
+  relatedAprId: string;
   permitType: SafetyPermitType;
   unitId: string;
   contractId: string;
@@ -74,6 +77,8 @@ interface OccurrenceDraftState {
 }
 
 const emptyPermitDraft = (unitId = '', contractId = ''): PermitDraftState => ({
+  documentType: 'apr',
+  relatedAprId: '',
   permitType: 'geral',
   unitId,
   contractId,
@@ -273,6 +278,13 @@ export const SafetyManagementPanel: React.FC = () => {
     setShowPermitForm(true);
   };
 
+  const eligibleAprs = permits.filter((permit) => (
+    permit.documentType === 'apr'
+    && states.some((state) => state.permitId === permit.id && state.status === 'approved')
+    && permit.unitId === permitDraft.unitId
+    && permit.contractId === permitDraft.contractId
+  ));
+
   const openNewOccurrence = () => {
     setOccurrenceDraft(emptyOccurrenceDraft(units[0]?.id || ''));
     setShowOccurrenceForm(true);
@@ -284,6 +296,10 @@ export const SafetyManagementPanel: React.FC = () => {
 
     const teamMembers = splitNames(permitDraft.teamMembersText);
     const input = {
+      unitId: permitDraft.unitId,
+      contractId: permitDraft.contractId,
+      documentType: permitDraft.documentType,
+      ...(permitDraft.documentType === 'pt' ? { relatedAprId: permitDraft.relatedAprId } : {}),
       validFrom: permitDraft.validFrom,
       validUntil: permitDraft.validUntil,
       permitType: permitDraft.permitType,
@@ -297,6 +313,9 @@ export const SafetyManagementPanel: React.FC = () => {
       emergencyPlan: permitDraft.emergencyPlan,
     };
     const errors = validateSafetyPermitInput(input);
+    if (permitDraft.documentType === 'pt' && !eligibleAprs.some((apr) => apr.id === permitDraft.relatedAprId)) {
+      errors.push('A PT deve estar vinculada a uma APR aprovada da mesma unidade e contrato.');
+    }
     if (!units.some((unit: Unit) => unit.id === permitDraft.unitId)
       || !contracts.some((contract: Contract) => contract.id === permitDraft.contractId)) {
       errors.push('Selecione uma unidade e um contrato pertencentes à empresa ativa.');
@@ -316,7 +335,9 @@ export const SafetyManagementPanel: React.FC = () => {
         orgId: organizationId,
         unitId: permitDraft.unitId,
         contractId: permitDraft.contractId,
-        permitCode: safetyPermitCode(permitDate, permitRef.id),
+        documentType: permitDraft.documentType,
+        ...(permitDraft.documentType === 'pt' ? { relatedAprId: permitDraft.relatedAprId } : {}),
+        permitCode: safetyPermitCode(permitDraft.documentType, permitDate, permitRef.id),
         permitDate,
         permitType: permitDraft.permitType,
         activityTitle: permitDraft.activityTitle.trim(),
@@ -605,7 +626,7 @@ export const SafetyManagementPanel: React.FC = () => {
                     <button key={permit.id} type="button" onClick={() => { setSelectedPermitId(permit.id); setActionComment(''); }} className={'block w-full px-4 py-3 text-left transition-colors hover:bg-slate-800/40 ' + (selectedPermitId === permit.id ? 'bg-slate-800/50' : '')}>
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="font-mono text-[10px] font-bold text-rose-300">{permit.permitCode}</p>
+                          <p className="flex flex-wrap items-center gap-2 font-mono text-[10px] font-bold text-rose-300"><span className="rounded border border-rose-800/60 bg-rose-950/40 px-1.5 py-0.5">{(permit.documentType || 'pt').toUpperCase()}</span>{permit.permitCode}</p>
                           <p className="mt-0.5 text-xs font-bold text-white">{permit.activityTitle}</p>
                           <p className="mt-1 text-[10px] text-slate-500">{safetyPermitTypeLabel(permit.permitType)} · {permit.location}</p>
                         </div>
@@ -625,7 +646,7 @@ export const SafetyManagementPanel: React.FC = () => {
             {selectedPermit && selectedState ? (
               <div className="space-y-3">
                 <div className="border-b border-slate-800 pb-3">
-                  <p className="font-mono text-[10px] font-bold text-rose-300">{selectedPermit.permitCode}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-mono text-[10px] font-bold text-rose-300"><span className="rounded border border-rose-800/60 bg-rose-950/40 px-1.5 py-0.5">{(selectedPermit.documentType || 'pt').toUpperCase()}</span>{selectedPermit.permitCode}</p>
                   <h3 className="mt-1 text-sm font-bold text-white">{selectedPermit.activityTitle}</h3>
                   <p className="mt-1 text-[11px] text-slate-400">{safetyPermitTypeLabel(selectedPermit.permitType)} · {selectedPermit.location}</p>
                   <span className={'mt-2 inline-flex rounded border px-2 py-1 text-[10px] font-bold ' + STATUS_STYLES[selectedState.status]}>
@@ -763,6 +784,12 @@ export const SafetyManagementPanel: React.FC = () => {
               <button type="button" onClick={() => setShowPermitForm(false)} className="text-slate-400 hover:text-white">Fechar</button>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-[11px] text-slate-400">Documento
+                <select value={permitDraft.documentType} onChange={(event) => patchPermit('documentType', event.target.value as SafetyDocumentType)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                  <option value="apr">APR — Análise Preliminar de Risco</option>
+                  <option value="pt">PT — Permissão de Trabalho</option>
+                </select>
+              </label>
               <label className="text-[11px] text-slate-400">Tipo de atividade
                 <select value={permitDraft.permitType} onChange={(event) => patchPermit('permitType', event.target.value as SafetyPermitType)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
                   {['trabalho_a_quente','trabalho_em_altura','espaco_confinado','eletrico','icamento','abertura_de_linha','geral'].map((value) => <option key={value} value={value}>{safetyPermitTypeLabel(value as SafetyPermitType)}</option>)}
@@ -778,6 +805,15 @@ export const SafetyManagementPanel: React.FC = () => {
                   <option value="">Selecione</option>{contracts.map((contract: Contract) => <option key={contract.id} value={contract.id}>{contract.name}</option>)}
                 </select>
               </label>
+              {permitDraft.documentType === 'pt' && (
+                <label className="text-[11px] text-slate-400 sm:col-span-2">APR aprovada de referência *
+                  <select value={permitDraft.relatedAprId} onChange={(event) => patchPermit('relatedAprId', event.target.value)} required className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">
+                    <option value="">Selecione APR aprovada da mesma unidade e contrato</option>
+                    {eligibleAprs.map((apr) => <option key={apr.id} value={apr.id}>{apr.permitCode} · {apr.activityTitle}</option>)}
+                  </select>
+                  {eligibleAprs.length === 0 && <span className="mt-1 block text-[10px] text-amber-300">Não há APR aprovada para esta unidade/contrato. Aprove uma APR antes de criar a PT.</span>}
+                </label>
+              )}
               <label className="text-[11px] text-slate-400">Responsável pela frente
                 <input value={permitDraft.supervisorName} onChange={(event) => patchPermit('supervisorName', event.target.value)} required maxLength={120} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
               </label>
