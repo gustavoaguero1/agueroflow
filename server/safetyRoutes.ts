@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../src/services/safetyCompliance.ts';
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
+import type { SafetyPermitEventType } from '../src/types/safety.ts';
 import { areaLevelOf, requireArea } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
@@ -127,7 +128,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
           }
         }
 
-        const nextStatus = getSafetyNextStatus(state.status, eventType);
+        const nextStatus = getSafetyNextStatus(state.status, eventType as SafetyPermitEventType);
         if (!nextStatus) throw new SafetyRouteError(409, 'Movimentação não permitida para o status atual.');
         if (state.latestEventId !== req.body?.previousEventId) {
           throw new SafetyRouteError(409, 'A permissão foi movimentada por outra pessoa. Atualize a tela.');
