@@ -51,8 +51,9 @@ function parseTemplatePayload(body: any): { title: string; description: string; 
         || raw.options.some((option: unknown) => typeof option !== 'string' || !option.trim() || option.length > 120)) {
         throw new ChecklistRouteError(400, `Informe ao menos duas opções válidas para ${itemTitle}.`);
       }
-      options = [...new Set(raw.options.map((option: string) => option.trim()))];
-      if (options.length < 2) throw new ChecklistRouteError(400, `As opções de ${itemTitle} precisam ser diferentes.`);
+      const cleanOptions = (raw.options as string[]).map((option) => option.trim());
+      options = Array.from(new Set<string>(cleanOptions));
+      if (!options || options.length < 2) throw new ChecklistRouteError(400, `As opções de ${itemTitle} precisam ser diferentes.`);
     }
 
     return {
