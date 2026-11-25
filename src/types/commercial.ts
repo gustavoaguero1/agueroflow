@@ -138,6 +138,7 @@ export interface CommercialProposalItem {
 export interface CommercialProposal {
   id: string;
   organizationId: string;
+  projectId?: string;
   contractId?: string;
   unitId?: string;
   code: string; // e.g., PROP-2026-001
