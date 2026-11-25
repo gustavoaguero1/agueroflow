@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
+  collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
 } from 'firebase/firestore';
 import { AlertTriangle, Award, ClipboardList, PackageCheck, Plus, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { db, storage } from '../../firebase';
+import { postJson } from '../../apiAuthFetch';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import type { SafetyPermitType } from '../../types/safety';
 import {
@@ -235,20 +236,22 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
       setError('Selecione colaborador ativo do RH e um EPI ativo.');
       return;
     }
+    if (!ppe.caNumber.trim() || dateIsExpired(ppe.caExpiresAt)) {
+      setError('Entrega bloqueada: o EPI precisa ter CA informado e vigente.');
+      return;
+    }
     if (activeIssues.some((item) => item.employeeId === employee.id && item.ppeId === ppe.id)) {
       setError('Este EPI já consta como entregue ao colaborador. Registre a devolução antes de uma nova entrega.');
       return;
     }
     setSaving(true); setError('');
     try {
-      const ref = doc(collection(db, 'safety_ppe_movements'));
-      await setDoc(ref, {
-        id: ref.id, orgId: organizationId, employeeId: employee.id, employeeName: employee.name,
-        ppeId: ppe.id, ppeName: ppe.name, eventType: 'entregue', movementDate: deliveryDate,
-        notes: deliveryNotes.trim(), createdByUid: userId, createdByName: actorName,
-        createdAt: serverTimestamp(),
+      const response = await postJson('/api/safety/ppe-movements', {
+        orgId: organizationId, employeeId: employee.id, ppeId: ppe.id,
+        eventType: 'entregue', movementDate: deliveryDate, notes: deliveryNotes.trim(),
       });
-      await audit('Entregar EPI', ppe.name + ' para ' + employee.name, ref.id);
+      if (!response.ok) throw new Error(response.error || 'O servidor recusou a entrega do EPI.');
+      await audit('Entregar EPI', ppe.name + ' para ' + employee.name, 'ppe_delivery');
       setShowDeliveryForm(false); setDeliveryNotes('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar a entrega.'); }
     finally { setSaving(false); }
@@ -258,14 +261,12 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     if (!canEdit || !userId || !window.confirm('Confirmar a devolução de ' + issue.ppeName + ' por ' + issue.employeeName + '?')) return;
     setSaving(true); setError('');
     try {
-      const ref = doc(collection(db, 'safety_ppe_movements'));
-      await setDoc(ref, {
-        id: ref.id, orgId: organizationId, employeeId: issue.employeeId, employeeName: issue.employeeName,
-        ppeId: issue.ppeId, ppeName: issue.ppeName, eventType: 'devolvido',
-        movementDate: today(), referenceMovementId: issue.id, createdByUid: userId,
-        createdByName: actorName, createdAt: serverTimestamp(),
+      const response = await postJson('/api/safety/ppe-movements', {
+        orgId: organizationId, employeeId: issue.employeeId, ppeId: issue.ppeId,
+        eventType: 'devolvido', movementDate: today(), referenceMovementId: issue.id,
       });
-      await audit('Devolver EPI', issue.ppeName + ' de ' + issue.employeeName, ref.id);
+      if (!response.ok) throw new Error(response.error || 'O servidor recusou a devolução do EPI.');
+      await audit('Devolver EPI', issue.ppeName + ' de ' + issue.employeeName, issue.id);
     } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar a devolução.'); }
     finally { setSaving(false); }
   };
@@ -284,29 +285,16 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     }
     setSaving(true); setError('');
     try {
-      const batch = writeBatch(db);
-      const returnRef = doc(collection(db, 'safety_ppe_movements'));
-      const deliveryRef = doc(collection(db, 'safety_ppe_movements'));
-      batch.set(returnRef, {
-        id: returnRef.id, orgId: organizationId, employeeId: replacementIssue.employeeId,
-        employeeName: replacementIssue.employeeName, ppeId: replacementIssue.ppeId,
-        ppeName: replacementIssue.ppeName, eventType: 'devolvido', movementDate: replacementDate,
-        referenceMovementId: replacementIssue.id, notes: replacementNotes.trim(),
-        createdByUid: userId, createdByName: actorName, createdAt: serverTimestamp(),
+      const response = await postJson('/api/safety/ppe-movements/replace', {
+        orgId: organizationId, employeeId: replacementIssue.employeeId,
+        oldMovementId: replacementIssue.id, newPpeId: newPpe.id,
+        movementDate: replacementDate, notes: replacementNotes.trim(),
       });
-      batch.set(deliveryRef, {
-        id: deliveryRef.id, orgId: organizationId, employeeId: replacementIssue.employeeId,
-        employeeName: replacementIssue.employeeName, ppeId: newPpe.id, ppeName: newPpe.name,
-        eventType: 'entregue', movementDate: replacementDate,
-        notes: 'Substituição do EPI ' + replacementIssue.ppeName + '. ' + replacementNotes.trim(),
-        createdByUid: userId, createdByName: actorName, createdAt: serverTimestamp(),
-      });
-      await batch.commit();
-      await audit('Substituir EPI', replacementIssue.ppeName + ' por ' + newPpe.name + ' · ' + replacementIssue.employeeName, deliveryRef.id);
+      if (!response.ok) throw new Error(response.error || 'O servidor recusou a substituição do EPI.');
+      await audit('Substituir EPI', replacementIssue.ppeName + ' por ' + newPpe.name + ' · ' + replacementIssue.employeeName, replacementIssue.id);
       setReplacementIssue(null); setReplacementPpeId(''); setReplacementNotes('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível concluir a substituição do EPI.');
-    } finally { setSaving(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível concluir a substituição do EPI.'); }
+    finally { setSaving(false); }
   };
 
   const createTrainingCatalog = async (event: React.FormEvent) => {
