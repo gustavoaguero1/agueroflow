@@ -101,9 +101,15 @@ function isValidIsoDate(value: string): boolean {
 }
 
 function isValidLocalDateTime(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return false;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime());
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const hour = Number(hourText), minute = Number(minuteText);
+  if (hour > 23 || minute > 59) return false;
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date.getFullYear() === year && date.getMonth() === month - 1
+    && date.getDate() === day && date.getHours() === hour && date.getMinutes() === minute;
 }
 
 export function requiredSafetyControls(type: SafetyPermitType): Array<{ key: keyof SafetyPermitControls; label: string }> {
@@ -145,16 +151,20 @@ export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
     if (risk.hazard.trim().length < 3 || risk.hazard.trim().length > 180) errors.push('Perigo ' + (index + 1) + ': informe o perigo identificado.');
     if (risk.consequence.trim().length < 3 || risk.consequence.trim().length > 300) errors.push('Perigo ' + (index + 1) + ': informe a consequência possível.');
     if (risk.controlMeasures.trim().length < 5 || risk.controlMeasures.trim().length > 700) errors.push('Perigo ' + (index + 1) + ': descreva as medidas de controle.');
-    if (RISK_SCORE[risk.residualRisk] > RISK_SCORE[risk.initialRisk]) {
+    const validInitialRisk = Object.prototype.hasOwnProperty.call(RISK_SCORE, risk.initialRisk);
+    const validResidualRisk = Object.prototype.hasOwnProperty.call(RISK_SCORE, risk.residualRisk);
+    if (!validInitialRisk) errors.push('Perigo ' + (index + 1) + ': selecione um risco inicial válido.');
+    if (!validResidualRisk) errors.push('Perigo ' + (index + 1) + ': selecione um risco residual válido.');
+    if (validInitialRisk && validResidualRisk && RISK_SCORE[risk.residualRisk] > RISK_SCORE[risk.initialRisk]) {
       errors.push('O risco residual não pode ser maior que o risco inicial após os controles.');
     }
   });
 
-  if (!input.controls.teamBriefed) errors.push('Confirme a orientação da equipe.');
-  if (!input.controls.ppeInspected) errors.push('Confirme a conferência dos EPIs.');
-  if (!input.controls.areaIsolated) errors.push('Confirme o isolamento/sinalização da área.');
+  if (input.controls.teamBriefed !== true) errors.push('Confirme a orientação da equipe.');
+  if (input.controls.ppeInspected !== true) errors.push('Confirme a conferência dos EPIs.');
+  if (input.controls.areaIsolated !== true) errors.push('Confirme o isolamento/sinalização da área.');
   REQUIRED_CONTROLS[input.permitType]?.forEach((key) => {
-    if (!input.controls[key]) errors.push('Confirme: ' + (CONTROL_LABELS[key] || key) + '.');
+    if (input.controls[key] !== true) errors.push('Confirme: ' + (CONTROL_LABELS[key] || key) + '.');
   });
   if (input.emergencyPlan.trim().length < 10 || input.emergencyPlan.trim().length > 1500) {
     errors.push('Informe um plano de emergência/resposta compatível com a atividade (10 a 1.500 caracteres).');
