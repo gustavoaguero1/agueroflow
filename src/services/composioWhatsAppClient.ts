@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   ComposioAuthConfigSummary,
@@ -26,14 +26,25 @@ import {
 } from '../types/whatsappComposio';
 import { apiFetch, selectedApiOrg } from '../apiAuthFetch';
 
+function resolveWhatsAppOrgId(explicitOrgId?: string | null, data?: Record<string, any> | null): string | null {
+  const candidate =
+    (typeof explicitOrgId === 'string' && explicitOrgId.trim()) ||
+    (typeof data?.orgId === 'string' && data.orgId.trim()) ||
+    (typeof data?.organizationId === 'string' && data.organizationId.trim()) ||
+    selectedApiOrg() ||
+    '';
+  return candidate || null;
+}
+
 /**
- * A cópia na nuvem enxerga todas as empresas: só sincroniza o que é da empresa selecionada
- * (registro antigo sem empresa vai junto; o servidor só aceita na empresa padrão).
+ * Isolamento estrito por empresa: só aceita documentos pertencentes à empresa selecionada.
  */
-const isOfSelectedOrg = (data: unknown): boolean => {
-  const org = selectedApiOrg();
-  const own = (data as { organizationId?: string } | null)?.organizationId;
-  return !org || !own || own === org;
+const isOfSelectedOrg = (data: unknown, explicitOrgId?: string): boolean => {
+  const org = explicitOrgId?.trim() || selectedApiOrg();
+  if (!org) return false;
+  const rec = data as { orgId?: string; organizationId?: string } | null;
+  const own = rec?.orgId || rec?.organizationId;
+  return own === org;
 };
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
@@ -44,12 +55,21 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Record<string, a
   return out;
 }
 
-async function mirrorDocToFirestore(collectionName: string, docId: string, data: Record<string, any>) {
+async function mirrorDocToFirestore(
+  collectionName: string,
+  docId: string,
+  data: Record<string, any>,
+  explicitOrgId?: string,
+) {
   try {
     if (!docId) return;
+    const orgId = resolveWhatsAppOrgId(explicitOrgId, data);
+    if (!orgId) return;
     const cleanId = docId.replace(/[/#?]/g, '_');
     const payload = stripUndefined({
       ...data,
+      orgId,
+      organizationId: orgId,
       updatedByUid: auth.currentUser?.uid || 'corporate_session',
     });
     await Promise.race([
@@ -59,6 +79,13 @@ async function mirrorDocToFirestore(collectionName: string, docId: string, data:
   } catch (err) {
     console.warn(`[Firestore Sync] Falha ao espelhar ${collectionName}/${docId}:`, err);
   }
+}
+
+async function listOrgWhatsAppDocs(collectionName: string, explicitOrgId?: string) {
+  const orgId = resolveWhatsAppOrgId(explicitOrgId);
+  if (!orgId) return [];
+  const snap = await getDocs(query(collection(db, collectionName), where('orgId', '==', orgId)));
+  return snap.docs;
 }
 
 async function deleteDocFromFirestore(collectionName: string, docId: string) {
@@ -523,10 +550,10 @@ export async function syncWhatsAppContactsWithFirestore(
   const cloudOcrContacts: WhatsAppManagedContact[] = [];
 
   try {
-    const snap = await getDocs(collection(db, path));
-    snap.forEach((d) => {
+    const docs = await listOrgWhatsAppDocs(path, organizationId);
+    docs.forEach((d) => {
       const data = d.data() as WhatsAppManagedContact;
-      if (data && data.jidOrPhone && data.ocrEnabled && isOfSelectedOrg(data)) {
+      if (data && data.jidOrPhone && data.ocrEnabled && isOfSelectedOrg(data, organizationId)) {
         cloudOcrContacts.push(data);
       }
     });
@@ -574,12 +601,7 @@ export async function syncWhatsAppContactsWithFirestore(
   const ocrActive = finalContacts.filter((c) => c.ocrEnabled && c.id);
   if (ocrActive.length > 0) {
     await Promise.allSettled(
-      ocrActive.map((c) =>
-        mirrorDocToFirestore(path, c.id, {
-          ...c,
-          organizationId: organizationId || 'org_aguero_default',
-        })
-      )
+      ocrActive.map((c) => mirrorDocToFirestore(path, c.id, c, organizationId))
     );
   }
 
@@ -822,11 +844,11 @@ export async function syncScheduledJobsWithFirestore(
 
   let firestoreSynced = false;
   try {
-    const snap = await getDocs(collection(db, path));
+    const docs = await listOrgWhatsAppDocs(path, organizationId);
     firestoreSynced = true;
-    snap.forEach((d) => {
+    docs.forEach((d) => {
       const data = d.data() as WhatsAppScheduledJob;
-      if (data && data.id && isOfSelectedOrg(data)) upsert(data);
+      if (data && data.id && isOfSelectedOrg(data, organizationId)) upsert(data);
     });
   } catch (error) {
     try {
@@ -878,12 +900,7 @@ export async function syncScheduledJobsWithFirestore(
   // Mirror any server-created jobs (e.g., created directly from @aguero in WhatsApp) back into Firestore
   if (finalJobs.length > 0) {
     await Promise.allSettled(
-      finalJobs.map((job) =>
-        mirrorDocToFirestore(path, job.id, {
-          ...job,
-          organizationId: organizationId || 'org_aguero_default',
-        })
-      )
+      finalJobs.map((job) => mirrorDocToFirestore(path, job.id, job, organizationId))
     );
     firestoreSynced = true;
   }
@@ -910,7 +927,10 @@ export async function saveWhatsAppMentionConfig(
     body: JSON.stringify(payload),
   });
   if (res.success && res.mentionConfig) {
-    mirrorDocToFirestore('whatsapp_ai_settings', 'mention_trigger', res.mentionConfig);
+    const orgId = resolveWhatsAppOrgId();
+    if (orgId) {
+      mirrorDocToFirestore('whatsapp_ai_settings', `${orgId}_mention_trigger`, res.mentionConfig, orgId);
+    }
   }
   return res;
 }
@@ -1201,11 +1221,11 @@ export async function syncOcrReceiptsVault(
   // 2. Load Firestore cloud vault
   let cloudAvailable = false;
   try {
-    const snap = await getDocs(collection(db, 'whatsapp_ocr_receipts'));
+    const docs = await listOrgWhatsAppDocs('whatsapp_ocr_receipts');
     cloudAvailable = true;
-    snap.forEach((d) => {
+    docs.forEach((d) => {
       const data = d.data() as WhatsAppOcrReceiptItem;
-      if (data && data.id) upsertIntoMap(data);
+      if (data && data.id && isOfSelectedOrg(data)) upsertIntoMap(data);
     });
   } catch {
     // Best-effort cloud read
@@ -1529,11 +1549,11 @@ export async function syncNdDataWithFirestore(
     }
   };
   try {
-    const snap = await getDocs(collection(db, 'whatsapp_nd_rules'));
+    const docs = await listOrgWhatsAppDocs('whatsapp_nd_rules', organizationId);
     firestoreSynced = true;
-    snap.forEach((d) => {
+    docs.forEach((d) => {
       const data = d.data() as WhatsAppNdRule;
-      if (isOfSelectedOrg(data)) upsertRule(data);
+      if (isOfSelectedOrg(data, organizationId)) upsertRule(data);
     });
   } catch (err) {
     try {
@@ -1571,11 +1591,11 @@ export async function syncNdDataWithFirestore(
     }
   };
   try {
-    const snap = await getDocs(collection(db, 'whatsapp_nd_records'));
+    const docs = await listOrgWhatsAppDocs('whatsapp_nd_records', organizationId);
     firestoreSynced = true;
-    snap.forEach((d) => {
+    docs.forEach((d) => {
       const data = d.data() as WhatsAppNdRecord;
-      if (isOfSelectedOrg(data)) upsertRec(data);
+      if (isOfSelectedOrg(data, organizationId)) upsertRec(data);
     });
   } catch (err) {
     try {
@@ -1613,16 +1633,10 @@ export async function syncNdDataWithFirestore(
   // Mirror server-side new records/rules back to Firestore
   await Promise.allSettled([
     ...finalRules.map((r) =>
-      mirrorDocToFirestore('whatsapp_nd_rules', r.id, {
-        ...r,
-        organizationId: r.organizationId || organizationId || 'org_aguero_default',
-      })
+      mirrorDocToFirestore('whatsapp_nd_rules', r.id, r, r.organizationId || organizationId)
     ),
     ...finalRecords.slice(0, 80).map((r) =>
-      mirrorDocToFirestore('whatsapp_nd_records', r.id, {
-        ...r,
-        organizationId: r.organizationId || organizationId || 'org_aguero_default',
-      })
+      mirrorDocToFirestore('whatsapp_nd_records', r.id, r, r.organizationId || organizationId)
     ),
   ]);
 

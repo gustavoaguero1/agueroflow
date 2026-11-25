@@ -52,6 +52,7 @@ service cloud.firestore {
     function A_COM() { return 3; }
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
+    function A_WA() { return 6; }
 
     // ---- Segurança do Trabalho & SMS ----------------------------------------
       function safetyRiskRank(level) {
@@ -1256,52 +1257,91 @@ service cloud.firestore {
       allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
     }
 
-    // ---- WhatsApp bridge mirror ----------------------------------------------
-    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
-    // authenticated member. The mirror matches that: any member of some org (or master).
-    function waMember() { return isMaster() || hasAnyOrg(); }
+    // ---- WhatsApp bridge mirror (strict multi-tenant + area isolation) -------
+    // Every mirrored WhatsApp document must carry orgId/organizationId matching a caller's org
+    // and the caller must have WhatsApp area access (level >= 1 read, level >= 2 write).
+    function waCanRead(res) { return canRead(res) && (res == null || areaOk(orgOf(res.data), A_WA(), 1)); }
+    function waCanCreate() { return canCreate() && areaOk(orgOf(request.resource.data), A_WA(), 2); }
+    function waCanUpdate() { return canUpdate() && areaOk(orgOf(resource.data), A_WA(), 2); }
+    function waCanDelete() { return canDelete() && areaOk(orgOf(resource.data), A_WA(), 2); }
 
-    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
-    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
-    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
-    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
+    match /whatsapp_contacts/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_quick_replies/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_ai_rules/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_ai_settings/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
 
     match /whatsapp_scheduled_jobs/{jobId} {
-      allow read, delete: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 160
-        && request.resource.data.scheduleTime is string
-        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
-        && request.resource.data.promptInstruction is string
-        && request.resource.data.promptInstruction.size() > 0
-        && request.resource.data.promptInstruction.size() <= 2000;
+      function validWaJobPayload() {
+        return request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 160
+          && request.resource.data.scheduleTime is string
+          && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+          && request.resource.data.promptInstruction is string
+          && request.resource.data.promptInstruction.size() > 0
+          && request.resource.data.promptInstruction.size() <= 2000;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaJobPayload();
+      allow update: if waCanUpdate() && validWaJobPayload();
+      allow delete: if waCanDelete();
     }
 
     match /whatsapp_ocr_receipts/{receiptId} {
-      allow read: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.establishmentName is string
-        && request.resource.data.establishmentName.size() <= 200
-        && request.resource.data.totalAmount is number;
+      function validWaReceiptPayload() {
+        return request.resource.data.establishmentName is string
+          && request.resource.data.establishmentName.size() <= 200
+          && request.resource.data.totalAmount is number;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaReceiptPayload();
+      allow update: if waCanUpdate() && validWaReceiptPayload();
+      allow delete: if false;
     }
 
     match /whatsapp_nd_rules/{ruleId} {
-      allow read, delete: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 160
-        && request.resource.data.groupJid is string;
+      function validWaNdRulePayload() {
+        return request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 160
+          && request.resource.data.groupJid is string;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaNdRulePayload();
+      allow update: if waCanUpdate() && validWaNdRulePayload();
+      allow delete: if waCanDelete();
     }
 
     match /whatsapp_nd_records/{recordId} {
-      allow read: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.receiverName is string
-        && request.resource.data.receiverName.size() <= 180
-        && request.resource.data.amount is number;
+      function validWaNdRecordPayload() {
+        return request.resource.data.receiverName is string
+          && request.resource.data.receiverName.size() <= 180
+          && request.resource.data.amount is number;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaNdRecordPayload();
+      allow update: if waCanUpdate() && validWaNdRecordPayload();
+      allow delete: if false;
     }
   }
 }

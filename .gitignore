@@ -19,3 +19,4 @@ data_whatsapp_bridge_state/
 
 # Dados gerados pelo servidor em execução: nunca versionar
 data_*.json
+data_nd_pdfs/

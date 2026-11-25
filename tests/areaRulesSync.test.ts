@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AREA_IDS, ROLE_DEFAULTS, encodeAreas, resolveAreas } from '../src/permissions/areas.ts';
+import { AREAS, AREA_IDS, ROLE_DEFAULTS, encodeAreas, resolveAreas } from '../src/permissions/areas.ts';
 import type { UserRole } from '../src/types/index.ts';
 
 const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
+const storageRules = readFileSync(new URL('../storage.rules', import.meta.url), 'utf8');
+const waMiddleware = readFileSync(new URL('../server/whatsappMiddleware.ts', import.meta.url), 'utf8');
 
 test('as regras do banco usam a mesma tabela de padrões por perfil que o app', () => {
   for (const role of Object.keys(ROLE_DEFAULTS) as UserRole[]) {
@@ -23,7 +25,14 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
   const order = /\/\/ Ordem: (.+)/.exec(rules)![1].split(', ').map((s) => s.split(' '));
   assert.deepEqual(order.map(([id]) => id), [...AREA_IDS]);
   order.forEach(([, i], n) => assert.equal(Number(i), n));
-  for (const [fn, id] of [['A_OPS', 'operacoes'], ['A_STOCK', 'estoque'], ['A_COM', 'comercial'], ['A_FIN', 'financeiro'], ['A_RH', 'rh']]) {
+  for (const [fn, id] of [
+    ['A_OPS', 'operacoes'],
+    ['A_STOCK', 'estoque'],
+    ['A_COM', 'comercial'],
+    ['A_FIN', 'financeiro'],
+    ['A_RH', 'rh'],
+    ['A_WA', 'whatsapp'],
+  ]) {
     const v = new RegExp(`function ${fn}\\(\\) \\{ return (\\d+); \\}`).exec(rules)![1];
     assert.equal(Number(v), AREA_IDS.indexOf(id as never), fn);
   }
@@ -44,4 +53,20 @@ test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só 
 test('acesso por área só muda pelo servidor', () => {
   assert.match(rules, /hasAny\(\['areaDefaults'\]\)/);
   assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'\]\)/);
+});
+
+test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e APIs', () => {
+  const enforcedIds = AREAS.filter((a) => a.enforcedInDatabase).map((a) => a.id).sort();
+  assert.deepEqual(enforcedIds, ['comercial', 'configuracoes', 'estoque', 'financeiro', 'operacoes', 'rh', 'whatsapp']);
+
+  // WhatsApp collections must not use legacy cross-tenant waMember()
+  assert.doesNotMatch(rules, /function waMember\(/);
+  assert.match(rules, /function waCanRead\(res\)/);
+  assert.match(rules, /areaOk\(orgOf\(res\.data\), A_WA\(\), 1\)/);
+  assert.match(waMiddleware, /areaLevelOf\(req\.user, org, 'whatsapp'\)/);
+
+  // Storage rules enforce Operações (index 1) and RH onboardings (index 5)
+  assert.match(storageRules, /areaCode\(orgId\)\[1:2\]/);
+  assert.match(storageRules, /match \/hr-onboardings\/\{orgId\}\/\{onboardingId\}\/\{fileId\}/);
+  assert.match(storageRules, /areaCode\(orgId\)\[5:6\]/);
 });

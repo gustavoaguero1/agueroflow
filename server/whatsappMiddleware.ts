@@ -5,7 +5,7 @@
  * A empresa vem do pedido (orgId) e só vale se a pessoa for membro dela.
  */
 import type { NextFunction, Request, Response } from 'express';
-import { memberOrgOf } from './authMiddleware';
+import { areaLevelOf, memberOrgOf } from './authMiddleware';
 import { sessionForRequest } from './whatsappRouting';
 import { effectiveOrg } from './orgDefaults';
 import type { SessionContext } from './whatsappContext';
@@ -19,15 +19,18 @@ export function createWhatsAppMiddlewares(deps: {
 }) {
   return {
     companyContext(req: Request, res: Response, next: NextFunction) {
+      const waData = /^\/(whatsapp|composio)\//.test(req.path);
       const org = memberOrgOf(req);
       if (!org) {
         // Dados do WhatsApp nunca caem na empresa padrão por engano: sem empresa válida, 403
         // (master sem empresa continua vendo a padrão; webhooks públicos não têm usuário e seguem).
-        const waData = /^\/(whatsapp|composio)\//.test(req.path);
         if (waData && req.user && !req.user.master) {
           return res.status(403).json({ success: false, error: 'Selecione uma empresa da qual você faz parte.' });
         }
         return next();
+      }
+      if (waData && req.user && !req.user.master && areaLevelOf(req.user, org, 'whatsapp') < 1) {
+        return res.status(403).json({ success: false, error: 'Sem permissão de acesso à área de WhatsApp nesta empresa.' });
       }
       deps.runAsOrgSender(effectiveOrg(org), next);
     },

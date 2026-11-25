@@ -48,7 +48,7 @@ test('cada área diz se o banco também bloqueia ou se é só o menu', () => {
   const byId = Object.fromEntries(AREAS.map((a) => [a.id, a.enforcedInDatabase]));
   assert.deepEqual(byId, {
     painel: false, operacoes: true, estoque: true, comercial: true, financeiro: true, rh: true,
-    whatsapp: false, relatorios: false, estrutura: false, configuracoes: true, suporte: false,
+    whatsapp: true, relatorios: false, estrutura: false, configuracoes: true, suporte: false,
   });
 });
 

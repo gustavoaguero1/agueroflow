@@ -8,7 +8,8 @@ export type OnboardingStatus =
 export interface OnboardingDocumentAttachment {
   fileName: string;
   mimeType: string;
-  dataBase64: string;
+  dataBase64?: string;
+  storagePath?: string;
   uploadedAt: string;
   sizeBytes?: number;
 }

@@ -60,7 +60,7 @@ Owner kinds:
 | finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller and no payment accumulators; Admin/Gerente may edit open-title fields only; payment totals/balance, settlement metadata and paid state change only through the authenticated backend transaction. Original `valor` is preserved; `valorPago`, `valorAbatido` and `saldoAberto` track the ledger. NF-e ids `pay_{orgId}_{chave}_{parcela}` remain create-if-absent; OC/OS/receipt references remain intact |
 | finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades, incluindo as chaves das NF-e, fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
-| hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
+| hr_onboardings | orgId + organizationId | `organizationId ==` | Persistido diretamente no Firestore pelo backend `/api/hr/onboarding/*` (`server/hrOnboardingRoutes.ts`, sem arquivo JSON local). Anexos de documentos do candidato são gravados no Firebase Storage privado em `hr-onboardings/{orgId}/{onboardingId}/{fileId}` (leitura restrita a RH nível 1; escrita somente servidor via Admin SDK). |
 | inspections | orgId | `orgId ==` | Fluxo criado e atualizado somente por `/api/inspections`; a transição gera evento imutável na mesma transação. Estados: agendada → em campo → aguardando revisão → aprovada/devolvida. |
 | item_categories | orgId | `orgId ==` | Stock editor administra categorias; Operações e Comercial podem consultar. |
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
@@ -96,14 +96,14 @@ Owner kinds:
 | travel_searches | organizationId | `organizationId ==` | |
 | trusted_devices | orgId + userId | `userId == && orgId ==`, `orgId ==` | read: org members. create: own `userId` only. update/delete: owner or Admin/Gerente; `userId`/org unchanged |
 | units | orgId | `orgId ==` | |
-| whatsapp_ai_rules | none (server-wide bridge) | full list | see WhatsApp below |
-| whatsapp_ai_settings | none | — | |
-| whatsapp_contacts | none | full list | |
-| whatsapp_nd_records | optional organizationId | full list | no client delete |
-| whatsapp_nd_rules | optional organizationId | full list | |
-| whatsapp_ocr_receipts | none | full list | no client delete |
-| whatsapp_quick_replies | none | — | |
-| whatsapp_scheduled_jobs | none | full list | |
+| whatsapp_ai_rules | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
+| whatsapp_ai_settings | orgId + organizationId | `orgId ==` | Doc id namespaced por empresa (`${orgId}_mention_trigger`); área WhatsApp (`A_WA()`). |
+| whatsapp_contacts | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
+| whatsapp_nd_records | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`); sem exclusão pelo cliente. |
+| whatsapp_nd_rules | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
+| whatsapp_ocr_receipts | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`); sem exclusão pelo cliente. |
+| whatsapp_quick_replies | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
+| whatsapp_scheduled_jobs | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`) + validação de campos. |
 | work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
 | work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. |
 | work_shifts | orgId | `orgId ==` | |
@@ -148,13 +148,13 @@ Este recurso é uma trilha interna de preparação e controle. Não é uma autor
 
 Os metadados são armazenados em `engineering_documents`; cada movimentação fica como evento separado em `engineering_document_events`. Ambos são escopados por `orgId`, vinculados a unidade e contrato da mesma empresa e append-only para o cliente. Os arquivos ficam em `engineering-documents/{orgId}/{documentId}/{fileId}` no Firebase Storage, sem URL pública, com leitura por Operações nível 1 e criação por Operações nível 2; formatos aceitos: PDF, JPEG, PNG e WEBP, até 20 MB. Novas revisões criam novos documentos e caminhos. O fluxo de aprovação do cliente registra a referência informada pelo responsável interno, sem autenticação externa ou assinatura digital certificada.
 
-## WhatsApp mirror
+## WhatsApp mirror (multi-tenant & área `whatsapp`)
 
-`src/services/composioWhatsAppClient.ts` mirrors the server's WhatsApp bridge state to `whatsapp_*` as a backup and
-reads it back with unfiltered `getDocs`. The bridge is one server-wide instance: its data has no org, and the server
-API (`/api/whatsapp/contacts`, `/assistant/*`, `/nd/*`, `/ocr-dashboard`) serves it to any authenticated member.
-The rules match that: master or a member of at least one org, plus the old field validations. Scoping these needs the
-server to tag bridge data with an org first.
+Todas as 8 coleções `whatsapp_*` exigem `orgId`/`organizationId` da empresa do chamador e permissão da área `whatsapp` (`A_WA()`: nível 1 para leitura, nível 2 para escrita) nas regras do Firestore, além de validação de empresa e área `whatsapp` nível >= 1 no middleware de API (`server/whatsappMiddleware.ts`). `src/services/composioWhatsAppClient.ts` sempre grava `orgId` + `organizationId` da empresa ativa (sem defaults fictícios) e consulta com `where('orgId', '==', orgId)`.
+
+## Admissões digitais (HR Onboarding)
+
+Os convites e submissões de admissão ficam na coleção `hr_onboardings` no Firestore (gerenciada por `server/hrOnboardingRoutes.ts`, sem arquivo JSON em disco). Os documentos enviados pelo candidato (RG, CPF, CTPS, PIS, comprovante de residência, ASO) são gravados pelo backend no Storage privado em `hr-onboardings/{orgId}/{onboardingId}/{fileId}` e baixados sob demanda via endpoint autenticado (`requireArea('rh', 1)`). As regras do Storage bloqueiam toda escrita direta do cliente e permitem leitura apenas a membros com RH nível >= 1 na mesma empresa.
 
 ## Client queries changed for the rules
 
@@ -169,7 +169,7 @@ server to tag bridge data with an org first.
 Composite index for `collective_asset_movements` (`orgId` + `status`) is in `firestore.indexes.json`.
 
 Unfiltered reads that stay: `organizations` (any signed-in user may list), `org_members` in
-`MasterCompanySelectorPage` (master only), `whatsapp_*` (see above).
+`MasterCompanySelectorPage` (master only).
 
 
 Contas a Receber usa `finance_receivables` para o título original e `finance_receivable_receipts` como razão imutável. `POST /api/finance/receivable-receipts` valida empresa, permissão, saldo disponível e chave de idempotência; a transação grava o evento e atualiza os acumuladores no título de forma atômica. Recebimentos parciais mantêm o status em aberto; somente saldo zero muda para Recebido. A conciliação de crédito usa `POST /api/finance/bank-reconciliation/:transactionId/match-receipt`, exige crédito bancário e igualdade exata com o dinheiro efetivamente recebido. Não emite NF-e, boleto, cobrança, transferência ou baixa fiscal.
