@@ -673,6 +673,7 @@ export interface FieldWorker {
   id: string;
   orgId: string;
   rhEmployeeId?: string; // vínculo com o cadastro oficial do RH
+  isDemo?: boolean; // dado ilustrativo, nunca entra em apuração real
   name: string;
   cpf: string;
   whatsapp?: string;
