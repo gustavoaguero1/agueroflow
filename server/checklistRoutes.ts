@@ -311,7 +311,7 @@ export function createChecklistRouter(getH: () => AdminHandles | null = getAdmin
         });
         return { replayed: false, run };
       });
-      return res.status(201).json({ ok: true, ...result });
+      return res.status(result.replayed ? 200 : 201).json({ ok: true, ...result });
     } catch (error) {
       if (error instanceof ChecklistRouteError) {
         return res.status(error.status).json({ ok: false, error: error.message });
