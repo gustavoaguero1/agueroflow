@@ -21,6 +21,12 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'organizations/org_a'), { id: 'org_a', name: 'A' });
+    await setDoc(doc(db, 'units/unit_a'), { id: 'unit_a', orgId: 'org_a', name: 'Unidade A' });
+    await setDoc(doc(db, 'units/unit_b'), { id: 'unit_b', orgId: 'org_b', name: 'Unidade B' });
+    await setDoc(doc(db, 'contracts/contract_a'), { id: 'contract_a', orgId: 'org_a', unitIds: ['unit_a'] });
+    await setDoc(doc(db, 'contracts/contract_b'), { id: 'contract_b', orgId: 'org_b' });
+    await setDoc(doc(db, 'assets/asset_a'), { id: 'asset_a', orgId: 'org_a', unitId: 'unit_a' });
+    await setDoc(doc(db, 'assets/asset_b'), { id: 'asset_b', orgId: 'org_b', unitId: 'unit_b' });
     await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A', status: 'aberto' });
     await setDoc(doc(db, 'inspections/insp_a'), { orgId: 'org_a', unitId: 'unit_a', status: 'agendada' });
     await setDoc(doc(db, 'inspection_events/evt_a'), { orgId: 'org_a', inspectionId: 'insp_a' });
@@ -92,6 +98,42 @@ test('member read/write allowed', async () => {
   await assertSucceeds(getDoc(doc(db, 'overtime_rules/org_a')));
   await assertSucceeds(setDoc(doc(db, 'overtime_rules/org_a'), { organizationId: 'org_a', x: 1 }));
   await assertSucceeds(getDoc(doc(db, 'work_orders/missing')));
+});
+
+test('new work orders require a valid same-company unit, contract and asset', async () => {
+  const db = member();
+  await assertSucceeds(setDoc(doc(db, 'work_orders/ref_valid'), {
+    orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a', assetId: 'asset_a', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_missing_unit'), {
+    orgId: 'org_a', unitId: 'missing_unit', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_default_unit'), {
+    orgId: 'org_a', unitId: 'default_unit', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_unit'), {
+    orgId: 'org_a', unitId: 'unit_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_contract'), {
+    orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_asset'), {
+    orgId: 'org_a', unitId: 'unit_a', assetId: 'asset_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_wrong_unit_asset'), {
+    orgId: 'org_a', unitId: 'unit_b', assetId: 'asset_a', status: 'aberto',
+  }));
+});
+
+test('legacy work orders may update unrelated fields; changing references requires valid targets', async () => {
+  await seedAs((db) => setDoc(doc(db, 'work_orders/legacy_no_unit'), {
+    id: 'legacy_no_unit', orgId: 'org_a', status: 'aberto', title: 'Legacy',
+  }));
+  const db = member();
+  await assertSucceeds(updateDoc(doc(db, 'work_orders/legacy_no_unit'), { title: 'Legacy revisada' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/legacy_no_unit'), { unitId: 'default_unit' }));
+  await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { unitId: 'unit_a' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { unitId: 'unit_b' }));
 });
 
 test('inspection lifecycle and immutable inspection events are server-only writes', async () => {
