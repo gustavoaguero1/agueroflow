@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../src/services/safetyCompliance.ts';
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
+import { safetyPermitCode, validateSafetyPermitInput } from '../src/services/safetyManagement.ts';
 import type { SafetyPermitEventType } from '../src/types/safety.ts';
 import { requireArea } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
@@ -28,6 +29,137 @@ function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, 
 
 export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
+
+  router.post('/permits', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const draft = req.body?.permit as Record<string, any> | undefined;
+    if (!orgId || req.body?.orgId !== orgId || !actor?.uid || !draft || typeof draft !== 'object') {
+      return res.status(400).json({ ok: false, error: 'Empresa, usuário ou dados da APR/PT inválidos.' });
+    }
+
+    const text = (value: unknown, max: number) =>
+      typeof value === 'string' ? value.trim().slice(0, max) : '';
+    const teamMembers = Array.isArray(draft.teamMembers)
+      ? draft.teamMembers.map((value: unknown) => text(value, 120)).filter(Boolean)
+      : [];
+    const risks = Array.isArray(draft.risks) ? draft.risks.slice(0, 5).map((risk: Record<string, any>) => ({
+      hazard: text(risk?.hazard, 180),
+      consequence: text(risk?.consequence, 300),
+      initialRisk: risk?.initialRisk,
+      controlMeasures: text(risk?.controlMeasures, 700),
+      residualRisk: risk?.residualRisk,
+    })) : [];
+    const input = {
+      unitId: text(draft.unitId, 180),
+      contractId: text(draft.contractId, 180),
+      documentType: draft.documentType,
+      ...(draft.documentType === 'pt' ? { relatedAprId: text(draft.relatedAprId, 180) } : {}),
+      validFrom: text(draft.validFrom, 16),
+      validUntil: text(draft.validUntil, 16),
+      permitType: draft.permitType,
+      activityTitle: text(draft.activityTitle, 160),
+      description: text(draft.description, 2000),
+      location: text(draft.location, 180),
+      supervisorName: text(draft.supervisorName, 120),
+      teamMembers,
+      risks,
+      controls: draft.controls && typeof draft.controls === 'object' ? draft.controls : {},
+      emergencyPlan: text(draft.emergencyPlan, 1500),
+    };
+    const errors = validateSafetyPermitInput(input);
+    const rawEmployeeIds = Array.isArray(draft.teamMemberIds) ? draft.teamMemberIds : [];
+    const employeeIds = rawEmployeeIds.filter((id: unknown): id is string => validId(id));
+    if (input.documentType === 'pt' && (employeeIds.length < 1 || employeeIds.length > 30
+      || employeeIds.length !== rawEmployeeIds.length || new Set(employeeIds).size !== employeeIds.length)) {
+      errors.push('Vincule de 1 a 30 colaboradores únicos do diretório do RH à PT.');
+    }
+    if (errors.length) return res.status(400).json({ ok: false, error: errors.join(' ') });
+
+    const h = getH();
+    if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
+    const permitRef = h.db.collection('safety_permits').doc();
+    const eventRef = h.db.collection('safety_permit_events').doc();
+    const stateRef = h.db.collection('safety_permit_states').doc(permitRef.id);
+    const permitDate = input.validFrom.slice(0, 10);
+    const actorName = String(actor.email || actor.uid).slice(0, 160);
+
+    try {
+      await h.db.runTransaction(async (tx) => {
+        const unitRef = h.db.collection('units').doc(input.unitId);
+        const contractRef = h.db.collection('contracts').doc(input.contractId);
+        const [unitSnap, contractSnap] = await Promise.all([tx.get(unitRef), tx.get(contractRef)]);
+        if (!unitSnap.exists || unitSnap.data()?.orgId !== orgId
+          || !contractSnap.exists || contractSnap.data()?.orgId !== orgId) {
+          throw new SafetyRouteError(403, 'Unidade ou contrato não pertence à empresa selecionada.');
+        }
+
+        if (input.documentType === 'pt') {
+          const [employeeSnap, aprSnap, aprStateSnap] = await Promise.all([
+            tx.get(h.db.collection('rh_directory').where('orgId', '==', orgId)),
+            tx.get(h.db.collection('safety_permits').doc(input.relatedAprId)),
+            tx.get(h.db.collection('safety_permit_states').doc(input.relatedAprId)),
+          ]);
+          const employees = toRows<Record<string, any>>(employeeSnap);
+          const linked = employeeIds.map((id) => employees.find((employee) => employee.id === id));
+          if (linked.some((employee) => !employee || employee.orgId !== orgId
+            || employee.active !== true || employee.dismissalDate)) {
+            throw new SafetyRouteError(409, 'A PT contém colaborador inativo, desligado ou ausente do diretório do RH.');
+          }
+          const expectedNames = linked.map((employee) => String(employee!.name || '').trim()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+          const actualNames = teamMembers.slice().sort((a, b) => a.localeCompare(b, 'pt-BR'));
+          if (expectedNames.length !== actualNames.length
+            || expectedNames.some((name, index) => name !== actualNames[index])) {
+            throw new SafetyRouteError(409, 'Os nomes da equipe da PT precisam corresponder aos colaboradores selecionados no RH.');
+          }
+          if (!aprSnap.exists || !aprStateSnap.exists) {
+            throw new SafetyRouteError(409, 'A PT precisa estar vinculada a uma APR aprovada.');
+          }
+          const apr = aprSnap.data() || {};
+          const aprState = aprStateSnap.data() || {};
+          if (apr.orgId !== orgId || apr.documentType !== 'apr' || aprState.status !== 'approved'
+            || apr.unitId !== input.unitId || apr.contractId !== input.contractId
+            || !apr.validFrom || !apr.validUntil || apr.validFrom > input.validFrom || apr.validUntil < input.validUntil) {
+            throw new SafetyRouteError(409, 'A PT precisa estar vinculada a uma APR aprovada da mesma empresa, unidade, contrato e período.');
+          }
+        }
+
+        const record = {
+          id: permitRef.id, orgId,
+          unitId: input.unitId, contractId: input.contractId,
+          documentType: input.documentType,
+          ...(input.documentType === 'pt' ? { relatedAprId: input.relatedAprId, teamMemberIds: employeeIds } : {}),
+          permitCode: safetyPermitCode(input.documentType, permitDate, permitRef.id),
+          permitDate, permitType: input.permitType,
+          activityTitle: input.activityTitle, description: input.description, location: input.location,
+          validFrom: input.validFrom, validUntil: input.validUntil,
+          supervisorName: input.supervisorName, teamMembers,
+          risks: risks.map((risk, index) => ({ id: 'risk_' + (index + 1), ...risk })),
+          controls: input.controls, emergencyPlan: input.emergencyPlan,
+          createdByUid: actor.uid, createdByName: actorName,
+          createdAt: FieldValue.serverTimestamp(),
+        };
+        tx.create(permitRef, record);
+        tx.create(eventRef, {
+          orgId, unitId: input.unitId, contractId: input.contractId,
+          permitId: permitRef.id, eventType: 'created', actorUid: actor.uid,
+          actorName, recordedAt: FieldValue.serverTimestamp(),
+        });
+        tx.create(stateRef, {
+          id: permitRef.id, orgId, unitId: input.unitId, contractId: input.contractId,
+          permitId: permitRef.id, status: 'draft', latestEventId: eventRef.id,
+          updatedByUid: actor.uid, updatedByName: actorName,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return record;
+      });
+      return res.status(201).json({ ok: true, permitId: permitRef.id, permitCode: safetyPermitCode(input.documentType, permitDate, permitRef.id) });
+    } catch (error) {
+      if (error instanceof SafetyRouteError) return res.status(error.status).json({ ok: false, error: error.message });
+      console.error('[safety permit create] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível registrar a APR/PT.' });
+    }
+  });
 
   router.post('/permits/:permitId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
