@@ -5,6 +5,7 @@ import type {
   SafetyPermitType,
   SafetyRiskLevel,
   SafetyOccurrenceCategory,
+  SafetyDocumentType,
 } from '../types/safety';
 
 export const SAFETY_PERMIT_TYPES: readonly { value: SafetyPermitType; label: string }[] = [
@@ -59,6 +60,10 @@ const CONTROL_LABELS: Partial<Record<keyof SafetyPermitControls, string>> = {
 };
 
 export interface SafetyPermitInput {
+  unitId: string;
+  contractId: string;
+  documentType: SafetyDocumentType;
+  relatedAprId?: string;
   validFrom: string;
   validUntil: string;
   permitType: SafetyPermitType;
@@ -108,6 +113,11 @@ export function requiredSafetyControls(type: SafetyPermitType): Array<{ key: key
 
 export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
   const errors: string[] = [];
+  if (!input.unitId.trim()) errors.push('Selecione a unidade/obra.');
+  if (!input.contractId.trim()) errors.push('Selecione o contrato.');
+  if (input.documentType !== 'apr' && input.documentType !== 'pt') errors.push('Selecione APR ou Permissão de Trabalho.');
+  if (input.documentType === 'pt' && !input.relatedAprId?.trim()) errors.push('Vincule a PT a uma APR aprovada.');
+  if (input.documentType === 'apr' && input.relatedAprId) errors.push('Uma APR não pode ser vinculada a outra APR.');
   if (!isValidLocalDateTime(input.validFrom)) errors.push('Informe uma data/hora inicial válida.');
   if (!isValidLocalDateTime(input.validUntil)) errors.push('Informe uma data/hora final válida.');
   if (isValidLocalDateTime(input.validFrom) && isValidLocalDateTime(input.validUntil)
@@ -163,10 +173,10 @@ export function validateSafetyOccurrenceInput(input: SafetyOccurrenceInput): str
   return errors;
 }
 
-export function safetyPermitCode(permitDate: string, id: string): string {
+export function safetyPermitCode(documentType: SafetyDocumentType, permitDate: string, id: string): string {
   const year = permitDate.slice(0, 4);
   const suffix = id.replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase().padStart(8, '0');
-  return 'PT-' + year + '-' + suffix;
+  return (documentType === 'apr' ? 'APR-' : 'PT-') + year + '-' + suffix;
 }
 
 export function getSafetyNextStatus(
