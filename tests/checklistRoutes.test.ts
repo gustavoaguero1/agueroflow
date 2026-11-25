@@ -89,7 +89,7 @@ async function withApi(
 }
 
 async function post(base: string, path: string, body: unknown, method = 'POST') {
-  return fetch(base + path, {
+  return fetch(base + '/api/checklists' + path, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
