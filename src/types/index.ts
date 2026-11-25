@@ -156,6 +156,7 @@ export interface WorkOrder {
   id: string;
   orgId: string;
   unitId: string;
+  projectId?: string;
   contractId?: string;
   costCenterId?: string;
   assetId?: string;
@@ -535,6 +536,7 @@ export interface StockMovement {
   quantity: number;
   balanceAfter: number;
   reason: string;
+  projectId?: string;
   orderId?: string;
   orderNumber?: string;
   unitCost?: number;
@@ -556,6 +558,7 @@ export interface Occurrence {
   id: string;
   orgId: string;
   unitId: string;
+  projectId?: string;
   assetId?: string;
   orderId?: string;
   linkedOrderNumber?: string;
@@ -593,6 +596,7 @@ export interface ConstructionDailyReport {
   id: string;
   orgId: string;
   unitId: string;
+  projectId?: string;
   contractId?: string;
   reportNumber: string;
   date: string;
@@ -708,6 +712,7 @@ export interface WorkerTimeLog {
   role: string;
   date: string;
   siteName: string;
+  projectId?: string;
   unitId?: string;
   contractId?: string;
   shiftId?: string;
@@ -764,6 +769,7 @@ export interface OrderChecklistItem {
 export interface ConstructionMilestone {
   id: string;
   orgId: string;
+  projectId?: string;
   contractId?: string;
   unitId: string;
   name: string;
@@ -811,3 +817,4 @@ export interface AuditLog {
 
 export * from './collectiveAssets';
 export * from './rhPayroll';
+export * from './project';

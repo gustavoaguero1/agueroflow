@@ -22,7 +22,10 @@ import {
   OrgMember,
   AuditLog,
   UserRole,
+  Project,
 } from '../types';
+import { subscribeProjects } from '../services/projectService';
+import { ProjectsManager } from '../components/structure/ProjectsManager';
 import {
   Building,
   FileText,
@@ -46,15 +49,16 @@ import {
   EyeOff,
   Copy,
   Sparkles,
+  FolderKanban,
 } from 'lucide-react';
 
 interface StructureModuleProps {
-  initialTab?: 'organizacao' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria';
+  initialTab?: 'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria';
 }
 
 export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = 'organizacao' }) => {
-  const { user, organization, member, role, isAdmin, logAudit, adminSetUserPassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<'organizacao' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria'>(initialTab);
+  const { user, organization, member, role, isAdmin, isManagerOrAbove, areaLevel, logAudit, adminSetUserPassword } = useAuth();
+  const [activeTab, setActiveTab] = useState<'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria'>(initialTab);
 
   // Sync tab if prop changes from navigation
   useEffect(() => {
@@ -65,6 +69,8 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -142,6 +148,12 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
       setContracts(s.docs.map((d) => ({ id: d.id, ...d.data() } as Contract)))
     );
 
+    const unsubCostCenters = onSnapshot(query(collection(db, 'cost_centers'), where('orgId', '==', organization.id)), (s) =>
+      setCostCenters(s.docs.map((d) => ({ id: d.id, ...d.data() } as CostCenter)))
+    );
+
+    const unsubProjects = subscribeProjects(organization.id, setProjects);
+
     const unsubAssets = onSnapshot(query(collection(db, 'assets'), where('orgId', '==', organization.id)), (s) =>
       setAssets(s.docs.map((d) => ({ id: d.id, ...d.data() } as Asset)))
     );
@@ -159,6 +171,8 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
     return () => {
       unsubUnits();
       unsubContracts();
+      unsubCostCenters();
+      unsubProjects();
       unsubAssets();
       unsubMembers();
       unsubAudit();
@@ -495,6 +509,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
       <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
         {[
           { id: 'organizacao' as const, label: 'Organização Ativa', icon: Building },
+          { id: 'projetos' as const, label: `Projetos / Obras (${projects.length})`, icon: FolderKanban },
           { id: 'unidades' as const, label: `Unidades (${units.length})`, icon: Building },
           { id: 'contratos' as const, label: `Contratos (${contracts.length})`, icon: FileText },
           { id: 'ativos' as const, label: `Ativos (${assets.length})`, icon: Boxes },
@@ -521,6 +536,23 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
       </div>
 
       {/* Content */}
+      {activeTab === 'projetos' && organization && (
+        <ProjectsManager
+          orgId={organization.id}
+          userUid={user?.uid || ''}
+          userName={member?.userName || user?.displayName || user?.email || 'Usuário'}
+          projects={projects}
+          units={units}
+          contracts={contracts}
+          costCenters={costCenters}
+          canManage={
+            (isManagerOrAbove || role === 'Supervisor') &&
+            (areaLevel('operacoes') >= 2 || areaLevel('comercial') >= 2)
+          }
+          onAudit={(action, details, targetId) => logAudit('Projetos/Obras', action, details, targetId)}
+        />
+      )}
+
       {activeTab === 'organizacao' && (
         <div className="bg-[#121826] border border-slate-800 rounded-xl p-6 max-w-2xl space-y-4 text-xs">
           <h3 className="text-sm font-bold text-white mb-2">Dados da Organização</h3>

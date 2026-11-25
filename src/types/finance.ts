@@ -20,7 +20,7 @@ export interface FinanceRule {
   updatedAt: string;
 }
 
-export interface Rateio { categoriaId: string; centroCustoId?: string; contractId?: string; workOrderId?: string; valor: number }
+export interface Rateio { categoriaId: string; centroCustoId?: string; projectId?: string; contractId?: string; workOrderId?: string; valor: number }
 
 export interface FinancePayable {
   id: string;
@@ -45,6 +45,7 @@ export interface FinancePayable {
   settlementId?: string;
   categoriaId: string;
   centroCustoId?: string;
+  projectId?: string;
   contractId?: string;
   workOrderId?: string;
   nfeChave?: string;
@@ -212,7 +213,7 @@ export interface FinancePayableSettlement {
 export interface FinanceReceivable {
   id: string;
   orgId: string;
-  origem: 'manual';
+  origem: 'manual' | 'medicao';
   cliente: { nome: string; cnpj?: string };
   documento: string;
   parcela?: string;
@@ -227,9 +228,11 @@ export interface FinanceReceivable {
   lastReceiptBy?: string;
   recebidoEm?: string;
   recebidoPor?: string;
+  projectId?: string;
   contractId?: string;
   commercialProposalId?: string;
   workOrderId?: string;
+  measurementBulletinId?: string;
   notes?: string;
   createdAt: string;
   createdBy: string;
