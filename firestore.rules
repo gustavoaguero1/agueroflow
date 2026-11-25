@@ -458,7 +458,7 @@ service cloud.firestore {
       function orgScoped() {
         return coll in [
           // orgId
-          'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
+          'assets', 'checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
           'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
@@ -475,7 +475,7 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'inspection_events']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'inspection_events', 'checklist_runs', 'checklist_run_events', 'checklist_template_events']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -483,7 +483,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['checklist_runs', 'checklist_templates', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
+          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -848,7 +848,7 @@ service cloud.firestore {
       function genericCreate() {
         return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
           // Inspection records and their immutable events are written only through the validated server workflow.
-          && !(coll in ['inspections', 'inspection_events'])
+          && !(coll in ['inspections', 'inspection_events', 'checklist_templates', 'checklist_runs', 'checklist_run_events', 'checklist_template_events'])
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
           && validRdoCreate()
           && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
@@ -856,14 +856,14 @@ service cloud.firestore {
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
         // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
-        && coll != 'inspections'
+        && coll !in ['inspections', 'checklist_templates', 'checklist_runs']
         && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
         && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
           ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
           : (coll == 'quality_record_states'
             ? (areaWrite(resource.data) && validQualityStateUpdate())
             : (areaWrite(resource.data) || rhAllocation())));
-      allow delete: if orgScoped() && coll !in ['quality_record_states', 'inspections'] && !immutable() && canDelete() && areaWrite(resource.data)
+      allow delete: if orgScoped() && coll !in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs'] && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
