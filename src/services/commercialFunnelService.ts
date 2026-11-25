@@ -66,7 +66,9 @@ export async function markProposalLost(db: Firestore, proposal: CommercialPropos
 
 /** isInitial first, then lowest order (same as WorkOrdersModule). */
 export function pickInitialStatus<T extends { order?: number; isInitial?: boolean }>(list: T[]): T | undefined {
-  return [...list].sort((a, b) => Number(!!b.isInitial) - Number(!!a.isInitial) || (a.order ?? 0) - (b.order ?? 0))[0];
+  return list
+    .filter((status) => status.isInitial === true)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
 }
 
 /** Deterministic OS id + transaction: concurrent calls yield a single work order. */
