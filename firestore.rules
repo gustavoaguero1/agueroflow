@@ -509,25 +509,26 @@ service cloud.firestore {
         let unitPath = /databases/$(database)/documents/units/$(unitId);
         return unitId is string && unitId.size() > 0 && unitId.size() <= 180
           && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+')
-          && exists(unitPath) && orgOf(get(unitPath).data) == orgOf(d);
+          && orgOf(get(unitPath).data) == orgOf(d);
       }
       function workOrderContractValid(d) {
         let contractId = d.get('contractId', '');
         let contractPath = /databases/$(database)/documents/contracts/$(contractId);
         return contractId == '' || contractId == null
           || (contractId is string && contractId.size() > 0 && contractId.size() <= 180
-            && contractId.matches('[A-Za-z0-9_-]+') && exists(contractPath)
+            && contractId.matches('[A-Za-z0-9_-]+')
             && orgOf(get(contractPath).data) == orgOf(d));
       }
       function workOrderAssetValid(d) {
         let unitId = d.get('unitId', '');
         let assetId = d.get('assetId', '');
         let assetPath = /databases/$(database)/documents/assets/$(assetId);
+        let asset = get(assetPath).data;
         return assetId == '' || assetId == null
           || (assetId is string && assetId.size() > 0 && assetId.size() <= 180
-            && assetId.matches('[A-Za-z0-9_-]+') && exists(assetPath)
-            && orgOf(get(assetPath).data) == orgOf(d)
-            && (get(assetPath).data.get('unitId', '') == '' || get(assetPath).data.get('unitId', '') == unitId));
+            && assetId.matches('[A-Za-z0-9_-]+')
+            && orgOf(asset) == orgOf(d)
+            && (asset.get('unitId', '') == '' || asset.get('unitId', '') == unitId));
       }
       function workOrderReferencesValid(d) {
         return coll != 'work_orders'
