@@ -547,9 +547,14 @@ service cloud.firestore {
           && safetyRiskRank(risk.get('residualRisk', '')) <= safetyRiskRank(risk.get('initialRisk', ''));
       }
       function validSafetyRiskList(d) {
+        let risks = d.get('risks', []);
         return d.get('risks', null) is list
-          && d.get('risks', []).size() == 1
-          && validSafetyRiskItem(d.get('risks', [])[0]);
+          && risks.size() >= 1 && risks.size() <= 5
+          && validSafetyRiskItem(risks[0])
+          && (risks.size() < 2 || validSafetyRiskItem(risks[1]))
+          && (risks.size() < 3 || validSafetyRiskItem(risks[2]))
+          && (risks.size() < 4 || validSafetyRiskItem(risks[3]))
+          && (risks.size() < 5 || validSafetyRiskItem(risks[4]));
       }
       function validSafetyPermitCreate() {
         let d = request.resource.data;
