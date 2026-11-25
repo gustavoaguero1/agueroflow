@@ -233,9 +233,11 @@ export interface WorkOrder {
   signedBy?: string;
   signedAt?: string;
   technicianSignatureUrl?: string;
+  technicianSignaturePath?: string;
   technicianSignedBy?: string;
   technicianSignedAt?: string;
   clientSignatureUrl?: string;
+  clientSignaturePath?: string;
   clientSignedBy?: string;
   clientSignedAt?: string;
   isBlockedByReservation?: boolean;
