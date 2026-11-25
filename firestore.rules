@@ -1629,26 +1629,26 @@ service cloud.firestore {
           : eventType == 'note_added' && currentStatus != '' ? currentStatus : '';
       }
       function validSafetyPermitStateUpdate() {
-        let permitId = resource.data.get('permitId', '');
-        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let safePermitId = resource.data.get('permitId', '') is string && resource.data.get('permitId', '').size() > 0
+          ? resource.data.get('permitId', '') : '__missing_permit__';
         let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
         let eventId = request.resource.data.get('latestEventId', '');
         let safeEventId = eventId is string && eventId.size() > 0 ? eventId : '__missing_event__';
         let eventPath = /databases/$(database)/documents/safety_permit_events/$(safeEventId);
-        let permitExists = exists(permitPath);
-        let permit = permitExists ? get(permitPath).data : {};
-        let eventExists = exists(eventPath);
-        let event = eventExists ? get(eventPath).data : {};
+        let permit = exists(permitPath) ? get(permitPath).data : {};
+        let event = exists(eventPath) ? get(eventPath).data : {};
         let eventType = event.get('eventType', '');
         let managerAction = eventType in ['approved', 'rejected', 'closed', 'cancelled'];
         return coll != 'safety_permit_states' || (
-          signedIn() && permitExists
+          signedIn()
           && request.resource.data.get('id', '') == docId
-          && request.resource.data.get('permitId', '') == permitId
+          && request.resource.data.get('permitId', '') == resource.data.get('permitId', '')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'latestEventId', 'updatedByUid', 'updatedByName', 'updatedAt'])
-          && eventExists && eventId is string && eventId.size() > 0
+          && exists(permitPath)
+          && eventId is string && eventId.size() > 0
           && eventId != resource.data.get('latestEventId', '')
-          && event.get('permitId', '') == permitId
+          && exists(eventPath)
+          && event.get('permitId', '') == resource.data.get('permitId', '')
           && event.get('orgId', '') == orgOf(resource.data)
           && event.get('unitId', '') == resource.data.get('unitId', '')
           && event.get('contractId', '') == resource.data.get('contractId', '')
