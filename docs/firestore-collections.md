@@ -67,8 +67,8 @@ Owner kinds:
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
 | ops_orgs/{orgId}/{coll}/{doc} | path (orgId) | full collection listeners | módulo Operações (`public/operacoes`, ponte `src/modules/operations/opsBridge.ts`). Membros leem/escrevem; Visualizador só lê; `salarios` só Admin/Gerente; `membros` e `config/params` escrita Admin/Gerente |
-| order_events | orgId (immutable) | `orgId ==` + `orderId ==` | timeline |
-| order_messages | orgId | `orgId ==` + `orderId ==` | |
+| order_events | orgId (immutable) | `orgId ==` + `orderId ==` | Operations editor (nível 2); timeline imutável. Evento inicial da OS e transições de status são gravados na mesma transação da OS. |
+| order_messages | orgId | `orgId ==` + `orderId ==` | Operations (nível 1 para leitura, nível 2 para escrita). |
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
@@ -100,8 +100,8 @@ Owner kinds:
 | whatsapp_ocr_receipts | none | full list | no client delete |
 | whatsapp_quick_replies | none | — | |
 | whatsapp_scheduled_jobs | none | full list | |
-| work_order_statuses | orgId | `orgId ==` | doc id `${orgId}_${statusId}` |
-| work_orders | orgId | `orgId ==` | |
+| work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
+| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 
