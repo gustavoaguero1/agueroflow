@@ -74,10 +74,16 @@ export function pickInitialStatus<T extends { order?: number; isInitial?: boolea
 /** Deterministic OS id + transaction: concurrent calls yield a single work order. */
 export async function markProposalWon(db: Firestore, proposal: CommercialProposal, user: Actor): Promise<string> {
   const orgId = proposal.organizationId;
-  const sts = await getDocs(query(collection(db, 'work_order_statuses'), where('orgId', '==', orgId)));
+  const [sts, companyUnits, companyContracts, existing] = await Promise.all([
+    getDocs(query(collection(db, 'work_order_statuses'), where('orgId', '==', orgId))),
+    getDocs(query(collection(db, 'units'), where('orgId', '==', orgId))),
+    getDocs(query(collection(db, 'contracts'), where('orgId', '==', orgId))),
+    getDocs(query(collection(db, 'work_orders'), where('orgId', '==', orgId))),
+  ]);
   const first = pickInitialStatus(sts.docs.map((d) => d.data() as { id?: string; order?: number; isInitial?: boolean }));
   const status = first?.id;
-  const existing = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', orgId)));
+  const unitIds = new Set(companyUnits.docs.map((d) => d.id));
+  const contractIds = new Set(companyContracts.docs.map((d) => d.id));
   const seed = maxOrderSeq(existing.docs.map((d) => d.data() as { orderNumber?: string }));
   const orderId = `os_prop_${proposal.id}`;
 
@@ -91,15 +97,11 @@ export async function markProposalWon(db: Firestore, proposal: CommercialProposa
     if (!status) throw new Error('Configure ao menos um estado inicial de OS antes de converter uma proposta ganha.');
     if (!cur.unitId?.trim()) throw new Error('Vincule uma unidade válida à proposta antes de convertê-la em OS.');
 
-    const unitSnap = await tx.get(doc(db, 'units', cur.unitId));
-    if (!unitSnap.exists() || unitSnap.data()?.orgId !== orgId) {
+    if (!unitIds.has(cur.unitId)) {
       throw new Error('A unidade vinculada à proposta não pertence à empresa selecionada.');
     }
-    if (cur.contractId) {
-      const contractSnap = await tx.get(doc(db, 'contracts', cur.contractId));
-      if (!contractSnap.exists() || contractSnap.data()?.orgId !== orgId) {
-        throw new Error('O contrato vinculado à proposta não pertence à empresa selecionada.');
-      }
+    if (cur.contractId && !contractIds.has(cur.contractId)) {
+      throw new Error('O contrato vinculado à proposta não pertence à empresa selecionada.');
     }
 
     const now = new Date().toISOString();
