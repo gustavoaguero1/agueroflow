@@ -129,7 +129,7 @@ export const RecurringOrdersModule: React.FC = () => {
         }
 
         const generatedNumber = await nextOrderNumber(tx, db, organization.id, seed);
-        tx.create(orderRef, {
+        tx.set(orderRef, {
           id: orderId,
           orgId: organization.id,
           unitId: rec.unitId,
@@ -148,7 +148,7 @@ export const RecurringOrdersModule: React.FC = () => {
           createdAt,
           updatedAt: createdAt,
         });
-        tx.create(eventRef, {
+        tx.set(eventRef, {
           id: eventId,
           orgId: organization.id,
           orderId,
