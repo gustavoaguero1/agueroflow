@@ -341,79 +341,34 @@ export const SafetyManagementPanel: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const permitRef = doc(collection(db, 'safety_permits'));
-      const permitDate = permitDraft.validFrom.slice(0, 10);
-      const actorName = user.displayName || user.email || 'Responsável de campo';
-      const record = {
-        id: permitRef.id,
-        orgId: organizationId,
-        unitId: permitDraft.unitId,
-        contractId: permitDraft.contractId,
-        documentType: permitDraft.documentType,
-        ...(permitDraft.documentType === 'pt' ? { relatedAprId: permitDraft.relatedAprId } : {}),
-        permitCode: safetyPermitCode(permitDraft.documentType, permitDate, permitRef.id),
-        permitDate,
-        permitType: permitDraft.permitType,
-        activityTitle: permitDraft.activityTitle.trim(),
-        description: permitDraft.description.trim(),
-        location: permitDraft.location.trim(),
-        validFrom: permitDraft.validFrom,
-        validUntil: permitDraft.validUntil,
-        supervisorName: permitDraft.supervisorName.trim(),
-        teamMembers,
-        ...(isPt ? { teamMemberIds: [...permitDraft.teamMemberIds] } : {}),
-        risks: permitDraft.risks.map((risk, index) => ({
-          id: 'risk_' + (index + 1),
-          hazard: risk.hazard.trim(),
-          consequence: risk.consequence.trim(),
-          initialRisk: risk.initialRisk,
-          controlMeasures: risk.controlMeasures.trim(),
-          residualRisk: risk.residualRisk,
-        })),
-        controls: permitDraft.controls,
-        emergencyPlan: permitDraft.emergencyPlan.trim(),
-        createdByUid: user.uid,
-        createdByName: actorName,
-        createdAt: serverTimestamp(),
-      };
-
-      await setDoc(permitRef, record);
-      const initialEventRef = doc(collection(db, 'safety_permit_events'));
-      await setDoc(initialEventRef, {
-        orgId: organizationId,
-        unitId: permitDraft.unitId,
-        contractId: permitDraft.contractId,
-        permitId: permitRef.id,
-        eventType: 'created',
-        actorUid: user.uid,
-        actorName,
-        recordedAt: serverTimestamp(),
-      });
-      await setDoc(doc(db, 'safety_permit_states', permitRef.id), {
-        id: permitRef.id,
-        orgId: organizationId,
-        unitId: permitDraft.unitId,
-        contractId: permitDraft.contractId,
-        permitId: permitRef.id,
-        status: 'draft',
-        latestEventId: initialEventRef.id,
-        updatedByUid: user.uid,
-        updatedByName: actorName,
-        updatedAt: serverTimestamp(),
-      });
+      const response = await postJson<{ ok?: boolean; permitId?: string; permitCode?: string }>(
+        '/api/safety/permits',
+        {
+          orgId: organizationId,
+          permit: {
+            ...input,
+            ...(isPt ? { teamMemberIds: [...permitDraft.teamMemberIds] } : {}),
+          },
+        },
+      );
+      if (!response.ok || !response.permitId) {
+        throw new Error(response.error || 'O servidor recusou o cadastro da APR/PT.');
+      }
+      const permitId = response.permitId;
+      const permitCode = response.permitCode || 'APR/PT ' + permitId;
 
       setShowPermitForm(false);
-      setSelectedPermitId(permitRef.id);
+      setSelectedPermitId(permitId);
       setPermitDraft(emptyPermitDraft(units[0]?.id || '', contracts[0]?.id || ''));
       try {
-        await logAudit('Obras', 'Registrar APR/PT', 'Permissão ' + record.permitCode + ' criada como rascunho.', permitRef.id);
+        await logAudit('Obras', 'Registrar APR/PT', 'Permissão ' + permitCode + ' criada como rascunho.', permitId);
       } catch (auditError) {
         console.error('APR/PT salva, mas falhou o evento de auditoria:', auditError);
         alert('A APR/PT foi salva, mas não foi possível registrar o evento de auditoria. Avise o administrador.');
       }
     } catch (error) {
       console.error('Erro ao registrar APR/PT:', error);
-      alert('Não foi possível salvar a APR/PT. Verifique as permissões e tente novamente.');
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar a APR/PT. Verifique as permissões e tente novamente.');
     } finally {
       setSubmitting(false);
     }
