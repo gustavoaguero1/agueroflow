@@ -66,6 +66,22 @@ test('missing, expired or future-issued NR blocks the activity', () => {
   }
 });
 
+test('NR must remain valid through the final day of the planned activity', () => {
+  const blockers = evaluateEmployeeSafetyCompliance(
+    snapshot({ trainingRecords: [{ ...training, expirationDate: '2026-12-10' }] }),
+    employee.id, 'trabalho_em_altura', '2026-12-01', '2026-12-15',
+  );
+  assert.ok(blockers.some((item) => item.category === 'treinamento' && item.message.includes('NR-35')));
+});
+
+test('EPI CA must remain valid through the final day of the planned activity', () => {
+  const blockers = evaluateEmployeeSafetyCompliance(
+    snapshot({ ppeCatalog: [{ ...ppe, caExpiresAt: '2026-12-10' }] }),
+    employee.id, 'trabalho_em_altura', '2026-12-01', '2026-12-15',
+  );
+  assert.ok(blockers.some((item) => item.category === 'epi' && item.message.includes('CA ausente ou vencido')));
+});
+
 test('missing EPI configuration fails closed', () => {
   const blockers = evaluateEmployeeSafetyCompliance(snapshot({ ppeCatalog: [] }), employee.id, 'trabalho_em_altura', today);
   assert.ok(blockers.some((blocker) => blocker.category === 'epi' && blocker.message.includes('Nenhum EPI obrigatório')));
