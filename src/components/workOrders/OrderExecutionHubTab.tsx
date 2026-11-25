@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
+import { apiFetch } from '../../apiAuthFetch';
 import { compressImage } from '../../lib/compressImage';
 import {
   ShieldAlert,
@@ -321,56 +322,35 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
 
   // Manager Action: Approve reservation & unblock execution
   const handleApproveReservationAndUnblock = async () => {
+    if (!canApprove) {
+      alert('Seu perfil não possui alçada para aprovar a reserva desta OS.');
+      return;
+    }
     try {
-      const updatedParts = (order.plannedParts || []).map((p) => ({
-        ...p,
-        status: 'disponivel' as const,
-      }));
-
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        status: 'em_execucao',
-        isBlockedByReservation: false,
-        reservationApprovalStatus: 'aprovado',
-        reservationApprovedBy: currentUser.displayName || currentUser.email || 'Gestor',
-        reservationApprovedAt: new Date().toISOString(),
-        plannedParts: updatedParts,
-        actualStartDate: order.actualStartDate || new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString(),
+      setGpsError(null);
+      const idempotencyKey = `reservation_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const response = await apiFetch(`/api/work-orders/${encodeURIComponent(order.id)}/reservation-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organizationId,
+          expectedStatus: order.status,
+          idempotencyKey,
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload.orderUpdates) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'O servidor recusou a aprovação da reserva.');
+      }
 
-      // Dispara evento na linha do tempo
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organizationId,
-        orderId: order.id,
-        userId: currentUser.uid,
-        userName: currentUser.displayName || currentUser.email || 'Gestor',
-        eventType: 'aprovacao',
-        description: `Reserva de peças aprovada pelo Gestor. Ordem desbloqueada e liberada para execução.`,
-        newStatus: 'em_execucao',
-        timestamp: new Date().toISOString(),
-      });
-
-      // Posta mensagem oficial no diálogo
-      await addDoc(collection(db, 'order_messages'), {
-        orgId: organizationId,
-        orderId: order.id,
-        senderId: currentUser.uid,
-        senderName: currentUser.displayName || 'Gestor / Superior',
-        senderRole: 'Superior',
-        messageType: 'liberacao',
-        content: '✅ APROVADO: A reserva de peças foi autorizada pela gestão. A ordem está desbloqueada e em execução.',
-        createdAt: new Date().toISOString(),
-        resolved: true,
-      });
-
-      onOrderUpdated({
-        status: 'em_execucao',
-        isBlockedByReservation: false,
-        reservationApprovalStatus: 'aprovado',
-        plannedParts: updatedParts,
-      });
+      onOrderUpdated(payload.orderUpdates);
+      if (payload.replayed !== true) {
+        // The backend commits status, event, message and idempotency in a single transaction.
+        // No local confirmation is shown until the server confirms the operation.
+      }
     } catch (err) {
       console.error('Erro ao aprovar reserva:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível aprovar a reserva da OS.');
     }
   };
 
