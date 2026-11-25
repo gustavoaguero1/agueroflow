@@ -78,3 +78,27 @@ test('cadeia real: empresa de que a pessoa não é membro não abre sessão nenh
     assert.deepEqual(await s.get('/api/whatsapp/bridge/connect?orgId=o9'), []);
   } finally { s.close(); }
 });
+
+test('área whatsapp = 0 bloqueia acesso às rotas /api/whatsapp/* mesmo sendo membro da empresa', async () => {
+  const mws = createWhatsAppMiddlewares({ runInSession: (_s, fn) => fn(), runAsOrgSender: (_o, fn) => fn() });
+  const app = express();
+  app.use((r, _s, n) => {
+    (r as { user?: object }).user = {
+      uid: 'u_nowa',
+      master: false,
+      orgs: { o1: 'Admin' },
+      areas: { o1: '22222202222' },
+    };
+    n();
+  });
+  app.use('/api', mws.companyContext);
+  app.all('/api/*', (_r, s) => s.json({ ok: true }));
+  const srv = app.listen(0);
+  const port = (srv.address() as AddressInfo).port;
+  try {
+    const waStatus = (await fetch(`http://127.0.0.1:${port}/api/whatsapp/contacts?orgId=o1`)).status;
+    const rhStatus = (await fetch(`http://127.0.0.1:${port}/api/rh/employees?orgId=o1`)).status;
+    assert.equal(waStatus, 403);
+    assert.equal(rhStatus, 200);
+  } finally { srv.close(); }
+});

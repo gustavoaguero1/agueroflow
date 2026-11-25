@@ -37,7 +37,8 @@ import {
   listOnboardings,
   generateOnboardingLink,
   updateOnboardingStatus,
-  deleteOnboarding
+  deleteOnboarding,
+  fetchOnboardingDocument,
 } from '../../services/onboardingService';
 
 interface RhOnboardingManagerProps {
@@ -979,31 +980,51 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
                         };
 
                         const isImage = doc.mimeType.startsWith('image/');
+                        const handleOpenDoc = async () => {
+                          if (doc.dataBase64) {
+                            setActiveDocPreview({
+                              title: docLabels[key] || doc.fileName,
+                              base64: doc.dataBase64,
+                              mimeType: doc.mimeType,
+                            });
+                            return;
+                          }
+                          try {
+                            const loaded = await fetchOnboardingDocument(
+                              selectedOnboardingForView.id,
+                              key,
+                              currentOrgId,
+                            );
+                            setActiveDocPreview({
+                              title: docLabels[key] || loaded.fileName,
+                              base64: loaded.dataBase64,
+                              mimeType: loaded.mimeType,
+                            });
+                          } catch (err: any) {
+                            alert(err?.message || 'Não foi possível carregar o documento do Storage.');
+                          }
+                        };
 
                         return (
                           <div
                             key={key}
-                            onClick={() =>
-                              setActiveDocPreview({
-                                title: docLabels[key] || doc.fileName,
-                                base64: doc.dataBase64,
-                                mimeType: doc.mimeType,
-                              })
-                            }
+                            onClick={handleOpenDoc}
                             className="bg-slate-950 border border-slate-800 hover:border-cyan-500 rounded-xl p-2.5 transition cursor-pointer group flex flex-col justify-between"
                           >
                             <span className="text-[10px] font-bold text-slate-300 truncate block mb-1">
                               {docLabels[key] || doc.fileName}
                             </span>
 
-                            {isImage ? (
+                            {isImage && doc.dataBase64 ? (
                               <div className="h-24 w-full bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-slate-800">
                                 <img src={doc.dataBase64} alt={key} className="h-full w-full object-cover group-hover:scale-105 transition" />
                               </div>
                             ) : (
                               <div className="h-24 w-full bg-slate-900 rounded-lg flex flex-col items-center justify-center text-slate-400 gap-1 border border-slate-800">
                                 <FileText size={24} className="text-cyan-400" />
-                                <span className="text-[9px] font-mono">PDF / Documento</span>
+                                <span className="text-[9px] font-mono">
+                                  {doc.storagePath ? 'Storage Privado (RH)' : 'PDF / Documento'}
+                                </span>
                               </div>
                             )}
 
