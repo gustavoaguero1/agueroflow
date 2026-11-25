@@ -172,6 +172,11 @@ export interface WorkOrder {
   assignedTeam?: string;
   assignedTo?: string;
   assignedUsers?: string[];
+  /** RH directory ids allocated for execution (used by SMS compliance gate). */
+  assignedEmployeeIds?: string[];
+  requiresSafetyPermit?: boolean;
+  safetyPermitType?: import('./safety').SafetyPermitType;
+  safetyPermitId?: string;
   scheduledStartDate?: string;
   scheduledEndDate?: string;
   actualStartDate?: string;
