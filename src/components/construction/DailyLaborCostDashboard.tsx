@@ -246,68 +246,6 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
   };
 
   // Export summary to CSV
-  const handleExportSummaryCSV = () => {
-    const headers = [
-      'Data',
-      'Obra / Projeto',
-      'Colaborador',
-      'Cargo',
-      'Valor Hora (R$)',
-      'Horas Normais',
-      'Custo Base (R$)',
-      'HE 50%',
-      'Custo HE 50% (R$)',
-      'HE 100%',
-      'Custo HE 100% (R$)',
-      'Hora Viagem',
-      'Custo Viagem (R$)',
-      'Diárias & Hospedagem (R$)',
-      'Custo Total Força de Trabalho (R$)',
-    ];
-
-    const csvData = filteredLogs.map((l) => {
-      const worker = workerMap.get(l.workerId);
-      const ot50Mul = worker?.customCalculationRules?.overtime50Multiplier ?? rules?.overtime50Multiplier ?? 1.5;
-      const ot100Mul = worker?.customCalculationRules?.overtime100Multiplier ?? rules?.overtime100Multiplier ?? 2.0;
-      const travelMul = worker?.customCalculationRules?.travelHourMultiplier ?? rules?.travelHourMultiplier ?? 1.0;
-      const rate = l.hourlyRate || worker?.hourlyRate || 19.09;
-      const baseC = (l.normalHours * rate).toFixed(2);
-      const ot50C = (l.overtime50Hours * rate * ot50Mul).toFixed(2);
-      const ot100C = (l.overtime100Hours * rate * ot100Mul).toFixed(2);
-      const travC = (l.travelHours * rate * travelMul).toFixed(2);
-      const allowC = ((l.mealAllowance || 0) + (l.lodgingAllowance || 0)).toFixed(2);
-
-      return [
-        selectedDate,
-        `"${l.siteName}"`,
-        `"${l.workerName}"`,
-        `"${l.role}"`,
-        rate.toFixed(2),
-        l.normalHours,
-        baseC,
-        l.overtime50Hours,
-        ot50C,
-        l.overtime100Hours,
-        ot100C,
-        l.travelHours,
-        travC,
-        allowC,
-        l.totalLaborCost.toFixed(2),
-      ];
-    });
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(';'), ...csvData.map((e) => e.join(';'))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Relatorio_Custo_MaoDeObra_${selectedDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const handlePrint = () => {
     window.print();
@@ -718,7 +656,7 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                       </td>
 
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
-                        {canViewFinancials ? `R$ ${total.toFixed(2)}` : 'R$ •••••'}
+                        {canViewFinancials ? `R$ ${cost.totalLaborCost.toFixed(2)}` : 'R$ •••••'}
                       </td>
 
                       <td className="py-2.5 px-3 text-slate-400 text-[11px] max-w-xs truncate" title={log.activities}>
