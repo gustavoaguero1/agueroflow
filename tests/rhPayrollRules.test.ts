@@ -1,18 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-
-const payrollSource = readFileSync(new URL('../src/services/rhPayrollService.ts', import.meta.url), 'utf8');
-const avosStart = payrollSource.indexOf('export function calculateThirteenthAvos(');
-const avosEnd = payrollSource.indexOf('\n}', avosStart);
-if (avosStart < 0 || avosEnd < 0) throw new Error('calculateThirteenthAvos not found in rhPayrollService.ts');
-const avosFunction = payrollSource.slice(avosStart, avosEnd + 2);
-const avosContext: Record<string, unknown> = {};
-vm.createContext(avosContext);
-vm.runInContext(avosFunction.replace('export function', 'function') + '\nthis.calculateThirteenthAvos = calculateThirteenthAvos;', avosContext);
-const calculateThirteenthAvos = avosContext.calculateThirteenthAvos as (admission: string, year?: number, dismissal?: string | null) => number;
-
+import { calculateThirteenthAvos } from '../src/services/rhPayrollRules.ts';
 test('missing or invalid admission date never receives assumed 12/12 avos', () => {
   assert.equal(calculateThirteenthAvos('', 2026), 0);
   assert.equal(calculateThirteenthAvos('não é uma data', 2026), 0);
