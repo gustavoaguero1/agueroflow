@@ -1,14 +1,24 @@
+import {
+  collection,
+  doc,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
+import { db } from '../firebase';
 import type {
+  SafetyDocumentType,
   SafetyPermitControls,
   SafetyPermitEventType,
+  SafetyPermitRecord,
+  SafetyPermitState,
   SafetyPermitStatus,
   SafetyPermitType,
   SafetyRiskLevel,
-  SafetyOccurrenceCategory,
 } from '../types/safety';
 
 export const SAFETY_PERMIT_TYPES: readonly { value: SafetyPermitType; label: string }[] = [
-  { value: 'trabalho_a_quente', label: 'Trabalho a quente' },
+  { value: 'trabalho_a_quente', label: 'Trabalho a quente / soldagem' },
   { value: 'trabalho_em_altura', label: 'Trabalho em altura' },
   { value: 'espaco_confinado', label: 'Espaço confinado' },
   { value: 'eletrico', label: 'Serviço elétrico / energia' },
@@ -16,22 +26,6 @@ export const SAFETY_PERMIT_TYPES: readonly { value: SafetyPermitType; label: str
   { value: 'abertura_de_linha', label: 'Abertura de linha / intervenção de processo' },
   { value: 'geral', label: 'Atividade geral' },
 ];
-
-export const SAFETY_OCCURRENCE_CATEGORIES: readonly { value: SafetyOccurrenceCategory; label: string }[] = [
-  { value: 'quase_acidente', label: 'Quase-acidente' },
-  { value: 'condicao_insegura', label: 'Condição insegura' },
-  { value: 'ato_inseguro', label: 'Ato inseguro' },
-  { value: 'incidente_sem_lesao', label: 'Incidente sem lesão' },
-  { value: 'acidente_com_lesao', label: 'Acidente com lesão' },
-  { value: 'incidente_ambiental', label: 'Incidente ambiental' },
-];
-
-const RISK_SCORE: Record<SafetyRiskLevel, number> = {
-  baixo: 1,
-  medio: 2,
-  alto: 3,
-  critico: 4,
-};
 
 const REQUIRED_CONTROLS: Record<SafetyPermitType, (keyof SafetyPermitControls)[]> = {
   trabalho_a_quente: ['fireWatch'],
@@ -58,7 +52,19 @@ const CONTROL_LABELS: Partial<Record<keyof SafetyPermitControls, string>> = {
   liftPlanReviewed: 'Plano de içamento/rigging conferido',
 };
 
+const RISK_SCORE: Record<SafetyRiskLevel, number> = {
+  baixo: 1,
+  medio: 2,
+  alto: 3,
+  critico: 4,
+};
+
 export interface SafetyPermitInput {
+  unitId: string;
+  contractId: string;
+  workOrderId?: string;
+  relatedAprId?: string;
+  documentType: SafetyDocumentType;
   validFrom: string;
   validUntil: string;
   permitType: SafetyPermitType;
@@ -78,43 +84,49 @@ export interface SafetyPermitInput {
   emergencyPlan: string;
 }
 
-export interface SafetyOccurrenceInput {
-  unitId: string;
-  incidentDate: string;
-  category: SafetyOccurrenceCategory;
-  title: string;
-  description: string;
-  immediateAction?: string;
-  urgency: 'baixa' | 'media' | 'alta' | 'critica';
-}
-
-function isValidIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+export interface SafetyActor {
+  uid: string;
+  name: string;
 }
 
 function isValidLocalDateTime(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return false;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime());
+  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(value)) return false;
+  const [datePart, timePart] = value.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  const date = new Date(year, month - 1, day, hour, minute);
+  return date.getFullYear() === year && date.getMonth() === month - 1
+    && date.getDate() === day && date.getHours() === hour && date.getMinutes() === minute;
 }
 
 export function requiredSafetyControls(type: SafetyPermitType): Array<{ key: keyof SafetyPermitControls; label: string }> {
-  const keys: (keyof SafetyPermitControls)[] = ['teamBriefed', 'ppeInspected', 'areaIsolated', ...REQUIRED_CONTROLS[type]];
+  const keys: (keyof SafetyPermitControls)[] = [
+    'teamBriefed',
+    'ppeInspected',
+    'areaIsolated',
+    ...REQUIRED_CONTROLS[type],
+  ];
   return keys.map((key) => ({ key, label: CONTROL_LABELS[key] || key }));
 }
 
 export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
   const errors: string[] = [];
+  if (!input.unitId.trim()) errors.push('Selecione a unidade/obra.');
+  if (!input.contractId.trim()) errors.push('Selecione o contrato.');
+  if (input.documentType !== 'apr' && input.documentType !== 'pt') errors.push('Selecione APR ou Permissão de Trabalho.');
+  if (input.documentType === 'pt' && !input.relatedAprId?.trim()) {
+    errors.push('Vincule a Permissão de Trabalho a uma APR aprovada.');
+  }
+  if (input.documentType === 'apr' && input.relatedAprId) {
+    errors.push('Uma APR não pode ser vinculada a outra APR.');
+  }
   if (!isValidLocalDateTime(input.validFrom)) errors.push('Informe uma data/hora inicial válida.');
   if (!isValidLocalDateTime(input.validUntil)) errors.push('Informe uma data/hora final válida.');
   if (isValidLocalDateTime(input.validFrom) && isValidLocalDateTime(input.validUntil)
     && new Date(input.validUntil).getTime() <= new Date(input.validFrom).getTime()) {
     errors.push('A validade final deve ser posterior ao início da atividade.');
   }
-  if (!SAFETY_PERMIT_TYPES.some((item) => item.value === input.permitType)) errors.push('Selecione um tipo de permissão válido.');
+  if (!SAFETY_PERMIT_TYPES.some((item) => item.value === input.permitType)) errors.push('Selecione um tipo de atividade válido.');
   if (input.activityTitle.trim().length < 3 || input.activityTitle.trim().length > 160) {
     errors.push('A atividade deve ter entre 3 e 160 caracteres.');
   }
@@ -140,10 +152,8 @@ export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
     }
   });
 
-  if (!input.controls.teamBriefed) errors.push('Confirme a orientação da equipe.');
-  if (!input.controls.ppeInspected) errors.push('Confirme a conferência dos EPIs.');
-  if (!input.controls.areaIsolated) errors.push('Confirme o isolamento/sinalização da área.');
-  REQUIRED_CONTROLS[input.permitType]?.forEach((key) => {
+  const required = requiredSafetyControls(input.permitType).map((item) => item.key);
+  required.forEach((key) => {
     if (!input.controls[key]) errors.push('Confirme: ' + (CONTROL_LABELS[key] || key) + '.');
   });
   if (input.emergencyPlan.trim().length < 10 || input.emergencyPlan.trim().length > 1500) {
@@ -152,28 +162,17 @@ export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
   return errors;
 }
 
-export function validateSafetyOccurrenceInput(input: SafetyOccurrenceInput): string[] {
-  const errors: string[] = [];
-  if (!input.unitId.trim()) errors.push('Selecione a unidade/local.');
-  if (!isValidIsoDate(input.incidentDate)) errors.push('Informe uma data válida para a ocorrência.');
-  if (!SAFETY_OCCURRENCE_CATEGORIES.some((item) => item.value === input.category)) errors.push('Selecione uma classificação SMS válida.');
-  if (input.title.trim().length < 3 || input.title.trim().length > 150) errors.push('O título deve ter entre 3 e 150 caracteres.');
-  if (input.description.trim().length < 10 || input.description.trim().length > 2000) errors.push('Descreva a ocorrência em até 2.000 caracteres.');
-  if ((input.immediateAction || '').length > 1000) errors.push('A ação imediata deve ter até 1.000 caracteres.');
-  return errors;
-}
-
-export function safetyPermitCode(permitDate: string, id: string): string {
+export function safetyPermitCode(type: SafetyDocumentType, permitDate: string, id: string): string {
   const year = permitDate.slice(0, 4);
   const suffix = id.replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase().padStart(8, '0');
-  return 'PT-' + year + '-' + suffix;
+  return (type === 'apr' ? 'APR-' : 'PT-') + year + '-' + suffix;
 }
 
 export function getSafetyNextStatus(
   currentStatus: SafetyPermitStatus,
   eventType: SafetyPermitEventType,
 ): SafetyPermitStatus | null {
-  if (eventType === 'note_added') return currentStatus;
+  if (eventType === 'note_added') return ['closed', 'cancelled'].includes(currentStatus) ? null : currentStatus;
   if (eventType === 'submitted_for_approval' && ['draft', 'rejected'].includes(currentStatus)) return 'awaiting_approval';
   if (eventType === 'approved' && currentStatus === 'awaiting_approval') return 'approved';
   if (eventType === 'rejected' && currentStatus === 'awaiting_approval') return 'rejected';
@@ -198,18 +197,14 @@ export function safetyPermitTypeLabel(type: SafetyPermitType): string {
   return SAFETY_PERMIT_TYPES.find((item) => item.value === type)?.label || 'Atividade geral';
 }
 
-export function safetyOccurrenceCategoryLabel(category: SafetyOccurrenceCategory): string {
-  return SAFETY_OCCURRENCE_CATEGORIES.find((item) => item.value === category)?.label || 'Ocorrência SMS';
-}
-
 export function safetyEventLabel(eventType: SafetyPermitEventType): string {
   const labels: Record<SafetyPermitEventType, string> = {
-    created: 'APR/PT criada',
-    submitted_for_approval: 'Enviada para aprovação',
-    approved: 'Permissão aprovada internamente',
-    rejected: 'Permissão reprovada',
-    closed: 'Permissão encerrada',
-    cancelled: 'Permissão cancelada',
+    created: 'Registro criado',
+    submitted_for_approval: 'Enviado para aprovação',
+    approved: 'Aprovado internamente',
+    rejected: 'Reprovado',
+    closed: 'Encerrado',
+    cancelled: 'Cancelado',
     note_added: 'Observação registrada',
   };
   return labels[eventType];
@@ -218,4 +213,105 @@ export function safetyEventLabel(eventType: SafetyPermitEventType): string {
 export function localSafetyDate(): string {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+}
+
+export async function createSafetyPermit(
+  orgId: string,
+  actor: SafetyActor,
+  input: SafetyPermitInput,
+): Promise<string> {
+  const errors = validateSafetyPermitInput(input);
+  if (errors.length) throw new Error(errors.join(' '));
+
+  const permitRef = doc(collection(db, 'safety_permits'));
+  const eventRef = doc(collection(db, 'safety_permit_events'));
+  const stateRef = doc(db, 'safety_permit_states', permitRef.id);
+  const permitDate = input.validFrom.slice(0, 10);
+  const permitCode = safetyPermitCode(input.documentType, permitDate, permitRef.id);
+
+  const record = {
+    ...input,
+    id: permitRef.id,
+    orgId,
+    permitCode,
+    permitDate,
+    createdByUid: actor.uid,
+    createdByName: actor.name,
+    createdAt: serverTimestamp(),
+  };
+  await setDoc(permitRef, record);
+
+  await setDoc(eventRef, {
+    id: eventRef.id,
+    orgId,
+    unitId: input.unitId,
+    contractId: input.contractId,
+    permitId: permitRef.id,
+    eventType: 'created',
+    actorUid: actor.uid,
+    actorName: actor.name,
+    recordedAt: serverTimestamp(),
+  });
+
+  await setDoc(stateRef, {
+    id: permitRef.id,
+    orgId,
+    unitId: input.unitId,
+    contractId: input.contractId,
+    permitId: permitRef.id,
+    status: 'draft',
+    latestEventId: eventRef.id,
+    updatedByUid: actor.uid,
+    updatedByName: actor.name,
+    updatedAt: serverTimestamp(),
+  });
+  return permitRef.id;
+}
+
+export async function transitionSafetyPermit(
+  permit: SafetyPermitRecord,
+  state: SafetyPermitState,
+  eventType: SafetyPermitEventType,
+  actor: SafetyActor,
+  comment?: string,
+): Promise<void> {
+  const nextStatus = getSafetyNextStatus(state.status, eventType);
+  if (!nextStatus) throw new Error('Movimentação não permitida para o status atual.');
+  if (['rejected', 'closed', 'cancelled', 'note_added'].includes(eventType) && !comment?.trim()) {
+    throw new Error('Informe uma justificativa para esta movimentação.');
+  }
+
+  const eventRef = doc(collection(db, 'safety_permit_events'));
+  const stateRef = doc(db, 'safety_permit_states', permit.id);
+  await setDoc(eventRef, {
+    id: eventRef.id,
+    orgId: permit.orgId,
+    unitId: permit.unitId,
+    contractId: permit.contractId,
+    permitId: permit.id,
+    previousEventId: state.latestEventId,
+    eventType,
+    actorUid: actor.uid,
+    actorName: actor.name,
+    recordedAt: serverTimestamp(),
+    ...(comment?.trim() ? { comment: comment.trim() } : {}),
+  });
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(stateRef);
+    if (!snapshot.exists()) throw new Error('Estado da APR/PT não encontrado.');
+    const current = snapshot.data() as SafetyPermitState;
+    if (current.latestEventId !== state.latestEventId) {
+      throw new Error('A APR/PT foi movimentada por outra pessoa. Atualize a tela e tente novamente.');
+    }
+    const actualNextStatus = getSafetyNextStatus(current.status, eventType);
+    if (!actualNextStatus) throw new Error('O fluxo da APR/PT mudou; a movimentação não foi aplicada.');
+    transaction.update(stateRef, {
+      status: actualNextStatus,
+      latestEventId: eventRef.id,
+      updatedByUid: actor.uid,
+      updatedByName: actor.name,
+      updatedAt: serverTimestamp(),
+    });
+  });
 }
