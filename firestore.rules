@@ -485,15 +485,24 @@ service cloud.firestore {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
           : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
-              : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
+              : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       function areaRead(d) {
-        return coll in ['purchasing_orders', 'purchasing_receipts']
-          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-          : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1));
+        return coll in ['items', 'item_categories']
+          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+          : (coll in ['stock_balances', 'stock_movements']
+            ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+            : (coll in ['purchasing_orders', 'purchasing_receipts']
+              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))));
       }
-      function areaWrite(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 2); }
+      function areaWrite(d) {
+        return coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
+          : (coll in ['stock_balances', 'stock_movements']
+            ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
+            : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2)));
+      }
       // Operações aloca a pessoa numa obra: no RH muda só obra/código.
       function rhAllocation() {
         return coll == 'rh_employees' && areaOk(orgOf(resource.data), A_OPS(), 2)
