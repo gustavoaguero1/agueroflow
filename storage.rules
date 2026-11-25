@@ -38,24 +38,36 @@ service firebase.storage {
     // Evidence for work orders is protected by the Operations area claim (view=1, edit=2).
     match /work-orders/{orgId}/{allPaths=**} {
       allow read: if engineeringCanRead(orgId);
-      allow create, update: if engineeringCanWrite(orgId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if false;
+      // Cada evidência usa um caminho novo; a foto publicada não pode ser substituída.
+      allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('^(image/jpeg|image/png|image/webp)$');
+      allow update, delete: if false;
     }
 
-    // Anexos do módulo Operações (CTPS, notas de reembolso, prints de NF) e arquivos de apoio importados do Inox.
-    // Reads require Operations view; uploads and replacements require Operations edit.
     match /operacoes/{orgId}/{fileId} {
+      function allowedOperationsFileType() {
+        return request.resource.contentType.matches('^(image/jpeg|image/png|image/webp|application/pdf|application/json|application/octet-stream)$');
+      }
+      function legacyJsonBackup() { return fileId.matches('^arquivos_[A-Za-z0-9_.-]+\\.json$'); }
       allow read: if engineeringCanRead(orgId);
-      allow create, update: if engineeringCanWrite(orgId)
-        && request.resource.size < 15 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf|application/json|application/octet-stream');
+      // Novos anexos são imutáveis e limitados a tipos controlados.
+      allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && allowedOperationsFileType();
+      // Apenas JSONs de backup legados podem ser substituídos durante uma nova importação.
+      allow update: if legacyJsonBackup()
+        && engineeringCanWrite(orgId)
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && request.resource.contentType == 'application/json';
       allow delete: if false;
     }
 
-    // Desenhos, isométricos, P&IDs, certificados e documentos As Built.
-    // A revisão publicada é imutável; uma nova revisão usa novo caminho.
     match /engineering-documents/{orgId}/{documentId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
       allow create: if engineeringCanWrite(orgId)
