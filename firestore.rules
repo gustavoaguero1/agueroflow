@@ -825,7 +825,7 @@ service cloud.firestore {
         && (coll == 'quality_record_states'
           ? (areaWrite(resource.data) && validQualityStateUpdate())
           : (coll == 'safety_permit_states'
-            ? (areaWrite(resource.data) && validSafetyPermitStateUpdate())
+            ? false
             : (coll in ['safety_ppe_catalog', 'safety_training_catalog']
               ? (areaWrite(resource.data) && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
                 && request.resource.data.get('id', '') == docId
