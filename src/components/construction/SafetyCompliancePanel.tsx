@@ -44,7 +44,7 @@ const ACTIVITY_OPTIONS: Array<{ value: SafetyPermitType; label: string }> = [
   { value: 'geral', label: 'Atividade geral' },
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const dateIsExpired = (value: string) => !value || value < today();
 
 export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
