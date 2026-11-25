@@ -547,49 +547,49 @@ service cloud.firestore {
       // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
       function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
       function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
+      function orderMessageParentValid(d, orderId) {
+        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
+        let validId = orderId is string && orderId.size() > 0
+          && orderId.size() <= 180 && orderId.matches('[A-Za-z0-9_-]+');
+        let existsAfterOrder = validId && existsAfter(orderPath);
+        let parent = existsAfterOrder ? getAfter(orderPath).data : {};
+        return existsAfterOrder && orgOf(parent) == orgOf(d);
+      }
+      function orderMessageReplyValid(d, orderId) {
+        let replyToId = d.get('replyToId', '');
+        let validReplyId = replyToId is string && replyToId.size() > 0
+          && replyToId.size() <= 180 && replyToId.matches('[A-Za-z0-9_-]+');
+        let replyPath = /databases/$(database)/documents/order_messages/$(replyToId);
+        let replyExistsAfter = replyToId == '' || (validReplyId && existsAfter(replyPath));
+        let reply = replyToId != '' && replyExistsAfter ? getAfter(replyPath).data : {};
+        return replyExistsAfter && (replyToId == '' || (
+          orgOf(reply) == orgOf(d) && reply.get('orderId', '') == orderId
+        ));
+      }
       function validOrderMessageCreate() {
         let d = request.resource.data;
         let orderId = d.get('orderId', '');
-        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
-        let orderIdValid = orderId is string
-          && orderId.size() > 0 && orderId.size() <= 180
-          && orderId.matches('[A-Za-z0-9_-]+');
-        let orderExistsAfter = orderIdValid && existsAfter(orderPath);
-        let parentOrder = orderExistsAfter ? getAfter(orderPath).data : {};
-        let replyToId = d.get('replyToId', '');
-        let replyIdValid = replyToId == '' || (
-          replyToId is string
-          && replyToId.size() > 0 && replyToId.size() <= 180
-          && replyToId.matches('[A-Za-z0-9_-]+')
-        );
-        let replyPath = /databases/$(database)/documents/order_messages/$(replyToId);
-        let replyExistsAfter = replyToId == '' || (replyIdValid && existsAfter(replyPath));
-        let replyMessage = replyToId != '' && replyExistsAfter ? getAfter(replyPath).data : {};
+        let senderRole = d.get('senderRole', '');
+        let messageType = d.get('messageType', '');
         return coll != 'order_messages' || (
           signedIn()
-          && orderExistsAfter
-          && orgOf(parentOrder) == orgOf(d)
+          && orderMessageParentValid(d, orderId)
           && d.get('senderId', '') == request.auth.uid
           && d.get('senderName', '') is string
           && d.get('senderName', '').size() > 0
           && d.get('senderName', '').size() <= 180
-          && d.get('senderRole', '') in ['Superior', 'Responsavel', 'Tecnico', 'Supervisor', 'Solicitante']
-          && (d.get('senderRole', '') != 'Superior' || hasRole(orgOf(d), ['Admin', 'Gerente']))
-          && (d.get('senderRole', '') != 'Supervisor' || hasRole(orgOf(d), ['Supervisor']))
-          && d.get('messageType', '') in ['pergunta', 'resposta', 'orientacao', 'apontamento', 'liberacao']
-          && (d.get('messageType', '') in ['resposta', 'orientacao', 'liberacao']
-            ? d.get('senderRole', '') in ['Superior', 'Supervisor']
-            : true)
+          && senderRole in ['Superior', 'Responsavel', 'Tecnico', 'Supervisor', 'Solicitante']
+          && (senderRole != 'Superior' || hasRole(orgOf(d), ['Admin', 'Gerente']))
+          && (senderRole != 'Supervisor' || hasRole(orgOf(d), ['Supervisor']))
+          && messageType in ['pergunta', 'resposta', 'orientacao', 'apontamento', 'liberacao']
+          && (messageType in ['resposta', 'orientacao', 'liberacao']
+            ? senderRole in ['Superior', 'Supervisor'] : true)
           && d.get('content', '') is string
           && d.get('content', '').size() > 0
           && d.get('content', '').size() <= 4000
           && d.get('createdAt', '') is string
           && d.get('createdAt', '').size() >= 10
-          && replyExistsAfter
-          && (replyToId == '' || (
-            orgOf(replyMessage) == orgOf(d)
-            && replyMessage.get('orderId', '') == orderId
-          ))
+          && orderMessageReplyValid(d, orderId)
         );
       }
       function validOrderMessageUpdate() {
@@ -611,7 +611,8 @@ service cloud.firestore {
           && d.diff(resource.data).affectedKeys().hasOnly(['resolved', 'resolvedAt', 'resolvedBy', 'resolvedByName'])
           && resolved is bool
           && (resolved
-            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+            ? ((resource.data.get('senderId', '') == request.auth.uid
+                || hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
               && d.get('resolvedBy', '') == request.auth.uid
               && d.get('resolvedAt', '') is string
               && d.get('resolvedAt', '').size() >= 10
@@ -992,13 +993,17 @@ service cloud.firestore {
       }
       function genericCreate() {
         return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-          // Inspection records and their immutable events are written only through the validated server workflow.
+          // Inspections and checklists are created only by their validated server workflows.
           && !(coll in ['inspections', 'inspection_events', 'checklist_templates', 'checklist_runs', 'checklist_run_events', 'checklist_template_events'])
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
-          && validRdoCreate()
-          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-          && workOrderReferencesValid(request.resource.data)
-          && validOrderEventCreate()
+          // Evaluate expensive validations only for the collection that needs them.
+          && (coll != 'construction_reports' || validRdoCreate())
+          && (coll != 'quality_records' || validQualityRecordCreate())
+          && (coll != 'quality_record_events' || validQualityEventCreate())
+          && (coll != 'quality_record_states' || validQualityStateCreate())
+          && (coll != 'work_orders' || workOrderReferencesValid(request.resource.data))
+          && (coll != 'order_events' || validOrderEventCreate())
+          && (coll != 'order_messages' || validOrderMessageCreate())
           && areaWrite(request.resource.data);
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
