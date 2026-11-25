@@ -8,7 +8,6 @@ import {
 } from '../../types';
 import {
   doc,
-  updateDoc,
   addDoc,
   collection,
   runTransaction,
@@ -164,31 +163,54 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
     );
   };
 
-  // Toggle checklist item
+  // Checklist item and timeline event are committed together to avoid local/database divergence.
   const handleToggleChecklist = async (id: string) => {
-    const updated = checklist.map((item) => {
-      if (item.id === id) {
-        const nextStatus = item.status === 'concluido' ? 'pendente' : 'concluido';
-        return {
-          ...item,
-          status: nextStatus as any,
-          completedAt: nextStatus === 'concluido' ? new Date().toISOString() : undefined,
-          completedBy: nextStatus === 'concluido' ? (currentUser.displayName || currentUser.email || 'Usuário') : undefined,
-        };
-      }
-      return item;
-    });
-
-    setChecklist(updated);
-
+    const target = checklist.find((item) => item.id === id);
+    if (!target) return;
+    const now = new Date().toISOString();
+    const nextStatus = target.status === 'concluido' ? 'pendente' : 'concluido';
+    const orderRef = doc(db, 'work_orders', order.id);
+    const eventRef = doc(collection(db, 'order_events'));
     try {
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        executionChecklist: updated,
-        updatedAt: new Date().toISOString(),
+      const updated = await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        const currentChecklist = Array.isArray(current.data().executionChecklist)
+          ? current.data().executionChecklist as OrderChecklistItem[]
+          : checklist;
+        const nextChecklist = currentChecklist.map((item) => item.id === id
+          ? {
+            ...item,
+            status: nextStatus as any,
+            completedAt: nextStatus === 'concluido' ? now : undefined,
+            completedBy: nextStatus === 'concluido'
+              ? (currentUser.displayName || currentUser.email || 'Usuário')
+              : undefined,
+          }
+          : item);
+        tx.update(orderRef, {
+          executionChecklist: nextChecklist,
+          updatedAt: now,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || 'Usuário',
+          eventType: 'checklist',
+          description: `Checklist de execução: "${target.task}" marcado como ${nextStatus === 'concluido' ? 'concluído' : 'pendente'}.`,
+          timestamp: now,
+          meta: { checklistItemId: id, status: nextStatus },
+        });
+        return nextChecklist;
       });
+      setChecklist(updated);
       onOrderUpdated({ executionChecklist: updated });
     } catch (err) {
       console.error('Erro ao atualizar checklist:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível atualizar o checklist da OS.');
     }
   };
 
@@ -203,28 +225,78 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
       const kind = type === 'before' ? ('antes' as const) : ('depois' as const);
       const takenAt = new Date().toISOString();
       const blob = await compressImage(file);
+      if (!blob.size || blob.size > 10 * 1024 * 1024) {
+        throw new Error('A evidência deve ter até 10 MB.');
+      }
       const path = `work-orders/${organizationId}/${order.id}/${kind}_${Date.now()}.jpg`;
-      const r = storageRef(storage, path);
-      await uploadBytes(r, blob, { contentType: 'image/jpeg' });
-      const url = await getDownloadURL(r);
-      const nextBefore = type === 'before' ? [...beforePhotos, url] : beforePhotos;
-      const nextAfter = type === 'after' ? [...afterPhotos, url] : afterPhotos;
-      const meta = [
-        ...(order.evidencePhotoMeta || []),
-        { kind, path, url, takenAt, lat: order.executionGps?.latitude ?? null, lng: order.executionGps?.longitude ?? null },
-      ];
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        evidencePhotos: { before: nextBefore, after: nextAfter },
-        evidencePhotoMeta: meta,
-        updatedAt: new Date().toISOString(),
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, blob, { contentType: 'image/jpeg' });
+      const url = await getDownloadURL(fileRef);
+
+      const orderRef = doc(db, 'work_orders', order.id);
+      const eventRef = doc(collection(db, 'order_events'));
+      const taskId = type === 'before' ? 'chk_2' : 'chk_3';
+      const saved = await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        const currentData = current.data() as WorkOrder;
+        const currentPhotos = currentData.evidencePhotos || { before: [], after: [] };
+        const before = type === 'before' ? [...(currentPhotos.before || []), url] : (currentPhotos.before || []);
+        const after = type === 'after' ? [...(currentPhotos.after || []), url] : (currentPhotos.after || []);
+        const metadata = [
+          ...(currentData.evidencePhotoMeta || []),
+          {
+            kind,
+            path,
+            url,
+            takenAt,
+            lat: currentData.executionGps?.latitude ?? null,
+            lng: currentData.executionGps?.longitude ?? null,
+          },
+        ];
+        const currentChecklist = Array.isArray(currentData.executionChecklist)
+          ? currentData.executionChecklist
+          : checklist;
+        const updatedChecklist = currentChecklist.map((item) => item.id === taskId
+          ? {
+            ...item,
+            status: 'concluido' as const,
+            completedAt: takenAt,
+            completedBy: currentUser.displayName || currentUser.email || 'Usuário',
+          }
+          : item);
+        tx.update(orderRef, {
+          evidencePhotos: { before, after },
+          evidencePhotoMeta: metadata,
+          executionChecklist: updatedChecklist,
+          updatedAt: takenAt,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || 'Técnico',
+          eventType: 'pecas',
+          description: `Evidência fotográfica ${kind} anexada à OS.`,
+          timestamp: takenAt,
+          meta: { storagePath: path, kind, checklistItemId: taskId },
+        });
+        return { before, after, metadata, updatedChecklist };
       });
-      setBeforePhotos(nextBefore);
-      setAfterPhotos(nextAfter);
-      onOrderUpdated({ evidencePhotos: { before: nextBefore, after: nextAfter }, evidencePhotoMeta: meta });
-      handleToggleChecklist(type === 'before' ? 'chk_2' : 'chk_3');
+
+      setBeforePhotos(saved.before);
+      setAfterPhotos(saved.after);
+      setChecklist(saved.updatedChecklist);
+      onOrderUpdated({
+        evidencePhotos: { before: saved.before, after: saved.after },
+        evidencePhotoMeta: saved.metadata,
+        executionChecklist: saved.updatedChecklist,
+      });
     } catch (err) {
       console.error('Erro ao enviar foto:', err);
-      setPhotoError('Não foi possível enviar a foto. Verifique a conexão e tente novamente.');
+      setPhotoError(err instanceof Error ? err.message : 'Não foi possível enviar a foto. Verifique a conexão e tente novamente.');
     } finally {
       setUploading(null);
     }
