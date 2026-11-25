@@ -30,10 +30,11 @@ test('employee rate is used only when the time log has no valid rate', () => {
   assert.equal(result.totalLaborCost, 148);
 });
 
-test('a saved total remains the source amount when the hourly rate is missing, but is flagged as unclassified', () => {
-  const result = calculateLaborCost({ normalHours: 8, recordedTotal: 410 });
+test('a saved total remains authoritative with missing hourly rate and separates known allowances', () => {
+  const result = calculateLaborCost({ normalHours: 8, recordedTotal: 410, mealAllowance: 35 });
   assert.equal(result.totalLaborCost, 410);
-  assert.equal(result.unclassifiedRecordedCost, 410);
+  assert.equal(result.allowancesCost, 35);
+  assert.equal(result.unclassifiedRecordedCost, 375);
   assert.equal(result.unpricedHours, 8);
   assert.equal(result.hasMissingHourlyRate, true);
 });
