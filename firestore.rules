@@ -166,8 +166,6 @@ service cloud.firestore {
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
           'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
-          'safety_permits', 'safety_permit_events', 'safety_permit_states',
-          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
@@ -181,7 +179,7 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'safety_permits', 'safety_permit_events', 'safety_ppe_movements', 'safety_training_records']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -189,7 +187,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'safety_permits', 'safety_permit_events', 'safety_permit_states', 'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records', 'occurrences'] ? A_OPS()
+          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -536,6 +534,7 @@ service cloud.firestore {
           && validQualityEventCreateForDoc()
         );
       }
+      // ---- Segurança do Trabalho & SMS ------------------------------------------
       function safetyRiskRank(level) {
         return level == 'baixo' ? 1 : level == 'medio' ? 2 : level == 'alto' ? 3 : level == 'critico' ? 4 : 0;
       }
@@ -798,68 +797,59 @@ service cloud.firestore {
       }
 
 
-      function isSafetyCollection() {
-        return coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
-          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'];
-      }
-      function isSafetyOccurrence() {
-        return coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']);
-      }
-      function safetyWriteBase() {
-        let org = request.resource.data.get('orgId', '');
-        return signedIn() && isMemberOf(org) && areaOk(org, A_OPS(), 2);
-      }
-      function safetyCreate() {
-        return (coll == 'safety_permits' && safetyWriteBase() && validSafetyPermitCreate())
-          || (coll == 'safety_permit_events' && safetyWriteBase() && validSafetyPermitEventCreate())
-          || (coll == 'safety_permit_states' && safetyWriteBase() && validSafetyPermitStateCreate())
-          || (coll == 'safety_ppe_catalog' && safetyWriteBase()
-            && request.resource.data.get('id', '') == docId
-            && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
-            && validSafetyPpeCatalogCreate())
-          || (coll == 'safety_training_catalog' && safetyWriteBase()
-            && request.resource.data.get('id', '') == docId
-            && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
-            && validSafetyTrainingCatalogCreate());
-      }
-      function safetyOccurrenceCreate() {
-        return safetyWriteBase() && validSafetyOccurrenceCreate();
-      }
 
-      // Select one validator family per collection. Do not OR-evaluate
-      // unrelated safety, finance, per-org and generic validators for every write.
-      allow create: if isSafetyCollection()
-        ? safetyCreate()
-        : isSafetyOccurrence()
-          ? safetyOccurrenceCreate()
-          : finance()
-            ? financeCreate()
-            : perOrgDoc()
-              ? perOrgCreate()
-              : (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-                && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-                && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-                && areaWrite(request.resource.data);
+      // These grants are evaluated only for their own collections. The general
+      // wildcard grants below remain unchanged for Engineering, Finance and Quality.
+      allow read: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records']
+        && canRead(resource)
+        && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+
+      allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_training_catalog']
+        && canCreate()
+        && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+        && (coll == 'safety_permits' ? validSafetyPermitCreate()
+          : (coll == 'safety_permit_events' ? validSafetyPermitEventCreate()
+            : (coll == 'safety_permit_states' ? validSafetyPermitStateCreate()
+              : (coll == 'safety_ppe_catalog'
+                ? (request.resource.data.get('id', '') == docId
+                  && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+                  && validSafetyPpeCatalogCreate())
+                : (request.resource.data.get('id', '') == docId
+                  && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+                  && validSafetyTrainingCatalogCreate())))));
+
+      // Deliveries and certificates are written only by authenticated backend routes.
+      // SMS occurrences continue to use the existing central occurrences collection.
+      allow create: if coll == 'occurrences'
+        && request.resource.data.keys().hasAny(['safetyCategory'])
+        && canCreate() && areaWrite(request.resource.data)
+        && validSafetyOccurrenceCreate();
+
+      allow update: if coll in ['safety_ppe_catalog', 'safety_training_catalog']
+        && canUpdate() && areaWrite(resource.data)
+        && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+        && request.resource.data.get('id', '') == docId
+        && request.resource.data.get('orgId', '') == orgOf(resource.data)
+        && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          coll == 'safety_ppe_catalog'
+            ? ['name', 'category', 'caNumber', 'caExpiresAt', 'requiredForPermitTypes', 'active', 'notes', 'updatedAt']
+            : ['code', 'title', 'requiredForPermitTypes', 'active', 'updatedAt']);
+
+      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+        && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+        && areaWrite(request.resource.data);
       allow update: if orgScoped() && !immutable() && canUpdate()
-        && (coll == 'quality_record_states'
-          ? (areaWrite(resource.data) && validQualityStateUpdate())
-          : (coll == 'safety_permit_states'
-            ? false
-            : (coll in ['safety_ppe_catalog', 'safety_training_catalog']
-              ? (areaWrite(resource.data) && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
-                && request.resource.data.get('id', '') == docId
-                && request.resource.data.get('orgId', '') == orgOf(resource.data)
-                && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '')
-                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-                  coll == 'safety_ppe_catalog'
-                    ? ['name', 'category', 'caNumber', 'caExpiresAt', 'requiredForPermitTypes', 'active', 'notes', 'updatedAt']
-                    : ['code', 'title', 'requiredForPermitTypes', 'active', 'updatedAt']))
-              : (coll == 'occurrences'
-                ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
-                : (areaWrite(resource.data) || rhAllocation())))));
-      allow delete: if orgScoped()
-        && !(coll in ['quality_record_states', 'safety_permit_states', 'safety_ppe_catalog', 'safety_training_catalog'])
-        && !immutable() && canDelete() && areaWrite(resource.data)
+        && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
+          ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
+          : (coll == 'quality_record_states'
+            ? (areaWrite(resource.data) && validQualityStateUpdate())
+            : (areaWrite(resource.data) || rhAllocation())));
+      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
@@ -902,7 +892,7 @@ service cloud.firestore {
       // Financeiro: members read; immutable settlement events are written only by the backend.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      function financeCreate() { return finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || payableClientCreate())
         && (!isReceivable() || (request.resource.data.get('id', '') == docId
@@ -933,7 +923,7 @@ service cloud.firestore {
           && request.resource.data.get('snapshot', null) is map
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
-          && request.resource.data.get('updatedAt', null) == request.time)); }
+          && request.resource.data.get('updatedAt', null) == request.time));
       allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
@@ -944,13 +934,9 @@ service cloud.firestore {
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
-      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
-        && request.resource.data.get('orgId', docId) == docId
-        && request.resource.data.get('organizationId', docId) == docId; }
-      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
         && (request.method == 'delete'
-          || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
-      allow update, delete: if perOrgMutation();
+            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
