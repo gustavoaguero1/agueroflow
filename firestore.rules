@@ -538,6 +538,31 @@ service cloud.firestore {
       // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
       function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
       function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
+      function validOrderEventCreate() {
+        let d = request.resource.data;
+        let orderId = d.get('orderId', '');
+        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
+        let orderIdValid = orderId is string && orderId.size() > 0 && orderId.size() <= 180 && orderId.matches('[A-Za-z0-9_-]+');
+        let orderExistsAfter = orderIdValid && existsAfter(orderPath);
+        let parentOrder = orderExistsAfter ? getAfter(orderPath).data : {};
+        return coll != 'order_events' || (
+          signedIn()
+          && d.get('userId', '') == request.auth.uid
+          && d.get('userName', '') is string
+          && d.get('userName', '').size() > 0
+          && d.get('userName', '').size() <= 180
+          && d.get('orgId', '') == orgOf(parentOrder)
+          && orderExistsAfter
+          && d.get('eventType', '') is string
+          && d.get('eventType', '').size() > 0
+          && d.get('eventType', '').size() <= 60
+          && d.get('description', '') is string
+          && d.get('description', '').size() > 0
+          && d.get('description', '').size() <= 10000
+          && d.get('timestamp', '') is string
+          && d.get('timestamp', '').size() >= 10
+        );
+      }
       function validRdoCreate() {
         return coll != 'construction_reports' || (
           signedIn()
@@ -887,6 +912,7 @@ service cloud.firestore {
           && validRdoCreate()
           && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
           && workOrderReferencesValid(request.resource.data)
+          && validOrderEventCreate()
           && areaWrite(request.resource.data);
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
