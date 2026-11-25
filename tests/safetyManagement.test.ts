@@ -79,7 +79,7 @@ test('rejects permits with missing mandatory control, reversed validity or highe
     ...validPermit,
     controls: { ...validPermit.controls, fireWatch: false },
   });
-  assert.ok(missingControl.some((message) => message.includes('vigia')));
+  assert.ok(missingControl.some((message) => message.toLocaleLowerCase('pt-BR').includes('vigia')));
 
   const reversed = validateSafetyPermitInput({
     ...validPermit,
@@ -144,6 +144,6 @@ test('APR/PT status workflow does not allow approval or closure out of order', (
 });
 
 test('local safety date and permit code are deterministic in their formats', () => {
-  assert.match(localSafetyDate(), /^\\d{4}-\\d{2}-\\d{2}$/);
-  assert.match(safetyPermitCode(localSafetyDate(), 'abcdefghi'), /^PT-\\d{4}-[A-Z0-9]{8}$/);
+  assert.match(localSafetyDate(), /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(safetyPermitCode(localSafetyDate(), 'abcdefghi'), /^PT-\d{4}-[A-Z0-9]{8}$/);
 });
