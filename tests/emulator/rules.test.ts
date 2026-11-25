@@ -22,6 +22,8 @@ beforeEach(async () => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'organizations/org_a'), { id: 'org_a', name: 'A' });
     await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A', status: 'aberto' });
+    await setDoc(doc(db, 'inspections/insp_a'), { orgId: 'org_a', unitId: 'unit_a', status: 'agendada' });
+    await setDoc(doc(db, 'inspection_events/evt_a'), { orgId: 'org_a', inspectionId: 'insp_a' });
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
@@ -83,6 +85,21 @@ test('member read/write allowed', async () => {
   await assertSucceeds(getDoc(doc(db, 'overtime_rules/org_a')));
   await assertSucceeds(setDoc(doc(db, 'overtime_rules/org_a'), { organizationId: 'org_a', x: 1 }));
   await assertSucceeds(getDoc(doc(db, 'work_orders/missing')));
+});
+
+test('inspection lifecycle and immutable inspection events are server-only writes', async () => {
+  const editor = member();
+  await assertSucceeds(getDoc(doc(editor, 'inspections/insp_a')));
+  await assertSucceeds(getDoc(doc(editor, 'inspection_events/evt_a')));
+  await assertFails(setDoc(doc(editor, 'inspections/client_create'), {
+    orgId: 'org_a', unitId: 'unit_a', status: 'concluida', result: 'conforme',
+  }));
+  await assertFails(updateDoc(doc(editor, 'inspections/insp_a'), { status: 'aprovada' }));
+  await assertFails(deleteDoc(doc(editor, 'inspections/insp_a')));
+  await assertFails(setDoc(doc(editor, 'inspection_events/client_event'), {
+    orgId: 'org_a', inspectionId: 'insp_a',
+  }));
+  await assertFails(getDoc(doc(editor, 'inspection_transition_ops/op_a')));
 });
 
 test('Operations area controls work orders, status config and timeline reads/writes', async () => {
