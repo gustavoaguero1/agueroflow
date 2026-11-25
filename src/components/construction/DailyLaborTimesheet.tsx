@@ -112,7 +112,7 @@ export const DailyLaborTimesheet: React.FC<DailyLaborTimesheetProps> = ({
     const qW = query(collection(db, 'field_workers'), where('orgId', '==', organizationId));
     const unsub = onSnapshot(qW, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FieldWorker));
-      setWorkers(list.filter((w) => w.status === 'ativo'));
+      setWorkers(list.filter((w) => w.status === 'ativo' && w.isDemo !== true));
     });
     return () => unsub();
   }, [organizationId]);
@@ -150,7 +150,7 @@ export const DailyLaborTimesheet: React.FC<DailyLaborTimesheetProps> = ({
           workerId: w.id,
           workerName: w.name,
           role: w.role,
-          hourlyRate: w.hourlyRate || 19.09,
+          hourlyRate: w.hourlyRate || 0,
           normalHours: existing.normalHours,
           overtime50Hours: existing.overtime50Hours,
           overtime100Hours: existing.overtime100Hours,
@@ -617,10 +617,10 @@ export const DailyLaborTimesheet: React.FC<DailyLaborTimesheetProps> = ({
           <button
             onClick={handleLoadSimulation}
             className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-semibold cursor-pointer transition-colors"
-            title="Preencher exemplo com Serralheiro (Gilfran) e Soldador TIG com hora extra e hora viagem"
+            title="Preencher dados fictícios de demonstração para validar a tela; não usar como apontamento real"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Simular Exemplo Real</span>
+            <span>Simular dados de demonstração</span>
           </button>
 
           <button
