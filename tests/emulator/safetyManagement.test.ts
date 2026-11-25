@@ -1,0 +1,316 @@
+import test, { before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  initializeTestEnvironment,
+  assertFails,
+  assertSucceeds,
+  type RulesTestEnvironment,
+} from '@firebase/rules-unit-testing';
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+
+let env: RulesTestEnvironment;
+
+before(async () => {
+  env = await initializeTestEnvironment({
+    projectId: 'demo-agueroflow',
+    firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: 'localhost', port: 8085 },
+  });
+});
+
+after(async () => { await env?.cleanup(); });
+beforeEach(async () => { await env.clearFirestore(); });
+
+const dbFor = (uid: string, role: string, orgId = 'org_a') =>
+  env.authenticatedContext(uid, { orgs: { [orgId]: role } }).firestore();
+
+type Overrides = Record<string, unknown>;
+
+function validPermit(uid: string, id = 'permit_01', overrides: Overrides = {}) {
+  return {
+    id,
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    contractId: 'contract_a',
+    permitCode: 'PT-2026-ABC12345',
+    permitDate: '2026-11-25',
+    permitType: 'trabalho_a_quente',
+    activityTitle: 'Soldagem TIG em tubulação inox',
+    description: 'Execução de soldagem TIG em trecho isolado da linha de processo.',
+    location: 'Planta industrial / Linha L-101',
+    validFrom: '2026-11-25T07:00',
+    validUntil: '2026-11-25T17:00',
+    supervisorName: 'Encarregado de montagem',
+    teamMembers: ['Soldador TIG', 'Ajudante'],
+    risks: [{
+      id: 'risk_1',
+      hazard: 'Projeção de fagulhas durante soldagem',
+      consequence: 'Queimaduras ou princípio de incêndio',
+      initialRisk: 'alto',
+      controlMeasures: 'Isolar a área, remover combustíveis e manter extintor e vigia de fogo.',
+      residualRisk: 'medio',
+    }],
+    controls: {
+      teamBriefed: true,
+      ppeInspected: true,
+      areaIsolated: true,
+      fireWatch: true,
+    },
+    emergencyPlan: 'Interromper o serviço, acionar o responsável da planta e utilizar os recursos de combate disponíveis.',
+    createdByUid: uid,
+    createdByName: uid === 'operator_1' ? 'Operador de Campo' : 'Responsável SMS',
+    createdAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+function eventData(uid: string, permitId: string, eventType: string, overrides: Overrides = {}) {
+  return {
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    contractId: 'contract_a',
+    permitId,
+    eventType,
+    actorUid: uid,
+    actorName: uid === 'operator_1' ? 'Operador de Campo' : 'Supervisor SMS',
+    recordedAt: serverTimestamp(),
+    ...(eventType === 'rejected' || eventType === 'closed' || eventType === 'cancelled'
+      ? { comment: 'Movimentação justificada e registrada.' }
+      : {}),
+    ...overrides,
+  };
+}
+
+async function createPermit(uid = 'operator_1', role = 'Operacional', id = 'permit_01') {
+  const db = dbFor(uid, role);
+  await assertSucceeds(setDoc(doc(db, 'safety_permits', id), validPermit(uid, id)));
+  const initialEventId = id + '_created';
+  await assertSucceeds(setDoc(
+    doc(db, 'safety_permit_events', initialEventId),
+    eventData(uid, id, 'created'),
+  ));
+  await assertSucceeds(setDoc(doc(db, 'safety_permit_states', id), {
+    id,
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    contractId: 'contract_a',
+    permitId: id,
+    status: 'draft',
+    latestEventId: initialEventId,
+    updatedByUid: uid,
+    updatedByName: uid === 'operator_1' ? 'Operador de Campo' : 'Supervisor SMS',
+    updatedAt: serverTimestamp(),
+  }));
+  return { db, initialEventId };
+}
+
+async function transitionPermit(
+  uid: string,
+  role: string,
+  permitId: string,
+  previousEventId: string,
+  nextEventId: string,
+  eventType: string,
+  nextStatus: string,
+) {
+  const db = dbFor(uid, role);
+  await assertSucceeds(setDoc(
+    doc(db, 'safety_permit_events', nextEventId),
+    eventData(uid, permitId, eventType, { previousEventId }),
+  ));
+  await assertSucceeds(updateDoc(doc(db, 'safety_permit_states', permitId), {
+    status: nextStatus,
+    latestEventId: nextEventId,
+    updatedByUid: uid,
+    updatedByName: 'Supervisor SMS',
+    updatedAt: serverTimestamp(),
+  }));
+  return db;
+}
+
+test('Operations editor creates APR/PT, initial event and state in sequence', async () => {
+  const { db, initialEventId } = await createPermit();
+  const savedPermit = await assertSucceeds(getDoc(doc(db, 'safety_permits/permit_01')));
+  const savedEvent = await assertSucceeds(getDoc(doc(db, 'safety_permit_events', initialEventId)));
+  const savedState = await assertSucceeds(getDoc(doc(db, 'safety_permit_states/permit_01')));
+  assert.equal(savedPermit.data()?.permitCode, 'PT-2026-ABC12345');
+  assert.equal(savedEvent.data()?.eventType, 'created');
+  assert.equal(savedState.data()?.status, 'draft');
+  assert.ok(db);
+});
+
+test('APR/PT requires controls specific to the selected work and a valid risk reduction', async () => {
+  const db = dbFor('operator_1', 'Operacional');
+  await assertFails(setDoc(
+    doc(db, 'safety_permits/hot_work_without_fire_watch'),
+    validPermit('operator_1', 'hot_work_without_fire_watch', {
+      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fireWatch: false },
+    }),
+  ));
+  await assertFails(setDoc(
+    doc(db, 'safety_permits/confined_space_without_rescue'),
+    validPermit('operator_1', 'confined_space_without_rescue', {
+      permitType: 'espaco_confinado',
+      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, gasTest: true, rescuePlan: false, standbyWatch: true },
+    }),
+  ));
+  await assertFails(setDoc(
+    doc(db, 'safety_permits/risk_not_reduced'),
+    validPermit('operator_1', 'risk_not_reduced', {
+      risks: [{
+        hazard: 'Queda de altura',
+        consequence: 'Lesão grave',
+        initialRisk: 'baixo',
+        controlMeasures: 'Linha de vida e inspeção dos pontos de ancoragem.',
+        residualRisk: 'critico',
+      }],
+    }),
+  ));
+});
+
+test('viewer reads APR/PT but cannot create or change it; another organization cannot read it', async () => {
+  await createPermit();
+  const viewer = dbFor('viewer_1', 'Visualizador');
+  await assertSucceeds(getDoc(doc(viewer, 'safety_permits/permit_01')));
+  await assertSucceeds(getDoc(doc(viewer, 'safety_permit_states/permit_01')));
+  await assertFails(setDoc(
+    doc(viewer, 'safety_permits/viewer_attempt'),
+    validPermit('viewer_1', 'viewer_attempt'),
+  ));
+  const otherOrg = dbFor('other_org_user', 'Admin', 'org_b');
+  await assertFails(getDoc(doc(otherOrg, 'safety_permits/permit_01')));
+  await assertFails(getDoc(doc(otherOrg, 'safety_permit_states/permit_01')));
+});
+
+test('only Supervisor, Manager or Admin can approve; creator cannot approve their own permit', async () => {
+  const { initialEventId } = await createPermit();
+  const operator = dbFor('operator_1', 'Operacional');
+  await assertSucceeds(setDoc(
+    doc(operator, 'safety_permit_events/operator_approval_orphan'),
+    eventData('operator_1', 'permit_01', 'approved', { previousEventId: initialEventId }),
+  ));
+  await assertFails(updateDoc(doc(operator, 'safety_permit_states/permit_01'), {
+    status: 'approved',
+    latestEventId: 'operator_approval_orphan',
+    updatedByUid: 'operator_1',
+    updatedByName: 'Operador de Campo',
+    updatedAt: serverTimestamp(),
+  }));
+  const unchanged = await assertSucceeds(getDoc(doc(operator, 'safety_permit_states/permit_01')));
+  assert.equal(unchanged.data()?.status, 'draft');
+  assert.equal(unchanged.data()?.latestEventId, initialEventId);
+
+  await transitionPermit('supervisor_1', 'Supervisor', 'permit_01', initialEventId, 'send_for_approval', 'submitted_for_approval', 'awaiting_approval');
+  await transitionPermit('supervisor_2', 'Supervisor', 'permit_01', 'send_for_approval', 'approve_permit', 'approved', 'approved');
+  const approved = await assertSucceeds(getDoc(doc(dbFor('supervisor_2', 'Supervisor'), 'safety_permit_states/permit_01')));
+  assert.equal(approved.data()?.status, 'approved');
+
+  const own = await createPermit('supervisor_owner', 'Supervisor', 'supervisor_own_permit');
+  await assertSucceeds(setDoc(
+    doc(own.db, 'safety_permit_events/own_approval'),
+    eventData('supervisor_owner', 'supervisor_own_permit', 'approved', { previousEventId: 'supervisor_own_permit_created' }),
+  ));
+  await assertFails(updateDoc(doc(own.db, 'safety_permit_states/supervisor_own_permit'), {
+    status: 'approved',
+    latestEventId: 'own_approval',
+    updatedByUid: 'supervisor_owner',
+    updatedByName: 'Supervisor SMS',
+    updatedAt: serverTimestamp(),
+  }));
+});
+
+test('state transitions require the latest event pointer and correct sequence', async () => {
+  const { db, initialEventId } = await createPermit();
+  await assertSucceeds(setDoc(
+    doc(db, 'safety_permit_events/stale_submission'),
+    eventData('operator_1', 'permit_01', 'submitted_for_approval', { previousEventId: 'old_event' }),
+  ));
+  await assertFails(updateDoc(doc(db, 'safety_permit_states/permit_01'), {
+    status: 'awaiting_approval',
+    latestEventId: 'stale_submission',
+    updatedByUid: 'operator_1',
+    updatedByName: 'Operador de Campo',
+    updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(doc(db, 'safety_permit_states/permit_01'), {
+    status: 'closed',
+    latestEventId: initialEventId,
+    updatedByUid: 'operator_1',
+    updatedByName: 'Operador de Campo',
+    updatedAt: serverTimestamp(),
+  }));
+  const unchanged = await assertSucceeds(getDoc(doc(db, 'safety_permit_states/permit_01')));
+  assert.equal(unchanged.data()?.status, 'draft');
+});
+
+test('permit records and events are append-only; state cannot be deleted or edited outside a valid event', async () => {
+  const { db, initialEventId } = await createPermit();
+  await assertFails(updateDoc(doc(db, 'safety_permits/permit_01'), { activityTitle: 'Alterada' }));
+  await assertFails(deleteDoc(doc(db, 'safety_permits/permit_01')));
+  await assertFails(updateDoc(doc(db, 'safety_permit_events', initialEventId), { comment: 'Alterado' }));
+  await assertFails(deleteDoc(doc(db, 'safety_permit_events', initialEventId)));
+  await assertFails(deleteDoc(doc(db, 'safety_permit_states/permit_01')));
+  await assertFails(updateDoc(doc(db, 'safety_permit_states/permit_01'), { status: 'approved' }));
+});
+
+test('SMS occurrences reuse the existing occurrences collection and validate related permit ownership', async () => {
+  await createPermit();
+  const db = dbFor('operator_1', 'Operacional');
+  await assertSucceeds(setDoc(doc(db, 'occurrences/sms_incident_01'), {
+    id: 'sms_incident_01',
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    type: 'seguranca',
+    safetyCategory: 'quase_acidente',
+    incidentDate: '2026-11-25',
+    relatedPermitId: 'permit_01',
+    title: 'Queda de ferramenta próxima à equipe',
+    description: 'Uma ferramenta caiu de uma plataforma e atingiu o piso próximo aos trabalhadores.',
+    immediateAction: 'Área isolada e ferramentas conferidas antes da retomada.',
+    urgency: 'alta',
+    status: 'aberta',
+    reportedBy: 'Operador de Campo',
+    reportedByUid: 'operator_1',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+  await assertFails(setDoc(doc(db, 'occurrences/sms_bad_category'), {
+    id: 'sms_bad_category',
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    type: 'seguranca',
+    safetyCategory: 'not_valid',
+    incidentDate: '2026-11-25',
+    title: 'Ocorrência de segurança',
+    description: 'Descrição suficiente para passar pela validação de texto.',
+    immediateAction: '',
+    urgency: 'media',
+    status: 'aberta',
+    reportedBy: 'Operador',
+    reportedByUid: 'operator_1',
+  }));
+  await assertFails(setDoc(doc(db, 'occurrences/sms_wrong_permit_org'), {
+    id: 'sms_wrong_permit_org',
+    orgId: 'org_a',
+    unitId: 'unit_a',
+    type: 'seguranca',
+    safetyCategory: 'quase_acidente',
+    incidentDate: '2026-11-25',
+    relatedPermitId: 'permit_from_other_org',
+    title: 'Ocorrência vinculada incorretamente',
+    description: 'Tentativa de vincular permissão que pertence a outra empresa.',
+    immediateAction: '',
+    urgency: 'media',
+    status: 'aberta',
+    reportedBy: 'Operador',
+    reportedByUid: 'operator_1',
+  }));
+});
+
