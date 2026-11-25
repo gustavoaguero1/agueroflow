@@ -489,6 +489,39 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
                       )}
+
+                      {it.type === 'multipla_escolha' && (
+                        <select
+                          value={ans?.value ?? ''}
+                          onChange={(e) => {
+                            setValidationMessage('');
+                            setCurrentAnswers({
+                              ...currentAnswers,
+                              [it.id]: { ...ans, value: e.target.value },
+                            });
+                          }}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecione uma opção...</option>
+                          {(it.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      )}
+
+                      {(it.type === 'foto' || it.type === 'assinatura') && (
+                        <input
+                          type="url"
+                          value={ans?.value ?? ''}
+                          onChange={(e) => {
+                            setValidationMessage('');
+                            setCurrentAnswers({
+                              ...currentAnswers,
+                              [it.id]: { ...ans, value: e.target.value },
+                            });
+                          }}
+                          placeholder={it.type === 'foto' ? 'Cole a referência HTTPS do arquivo no Storage...' : 'Cole a referência HTTPS da assinatura no Storage...'}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                        />
+                      )}
                     </div>
                   );
                 })}
