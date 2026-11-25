@@ -112,6 +112,7 @@ export const SAFETY_PPE_CATEGORIES = [
 ] as const;
 
 function timestampValue(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
   if (value && typeof value === 'object' && 'toMillis' in value
     && typeof (value as { toMillis?: unknown }).toMillis === 'function') {
     return (value as { toMillis: () => number }).toMillis();
