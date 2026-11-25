@@ -38,34 +38,33 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
       return res.status(400).json({ ok: false, error: 'Empresa, usuário ou dados da APR/PT inválidos.' });
     }
 
-    const text = (value: unknown, max: number) =>
-      typeof value === 'string' ? value.trim().slice(0, max) : '';
+    const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
     const teamMembers = Array.isArray(draft.teamMembers)
-      ? draft.teamMembers.map((value: unknown) => text(value, 120)).filter(Boolean)
+      ? draft.teamMembers.map((value: unknown) => text(value)).filter(Boolean)
       : [];
-    const risks = Array.isArray(draft.risks) ? draft.risks.slice(0, 5).map((risk: Record<string, any>) => ({
-      hazard: text(risk?.hazard, 180),
-      consequence: text(risk?.consequence, 300),
+    const risks = Array.isArray(draft.risks) ? draft.risks.map((risk: Record<string, any>) => ({
+      hazard: text(risk?.hazard),
+      consequence: text(risk?.consequence),
       initialRisk: risk?.initialRisk,
-      controlMeasures: text(risk?.controlMeasures, 700),
+      controlMeasures: text(risk?.controlMeasures),
       residualRisk: risk?.residualRisk,
     })) : [];
     const input = {
-      unitId: text(draft.unitId, 180),
-      contractId: text(draft.contractId, 180),
+      unitId: text(draft.unitId),
+      contractId: text(draft.contractId),
       documentType: draft.documentType,
-      ...(draft.documentType === 'pt' ? { relatedAprId: text(draft.relatedAprId, 180) } : {}),
-      validFrom: text(draft.validFrom, 16),
-      validUntil: text(draft.validUntil, 16),
+      ...(draft.documentType === 'pt' ? { relatedAprId: text(draft.relatedAprId) } : {}),
+      validFrom: text(draft.validFrom),
+      validUntil: text(draft.validUntil),
       permitType: draft.permitType,
-      activityTitle: text(draft.activityTitle, 160),
-      description: text(draft.description, 2000),
-      location: text(draft.location, 180),
-      supervisorName: text(draft.supervisorName, 120),
+      activityTitle: text(draft.activityTitle),
+      description: text(draft.description),
+      location: text(draft.location),
+      supervisorName: text(draft.supervisorName),
       teamMembers,
       risks,
       controls: draft.controls && typeof draft.controls === 'object' ? draft.controls : {},
-      emergencyPlan: text(draft.emergencyPlan, 1500),
+      emergencyPlan: text(draft.emergencyPlan),
     };
     const errors = validateSafetyPermitInput(input);
     const rawEmployeeIds = Array.isArray(draft.teamMemberIds) ? draft.teamMemberIds : [];
