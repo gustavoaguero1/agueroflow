@@ -856,14 +856,14 @@ service cloud.firestore {
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
         // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
-        && coll !in ['inspections', 'checklist_templates', 'checklist_runs']
+        && !(coll in ['inspections', 'checklist_templates', 'checklist_runs'])
         && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
         && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
           ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
           : (coll == 'quality_record_states'
             ? (areaWrite(resource.data) && validQualityStateUpdate())
             : (areaWrite(resource.data) || rhAllocation())));
-      allow delete: if orgScoped() && coll !in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs'] && !immutable() && canDelete() && areaWrite(resource.data)
+      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs']) && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
