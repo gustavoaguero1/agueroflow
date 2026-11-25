@@ -85,6 +85,7 @@ import { createFinancePayableAuthorizationRouter } from './server/financePayable
 import { createFinancePayableSettlementRouter } from './server/financePayableSettlementRoutes';
 import { createFinanceBankReconciliationRouter } from './server/financeBankReconciliationRoutes';
 import { createFinanceReceivableReceiptRouter } from './server/financeReceivableReceiptRoutes';
+import { createSafetyRouter } from './server/safetyRoutes';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -570,6 +571,7 @@ async function main() {
   app.use('/api/finance/payable-settlements', createFinancePayableSettlementRouter());
   app.use('/api/finance/bank-reconciliation', createFinanceBankReconciliationRouter());
   app.use('/api/finance/receivable-receipts', createFinanceReceivableReceiptRouter());
+  app.use('/api/safety', createSafetyRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
