@@ -379,6 +379,22 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
+    if (filePath) {
+      try {
+        const file = h.bucket.file(filePath);
+        const [exists] = await file.exists();
+        if (!exists) return res.status(400).json({ ok: false, error: 'O arquivo informado ainda não foi enviado ao armazenamento.' });
+        const [metadata] = await file.getMetadata();
+        const size = Number(metadata.size || 0);
+        if (size <= 0 || size > 20 * 1024 * 1024
+          || !['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(String(metadata.contentType || ''))) {
+          return res.status(400).json({ ok: false, error: 'O arquivo do certificado precisa ser PDF ou imagem JPG/PNG/WebP de até 20 MB.' });
+        }
+      } catch (fileError) {
+        console.error('[safety training certificate] storage verification failed:', fileError);
+        return res.status(400).json({ ok: false, error: 'Não foi possível validar o arquivo do certificado.' });
+      }
+    }
     try {
       const recordRef = h.db.collection('safety_training_records').doc(recordId);
       const employeeRef = h.db.collection('rh_directory').doc(employeeId);
