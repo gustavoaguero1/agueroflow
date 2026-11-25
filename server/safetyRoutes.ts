@@ -82,7 +82,9 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
           const apr = aprSnap.data() || {};
           const aprState = aprStateSnap.data() || {};
           if (apr.orgId !== orgId || apr.unitId !== permit.unitId || apr.contractId !== permit.contractId
-            || apr.documentType !== 'apr' || aprState.status !== 'approved') {
+            || apr.documentType !== 'apr' || aprState.status !== 'approved'
+            || !apr.validFrom || !apr.validUntil || apr.validFrom > permit.validFrom
+            || apr.validUntil < permit.validUntil) {
             throw new SafetyRouteError(409, 'A PT precisa estar vinculada a uma APR aprovada da mesma empresa, unidade e contrato.');
           }
         }
@@ -134,7 +136,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
             trainingRecords: toRows(trainingRecordSnap),
             legacyTrainingRecords,
           };
-          const blockers = evaluateSafetyCrewCompliance(compliance, employeeIds, permit.permitType);
+          const blockers = evaluateSafetyCrewCompliance(compliance, employeeIds, permit.permitType, String(permit.validFrom || '').slice(0, 10), String(permit.validUntil || '').slice(0, 10));
           if (blockers.length) {
             throw new SafetyRouteError(409, 'PT bloqueada por pendências de segurança: ' +
               blockers.map((item) => item.employeeName + ' — ' + item.message).join(' | '));
