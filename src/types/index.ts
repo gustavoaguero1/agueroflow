@@ -444,11 +444,22 @@ export interface Inspection {
   title: string;
   inspectorId: string;
   inspectorName: string;
-  status: 'agendada' | 'em_campo' | 'concluida';
+  status: 'agendada' | 'em_campo' | 'aguardando_revisao' | 'aprovada' | 'reprovada' | 'concluida';
   result: 'conforme' | 'nao_conforme' | 'pendente';
   findings: string;
   checklistRunId?: string;
+  startedAt?: string;
+  startedBy?: string;
   completedAt?: string;
+  submittedBy?: string;
+  submittedByName?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewComment?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
   createdAt: string;
   updatedAt: string;
 }
