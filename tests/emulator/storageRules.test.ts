@@ -49,6 +49,8 @@ test('engineering documents: Viewer can read, but cannot upload', async () => {
   const path = 'engineering-documents/org_a/eng_org_a_PID-101_00/upload_12345678';
   await assertSucceeds(uploadBytes(ref(editor, path), pdf, { contentType: 'application/pdf' }));
 
+  const operationsEditor = st({ orgs: { org_a: 'Operacional' } }, 'operations-editor');
+  await assertFails(uploadBytes(ref(operationsEditor, 'safety-certificates/org_a/employee_01/record_05_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
   const viewer = st({ orgs: { org_a: 'Visualizador' } }, 'viewer');
   await assertSucceeds(getBytes(ref(viewer, path)));
   await assertFails(uploadBytes(ref(viewer, 'engineering-documents/org_a/eng_org_a_PID-102_00/upload_12345678'), pdf, { contentType: 'application/pdf' }));
