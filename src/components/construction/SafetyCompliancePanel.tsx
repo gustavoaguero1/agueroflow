@@ -5,7 +5,7 @@ import {
 import { AlertTriangle, Award, ClipboardList, PackageCheck, Plus, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { db, storage } from '../../firebase';
 import { postJson } from '../../apiAuthFetch';
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import type { SafetyPermitType } from '../../types/safety';
 import {
   legacyFieldWorkerIdForEmployee,
@@ -331,7 +331,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
 
   const createTrainingRecord = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canEdit || !userId || !organizationId) return;
+    if (!canManageCatalog || !userId || !organizationId) return;
     const employee = employees.find((item) => item.id === trainingEmployeeId);
     const course = trainingOptions.find((item) => item.code === trainingRecordCode);
     if (!employee || !course || !trainingIssueDate || !trainingExpirationDate
@@ -347,30 +347,38 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
       return;
     }
     setSaving(true); setError('');
+    let uploadedPath = '';
     try {
-      const ref = doc(collection(db, 'safety_training_records'));
+      const recordRef = doc(collection(db, 'safety_training_records'));
+      let certificatePath = '';
       let certificateUrl = trainingCertificateUrl.trim();
       let certificateName = trainingCertificateName.trim();
       if (trainingCertificateFile) {
         const safeName = trainingCertificateFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const fileRef = storageRef(storage, 'safety-certificates/' + organizationId + '/' + employee.id + '/' + ref.id + '_' + safeName);
+        const fileRef = storageRef(storage, 'safety-certificates/' + organizationId + '/' + employee.id + '/' + recordRef.id + '_' + safeName);
         const uploaded = await uploadBytes(fileRef, trainingCertificateFile, { contentType: trainingCertificateFile.type });
-        certificateUrl = await getDownloadURL(uploaded.ref);
+        uploadedPath = uploaded.ref.fullPath;
+        certificatePath = uploaded.ref.fullPath;
         certificateName = trainingCertificateFile.name;
       }
-      await setDoc(ref, {
-        id: ref.id, orgId: organizationId, employeeId: employee.id, employeeName: employee.name,
-        trainingCode: course.code, title: course.title, issueDate: trainingIssueDate,
-        expirationDate: trainingExpirationDate, issuingEntity: trainingEntity.trim(),
-        certificateNumber: trainingCertificateNumber.trim(), certificateUrl,
-        certificateName, notes: trainingNotes.trim(),
-        createdByUid: userId, createdByName: actorName, recordedAt: serverTimestamp(),
+      const response = await postJson('/api/safety/training-records', {
+        orgId: organizationId, recordId: recordRef.id, employeeId: employee.id,
+        trainingCode: course.code, issueDate: trainingIssueDate, expirationDate: trainingExpirationDate,
+        issuingEntity: trainingEntity.trim(), certificateNumber: trainingCertificateNumber.trim(),
+        certificateUrl, certificatePath, certificateName, notes: trainingNotes.trim(),
       });
-      await audit('Registrar certificado', course.code + ' para ' + employee.name, ref.id);
+      if (!response.ok) throw new Error(response.error || 'O servidor recusou o registro do certificado.');
+      await audit('Registrar certificado', course.code + ' para ' + employee.name, recordRef.id);
       setTrainingEmployeeId(''); setTrainingRecordCode(''); setTrainingIssueDate(today()); setTrainingExpirationDate('');
       setTrainingEntity(''); setTrainingCertificateNumber(''); setTrainingCertificateUrl('');
       setTrainingCertificateName(''); setTrainingCertificateFile(null); setTrainingNotes('');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.'); }
+    } catch (err) {
+      if (uploadedPath) {
+        try { await deleteObject(storageRef(storage, uploadedPath)); }
+        catch (cleanupError) { console.error('Não foi possível remover arquivo de certificado sem registro:', cleanupError); }
+      }
+      setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.');
+    } finally { setSaving(false); } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.'); }
     finally { setSaving(false); }
   };
 
