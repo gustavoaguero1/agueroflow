@@ -164,8 +164,9 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
               <>
                 <p className="text-sm font-bold text-white">Marcar {dialog.proposal.code} como ganha?</p>
                 <p>
-                  Será criada uma OS "{dialog.proposal.code} - {dialog.proposal.title}" para {dialog.proposal.clientName},
-                  com o custo estimado da proposta, no primeiro status configurado.
+                  Serão criados/vinculados atomicamente o <strong>Contrato</strong>, o <strong>Projeto/Obra mestre</strong> com
+                  <strong> orçamento-base congelado (v1)</strong> e a OS inicial &quot;{dialog.proposal.code} - {dialog.proposal.title}&quot; para {dialog.proposal.clientName},
+                  vinculados à unidade da proposta.
                 </p>
               </>
             ) : (
