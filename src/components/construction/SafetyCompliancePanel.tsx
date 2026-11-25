@@ -46,7 +46,12 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const [ppeMovements, setPpeMovements] = useState<SafetyPpeMovement[]>([]);
   const [trainingCatalog, setTrainingCatalog] = useState<SafetyTrainingCatalogItem[]>([]);
   const [trainingRecords, setTrainingRecords] = useState<SafetyTrainingRecord[]>([]);
-  const [legacyTrainingRecords, setLegacyTrainingRecords] = useState<SafetyComplianceSnapshot['legacyTrainingRecords']>([]);
+  const [legacyWorkers, setLegacyWorkers] = useState<Array<{
+    id: string; rhEmployeeId?: string; nrCertifications?: Array<{
+      nrCode: string; title: string; issueDate?: string; expirationDate?: string;
+      documentUrl?: string; documentName?: string;
+    }>;
+  }>>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'epis' | 'treinamentos' | 'historico'>('epis');
   const [showPpeForm, setShowPpeForm] = useState(false);
@@ -105,33 +110,29 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
         setTrainingRecords(snap.docs.map((item) => ({ ...item.data(), id: item.id } as SafetyTrainingRecord)));
       }, (err) => console.error('Erro ao carregar certificados SMS:', err)),
       onSnapshot(query(collection(db, 'field_workers'), where('orgId', '==', organizationId)), (snap) => {
-        const workerRows = snap.docs.map((item) => ({ ...item.data(), id: item.id })) as Array<{
-          id: string; rhEmployeeId?: string; nrCertifications?: Array<{
-            nrCode: string; title: string; issueDate?: string; expirationDate?: string;
-            documentUrl?: string; documentName?: string;
-          }>;
-        }>;
-        setLegacyTrainingRecords((current) => {
-          const byEmployee = new Map<string, typeof current>();
-          for (const employee of employees) {
-            const worker = workerRows.find((item) => item.rhEmployeeId === employee.id
-              || item.id === legacyFieldWorkerIdForEmployee(employee.id));
-            if (!worker) continue;
-            const list = (worker.nrCertifications || []).map((cert) => ({
-              employeeId: employee.id, code: cert.nrCode || '', title: cert.title || cert.nrCode || 'Treinamento',
-              issueDate: cert.issueDate, expirationDate: cert.expirationDate,
-              documentUrl: cert.documentUrl, documentName: cert.documentName,
-            }));
-            byEmployee.set(employee.id, list);
-          }
-          return [...byEmployee.values()].flat();
-        });
+        setLegacyWorkers(snap.docs.map((item) => ({ ...item.data(), id: item.id })) as typeof legacyWorkers);
       }, (err) => console.error('Erro ao ler certificados legados de Obras:', err)),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   // Employee directory is intentionally read from RH and not copied to a safety employee collection.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId]);
+
+  const legacyTrainingRecords = useMemo<SafetyComplianceSnapshot['legacyTrainingRecords']>(() => {
+    const rows: SafetyComplianceSnapshot['legacyTrainingRecords'] = [];
+    for (const employee of employees) {
+      const worker = legacyWorkers.find((item) => item.rhEmployeeId === employee.id
+        || item.id === legacyFieldWorkerIdForEmployee(employee.id));
+      for (const cert of worker?.nrCertifications || []) {
+        rows.push({
+          employeeId: employee.id, code: cert.nrCode || '', title: cert.title || cert.nrCode || 'Treinamento',
+          issueDate: cert.issueDate, expirationDate: cert.expirationDate,
+          documentUrl: cert.documentUrl, documentName: cert.documentName,
+        });
+      }
+    }
+    return rows;
+  }, [employees, legacyWorkers]);
 
   const snapshot = useMemo<SafetyComplianceSnapshot>(() => ({
     loading, employees, ppeCatalog, ppeMovements, trainingCatalog, trainingRecords, legacyTrainingRecords,
