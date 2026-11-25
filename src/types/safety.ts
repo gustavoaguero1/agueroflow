@@ -77,6 +77,8 @@ export interface SafetyPermitRecord {
   validUntil: string;
   supervisorName: string;
   teamMembers: string[];
+  /** RH directory ids; mandatory for PT documents and never inferred from names. */
+  teamMemberIds?: string[];
   risks: SafetyRiskAssessment[];
   controls: SafetyPermitControls;
   emergencyPlan: string;
