@@ -718,8 +718,8 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
   const ref = doc(db, 'rh_employees', employee.id);
   const data = cleanFirestoreData({
     ...employee,
-    codigoObra: employee.codigoObra || employee.registrationNumber || '198',
-    registrationNumber: employee.codigoObra || employee.registrationNumber || '198',
+    codigoObra: employee.codigoObra?.trim() || null,
+    registrationNumber: employee.codigoObra?.trim() || employee.registrationNumber?.trim() || '',
     unitId: employee.unitId || null,
     contractId: employee.contractId || null,
     updatedAt: new Date().toISOString(),
@@ -731,7 +731,8 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
   try {
     await syncRhEmployeeToFieldWorker(employee);
   } catch (err) {
-    console.warn('Erro ao sincronizar colaborador para o Módulo 13 (field_workers):', err);
+    const detail = err instanceof Error ? err.message : 'Erro desconhecido.';
+    throw new Error(`O cadastro de RH foi salvo, mas a sincronização da equipe de campo falhou: ${detail}`);
   }
 }
 
@@ -754,8 +755,8 @@ export async function saveRhCalculation(calc: RhThirteenthCalculation): Promise<
   const ref = doc(db, 'rh_calculations', calc.id);
   const data = cleanFirestoreData({
     ...calc,
-    codigoObra: calc.codigoObra || calc.registrationNumber || '198',
-    registrationNumber: calc.codigoObra || calc.registrationNumber || '198',
+    codigoObra: calc.codigoObra?.trim() || null,
+    registrationNumber: calc.codigoObra?.trim() || calc.registrationNumber?.trim() || '',
     unitId: calc.unitId || null,
     contractId: calc.contractId || null,
     updatedAt: new Date().toISOString(),
