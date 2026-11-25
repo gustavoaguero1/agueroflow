@@ -49,7 +49,7 @@ test('only management can create the PPE and training catalog; operational users
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
   }));
 
-  await assertSucceeds(setDoc(doc(operator, 'safety_ppe_movements/movement_01'), {
+  await assertFails(setDoc(doc(operator, 'safety_ppe_movements/movement_01'), {
     id: 'movement_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
     ppeId: 'ppe_01', ppeName: 'Cinto paraquedista', eventType: 'entregue',
     movementDate: '2026-11-25', createdByUid: 'operator_1', createdByName: 'Operador',
@@ -95,26 +95,20 @@ test('PPE and training records cannot reference employees from another tenant or
   }));
 });
 
-test('a PPE return must refer to the original delivery for the same employee and equipment', async () => {
+test('PPE movement history is server-only and cannot be forged from a client', async () => {
   await seedEmployee('employee_01');
   const admin = dbFor('admin_1', 'Admin');
   const operator = dbFor('operator_1', 'Operacional');
   await assertSucceeds(setDoc(doc(admin, 'safety_ppe_catalog/ppe_01'), ppeCatalog('ppe_01')));
-  await assertSucceeds(setDoc(doc(operator, 'safety_ppe_movements/movement_01'), {
+  await assertFails(setDoc(doc(operator, 'safety_ppe_movements/movement_01'), {
     id: 'movement_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
     ppeId: 'ppe_01', ppeName: 'Cinto paraquedista', eventType: 'entregue',
     movementDate: '2026-11-25', createdByUid: 'operator_1', createdAt: serverTimestamp(),
   }));
-  await assertSucceeds(setDoc(doc(operator, 'safety_ppe_movements/return_01'), {
+  await assertFails(setDoc(doc(operator, 'safety_ppe_movements/return_01'), {
     id: 'return_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
     ppeId: 'ppe_01', ppeName: 'Cinto paraquedista', eventType: 'devolvido',
     movementDate: '2026-11-25', referenceMovementId: 'movement_01',
-    createdByUid: 'operator_1', createdAt: serverTimestamp(),
-  }));
-  await assertFails(setDoc(doc(operator, 'safety_ppe_movements/return_other'), {
-    id: 'return_other', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
-    ppeId: 'ppe_01', ppeName: 'Cinto paraquedista', eventType: 'devolvido',
-    movementDate: '2026-11-25', referenceMovementId: 'missing_delivery',
     createdByUid: 'operator_1', createdAt: serverTimestamp(),
   }));
 });
