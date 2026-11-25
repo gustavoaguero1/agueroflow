@@ -3,10 +3,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   collection,
   doc,
-  setDoc,
-  addDoc,
+  getDocs,
+  query,
+  runTransaction,
+  where,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { maxOrderSeq, nextOrderNumber } from '../../services/workOrderNumbering';
 import { WorkOrder, Asset, Occurrence, Unit } from '../../types';
 import {
   AlertTriangle,
@@ -273,77 +276,105 @@ export const PredictiveAnalysisView: React.FC<PredictiveAnalysisViewProps> = ({
   // 1-Click Proactive Preventive Work Order Generator
   const handleGenerateProactiveOrder = async (pred: AssetPrediction) => {
     if (!organization || !user) return;
+    const unitId = pred.asset.unitId;
+    if (!unitId || !units.some((unit) => unit.id === unitId)) {
+      alert('O ativo não possui uma unidade válida vinculada. Corrija o cadastro do ativo antes de gerar a OS.');
+      return;
+    }
+    if (!assets.some((asset) => asset.id === pred.asset.id)) {
+      alert('O ativo não pertence à lista da empresa selecionada. Atualize os dados e tente novamente.');
+      return;
+    }
     setGeneratingOrder(true);
 
     try {
-      const orderId = `os_pred_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const orderNumber = `OS-${new Date().getFullYear()}-PRD${String(orders.length + 1).padStart(3, '0')}`;
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const scheduledStart = tomorrow.toISOString().split('T')[0];
+      const orderId = `os_pred_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const createdAt = new Date().toISOString();
+      const statusQuery = query(collection(db, 'work_order_statuses'), where('orgId', '==', organization.id));
+      const [statusSnap, existingOrders] = await Promise.all([
+        getDocs(statusQuery),
+        getDocs(query(collection(db, 'work_orders'), where('orgId', '==', organization.id))),
+      ]);
+      const statuses = statusSnap.docs.map((snapshot) => snapshot.data() as { id?: string; isInitial?: boolean; name?: string });
+      const initialStatus = statuses.find((status) => status.isInitial && status.id)?.id;
+      if (!initialStatus) {
+        throw new Error('Configure um estado inicial no fluxo de OS antes de gerar uma ordem preventiva.');
+      }
+      const orderNumber = await runTransaction(db, async (tx) => {
+        const unitRef = doc(db, 'units', unitId);
+        const assetRef = doc(db, 'assets', pred.asset.id);
+        const statusRef = doc(db, 'work_order_statuses', `${organization.id}_${initialStatus}`);
+        const [unitSnap, assetSnap, statusConfigSnap] = await Promise.all([
+          tx.get(unitRef),
+          tx.get(assetRef),
+          tx.get(statusRef),
+        ]);
+        if (!unitSnap.exists() || unitSnap.data()?.orgId !== organization.id) {
+          throw new Error('A unidade vinculada ao ativo não pertence à empresa selecionada.');
+        }
+        if (!assetSnap.exists() || assetSnap.data()?.orgId !== organization.id || assetSnap.data()?.unitId !== unitId) {
+          throw new Error('O ativo não pertence à unidade selecionada. Corrija o cadastro antes de gerar a OS.');
+        }
+        if (!statusConfigSnap.exists() || statusConfigSnap.data()?.orgId !== organization.id || statusConfigSnap.data()?.id !== initialStatus) {
+          throw new Error('O estado inicial configurado não está disponível para esta empresa.');
+        }
 
-      const newOrder: WorkOrder = {
-        id: orderId,
-        orgId: organization.id,
-        unitId: pred.asset.unitId || (units[0]?.id ?? 'unit_central'),
-        assetId: pred.asset.id,
-        orderNumber,
-        title: `[Preditiva] Manutenção Preventiva Proativa - ${pred.asset.tag} ${pred.asset.name}`,
-        description: `OS preventiva gerada proativamente pelo Módulo de Inteligência Preditiva da AgueroFlow.
-Probabilidade de falha calculada: ${Math.round(pred.failureProbabilityNext30Days * 100)}% nos próximos 30 dias.
-MTBF médio do equipamento: ${pred.mtbfDays} dias (decorridos ${pred.daysSinceLastMaintenance} dias sem revisão).
-
-Ação Preditiva Recomendada:
-${pred.recommendedAction}
-
-Possíveis Modos de Falha Identificados pelo Algoritmo:
-${pred.commonFailureModes.map((m) => `• ${m}`).join('\n')}`,
-        orderType: 'preventiva',
-        priority: pred.riskLevel === 'critico' ? 'critica' : 'alta',
-        status: 'aberto',
-        requesterId: user.uid,
-        requesterName: 'Sistema Preditivo AgueroFlow',
-        assignedTeam: 'Equipe de Operações e Serviços Técnicos',
-        scheduledStartDate: scheduledStart,
-        estimatedHours: pred.mttrHours || 4,
-        estimatedCost: pred.riskLevel === 'critico' ? 1800.0 : 950.0,
-        notes: `Intervenção preventiva antes do colapso operacional do equipamento ${pred.asset.tag}.`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      await setDoc(doc(db, 'work_orders', orderId), newOrder);
-
-      // Add audit event to timeline
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organization.id,
-        orderId,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Sistema',
-        eventType: 'criacao',
-        description: `OS Preventiva Proativa ${orderNumber} disparada automaticamente para antecipar falha com ${Math.round(
-          pred.failureProbabilityNext30Days * 100
-        )}% de risco em ${pred.asset.tag}.`,
-        newStatus: 'aberto',
-        timestamp: new Date().toISOString(),
+        const number = await nextOrderNumber(
+          tx,
+          db,
+          organization.id,
+          maxOrderSeq(existingOrders.docs.map((snapshot) => snapshot.data() as { orderNumber?: string }))
+        );
+        const newOrder: WorkOrder = {
+          id: orderId,
+          orgId: organization.id,
+          unitId,
+          assetId: pred.asset.id,
+          orderNumber: number,
+          title: `[Preditiva] Manutenção Preventiva - ${pred.asset.tag} ${pred.asset.name}`,
+          description: `OS preventiva sugerida pelo Módulo de Inteligência Preditiva.\nProbabilidade estimada de falha nos próximos 30 dias: ${Math.round(pred.failureProbabilityNext30Days * 100)}%.\nMTBF médio: ${pred.mtbfDays} dias; tempo decorrido desde a última manutenção: ${pred.daysSinceLastMaintenance} dias.\n\nAção recomendada:\n${pred.recommendedAction}\n\nModos de falha observados:\n${pred.commonFailureModes.join('; ')}`,
+          orderType: 'preventiva',
+          priority: pred.riskLevel === 'critico' ? 'critica' : 'alta',
+          status: initialStatus,
+          requesterId: user.uid,
+          requesterName: user.displayName || user.email || 'Operador',
+          ...(Number.isFinite(pred.mttrHours) && pred.mttrHours > 0 ? { estimatedHours: pred.mttrHours } : {}),
+          createdAt,
+          updatedAt: createdAt,
+        };
+        const eventId = `${orderId}_created`;
+        tx.set(doc(db, 'work_orders', orderId), newOrder);
+        tx.set(doc(db, 'order_events', eventId), {
+          id: eventId,
+          orgId: organization.id,
+          orderId,
+          userId: user.uid,
+          userName: user.displayName || user.email || 'Operador',
+          eventType: 'criacao',
+          description: `OS preventiva ${number} gerada a partir de análise preditiva do ativo ${pred.asset.tag}.`,
+          newStatus: initialStatus,
+          timestamp: createdAt,
+        });
+        return number;
       });
 
-      await logAudit(
-        'Manutenção Preditiva',
-        'Disparo de OS Preventiva Proativa',
-        `OS ${orderNumber} criada para o ativo ${pred.asset.tag} (${pred.asset.name}) com risco de falha ${Math.round(
-          pred.failureProbabilityNext30Days * 100
-        )}%`,
-        orderId
-      );
+      try {
+        await logAudit(
+          'Manutenção Preditiva',
+          'Disparo de OS Preventiva',
+          `OS ${orderNumber} criada para o ativo ${pred.asset.tag} com risco estimado de ${Math.round(pred.failureProbabilityNext30Days * 100)}% nos próximos 30 dias.`,
+          orderId
+        );
+      } catch (auditError) {
+        console.warn('A OS foi criada, mas a auditoria complementar falhou:', auditError);
+      }
 
-      setSuccessToast(`OS Preventiva ${orderNumber} criada com sucesso para ${pred.asset.tag}!`);
+      setSuccessToast(`OS Preventiva ${orderNumber} criada para ${pred.asset.tag}.`);
       setTimeout(() => setSuccessToast(null), 5000);
-
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Erro ao gerar OS preventiva proativa:', err);
-      alert('Erro ao gerar Ordem de Serviço preventiva.');
+      alert(err instanceof Error ? err.message : 'Erro ao gerar Ordem de Serviço preventiva.');
     } finally {
       setGeneratingOrder(false);
     }
