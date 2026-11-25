@@ -142,79 +142,37 @@ test('APR/PT, event and state writes are server-only while records remain readab
 });
 
 
-test('PT must reference an approved APR from the same organization, unit and contract', async () => {
+test('PT documents can only be created by the trusted API, even with an approved APR linked', async () => {
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), 'safety_permits/permit_01'), validPermit('operator_1', 'permit_01'));
-    await setDoc(doc(context.firestore(), 'safety_permit_states/permit_01'), {
+    const adminDb = context.firestore();
+    await setDoc(doc(adminDb, 'safety_permits/permit_01'), validPermit('operator_1', 'permit_01'));
+    await setDoc(doc(adminDb, 'safety_permit_states/permit_01'), {
       id: 'permit_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
       permitId: 'permit_01', status: 'approved', latestEventId: 'approved_by_server',
       updatedByUid: 'supervisor_1', updatedByName: 'Supervisor', updatedAt: serverTimestamp(),
     });
   });
-
   const operator = dbFor('operator_1', 'Operacional');
   const ptData = validPermit('operator_1', 'pt_01', {
-    documentType: 'pt',
-    permitCode: 'PT-2026-ABC12345',
-    relatedAprId: 'permit_01',
+    documentType: 'pt', permitCode: 'PT-2026-ABC12345', relatedAprId: 'permit_01',
+    teamMemberIds: ['employee_01'],
   });
-  await assertSucceeds(setDoc(doc(operator, 'safety_permits/pt_01'), ptData));
-
-  await assertFails(setDoc(
-    doc(operator, 'safety_permits/pt_without_apr'),
-    validPermit('operator_1', 'pt_without_apr', {
-      documentType: 'pt',
-      permitCode: 'PT-2026-ABC12346',
-    }),
-  ));
-  await assertFails(setDoc(
-    doc(operator, 'safety_permits/pt_wrong_unit'),
-    validPermit('operator_1', 'pt_wrong_unit', {
-      documentType: 'pt',
-      permitCode: 'PT-2026-ABC12347',
-      relatedAprId: 'permit_01',
-      unitId: 'unit_other',
-    }),
-  ));
-
-  await createPermit('operator_1', 'Operacional', 'apr_draft_02');
-  await assertFails(setDoc(
-    doc(operator, 'safety_permits/pt_against_draft_apr'),
-    validPermit('operator_1', 'pt_against_draft_apr', {
-      documentType: 'pt',
-      permitCode: 'PT-2026-ABC12348',
-      relatedAprId: 'apr_draft_02',
-    }),
-  ));
+  await assertFails(setDoc(doc(operator, 'safety_permits/pt_01'), ptData));
 });
 
-test('APR/PT requires controls specific to the selected work and a valid risk reduction', async () => {
+test('client cannot bypass backend APR/PT validation with missing controls or increased residual risk', async () => {
   const db = dbFor('operator_1', 'Operacional');
-  await assertFails(setDoc(
-    doc(db, 'safety_permits/hot_work_without_fire_watch'),
-    validPermit('operator_1', 'hot_work_without_fire_watch', {
-      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fireWatch: false },
-    }),
-  ));
-  await assertFails(setDoc(
-    doc(db, 'safety_permits/confined_space_without_rescue'),
-    validPermit('operator_1', 'confined_space_without_rescue', {
-      permitType: 'espaco_confinado',
-      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, gasTest: true, rescuePlan: false, standbyWatch: true },
-    }),
-  ));
-  await assertFails(setDoc(
-    doc(db, 'safety_permits/risk_not_reduced'),
-    validPermit('operator_1', 'risk_not_reduced', {
-      risks: [{
-        hazard: 'Queda de altura',
-        consequence: 'Lesão grave',
-        initialRisk: 'baixo',
-        controlMeasures: 'Linha de vida e inspeção dos pontos de ancoragem.',
-        residualRisk: 'critico',
-      }],
-    }),
-  ));
+  await assertFails(setDoc(doc(db, 'safety_permits/hot_work_without_fire_watch'), validPermit('operator_1', 'hot_work_without_fire_watch', {
+    controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fireWatch: false },
+  })));
+  await assertFails(setDoc(doc(db, 'safety_permits/confined_space_without_rescue'), validPermit('operator_1', 'confined_space_without_rescue', {
+    permitType: 'espaco_confinado',
+    controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, gasTest: true, rescuePlan: false, standbyWatch: true },
+  })));
+  await assertFails(setDoc(doc(db, 'safety_permits/risk_not_reduced'), validPermit('operator_1', 'risk_not_reduced', {
+    risks: [{ hazard: 'Queda de altura', consequence: 'Lesão grave', initialRisk: 'baixo',
+      controlMeasures: 'Linha de vida e inspeção dos pontos de ancoragem.', residualRisk: 'critico' }],
+  })));
 });
 
 test('viewer reads APR/PT but cannot create or change it; another organization cannot read it', async () => {
