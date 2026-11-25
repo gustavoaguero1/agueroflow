@@ -38,12 +38,14 @@ export * from './inss';
  */
 export function calculateThirteenthAvos(
   admissionDateStr: string,
-  referenceYear = 2025,
+  referenceYear = new Date().getFullYear(),
   dismissalDateStr?: string | null
 ): number {
-  if (!admissionDateStr) return 12;
+  // Missing/invalid admission dates do not grant assumed 12/12 avos.
+  if (typeof admissionDateStr !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(admissionDateStr)) return 0;
 
   const admissionDate = new Date(admissionDateStr + 'T00:00:00');
+  if (Number.isNaN(admissionDate.getTime()) || admissionDate.toISOString().slice(0, 10) !== admissionDateStr) return 0;
   const admYear = admissionDate.getFullYear();
   const admMonth = admissionDate.getMonth(); // 0-11
   const admDay = admissionDate.getDate();
@@ -57,7 +59,9 @@ export function calculateThirteenthAvos(
   let cutOffDay = 31;
 
   if (dismissalDateStr) {
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dismissalDateStr)) return 0;
     const disDate = new Date(dismissalDateStr + 'T00:00:00');
+    if (Number.isNaN(disDate.getTime()) || disDate.toISOString().slice(0, 10) !== dismissalDateStr) return 0;
     if (disDate.getFullYear() === referenceYear) {
       cutOffMonth = disDate.getMonth();
       cutOffDay = disDate.getDate();
@@ -78,13 +82,15 @@ export function calculateThirteenthAvos(
   // Admitido no próprio ano de referência
   let avos = 0;
   for (let m = admMonth; m <= cutOffMonth; m++) {
-    if (m === admMonth) {
-      // No mês de admissão: confere se trabalhou 15 dias ou mais
+    if (m === admMonth && m === cutOffMonth && dismissalDateStr) {
+      // Admission and dismissal in the same month: count only the actual inclusive interval.
+      const workedDays = cutOffDay - admDay + 1;
+      if (workedDays >= 15) avos += 1;
+    } else if (m === admMonth) {
+      // In the admission month, count from the admission day to month end.
       const daysInMonth = new Date(referenceYear, m + 1, 0).getDate();
       const workedDays = daysInMonth - admDay + 1;
-      if (workedDays >= 15) {
-        avos += 1;
-      }
+      if (workedDays >= 15) avos += 1;
     } else if (m === cutOffMonth && dismissalDateStr) {
       // No mês de demissão
       if (cutOffDay >= 15) {
@@ -114,7 +120,7 @@ export function roundCurrency(val: number): number {
  */
 export function calculateEmployeeThirteenth({
   employee,
-  referenceYear = 2025,
+  referenceYear = new Date().getFullYear(),
   monthlyHours = 220,
   importedRef,
   porForaConfirmed = true,
@@ -277,9 +283,9 @@ export function calculateEmployeeThirteenth({
     referenceYear,
     employeeId: employee.id,
     employeeName: employee.name,
-    codigoObra: employee.codigoObra || employee.registrationNumber || '198',
-    registrationNumber: employee.codigoObra || employee.registrationNumber || '198',
-    companyName: employee.companyName || 'Aguero Inox',
+    codigoObra: employee.codigoObra || employee.registrationNumber || '',
+    registrationNumber: employee.registrationNumber || employee.codigoObra || '',
+    companyName: employee.companyName || '',
     unitId: employee.unitId || null,
     contractId: employee.contractId || null,
     admissionDate: employee.admissionDate,
@@ -455,10 +461,10 @@ export async function parseAgueroSpreadsheet(file: File): Promise<{
     const total1aParcela = parseExcelNumber(r[11]);
     const descontos2aParcela = parseExcelNumber(r[12]);
     const total2aParcela = parseExcelNumber(r[13]);
-    const empresa = String(r[14] || 'Aguero Inox').trim();
+    const empresa = String(r[14] || '').trim();
     const colunaP_auxiliar = String(r[15] || ''); // Coluna P auxiliar - sem significado financeiro
     const codigoRaw = String(r[16] || '').trim();
-    const codigoObra = codigoRaw || '198'; // Coluna Q: Código da Obra onde o colaborador está alocado
+    const codigoObra = codigoRaw; // Campo vazio permanece vazio; não atribuir código fictício.
     const codigoMatricula = codigoObra;
 
     const validationErrors: string[] = [];
