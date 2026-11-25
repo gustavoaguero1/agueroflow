@@ -770,12 +770,20 @@ service cloud.firestore {
         );
       }
 
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-        && validSafetyPermitCreate() && validSafetyPermitEventCreate() && validSafetyPermitStateCreate()
-        && validSafetyOccurrenceCreate()
-        && areaWrite(request.resource.data);
+      // Keep high-cost safety validation isolated from unrelated collection writes.
+      // Firestore evaluates every matching allow expression; invoking all validators
+      // for each collection can exceed the 1,000-expression budget.
+      allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states']
+        ? ((orgScoped() || immutable()) && canCreate() && areaWrite(request.resource.data)
+          && (coll == 'safety_permits' ? validSafetyPermitCreate()
+            : (coll == 'safety_permit_events' ? validSafetyPermitEventCreate()
+              : validSafetyPermitStateCreate())))
+        : (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory'])
+          ? (orgScoped() && canCreate() && areaWrite(request.resource.data) && validSafetyOccurrenceCreate())
+          : ((orgScoped() || immutable()) && canCreate() && nfeItemOk()
+            && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+            && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+            && areaWrite(request.resource.data)));
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'quality_record_states'
           ? (areaWrite(resource.data) && validQualityStateUpdate())
