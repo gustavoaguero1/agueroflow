@@ -53,8 +53,7 @@ service cloud.firestore {
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
 
-
-    // ---- Segurança do Trabalho & SMS: dedicated collection rules -----------------
+    // ---- Segurança do Trabalho & SMS ----------------------------------------
       function safetyRiskRank(level) {
         return level == 'baixo' ? 1 : level == 'medio' ? 2 : level == 'alto' ? 3 : level == 'critico' ? 4 : 0;
       }
@@ -282,6 +281,7 @@ service cloud.firestore {
 
 
 
+
     match /safety_permits/{permitId} {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
       allow create: if canCreate()
@@ -351,6 +351,7 @@ service cloud.firestore {
         && canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
         && validSafetyOccurrenceCreate(occurrenceId);
     }
+
 
     // ---- Server-only (Admin SDK) -------------------------------------------
     match /member_credentials/{id} { allow read, write: if false; }
@@ -833,11 +834,13 @@ service cloud.firestore {
           && validQualityEventCreateForDoc()
         );
       }
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-        && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
-        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-        && areaWrite(request.resource.data);
+      function genericCreate() {
+        return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+          && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+          && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+          && areaWrite(request.resource.data);
+      }
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
           ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
@@ -887,7 +890,7 @@ service cloud.firestore {
       // Financeiro: members read; immutable settlement events are written only by the backend.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      function financeCreate() { return finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || payableClientCreate())
         && (!isReceivable() || (request.resource.data.get('id', '') == docId
@@ -918,7 +921,7 @@ service cloud.firestore {
           && request.resource.data.get('snapshot', null) is map
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
-          && request.resource.data.get('updatedAt', null) == request.time));
+          && request.resource.data.get('updatedAt', null) == request.time)); }
       allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
@@ -928,10 +931,17 @@ service cloud.firestore {
       allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
-      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
-      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && request.resource.data.get('orgId', docId) == docId
+        && request.resource.data.get('organizationId', docId) == docId; }
+      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
         && (request.method == 'delete'
-            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+          || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow update, delete: if perOrgMutation();
+      // A single wildcard create grant routes to exactly one validator family.
+      allow create: if finance() ? financeCreate()
+        : (perOrgDoc() ? perOrgCreate() : genericCreate());
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
