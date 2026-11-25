@@ -82,6 +82,37 @@ async function post(base: string, permitId: string, body: Record<string, unknown
   });
 }
 
+async function postCreate(base: string, permit: Record<string, unknown>) {
+  return fetch(base + '/api/safety/permits', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orgId: 'org_a', permit }),
+  });
+}
+
+const validPermitPayload = (overrides: Record<string, unknown> = {}) => ({
+  unitId: 'unit_a',
+  contractId: 'contract_a',
+  documentType: 'apr',
+  validFrom: '2026-11-25T07:00',
+  validUntil: '2026-11-25T17:00',
+  permitType: 'trabalho_a_quente',
+  activityTitle: 'Soldagem TIG em tubulação inox',
+  description: 'Execução de soldagem TIG em trecho isolado da linha de processo.',
+  location: 'Planta industrial / Linha L-101',
+  supervisorName: 'Encarregado de montagem',
+  teamMembers: ['Soldador TIG', 'Ajudante'],
+  risks: [{
+    hazard: 'Projeção de fagulhas durante soldagem',
+    consequence: 'Queimaduras ou princípio de incêndio',
+    initialRisk: 'alto',
+    controlMeasures: 'Isolar a área, remover combustíveis e manter extintor e vigia de fogo.',
+    residualRisk: 'medio',
+  }],
+  controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fireWatch: true },
+  emergencyPlan: 'Interromper o serviço, acionar o responsável da planta e utilizar os recursos de combate disponíveis.',
+  ...overrides,
+});
+
 const aprPermit = {
   id: 'apr_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
   documentType: 'apr', permitType: 'trabalho_a_quente', permitCode: 'APR-2026-12345678',
@@ -94,6 +125,71 @@ const aprState = {
 const baseSeed = (): Seed => ({
   'safety_permits/apr_01': aprPermit,
   'safety_permit_states/apr_01': aprState,
+});
+
+test('APR creation validates server-side and atomically creates permit, initial event and state', async () => {
+  const seed: Seed = {
+    'units/unit_a': { id: 'unit_a', orgId: 'org_a', name: 'Unidade A' },
+    'contracts/contract_a': { id: 'contract_a', orgId: 'org_a', name: 'Contrato A' },
+  };
+  await withApi('Operacional', seed, async (base, docs) => {
+    const response = await postCreate(base, validPermitPayload());
+    assert.equal(response.status, 201);
+    const body = await response.json() as { permitId: string; permitCode: string };
+    assert.ok(body.permitId);
+    assert.match(body.permitCode, /^APR-2026-/);
+    const permit = docs.get('safety_permits/' + body.permitId);
+    assert.equal(permit?.createdByUid, 'supervisor_2');
+    assert.equal(permit?.documentType, 'apr');
+    assert.equal(docs.get('safety_permit_states/' + body.permitId)?.status, 'draft');
+    assert.ok([...docs.values()].some((item) => item.permitId === body.permitId && item.eventType === 'created'));
+  });
+});
+
+test('APR creation rejects missing activity controls and invalid risk reduction before writing', async () => {
+  const seed: Seed = {
+    'units/unit_a': { id: 'unit_a', orgId: 'org_a' },
+    'contracts/contract_a': { id: 'contract_a', orgId: 'org_a' },
+  };
+  await withApi('Operacional', seed, async (base, docs) => {
+    const response = await postCreate(base, validPermitPayload({
+      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fireWatch: false },
+      risks: [{ hazard: 'Queda de altura', consequence: 'Lesão grave',
+        initialRisk: 'baixo', controlMeasures: 'Linha de vida e inspeção dos pontos de ancoragem.',
+        residualRisk: 'critico' }],
+    }));
+    assert.equal(response.status, 400);
+    assert.equal([...docs.keys()].filter((path) => path.startsWith('safety_permits/')).length, 0);
+  });
+});
+
+test('PT creation requires an approved same-org APR and active RH identities', async () => {
+  const seed: Seed = {
+    'units/unit_a': { id: 'unit_a', orgId: 'org_a' },
+    'contracts/contract_a': { id: 'contract_a', orgId: 'org_a' },
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional de Altura', active: true },
+    'safety_permits/apr_01': {
+      id: 'apr_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
+      documentType: 'apr', permitType: 'trabalho_em_altura', validFrom: '2026-11-25T07:00',
+      validUntil: '2026-11-25T17:00',
+    },
+    'safety_permit_states/apr_01': {
+      id: 'apr_01', orgId: 'org_a', permitId: 'apr_01', status: 'approved',
+    },
+  };
+  await withApi('Operacional', seed, async (base, docs) => {
+    const response = await postCreate(base, validPermitPayload({
+      documentType: 'pt', relatedAprId: 'apr_01', permitType: 'trabalho_em_altura',
+      validFrom: '2026-11-25T08:00', validUntil: '2026-11-25T16:00',
+      teamMembers: ['Profissional de Altura'], teamMemberIds: ['employee_01'],
+      controls: { teamBriefed: true, ppeInspected: true, areaIsolated: true, fallProtection: true, anchorVerified: true },
+    }));
+    assert.equal(response.status, 201);
+    const body = await response.json() as { permitId: string };
+    const created = docs.get('safety_permits/' + body.permitId);
+    assert.deepEqual(created?.teamMemberIds, ['employee_01']);
+    assert.equal(created?.relatedAprId, 'apr_01');
+  });
 });
 
 test('operational editor submits an APR, but cannot use manager-only transitions', async () => {
