@@ -826,17 +826,20 @@ service cloud.firestore {
         return safetyWriteBase() && validSafetyOccurrenceCreate();
       }
 
-      // All document creation is authorized through one grant in this wildcard match.
-      // Official EPI movements and training certificates are backend-only.
-      allow create: if safetyCreate()
-        || (isSafetyOccurrence() && safetyOccurrenceCreate())
-        || financeCreate()
-        || perOrgCreate()
-        || (!isSafetyCollection() && !isSafetyOccurrence()
-          && (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-          && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-          && areaWrite(request.resource.data));
+      // Select one validator family per collection. Do not OR-evaluate
+      // unrelated safety, finance, per-org and generic validators for every write.
+      allow create: if isSafetyCollection()
+        ? safetyCreate()
+        : isSafetyOccurrence()
+          ? safetyOccurrenceCreate()
+          : finance()
+            ? financeCreate()
+            : perOrgDoc()
+              ? perOrgCreate()
+              : (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+                && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+                && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+                && areaWrite(request.resource.data);
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'quality_record_states'
           ? (areaWrite(resource.data) && validQualityStateUpdate())
