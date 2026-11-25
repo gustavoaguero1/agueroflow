@@ -460,7 +460,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           {activeTab === 'ativos' && (
             <button
               onClick={() => {
-                setAssetUnitId(units[0]?.id || '');
+                setAssetUnitId('');
                 setShowAssetModal(true);
               }}
               disabled={units.length === 0}
