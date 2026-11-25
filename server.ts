@@ -87,6 +87,7 @@ import { createFinanceBankReconciliationRouter } from './server/financeBankRecon
 import { createFinanceReceivableReceiptRouter } from './server/financeReceivableReceiptRoutes';
 import { createSafetyRouter } from './server/safetyRoutes';
 import { createInspectionRouter } from './server/inspectionRoutes';
+import { createChecklistRouter } from './server/checklistRoutes';
 import { createWorkOrderRouter } from './server/workOrderRoutes';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
@@ -575,6 +576,7 @@ async function main() {
   app.use('/api/finance/receivable-receipts', createFinanceReceivableReceiptRouter());
   app.use('/api/safety', createSafetyRouter());
   app.use('/api/inspections', createInspectionRouter());
+  app.use('/api/checklists', createChecklistRouter());
   app.use('/api/work-orders', createWorkOrderRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
