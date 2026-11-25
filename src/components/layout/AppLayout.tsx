@@ -66,6 +66,7 @@ export type NavSection =
   | 'contratos'
   | 'auditoria'
   | 'obras'
+  | 'obras-medicoes'
   | 'operacoes'
   | 'ops-inicio'
   | 'ops-direcionar'
@@ -153,7 +154,7 @@ interface AppLayoutProps {
 
 /** Telas que pertencem ao grupo Operações no menu (inclui Obras/RDO e Viagens). */
 export const isOpsSection = (s: string) =>
-  s === 'operacoes' || s === 'obras' || s.startsWith('ops-') || s.startsWith('viagens');
+  s === 'operacoes' || s === 'obras' || s.startsWith('obras-') || s.startsWith('ops-') || s.startsWith('viagens');
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   currentSection,
@@ -334,6 +335,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'ops-inicio' as NavSection, label: 'Painel' },
         { id: 'ops-direcionar' as NavSection, label: 'Gerenciamento de operações' },
         { id: 'obras' as NavSection, label: 'Obras e RDO' },
+        { id: 'obras-medicoes' as NavSection, label: 'Medições & Boletins (BM)' },
         { id: 'ops-diario' as NavSection, label: 'Diário de obras' },
         { id: 'ops-viagem' as NavSection, label: 'Hora viagem' },
         { id: 'viagens-painel' as NavSection, label: 'Passagens e solicitações' },
@@ -497,6 +499,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Auditoria & Governança';
       case 'obras':
         return 'Operações — Obras e RDO';
+      case 'obras-medicoes':
+        return 'Operações — Medições & Boletim de Medição (BM)';
       case 'operacoes':
       case 'ops-inicio':
         return 'Operações — Painel';
