@@ -456,13 +456,13 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                         <textarea
                           rows={2}
                           value={ans?.value ?? ''}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
                               [it.id]: { ...ans, value: e.target.value },
-                            })
-                          }
+                            });
+                          }}
                           placeholder="Descreva as constatações..."
                           className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
