@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../src/services/safetyCompliance.ts';
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
 import { areaLevelOf, requireArea } from './authMiddleware.ts';
-import { getAdmin } from './firebaseAdmin.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class SafetyRouteError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -21,11 +21,11 @@ function canManagePermits(req: Request, orgId: string): boolean {
   return actor.master || ['Admin', 'Gerente', 'Supervisor'].includes(actor.orgs?.[orgId] || '');
 }
 
-function toRows<T>(snap: FirebaseFirestore.QuerySnapshot): T[] {
-  return snap.docs.map((item) => ({ ...(item.data() as object), id: item.id } as T));
+function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): T[] {
+  return snap.docs.map((item) => ({ ...item.data(), id: item.id }) as unknown as T);
 }
 
-export function createSafetyRouter(): Router {
+export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
   router.post('/permits/:permitId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
@@ -46,7 +46,7 @@ export function createSafetyRouter(): Router {
     if (['rejected', 'closed', 'cancelled'].includes(eventType) && comment.length < 5) {
       return res.status(400).json({ ok: false, error: 'Informe uma justificativa com pelo menos 5 caracteres.' });
     }
-    const h = getAdmin();
+    const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
 
     const permitRef = h.db.collection('safety_permits').doc(permitId);
