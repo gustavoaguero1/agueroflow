@@ -75,6 +75,7 @@ Owner kinds:
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
+| project_cost_facts | orgId (immutable / append-only) | `orgId ==` | Livro de fatos de custo realizado e comprometido por Projeto/Obra (HH, consumo de estoque, compras, despesas de campo e ajustes). Leitura por Financeiro, Operações, Comercial ou Estoque (nível 1+); criação por Admin/Gerente/Supervisor com Financeiro ou Operações nível 2 validando `projectId` na mesma empresa. Estornos exigem `isReversal: true` (valores negativos); atualização e exclusão são bloqueadas. |
 | projects | orgId | `orgId ==` | Entidade mestre Projeto/Obra. Leitura por Operações, Comercial, Estoque ou Financeiro (nível 1+). Criação e atualização exigem Admin/Gerente/Supervisor com Operações ou Comercial nível 2, validando `unitId` (sem `default_unit`), `contractId` e `costCenterId` (quando informado) na mesma empresa. Exclusão pelo cliente bloqueada (encerramento via status). |
 | purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. Financeiro: leitura somente para conciliar NF-e/OC; sem escrita. |
 | purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
@@ -88,7 +89,7 @@ Owner kinds:
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
-| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas por recebimento preservam OC, NF-e, recibo, custo e idempotência. | |
+| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas e saídas persistem snapshot de `unitCost`, `totalCost` e `projectId` (quando informado) para apropriação de custo por obra. |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |

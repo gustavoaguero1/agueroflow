@@ -15,13 +15,15 @@ import {
   Zap,
   Sparkles,
   FileSpreadsheet,
+  Building2,
 } from 'lucide-react';
 import { PredictiveAnalysisView } from '../components/reports/PredictiveAnalysisView';
 import { OperationalExportModal } from '../components/reports/OperationalExportModal';
+import { ProjectResultReportView } from '../components/reports/ProjectResultReportView';
 
 export const ReportsModule: React.FC = () => {
   const { organization, units } = useAuth();
-  const [activeTab, setActiveTab] = useState<'preditiva' | 'geral'>('preditiva');
+  const [activeTab, setActiveTab] = useState<'preditiva' | 'resultado-obra' | 'geral'>('preditiva');
   const [showExportModal, setShowExportModal] = useState(false);
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
@@ -125,6 +127,19 @@ export const ReportsModule: React.FC = () => {
 
             <button
               type="button"
+              onClick={() => setActiveTab('resultado-obra')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                activeTab === 'resultado-obra'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-cyan-300" />
+              <span>Resultado por Obra</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('geral')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
                 activeTab === 'geral'
@@ -159,6 +174,11 @@ export const ReportsModule: React.FC = () => {
           units={units}
           onRefresh={fetchData}
         />
+      )}
+
+      {/* Tab 2: Resultado por Obra (Previsto x Comprometido x Realizado) */}
+      {activeTab === 'resultado-obra' && organization && (
+        <ProjectResultReportView orgId={organization.id} orgSlug={organization.slug} />
       )}
 
       {/* Tab 2: General KPIs and Breakdowns */}
