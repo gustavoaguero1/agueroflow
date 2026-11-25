@@ -804,7 +804,7 @@ service cloud.firestore {
       allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
           'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records']
         ? (signedIn()
-          && request.resource.data.get('id', '') == docId
+          && (coll == 'safety_permit_events' || request.resource.data.get('id', '') == docId)
           && isMemberOf(request.resource.data.get('orgId', ''))
           && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2)
           && (coll == 'safety_permits' ? validSafetyPermitCreate()
