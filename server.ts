@@ -98,6 +98,10 @@ import { createIndustrialQualityRouter } from './server/industrialQualityRoutes'
 import { createPurchasingApprovalRouter } from './server/purchasingApprovalRoutes';
 import { createManufacturingRouter } from './server/manufacturingRoutes';
 import { createCmmsRouter } from './server/cmmsRoutes';
+import { createClientPortalRouter } from './server/clientPortalRoutes';
+import { createAiActionRouter } from './server/aiActionRoutes';
+import { createProtheusSyncRouter } from './server/protheusSyncRoutes';
+import { correlationIdMiddleware } from './server/distributedInfra';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -595,6 +599,9 @@ async function main() {
   app.use('/api/purchasing/approvals', createPurchasingApprovalRouter());
   app.use('/api/manufacturing', createManufacturingRouter());
   app.use('/api/cmms', createCmmsRouter());
+  app.use('/api/client-portal', correlationIdMiddleware, createClientPortalRouter());
+  app.use('/api/ai-actions', correlationIdMiddleware, createAiActionRouter());
+  app.use('/api/protheus-sync', correlationIdMiddleware, createProtheusSyncRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
