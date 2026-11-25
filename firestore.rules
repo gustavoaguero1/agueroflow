@@ -361,8 +361,12 @@ service cloud.firestore {
       allow read: if canRead(resource);
       allow create: if (isMaster() || ownerOk(request.resource.data)) && request.resource.data.get('seq', 0) >= 1
         && (isMaster() || docId == request.resource.data.get('orgId', '') + '_work_orders'); // deterministic id: no squatting another org's counter
-      allow update: if sameOwner() && (isMaster() || ownerOk(resource.data))
-        && request.resource.data.seq == resource.data.seq + 1;
+      allow update: if (isMaster() || (ownerOk(resource.data)
+          && docId == resource.data.get('orgId', '') + '_work_orders'))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seq'])
+        && resource.data.get('seq', null) is int
+        && request.resource.data.get('seq', null) is int
+        && request.resource.data.get('seq', 0) == resource.data.get('seq', 0) + 1;
     }
 
     // ---- Organizations ------------------------------------------------------
