@@ -53,6 +53,298 @@ service cloud.firestore {
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
 
+    // ---- Segurança do Trabalho & SMS ----------------------------------------
+      function safetyRiskRank(level) {
+        return level == 'baixo' ? 1 : level == 'medio' ? 2 : level == 'alto' ? 3 : level == 'critico' ? 4 : 0;
+      }
+      function validSafetyRiskItem(risk) {
+        return risk is map
+          && risk.get('hazard', '') is string && risk.get('hazard', '').size() >= 3 && risk.get('hazard', '').size() <= 180
+          && risk.get('consequence', '') is string && risk.get('consequence', '').size() >= 3 && risk.get('consequence', '').size() <= 300
+          && risk.get('initialRisk', '') in ['baixo', 'medio', 'alto', 'critico']
+          && risk.get('controlMeasures', '') is string && risk.get('controlMeasures', '').size() >= 5 && risk.get('controlMeasures', '').size() <= 700
+          && risk.get('residualRisk', '') in ['baixo', 'medio', 'alto', 'critico']
+          && safetyRiskRank(risk.get('residualRisk', '')) <= safetyRiskRank(risk.get('initialRisk', ''));
+      }
+      function validSafetyRiskList(d) {
+        let risks = d.get('risks', []);
+        return d.get('risks', null) is list
+          && risks.size() >= 1 && risks.size() <= 5
+          && validSafetyRiskItem(risks[0])
+          && (risks.size() < 2 || validSafetyRiskItem(risks[1]))
+          && (risks.size() < 3 || validSafetyRiskItem(risks[2]))
+          && (risks.size() < 4 || validSafetyRiskItem(risks[3]))
+          && (risks.size() < 5 || validSafetyRiskItem(risks[4]));
+      }
+      function validSafetyAprLink(d) {
+        let documentType = d.get('documentType', '');
+        let aprId = d.get('relatedAprId', '');
+        let safeAprId = aprId is string && aprId.size() > 0 ? aprId : '__missing_apr__';
+        let aprPath = /databases/$(database)/documents/safety_permits/$(safeAprId);
+        let aprStatePath = /databases/$(database)/documents/safety_permit_states/$(safeAprId);
+        let aprExists = exists(aprPath);
+        let stateExists = exists(aprStatePath);
+        let apr = aprExists ? get(aprPath).data : {};
+        let aprState = stateExists ? get(aprStatePath).data : {};
+        return documentType == 'apr'
+          ? !d.keys().hasAny(['relatedAprId'])
+          : (documentType == 'pt'
+            && aprId is string && aprId.size() > 0
+            && aprExists && stateExists
+            && apr.get('documentType', '') == 'apr'
+            && orgOf(apr) == orgOf(d)
+            && apr.get('unitId', '') == d.get('unitId', '')
+            && apr.get('contractId', '') == d.get('contractId', '')
+            && aprState.get('permitId', '') == aprId
+            && aprState.get('status', '') == 'approved');
+      }
+      function validSafetyPermitCreate(permitId) {
+        let d = request.resource.data;
+        let permitType = d.get('permitType', '');
+        let documentType = d.get('documentType', '');
+        let controls = d.get('controls', {});
+        return 
+          signedIn()
+          && d.get('id', '') == permitId
+          && d.get('orgId', '') is string && d.get('orgId', '').size() > 0
+          && documentType in ['apr', 'pt']
+          && d.get('permitCode', '') is string
+          && (documentType == 'apr'
+            ? d.get('permitCode', '').matches('^APR-[0-9]{4}-[A-Z0-9]{8}$')
+            : d.get('permitCode', '').matches('^PT-[0-9]{4}-[A-Z0-9]{8}$'))
+          && d.get('permitDate', '') is string
+          && d.get('permitDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && permitType in ['trabalho_a_quente', 'trabalho_em_altura', 'espaco_confinado', 'eletrico', 'icamento', 'abertura_de_linha', 'geral']
+          && d.get('unitId', '') is string && d.get('unitId', '').size() > 0
+          && d.get('contractId', '') is string && d.get('contractId', '').size() > 0
+          && d.get('activityTitle', '') is string && d.get('activityTitle', '').size() >= 3 && d.get('activityTitle', '').size() <= 160
+          && d.get('description', '') is string && d.get('description', '').size() >= 10 && d.get('description', '').size() <= 2000
+          && d.get('location', '') is string && d.get('location', '').size() >= 2 && d.get('location', '').size() <= 180
+          && d.get('validFrom', '') is string && d.get('validFrom', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$')
+          && d.get('validUntil', '') is string && d.get('validUntil', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$')
+          && d.get('validUntil', '') > d.get('validFrom', '')
+          && d.get('supervisorName', '') is string && d.get('supervisorName', '').size() >= 2 && d.get('supervisorName', '').size() <= 120
+          && d.get('teamMembers', null) is list && d.get('teamMembers', []).size() >= 1 && d.get('teamMembers', []).size() <= 30
+          && d.get('teamMembers', [])[0] is string
+          && (documentType != 'pt' || (d.get('teamMemberIds', null) is list
+            && d.get('teamMemberIds', []).size() >= 1 && d.get('teamMemberIds', []).size() <= 30
+            && d.get('teamMemberIds', [])[0] is string && d.get('teamMemberIds', [])[0].size() > 0))
+          && validSafetyRiskList(d)
+          && controls is map
+          && controls.get('teamBriefed', false) == true
+          && controls.get('ppeInspected', false) == true
+          && controls.get('areaIsolated', false) == true
+          && (permitType != 'trabalho_a_quente' || controls.get('fireWatch', false) == true)
+          && (permitType != 'trabalho_em_altura' || (controls.get('fallProtection', false) == true && controls.get('anchorVerified', false) == true))
+          && (permitType != 'espaco_confinado' || (controls.get('gasTest', false) == true && controls.get('rescuePlan', false) == true && controls.get('standbyWatch', false) == true))
+          && (permitType != 'eletrico' || (controls.get('lockoutTagout', false) == true && controls.get('zeroEnergyVerified', false) == true))
+          && (permitType != 'abertura_de_linha' || (controls.get('lockoutTagout', false) == true && controls.get('zeroEnergyVerified', false) == true))
+          && (permitType != 'icamento' || controls.get('liftPlanReviewed', false) == true)
+          && d.get('emergencyPlan', '') is string && d.get('emergencyPlan', '').size() >= 10 && d.get('emergencyPlan', '').size() <= 1500
+          && d.get('createdByUid', '') == request.auth.uid
+          && d.get('createdByName', '') is string && d.get('createdByName', '').size() > 0
+          && d.get('createdAt', null) == request.time
+          && validSafetyAprLink(d);
+      }
+      function validSafetyPermitEventCreateForDoc() {
+        let permitId = request.resource.data.get('permitId', '');
+        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
+        let permitExists = exists(permitPath);
+        let permit = permitExists ? get(permitPath).data : {};
+        let eventType = request.resource.data.get('eventType', '');
+        let hasPrevious = request.resource.data.keys().hasAny(['previousEventId']);
+        return signedIn()
+          && permitExists
+          && request.resource.data.get('orgId', '') == orgOf(permit)
+          && request.resource.data.get('unitId', '') == permit.get('unitId', '')
+          && request.resource.data.get('contractId', '') == permit.get('contractId', '')
+          && !exists(/databases/$(database)/documents/safety_permit_states/$(safePermitId))
+          && eventType == 'created'
+          && request.resource.data.get('actorUid', '') == request.auth.uid
+          && request.resource.data.get('actorName', '') is string
+          && request.resource.data.get('actorName', '').size() > 0
+          && request.resource.data.get('recordedAt', null) == request.time
+          && (eventType == 'created' ? !hasPrevious
+            : (hasPrevious && request.resource.data.get('previousEventId', '') is string
+              && request.resource.data.get('previousEventId', '').size() > 0))
+          && (eventType in ['rejected', 'closed', 'cancelled']
+            ? (request.resource.data.get('comment', '') is string
+              && request.resource.data.get('comment', '').size() >= 5
+              && request.resource.data.get('comment', '').size() <= 1500)
+            : true);
+      }
+      function validSafetyPermitEventCreate() {
+        return validSafetyPermitEventCreateForDoc();
+      }
+      function validSafetyPermitStateCreateForDoc(permitId) {
+        let permitPath = /databases/$(database)/documents/safety_permits/$(permitId);
+        let eventId = request.resource.data.get('latestEventId', '');
+        let safeEventId = eventId is string && eventId.size() > 0 ? eventId : '__missing_event__';
+        let eventPath = /databases/$(database)/documents/safety_permit_events/$(safeEventId);
+        let permitExists = exists(permitPath);
+        let permit = permitExists ? get(permitPath).data : {};
+        let eventExists = exists(eventPath);
+        let event = eventExists ? get(eventPath).data : {};
+        return signedIn()
+          && permitExists && eventExists
+          && request.resource.data.get('id', '') == permitId
+          && request.resource.data.get('permitId', '') == permitId
+          && request.resource.data.get('orgId', '') == orgOf(permit)
+          && request.resource.data.get('unitId', '') == permit.get('unitId', '')
+          && request.resource.data.get('contractId', '') == permit.get('contractId', '')
+          && request.resource.data.get('status', '') == 'draft'
+          && event.get('permitId', '') == permitId
+          && event.get('eventType', '') == 'created'
+          && event.get('actorUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByUid', '') == request.auth.uid
+          && request.resource.data.get('updatedByName', '') is string
+          && request.resource.data.get('updatedByName', '').size() > 0
+          && request.resource.data.get('updatedAt', null) == request.time;
+      }
+      function validSafetyPermitStateCreate(permitId) {
+        return validSafetyPermitStateCreateForDoc(permitId);
+      }
+      function safetyStatusAfter(currentStatus, eventType) {
+        return eventType == 'submitted_for_approval' && currentStatus in ['draft', 'rejected'] ? 'awaiting_approval'
+          : eventType == 'approved' && currentStatus == 'awaiting_approval' ? 'approved'
+          : eventType == 'rejected' && currentStatus == 'awaiting_approval' ? 'rejected'
+          : eventType == 'closed' && currentStatus == 'approved' ? 'closed'
+          : eventType == 'cancelled' && currentStatus in ['draft', 'awaiting_approval', 'rejected', 'approved'] ? 'cancelled'
+          : eventType == 'note_added' && currentStatus != '' ? currentStatus : '';
+      }
+      function validSafetyOccurrencePermit(d) {
+        let permitId = d.get('relatedPermitId', '');
+        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
+        let permitExists = exists(permitPath);
+        let permit = permitExists ? get(permitPath).data : {};
+        return permitId == '' || (permitExists && orgOf(permit) == orgOf(d)
+          && permit.get('unitId', '') == d.get('unitId', ''));
+      }
+      function validSafetyOccurrenceUpdate() {
+        return !resource.data.keys().hasAny(['safetyCategory']) || (
+          request.resource.data.get('id', '') == resource.data.get('id', '')
+          && request.resource.data.get('orgId', '') == resource.data.get('orgId', '')
+          && request.resource.data.get('unitId', '') == resource.data.get('unitId', '')
+          && request.resource.data.get('type', '') == 'seguranca'
+          && request.resource.data.get('safetyCategory', '') == resource.data.get('safetyCategory', '')
+          && request.resource.data.get('incidentDate', '') == resource.data.get('incidentDate', '')
+          && request.resource.data.get('relatedPermitId', '') == resource.data.get('relatedPermitId', '')
+          && request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByUid', '')
+          && request.resource.data.get('createdAt', '') == resource.data.get('createdAt', '')
+        );
+      }
+      function validSafetyOccurrenceCreate(occurrenceId) {
+        return 
+          signedIn()
+          && request.resource.data.get('id', '') == occurrenceId
+          && request.resource.data.get('type', '') == 'seguranca'
+          && request.resource.data.get('safetyCategory', '') in ['quase_acidente', 'condicao_insegura', 'ato_inseguro', 'incidente_sem_lesao', 'acidente_com_lesao', 'incidente_ambiental']
+          && request.resource.data.get('incidentDate', '') is string
+          && request.resource.data.get('incidentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 3
+          && request.resource.data.get('title', '').size() <= 150
+          && request.resource.data.get('description', '') is string
+          && request.resource.data.get('description', '').size() >= 10
+          && request.resource.data.get('description', '').size() <= 2000
+          && request.resource.data.get('immediateAction', '') is string
+          && request.resource.data.get('immediateAction', '').size() <= 1000
+          && request.resource.data.get('reportedByUid', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberta'
+          && validSafetyOccurrencePermit(request.resource.data);
+      }
+
+
+      function validSafetyActivityTypes(types) {
+        return types is list && types.size() >= 1 && types.size() <= 7
+          && types.hasOnly(['trabalho_a_quente', 'trabalho_em_altura', 'espaco_confinado', 'eletrico', 'icamento', 'abertura_de_linha', 'geral']);
+      }
+      function validSafetyPpeCatalogCreate() {
+        let d = request.resource.data;
+        return d.get('name', '') is string && d.get('name', '').size() >= 2 && d.get('name', '').size() <= 120
+          && d.get('category', '') is string && d.get('category', '').size() >= 2 && d.get('category', '').size() <= 80
+          && d.get('caNumber', '') is string && d.get('caNumber', '').size() > 0 && d.get('caNumber', '').size() <= 40
+          && d.get('caExpiresAt', '') is string && d.get('caExpiresAt', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && validSafetyActivityTypes(d.get('requiredForPermitTypes', []))
+          && d.get('active', false) == true && d.get('createdByUid', '') == request.auth.uid;
+      }
+      function validSafetyTrainingCatalogCreate() {
+        let d = request.resource.data;
+        return d.get('code', '') is string && d.get('code', '').size() >= 2 && d.get('code', '').size() <= 40
+          && d.get('title', '') is string && d.get('title', '').size() >= 3 && d.get('title', '').size() <= 140
+          && validSafetyActivityTypes(d.get('requiredForPermitTypes', []))
+          && d.get('active', false) == true && d.get('createdByUid', '') == request.auth.uid;
+      }
+
+
+
+
+
+    match /safety_permits/{permitId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      // Creation and every state change are performed atomically by the trusted API.
+      allow create, update, delete: if false;
+    }
+
+    match /safety_permit_events/{eventId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    match /safety_permit_states/{permitId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    match /safety_ppe_catalog/{catalogId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+        && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+        && request.resource.data.get('id', '') == catalogId
+        && validSafetyPpeCatalogCreate();
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_OPS(), 2)
+        && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+        && request.resource.data.get('id', '') == catalogId
+        && request.resource.data.get('orgId', '') == orgOf(resource.data)
+        && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'category', 'caNumber', 'caExpiresAt', 'requiredForPermitTypes', 'active', 'notes', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /safety_ppe_movements/{movementId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow write: if false;
+    }
+
+    match /safety_training_catalog/{catalogId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+        && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+        && request.resource.data.get('id', '') == catalogId
+        && validSafetyTrainingCatalogCreate();
+      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_OPS(), 2)
+        && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+        && request.resource.data.get('id', '') == catalogId
+        && request.resource.data.get('orgId', '') == orgOf(resource.data)
+        && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['code', 'title', 'requiredForPermitTypes', 'active', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /safety_training_records/{recordId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow write: if false;
+    }
+
+    match /occurrences/{occurrenceId} {
+      allow create: if request.resource.data.keys().hasAny(['safetyCategory'])
+        && canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+        && validSafetyOccurrenceCreate(occurrenceId);
+    }
+
+
     // ---- Server-only (Admin SDK) -------------------------------------------
     match /member_credentials/{id} { allow read, write: if false; }
     match /first_access_tokens/{id} { allow read, write: if false; }
@@ -534,15 +826,21 @@ service cloud.firestore {
           && validQualityEventCreateForDoc()
         );
       }
-      allow create: if (orgScoped() || immutable()) && canCreate() && nfeItemOk()
-        && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-        && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-        && areaWrite(request.resource.data);
+      function genericCreate() {
+        return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+          && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+          && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+          && areaWrite(request.resource.data);
+      }
       allow update: if orgScoped() && !immutable() && canUpdate()
-        && (coll == 'quality_record_states'
-          ? (areaWrite(resource.data) && validQualityStateUpdate())
-          : (areaWrite(resource.data) || rhAllocation()));
-      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data);
+        && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
+          ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
+          : (coll == 'quality_record_states'
+            ? (areaWrite(resource.data) && validQualityStateUpdate())
+            : (areaWrite(resource.data) || rhAllocation())));
+      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data)
+        && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
@@ -584,7 +882,7 @@ service cloud.firestore {
       // Financeiro: members read; immutable settlement events are written only by the backend.
       function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
-      allow create: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
+      function financeCreate() { return finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
         && (!isPayable() || payableClientCreate())
         && (!isReceivable() || (request.resource.data.get('id', '') == docId
@@ -615,7 +913,7 @@ service cloud.firestore {
           && request.resource.data.get('snapshot', null) is map
           && request.resource.data.get('evidenceReference', '') is string && request.resource.data.get('evidenceReference', '').size() <= 1000
           && request.resource.data.get('createdAt', null) == request.time
-          && request.resource.data.get('updatedAt', null) == request.time));
+          && request.resource.data.get('updatedAt', null) == request.time)); }
       allow update: if finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canUpdate()
         && (isReconciliationCase()
           ? (financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2) && reconciliationCaseUpdate())
@@ -625,10 +923,22 @@ service cloud.firestore {
       allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
-      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
-      allow write: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+        && request.resource.data.get('orgId', docId) == docId
+        && request.resource.data.get('organizationId', docId) == docId; }
+      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
         && (request.method == 'delete'
-            || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId));
+          || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
+      allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
+      allow update, delete: if perOrgMutation();
+      // A single wildcard create grant routes to exactly one validator family.
+      allow create: if coll in [
+          'safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
+        ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+        ? false
+        : (finance() ? financeCreate()
+          : (perOrgDoc() ? perOrgCreate() : genericCreate()));
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----

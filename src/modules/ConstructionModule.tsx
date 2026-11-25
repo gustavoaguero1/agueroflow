@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { EngineeringDocumentsPanel } from '../components/construction/EngineeringDocumentsPanel';
+import { SafetyManagementPanel } from '../components/construction/SafetyManagementPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -52,6 +53,7 @@ import {
   DollarSign,
   Settings,
   Award,
+  ShieldCheck,
 } from 'lucide-react';
 import { BrandLogo } from '../components/common/BrandLogo';
 import { FieldPersonnelManager } from '../components/construction/FieldPersonnelManager';
@@ -102,7 +104,7 @@ const createEmptyRdoWorkforceDrafts = (): RdoWorkforceDraft[] => [
 export const ConstructionModule: React.FC = () => {
   const { user, organization, units, contracts, logAudit, canViewFinancials, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs' | 'documentos_engenharia'
+    'rdo' | 'avanco' | 'equipe_rh' | 'apontamento_jornada' | 'dashboard_custo' | 'painel_nrs' | 'seguranca_sms' | 'documentos_engenharia'
   >('rdo');
 
   const [reports, setReports] = useState<ConstructionDailyReport[]>([]);
@@ -586,6 +588,18 @@ export const ConstructionModule: React.FC = () => {
           </span>
         </button>
         <button
+          onClick={() => setActiveTab('seguranca_sms')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'seguranca_sms'
+              ? 'bg-rose-600 text-white font-bold shadow-md'
+              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-rose-400" />
+          <span>7. Segurança & SMS</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('documentos_engenharia')}
           className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'documentos_engenharia'
@@ -594,7 +608,7 @@ export const ConstructionModule: React.FC = () => {
           }`}
         >
           <FileText className="w-4 h-4 text-cyan-400" />
-          <span>7. Engenharia & Documentos</span>
+          <span>8. Engenharia & Documentos</span>
         </button>
       </div>
 
@@ -943,7 +957,10 @@ export const ConstructionModule: React.FC = () => {
         />
       )}
 
-      {/* TAB 7: Controle de desenhos, revisões e aprovações de engenharia */}
+      {/* TAB 7: APR, Permissões de Trabalho e Segurança/SMS */}
+      {activeTab === 'seguranca_sms' && organization && <SafetyManagementPanel />}
+
+      {/* TAB 8: Controle de desenhos, revisões e aprovações de engenharia */}
       {activeTab === 'documentos_engenharia' && organization && (
         <EngineeringDocumentsPanel
           organizationId={organization.id}

@@ -28,6 +28,12 @@ service firebase.storage {
     function engineeringCanWrite(orgId) {
       return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2);
     }
+    function safetyCertificateCanWrite(orgId) {
+      let role = request.auth.token.get('orgs', {}).get(orgId, '');
+      return isMaster() || (isMember(orgId)
+        && int(areaCode(orgId)[1:2]) >= 2
+        && role in ['Admin', 'Gerente', 'Supervisor']);
+    }
 
     // Photos of work orders: org members (custom claims set by the server) or master.
     match /work-orders/{orgId}/{allPaths=**} {
@@ -55,6 +61,18 @@ service firebase.storage {
     match /engineering-documents/{orgId}/{documentId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
       allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp)$');
+      allow update, delete: if false;
+    }
+
+    // Certificados de treinamentos e qualificações da equipe de Segurança & SMS.
+    // Novos arquivos são imutáveis e acessíveis apenas a membros da empresa na área Operações.
+    match /safety-certificates/{orgId}/{employeeId}/{fileId} {
+      allow read: if engineeringCanRead(orgId);
+      allow create: if safetyCertificateCanWrite(orgId)
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024

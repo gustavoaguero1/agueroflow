@@ -49,6 +49,8 @@ test('engineering documents: Viewer can read, but cannot upload', async () => {
   const path = 'engineering-documents/org_a/eng_org_a_PID-101_00/upload_12345678';
   await assertSucceeds(uploadBytes(ref(editor, path), pdf, { contentType: 'application/pdf' }));
 
+  const operationsEditor = st({ orgs: { org_a: 'Operacional' } }, 'operations-editor');
+  await assertFails(uploadBytes(ref(operationsEditor, 'safety-certificates/org_a/employee_01/record_05_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
   const viewer = st({ orgs: { org_a: 'Visualizador' } }, 'viewer');
   await assertSucceeds(getBytes(ref(viewer, path)));
   await assertFails(uploadBytes(ref(viewer, 'engineering-documents/org_a/eng_org_a_PID-102_00/upload_12345678'), pdf, { contentType: 'application/pdf' }));
@@ -73,4 +75,21 @@ test('engineering document uploads deny anonymous users and preserve master acce
   const path = 'engineering-documents/org_z/eng_org_z_PID-1_A/master_upload_1234';
   await assertFails(uploadBytes(ref(st(), path), pdf, { contentType: 'application/pdf' }));
   await assertSucceeds(uploadBytes(ref(st({ master: true }), path), pdf, { contentType: 'application/pdf' }));
+});
+
+
+test('safety training certificates are tenant-scoped, role-protected and immutable', async () => {
+  const supervisor = st({ orgs: { org_a: 'Supervisor' } }, 'supervisor');
+  const path = 'safety-certificates/org_a/employee_01/record_01_certificate.pdf';
+  await assertSucceeds(uploadBytes(ref(supervisor, path), pdf, { contentType: 'application/pdf' }));
+  await assertSucceeds(getBytes(ref(supervisor, path)));
+
+  const viewer = st({ orgs: { org_a: 'Visualizador' } }, 'viewer');
+  await assertSucceeds(getBytes(ref(viewer, path)));
+  await assertFails(uploadBytes(ref(viewer, 'safety-certificates/org_a/employee_01/record_02_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
+  await assertFails(getBytes(ref(st({ orgs: { org_b: 'Admin' } }), path)));
+  await assertFails(uploadBytes(ref(supervisor, 'safety-certificates/org_b/employee_01/record_03_certificate.pdf'), pdf, { contentType: 'application/pdf' }));
+  await assertFails(uploadBytes(ref(supervisor, 'safety-certificates/org_a/employee_01/record_04_certificate.svg'), jpg, { contentType: 'image/svg+xml' }));
+  await assertFails(uploadBytes(ref(supervisor, path), pdf, { contentType: 'application/pdf' }));
+  await assertFails(deleteObject(ref(supervisor, path)));
 });
