@@ -337,5 +337,94 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
+  router.post('/training-records', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const {
+      recordId, employeeId, trainingCode, issueDate, expirationDate,
+      issuingEntity, certificateNumber, certificateUrl, certificatePath, certificateName, notes,
+    } = req.body || {};
+    const code = typeof trainingCode === 'string' ? trainingCode.trim().toUpperCase() : '';
+    const entity = typeof issuingEntity === 'string' ? issuingEntity.trim() : '';
+    const certificate = typeof certificateNumber === 'string' ? certificateNumber.trim() : '';
+    const externalUrl = typeof certificateUrl === 'string' ? certificateUrl.trim() : '';
+    const filePath = typeof certificatePath === 'string' ? certificatePath.trim() : '';
+    const fileName = typeof certificateName === 'string' ? certificateName.trim() : '';
+    const note = typeof notes === 'string' ? notes.trim() : '';
+    if (!orgId || req.body?.orgId !== orgId || !actor?.uid || !validId(recordId) || !validId(employeeId)
+      || !code || code.length > 40 || !validDate(issueDate) || !validDate(expirationDate)
+      || expirationDate < issueDate || issueDate > dateToday()
+      || entity.length > 160 || certificate.length > 100 || fileName.length > 180 || note.length > 700) {
+      return res.status(400).json({ ok: false, error: 'Dados do certificado ou qualificação inválidos.' });
+    }
+    if (!canManagePermits(req, orgId)) {
+      return res.status(403).json({ ok: false, error: 'Somente Supervisor, Gerente ou Admin pode registrar certificados oficiais de segurança.' });
+    }
+    if (!filePath && !externalUrl) {
+      return res.status(400).json({ ok: false, error: 'Anexe o certificado ou informe um link HTTPS de evidência.' });
+    }
+    if (externalUrl) {
+      try {
+        const parsed = new URL(externalUrl);
+        if (parsed.protocol !== 'https:' || externalUrl.length > 1000) throw new Error('invalid URL');
+      } catch {
+        return res.status(400).json({ ok: false, error: 'O link do certificado deve ser uma URL HTTPS válida.' });
+      }
+    }
+    if (filePath) {
+      const requiredPrefix = 'safety-certificates/' + orgId + '/' + employeeId + '/' + recordId + '_';
+      if (!filePath.startsWith(requiredPrefix) || filePath.includes('..') || filePath.length > 900) {
+        return res.status(400).json({ ok: false, error: 'O arquivo do certificado não pertence ao colaborador e à empresa selecionados.' });
+      }
+    }
+    const h = getH();
+    if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
+    try {
+      const recordRef = h.db.collection('safety_training_records').doc(recordId);
+      const employeeRef = h.db.collection('rh_directory').doc(employeeId);
+      const trainingQuery = h.db.collection('safety_training_catalog').where('orgId', '==', orgId);
+      const result = await h.db.runTransaction(async (tx) => {
+        const [recordSnap, employeeSnap, trainingSnap] = await Promise.all([
+          tx.get(recordRef), tx.get(employeeRef), tx.get(trainingQuery),
+        ]);
+        if (recordSnap.exists) throw new SafetyRouteError(409, 'Este registro de certificado já foi criado.');
+        if (!employeeSnap.exists || employeeSnap.data()?.orgId !== orgId || employeeSnap.data()?.active !== true) {
+          throw new SafetyRouteError(409, 'O colaborador precisa estar ativo no diretório do RH desta empresa.');
+        }
+        const builtIns: Record<string, string> = {
+          'NR-35': 'Trabalho em Altura',
+          'NR-33': 'Espaço Confinado',
+          'NR-10': 'Segurança em Instalações Elétricas',
+        };
+        const catalog = toRows<Record<string, any>>(trainingSnap)
+          .find((item) => item.active === true && String(item.code || '').trim().toUpperCase() === code);
+        const title = builtIns[code] || catalog?.title;
+        if (!title) {
+          throw new SafetyRouteError(409, 'Treinamento não existe ou está inativo no catálogo desta empresa.');
+        }
+        const employee = employeeSnap.data() || {};
+        const createdByName = String(actor.email || actor.uid).slice(0, 160);
+        tx.create(recordRef, {
+          id: recordId, orgId, employeeId, employeeName: String(employee.name || '').slice(0, 180),
+          trainingCode: code, title: String(title).slice(0, 140),
+          issueDate, expirationDate,
+          ...(entity ? { issuingEntity: entity } : {}),
+          ...(certificate ? { certificateNumber: certificate } : {}),
+          ...(externalUrl ? { certificateUrl: externalUrl } : {}),
+          ...(filePath ? { certificatePath: filePath } : {}),
+          ...(fileName ? { certificateName: fileName } : {}),
+          ...(note ? { notes: note } : {}),
+          createdByUid: actor.uid, createdByName, recordedAt: FieldValue.serverTimestamp(),
+        });
+        return { recordId };
+      });
+      return res.status(201).json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof SafetyRouteError) return res.status(error.status).json({ ok: false, error: error.message });
+      console.error('[safety training record] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível registrar o certificado de segurança.' });
+    }
+  });
+
   return router;
 }
