@@ -7,7 +7,6 @@ export type SafetyPermitType =
   | 'abertura_de_linha'
   | 'geral';
 
-export type SafetyDocumentType = 'apr' | 'pt';
 export type SafetyRiskLevel = 'baixo' | 'medio' | 'alto' | 'critico';
 
 export type SafetyPermitStatus =
@@ -65,10 +64,8 @@ export interface SafetyPermitRecord {
   unitId: string;
   contractId: string;
   workOrderId?: string;
-  relatedAprId?: string;
   permitCode: string;
   permitDate: string;
-  documentType: SafetyDocumentType;
   permitType: SafetyPermitType;
   activityTitle: string;
   description: string;
@@ -110,4 +107,23 @@ export interface SafetyPermitState {
   updatedByUid: string;
   updatedByName: string;
   updatedAt: unknown;
+}
+
+export interface SafetyOccurrenceRecord {
+  id: string;
+  orgId: string;
+  unitId: string;
+  type: 'seguranca';
+  safetyCategory: SafetyOccurrenceCategory;
+  incidentDate: string;
+  relatedPermitId?: string;
+  title: string;
+  description: string;
+  immediateAction?: string;
+  urgency: 'baixa' | 'media' | 'alta' | 'critica';
+  status: 'aberta' | 'analise' | 'acao_corretiva' | 'verificacao' | 'fechada';
+  reportedBy: string;
+  reportedByUid: string;
+  createdAt: string;
+  updatedAt: string;
 }
