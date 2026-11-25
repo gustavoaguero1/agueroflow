@@ -4,13 +4,13 @@ import {
   doc,
   onSnapshot,
   query,
-  runTransaction,
   serverTimestamp,
   setDoc,
   where,
 } from 'firebase/firestore';
 import { AlertTriangle, ClipboardCheck, FilePlus2, HardHat, ShieldCheck, Siren } from 'lucide-react';
 import { db } from '../../firebase';
+import { postJson } from '../../apiAuthFetch';
 import { SafetyCompliancePanel } from './SafetyCompliancePanel';
 import { evaluateEmployeeSafetyCompliance, evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../../services/safetyCompliance';
 import { useAuth } from '../../contexts/AuthContext';
@@ -427,30 +427,13 @@ export const SafetyManagementPanel: React.FC = () => {
       return;
     }
     const nextStatus = getSafetyNextStatus(currentState.status, eventType);
-    if (permit.documentType === 'pt' && ['submitted_for_approval', 'approved'].includes(eventType)) {
-      const blockers = evaluateSafetyCrewCompliance(complianceSnapshot, permit.teamMemberIds || [], permit.permitType);
-      if (blockers.length) {
-        alert('PT bloqueada por pendências de conformidade:\n' + blockers.map((item) => item.employeeName + ': ' + item.message).join('\n'));
-        return;
-      }
-    }
     if (!nextStatus) {
       alert('Esta movimentação não é permitida para o status atual.');
       return;
     }
-    if (eventType === 'approved') {
-      if (!canApprove) {
-        alert('Somente Supervisor, Gerente ou Admin com Operações nível 2 pode aprovar.');
-        return;
-      }
-      if (permit.createdByUid === user.uid) {
-        alert('A aprovação precisa ser feita por outro responsável, diferente de quem criou a APR/PT.');
-        return;
-      }
-      if (new Date(permit.validUntil).getTime() <= Date.now()) {
-        alert('A validade informada já terminou. Registre uma nova APR/PT com o período correto.');
-        return;
-      }
+    if (eventType === 'approved' && (!canApprove || permit.createdByUid === user.uid)) {
+      alert('A aprovação exige Supervisor, Gerente ou Admin diferente da pessoa que criou a APR/PT.');
+      return;
     }
     if (['rejected', 'closed', 'cancelled'].includes(eventType) && !canApprove) {
       alert('Esta movimentação exige Supervisor, Gerente ou Admin com Operações nível 2.');
@@ -464,36 +447,18 @@ export const SafetyManagementPanel: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const eventRef = doc(collection(db, 'safety_permit_events'));
-      const actorName = user.displayName || user.email || 'Responsável de campo';
-      await setDoc(eventRef, {
-        orgId: organizationId,
-        unitId: permit.unitId,
-        contractId: permit.contractId,
-        permitId: permit.id,
-        eventType,
-        actorUid: user.uid,
-        actorName,
-        previousEventId: currentState.latestEventId,
-        recordedAt: serverTimestamp(),
-        ...(comment ? { comment } : {}),
-      });
-
-      const stateRef = doc(db, 'safety_permit_states', permit.id);
-      await runTransaction(db, async (transaction) => {
-        const freshState = await transaction.get(stateRef);
-        if (!freshState.exists() || freshState.data().latestEventId !== currentState.latestEventId) {
-          throw new Error('A permissão foi movimentada por outra pessoa. Atualize a tela antes de tentar novamente.');
-        }
-        transaction.update(stateRef, {
-          status: nextStatus,
-          latestEventId: eventRef.id,
-          updatedByUid: user.uid,
-          updatedByName: actorName,
-          updatedAt: serverTimestamp(),
-        });
-      });
-
+      const response = await postJson<{ ok?: boolean; status?: SafetyPermitStatus }>(
+        '/api/safety/permits/' + encodeURIComponent(permit.id) + '/transition',
+        {
+          orgId: organizationId,
+          eventType,
+          previousEventId: currentState.latestEventId,
+          comment,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(response.error || 'O servidor recusou a movimentação da APR/PT.');
+      }
       setActionComment('');
       try {
         await logAudit('Obras', 'Movimentar APR/PT', safetyEventLabel(eventType) + ' — ' + permit.permitCode, permit.id);
