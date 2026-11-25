@@ -284,26 +284,18 @@ service cloud.firestore {
 
     match /safety_permits/{permitId} {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
-      allow create: if canCreate()
-        && areaOk(orgOf(request.resource.data), A_OPS(), 2)
-        && validSafetyPermitCreate(permitId);
-      allow update, delete: if false;
+      // Creation and every state change are performed atomically by the trusted API.
+      allow create, update, delete: if false;
     }
 
     match /safety_permit_events/{eventId} {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
-      allow create: if canCreate()
-        && areaOk(orgOf(request.resource.data), A_OPS(), 2)
-        && validSafetyPermitEventCreate();
-      allow update, delete: if false;
+      allow create, update, delete: if false;
     }
 
     match /safety_permit_states/{permitId} {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
-      allow create: if canCreate()
-        && areaOk(orgOf(request.resource.data), A_OPS(), 2)
-        && validSafetyPermitStateCreate(permitId);
-      allow update, delete: if false;
+      allow create, update, delete: if false;
     }
 
     match /safety_ppe_catalog/{catalogId} {
@@ -940,8 +932,13 @@ service cloud.firestore {
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
       allow update, delete: if perOrgMutation();
       // A single wildcard create grant routes to exactly one validator family.
-      allow create: if finance() ? financeCreate()
-        : (perOrgDoc() ? perOrgCreate() : genericCreate());
+      allow create: if coll in [
+          'safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
+        ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+        ? false
+        : (finance() ? financeCreate()
+          : (perOrgDoc() ? perOrgCreate() : genericCreate()));
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
