@@ -105,7 +105,7 @@ Owner kinds:
 | whatsapp_quick_replies | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
 | whatsapp_scheduled_jobs | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`) + validação de campos. |
 | work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
-| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. |
+| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. Para OS de risco (`requiresSafetyPermit: true` ou `safetyPermitType` != `geral`), a transição para execução valida PT aprovada e dentro da validade + certificados/NRs e EPIs vigentes da equipe (via `rh_directory`), registrando `safetyGateVerified` no evento. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 
