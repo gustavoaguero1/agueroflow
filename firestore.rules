@@ -1379,5 +1379,23 @@ service cloud.firestore {
         && factPayloadValid(request.resource.data);
       allow update, delete: if false;
     }
+
+    // ---- Medições e Boletim de Medição (escrita exclusiva do backend /api/measurements) ----
+    match /measurement_bulletins/{bulletinId} {
+      function bmCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || bmCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
+    match /measurement_events/{eventId} {
+      function bmEventCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || bmEventCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
   }
 }

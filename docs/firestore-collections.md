@@ -66,6 +66,8 @@ Owner kinds:
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
 | items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
+| measurement_bulletins | orgId (server-only) | `orgId ==` | Boletins de Medição vinculados a contrato, unidade, projeto/obra (opcional) e aprovações LPU. Leitura por Operações, Comercial ou Financeiro (nível 1+); criação e transições exclusivamente via `/api/measurements/*`. Aprovação (`aprovado` / `aprovado_parcial`) gera atomicamente e de forma idempotente título em `finance_receivables` (`recv_{orgId}_bm_{bulletinId}`, `origem: 'medicao'`). |
+| measurement_events | orgId (server-only, append-only) | `orgId ==` + `bulletinId ==` | Trilha imutável de criação, envio, aprovação, glosa, devolução e cancelamento de Boletins de Medição. Leitura por Operações, Comercial ou Financeiro (nível 1+); escrita exclusiva do servidor. |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
