@@ -48,10 +48,10 @@ test('missing employee blocks the PT and does not fall back to a typed name', ()
 });
 
 test('inactive or dismissed employee is blocked', () => {
-  const blockers = evaluateEmployeeSafetyCompliance(snapshot({
-    employees: [{ ...employee, active: false }],
-  }), employee.id, 'trabalho_em_altura', today);
-  assert.equal(blockers[0].message, 'Colaborador inativo ou desligado no RH.');
+  for (const person of [{ ...employee, active: false }, { ...employee, dismissalDate: '2026-10-31' }]) {
+    const blockers = evaluateEmployeeSafetyCompliance(snapshot({ employees: [person] }), employee.id, 'trabalho_em_altura', today);
+    assert.equal(blockers[0].message, 'Colaborador inativo ou desligado no RH.');
+  }
 });
 
 test('missing, expired or future-issued NR blocks the activity', () => {
