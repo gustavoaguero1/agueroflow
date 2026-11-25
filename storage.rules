@@ -1,4 +1,5 @@
 rules_version = '2';
+
 // Private engineering files: tenant membership + Operações level (view=1, write=2).
 service firebase.storage {
   match /b/{bucket}/o {
@@ -35,27 +36,40 @@ service firebase.storage {
         && role in ['Admin', 'Gerente', 'Supervisor']);
     }
 
-    // Evidence for work orders is protected by the Operations area claim (view=1, edit=2).
+    // OS evidence: private, same-company and immutable.
     match /work-orders/{orgId}/{allPaths=**} {
       allow read: if engineeringCanRead(orgId);
-      allow create, update: if engineeringCanWrite(orgId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if false;
+      allow create: if engineeringCanWrite(orgId)
+        && resource == null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('^(image/jpeg|image/png|image/webp)$');
+      allow update, delete: if false;
     }
 
-    // Anexos do módulo Operações (CTPS, notas de reembolso, prints de NF) e arquivos de apoio importados do Inox.
-    // Reads require Operations view; uploads and replacements require Operations edit.
+    // Legacy Operations attachments. Only the historical JSON backup can be replaced.
     match /operacoes/{orgId}/{fileId} {
+      function allowedOperationsFileType() {
+        return request.resource.contentType.matches('^(image/jpeg|image/png|image/webp|application/pdf|application/json|application/octet-stream)$');
+      }
+      function legacyJsonBackup() {
+        return fileId == 'arquivos_historico.json'
+          && request.resource.contentType == 'application/json';
+      }
       allow read: if engineeringCanRead(orgId);
-      allow create, update: if engineeringCanWrite(orgId)
-        && request.resource.size < 15 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf|application/json|application/octet-stream');
+      allow create: if engineeringCanWrite(orgId)
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && (legacyJsonBackup() || (resource == null && allowedOperationsFileType()));
+      allow update: if legacyJsonBackup()
+        && engineeringCanWrite(orgId)
+        && resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024;
       allow delete: if false;
     }
 
-    // Desenhos, isométricos, P&IDs, certificados e documentos As Built.
-    // A revisão publicada é imutável; uma nova revisão usa novo caminho.
+    // Engineering controlled documents.
     match /engineering-documents/{orgId}/{documentId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
       allow create: if engineeringCanWrite(orgId)
@@ -66,8 +80,7 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
-    // Certificados de treinamentos e qualificações da equipe de Segurança & SMS.
-    // Novos arquivos são imutáveis e acessíveis apenas a membros da empresa na área Operações.
+    // Safety and qualification certificates.
     match /safety-certificates/{orgId}/{employeeId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
       allow create: if safetyCertificateCanWrite(orgId)

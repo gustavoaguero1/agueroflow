@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp, runTransaction } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -21,8 +21,24 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'organizations/org_a'), { id: 'org_a', name: 'A' });
-    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A' });
+    await setDoc(doc(db, 'units/unit_a'), { id: 'unit_a', orgId: 'org_a', name: 'Unidade A' });
+    await setDoc(doc(db, 'units/unit_b'), { id: 'unit_b', orgId: 'org_b', name: 'Unidade B' });
+    await setDoc(doc(db, 'contracts/contract_a'), { id: 'contract_a', orgId: 'org_a', unitIds: ['unit_a'] });
+    await setDoc(doc(db, 'contracts/contract_b'), { id: 'contract_b', orgId: 'org_b' });
+    await setDoc(doc(db, 'assets/asset_a'), { id: 'asset_a', orgId: 'org_a', unitId: 'unit_a' });
+    await setDoc(doc(db, 'assets/asset_b'), { id: 'asset_b', orgId: 'org_b', unitId: 'unit_b' });
+    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', unitId: 'unit_a', title: 'A', status: 'aberto' });
+    await setDoc(doc(db, 'order_messages/msg_a'), { id: 'msg_a', orgId: 'org_a', orderId: 'wo_a', senderId: 'member_m_op', senderName: 'Operador', senderRole: 'Tecnico', messageType: 'pergunta', content: 'Conferir a flange?', createdAt: '2026-11-25T09:00:00.000Z' });
+    await setDoc(doc(db, 'inspections/insp_a'), { orgId: 'org_a', unitId: 'unit_a', status: 'agendada' });
+    await setDoc(doc(db, 'inspection_events/evt_a'), { orgId: 'org_a', inspectionId: 'insp_a' });
+    await setDoc(doc(db, 'checklist_templates/tpl_a'), { orgId: 'org_a', title: 'Checklist A', version: 1 });
+    await setDoc(doc(db, 'checklist_runs/run_a'), { orgId: 'org_a', templateId: 'tpl_a', status: 'concluido' });
+    await setDoc(doc(db, 'checklist_run_events/evt_run_a'), { orgId: 'org_a', runId: 'run_a' });
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
+    await setDoc(doc(db, 'items/item_a'), { id: 'item_a', orgId: 'org_a', sku: 'INOX-304', name: 'Chapa inox 304' });
+    await setDoc(doc(db, 'item_categories/cat_a'), { id: 'cat_a', orgId: 'org_a', name: 'Chapas' });
+    await setDoc(doc(db, 'stock_balances/bal_a'), { id: 'bal_a', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', currentBalance: 10 });
+    await setDoc(doc(db, 'stock_movements/mov_a'), { id: 'mov_a', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 2 });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
     await setDoc(doc(db, 'purchasing_quotations/q_a'), { organizationId: 'org_a', total: 1 });
@@ -76,12 +92,140 @@ test('member read/write allowed', async () => {
   const db = member();
   await assertSucceeds(getDoc(doc(db, 'work_orders/wo_a')));
   await assertSucceeds(getDocs(query(collection(db, 'work_orders'), where('orgId', '==', 'org_a'))));
-  await assertSucceeds(setDoc(doc(db, 'work_orders/new'), { orgId: 'org_a', title: 'n' }));
+  await assertSucceeds(setDoc(doc(db, 'work_orders/new'), { orgId: 'org_a', unitId: 'unit_a', title: 'n', status: 'aberto' }));
   await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { title: 'x' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { status: 'em_execucao' }));
   await assertSucceeds(deleteDoc(doc(db, 'work_orders/new')));
   await assertSucceeds(getDoc(doc(db, 'overtime_rules/org_a')));
   await assertSucceeds(setDoc(doc(db, 'overtime_rules/org_a'), { organizationId: 'org_a', x: 1 }));
   await assertSucceeds(getDoc(doc(db, 'work_orders/missing')));
+});
+
+test('new work orders require a valid same-company unit, contract and asset', async () => {
+  const db = member();
+  await assertSucceeds(setDoc(doc(db, 'work_orders/ref_valid'), {
+    orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a', assetId: 'asset_a', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_missing_unit'), {
+    orgId: 'org_a', unitId: 'missing_unit', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_default_unit'), {
+    orgId: 'org_a', unitId: 'default_unit', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_unit'), {
+    orgId: 'org_a', unitId: 'unit_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_contract'), {
+    orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_cross_org_asset'), {
+    orgId: 'org_a', unitId: 'unit_a', assetId: 'asset_b', status: 'aberto',
+  }));
+  await assertFails(setDoc(doc(db, 'work_orders/ref_wrong_unit_asset'), {
+    orgId: 'org_a', unitId: 'unit_b', assetId: 'asset_a', status: 'aberto',
+  }));
+});
+
+test('legacy work orders may update unrelated fields; changing references requires valid targets', async () => {
+  await seedAs((db) => setDoc(doc(db, 'work_orders/legacy_no_unit'), {
+    id: 'legacy_no_unit', orgId: 'org_a', status: 'aberto', title: 'Legacy',
+  }));
+  const db = member();
+  await assertSucceeds(updateDoc(doc(db, 'work_orders/legacy_no_unit'), { title: 'Legacy revisada' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/legacy_no_unit'), { unitId: 'default_unit' }));
+  await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { unitId: 'unit_a' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { unitId: 'unit_b' }));
+});
+
+test('inspection lifecycle and immutable inspection events are server-only writes', async () => {
+  const editor = member();
+  await assertSucceeds(getDoc(doc(editor, 'inspections/insp_a')));
+  await assertSucceeds(getDoc(doc(editor, 'inspection_events/evt_a')));
+  await assertFails(setDoc(doc(editor, 'inspections/client_create'), {
+    orgId: 'org_a', unitId: 'unit_a', status: 'concluida', result: 'conforme',
+  }));
+  await assertFails(updateDoc(doc(editor, 'inspections/insp_a'), { status: 'aprovada' }));
+  await assertFails(deleteDoc(doc(editor, 'inspections/insp_a')));
+  await assertFails(setDoc(doc(editor, 'inspection_events/client_event'), {
+    orgId: 'org_a', inspectionId: 'insp_a',
+  }));
+  await assertFails(getDoc(doc(editor, 'inspection_transition_ops/op_a')));
+});
+
+test('checklist templates are server-versioned and completed runs/events are immutable', async () => {
+  const editor = member();
+  await assertSucceeds(getDoc(doc(editor, 'checklist_templates/tpl_a')));
+  await assertSucceeds(getDoc(doc(editor, 'checklist_runs/run_a')));
+  await assertSucceeds(getDoc(doc(editor, 'checklist_run_events/evt_run_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_templates/client_tpl'), { orgId: 'org_a', title: 'Fake' }));
+  await assertFails(updateDoc(doc(editor, 'checklist_templates/tpl_a'), { version: 99 }));
+  await assertFails(deleteDoc(doc(editor, 'checklist_templates/tpl_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_runs/client_run'), { orgId: 'org_a', status: 'concluido' }));
+  await assertFails(updateDoc(doc(editor, 'checklist_runs/run_a'), { progressPercent: 100 }));
+  await assertFails(deleteDoc(doc(editor, 'checklist_runs/run_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_run_events/client_evt'), { orgId: 'org_a', runId: 'run_a' }));
+  await assertFails(getDoc(doc(editor, 'checklist_run_ops/operation_a')));
+});
+
+test('Operations area controls work orders, status config and timeline reads/writes', async () => {
+  const readOnly = as('ops_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(readOnly, 'work_orders/wo_a')));
+  await assertFails(setDoc(doc(readOnly, 'work_orders/read_only_create'), { orgId: 'org_a', status: 'aberto' }));
+  await assertFails(updateDoc(doc(readOnly, 'work_orders/wo_a'), { title: 'Sem permissão' }));
+  await assertFails(setDoc(doc(readOnly, 'order_events/read_only_event'), { orgId: 'org_a', orderId: 'wo_a' }));
+
+  const editor = member();
+  await assertSucceeds(setDoc(doc(editor, 'work_order_statuses/org_a_custom'), {
+    id: 'custom', orgId: 'org_a', name: 'Em análise',
+  }));
+  await assertSucceeds(setDoc(doc(editor, 'order_events/ops_event'), {
+    orgId: 'org_a', orderId: 'wo_a', userId: 'member_m_op', userName: 'Operador',
+    eventType: 'mudanca_status', description: 'Transição de teste', previousStatus: 'aberto',
+    newStatus: 'em_execucao', timestamp: new Date().toISOString(),
+  }));
+});
+
+test('catalog is readable by Operations/Commercial but editable only by Stock', async () => {
+  const operations = member(); // Operações editar, Estoque apenas leitura
+  await assertSucceeds(getDoc(doc(operations, 'items/item_a')));
+  await assertSucceeds(getDoc(doc(operations, 'item_categories/cat_a')));
+  await assertFails(setDoc(doc(operations, 'items/item_ops_create'), {
+    id: 'item_ops_create', orgId: 'org_a', sku: 'NEW-01', name: 'Item criado por Operações',
+  }));
+  await assertFails(updateDoc(doc(operations, 'items/item_a'), { name: 'Tentativa de editar catálogo' }));
+  await assertFails(deleteDoc(doc(operations, 'items/item_a')));
+
+  const commercial = as('commercial_viewer', { org_a: 'Operacional' }, false, { org_a: '12120000011' });
+  await assertSucceeds(getDoc(doc(commercial, 'items/item_a')));
+  await assertFails(updateDoc(doc(commercial, 'items/item_a'), { name: 'Tentativa Comercial' }));
+
+  const stockEditor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12200000011' });
+  await assertSucceeds(setDoc(doc(stockEditor, 'items/item_stock_create'), {
+    id: 'item_stock_create', orgId: 'org_a', sku: 'NEW-02', name: 'Item cadastrado pelo Estoque',
+  }));
+  await assertSucceeds(updateDoc(doc(stockEditor, 'items/item_a'), { name: 'Chapa inox revisada' }));
+});
+
+test('inventory balances and immutable movements support Operations execution and Stock management', async () => {
+  const operations = member();
+  await assertSucceeds(getDoc(doc(operations, 'stock_balances/bal_a')));
+  await assertSucceeds(getDoc(doc(operations, 'stock_movements/mov_a')));
+  await assertSucceeds(updateDoc(doc(operations, 'stock_balances/bal_a'), { currentBalance: 8 }));
+  await assertSucceeds(setDoc(doc(operations, 'stock_movements/mov_ops'), {
+    id: 'mov_ops', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 2,
+  }));
+  await assertFails(updateDoc(doc(operations, 'stock_movements/mov_a'), { quantity: 999 }));
+  await assertFails(deleteDoc(doc(operations, 'stock_movements/mov_a')));
+
+  const viewer = as('stock_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(viewer, 'stock_balances/bal_a')));
+  await assertFails(updateDoc(doc(viewer, 'stock_balances/bal_a'), { currentBalance: 999 }));
+
+  const stockEditor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12200000011' });
+  await assertSucceeds(updateDoc(doc(stockEditor, 'stock_balances/bal_a'), { currentBalance: 12 }));
+  await assertSucceeds(setDoc(doc(stockEditor, 'stock_movements/mov_stock'), {
+    id: 'mov_stock', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 3,
+  }));
 });
 
 test('organizationId-only docs readable by member; writes require Stock edit', async () => {
@@ -180,7 +324,7 @@ test('master allowed', async () => {
   const db = master();
   await assertSucceeds(getDoc(doc(db, 'work_orders/wo_b')));
   await assertSucceeds(getDocs(collection(db, 'work_orders')));
-  await assertSucceeds(setDoc(doc(db, 'work_orders/m'), { orgId: 'org_b' }));
+  await assertSucceeds(setDoc(doc(db, 'work_orders/m'), { orgId: 'org_b', unitId: 'unit_b', status: 'aberto' }));
   await assertSucceeds(getDocs(collection(db, 'org_members')));
   await assertSucceeds(setDoc(doc(db, 'organizations/org_n'), { name: 'N' }));
 });
@@ -276,16 +420,130 @@ test('org_members create with foreign userId denied', async () => {
   await assertFails(updateDoc(doc(admin(), 'org_members/m_b'), { userId: 'x' }));
 });
 
-test('order_events/stock_movements/audit_logs not updatable', async () => {
+test('order_events, stock_movements and audit_logs are append-only', async () => {
   const db = member();
-  for (const c of ['order_events', 'stock_movements', 'audit_logs']) {
+  await assertSucceeds(setDoc(doc(db, 'order_events/new'), {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    userId: 'member_m_op',
+    userName: 'Operador',
+    eventType: 'comentario',
+    description: 'Evento de teste vinculado a uma OS.',
+    timestamp: new Date().toISOString(),
+  }));
+  for (const c of ['stock_movements', 'audit_logs']) {
     await assertSucceeds(setDoc(doc(db, `${c}/new`), { orgId: 'org_a' }));
     await assertFails(setDoc(doc(db, `${c}/other`), { orgId: 'org_b' }));
     await assertFails(updateDoc(doc(db, `${c}/new`), { x: 1 }));
     await assertFails(deleteDoc(doc(db, `${c}/new`)));
     await assertFails(updateDoc(doc(master(), `${c}/new`), { x: 1 }));
   }
+  await assertFails(updateDoc(doc(db, 'order_events/new'), { description: 'Tentativa de adulteração' }));
+  await assertFails(deleteDoc(doc(db, 'order_events/new')));
+  await assertFails(updateDoc(doc(master(), 'order_events/new'), { description: 'Master também não altera o histórico' }));
   await assertSucceeds(getDocs(query(collection(db, 'order_events'), where('orgId', '==', 'org_a'), where('orderId', '==', 'wo_a'))));
+});
+
+test('timeline events require the authenticated author and an OS in the same company', async () => {
+  const db = member();
+  const validEvent = {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    userId: 'member_m_op',
+    userName: 'Operador',
+    eventType: 'comentario',
+    description: 'Evento de teste vinculado a uma OS.',
+    timestamp: new Date().toISOString(),
+  };
+  await assertSucceeds(setDoc(doc(db, 'order_events/valid_parent'), validEvent));
+  await assertFails(setDoc(doc(db, 'order_events/forged_author'), {
+    ...validEvent, userId: 'another_user',
+  }));
+  await assertFails(setDoc(doc(db, 'order_events/orphan'), {
+    ...validEvent, orderId: 'work_order_missing',
+  }));
+  await assertFails(setDoc(doc(db, 'order_events/cross_org'), {
+    ...validEvent, orgId: 'org_b', orderId: 'wo_b',
+  }));
+});
+
+test('OS messages require an authenticated sender, same-company parent and valid reply reference', async () => {
+  const db = member();
+  const validMessage = {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    senderId: 'member_m_op',
+    senderName: 'Operador',
+    senderRole: 'Tecnico',
+    messageType: 'pergunta',
+    content: 'Qual a pressão de teste definida?',
+    createdAt: new Date().toISOString(),
+  };
+  await assertSucceeds(setDoc(doc(db, 'order_messages/valid_message'), validMessage));
+  await assertFails(setDoc(doc(db, 'order_messages/forged_sender'), {
+    ...validMessage, senderId: 'another_user',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/orphan'), {
+    ...validMessage, orderId: 'missing_work_order',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/cross_org'), {
+    ...validMessage, orgId: 'org_b', orderId: 'wo_b',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/bad_reply'), {
+    ...validMessage, replyToId: 'missing_message',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/bad_role'), {
+    ...validMessage, senderRole: 'Admin',
+  }));
+
+  const viewer = as('ops_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(viewer, 'order_messages/msg_a')));
+  await assertFails(setDoc(doc(viewer, 'order_messages/viewer_message'), validMessage));
+});
+
+test('OS messages are immutable except for an authenticated resolution action', async () => {
+  const db = member();
+  const messageRef = doc(db, 'order_messages/msg_a');
+  const resolvedAt = new Date().toISOString();
+  await assertSucceeds(updateDoc(messageRef, {
+    resolved: true,
+    resolvedAt,
+    resolvedBy: 'member_m_op',
+    resolvedByName: 'Operador',
+  }));
+  await assertFails(updateDoc(messageRef, { content: 'Texto adulterado' }));
+  await assertFails(updateDoc(messageRef, { resolvedBy: 'another_user' }));
+  await assertFails(updateDoc(messageRef, {
+    resolved: false,
+    resolvedAt: null,
+    resolvedBy: null,
+    resolvedByName: null,
+    senderName: 'Alterado',
+  }));
+  await assertSucceeds(updateDoc(messageRef, {
+    resolved: false,
+    resolvedAt: null,
+    resolvedBy: null,
+    resolvedByName: null,
+  }));
+  await assertFails(deleteDoc(messageRef));
+});
+
+test('an OS and its initial event may be created together in one Firestore transaction', async () => {
+  const db = member();
+  const orderRef = doc(db, 'work_orders/atomic_os');
+  const eventRef = doc(db, 'order_events/atomic_event');
+  await assertSucceeds(runTransaction(db, async (tx) => {
+    tx.set(orderRef, {
+      id: 'atomic_os', orgId: 'org_a', unitId: 'unit_a', title: 'OS atômica', status: 'aberto',
+    });
+    tx.set(eventRef, {
+      id: 'atomic_event', orgId: 'org_a', orderId: 'atomic_os',
+      userId: 'member_m_op', userName: 'Operador',
+      eventType: 'criacao', description: 'OS criada com seu evento inicial.',
+      newStatus: 'aberto', timestamp: new Date().toISOString(),
+    });
+  }));
 });
 
 test('unlisted collection denied', async () => {

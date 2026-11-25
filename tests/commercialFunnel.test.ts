@@ -43,7 +43,9 @@ test('period filters only closed deals; open pipeline forecast stays whole', () 
   assert.equal(s.byStatus.perdida.count, 0);
 });
 
-test('pickInitialStatus prefers isInitial, then lowest order', () => {
+test('pickInitialStatus requires a configured initial state and chooses the lowest order', () => {
   assert.equal(pickInitialStatus([{ id: 'a', order: 1 }, { id: 'b', order: 3, isInitial: true }])?.id, 'b');
-  assert.equal(pickInitialStatus([{ id: 'a', order: 2 }, { id: 'b', order: 1 }])?.id, 'b');
+  assert.equal(pickInitialStatus([{ id: 'a', order: 4, isInitial: true }, { id: 'b', order: 1, isInitial: true }])?.id, 'b');
+  assert.equal(pickInitialStatus([{ id: 'a', order: 2 }, { id: 'b', order: 1 }]), undefined);
+  assert.equal(pickInitialStatus([]), undefined);
 });

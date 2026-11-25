@@ -38,11 +38,6 @@ import {
 import { CommercialProposal, CommercialProposalItem } from '../types/commercial';
 import { getProposalItems, getProposals, saveProposal } from './commercialService';
 
-const STORAGE_KEYS = {
-  COMPOSITIONS: 'agueroflow_cost_compositions',
-  TEMPLATES: 'agueroflow_cost_templates',
-};
-
 // ----------------------------------------------------------------------------
 // DETERMINISTIC CALCULATION ENGINE
 // ----------------------------------------------------------------------------
@@ -1159,68 +1154,41 @@ export function getDemoCostCompositions(organizationId: string = 'org_aguero_def
 }
 
 // ----------------------------------------------------------------------------
-// DATA SERVICE: FIRESTORE + LOCAL STORAGE FALLBACK
+// DATA SERVICE: FIRESTORE (authoritative source)
 // ----------------------------------------------------------------------------
 
 export const CostCompositionService = {
-  async listCompositions(orgId: string = 'org_aguero_default'): Promise<CostComposition[]> {
-    try {
-      const q = query(collection(db, 'commercial_cost_compositions'), where('organizationId', '==', orgId));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const list: CostComposition[] = [];
-        snap.forEach((d) => list.push(d.data() as CostComposition));
-        return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      }
-    } catch (e) {
-      console.warn('Firestore cost compositions not found or error, using localStorage', e);
-    }
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.COMPOSITIONS);
-      if (raw) {
-        const parsed: CostComposition[] = JSON.parse(raw);
-        return parsed.filter((c) => c.organizationId === orgId);
-      }
-    } catch (e) {
-      console.error('Error reading localStorage compositions', e);
-    }
-
-    // Default Seed
-    const seed = getDemoCostCompositions(orgId);
-    try {
-      localStorage.setItem(STORAGE_KEYS.COMPOSITIONS, JSON.stringify(seed));
-    } catch {}
-    return seed;
+  async listCompositions(orgId: string): Promise<CostComposition[]> {
+    if (!orgId?.trim()) throw new Error('Empresa não informada para consultar composições.');
+    const q = query(collection(db, 'commercial_cost_compositions'), where('organizationId', '==', orgId));
+    const snap = await getDocs(q);
+    const list: CostComposition[] = [];
+    snap.forEach((d) => {
+      const composition = d.data() as CostComposition;
+      // Do not leak a malformed/mis-scoped document into another company's list.
+      if (composition.organizationId === orgId) list.push(composition);
+    });
+    return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   },
 
   async getCompositionById(id: string): Promise<CostComposition | null> {
-    try {
-      const snap = await getDoc(doc(db, 'commercial_cost_compositions', id));
-      if (snap.exists()) {
-        return snap.data() as CostComposition;
-      }
-    } catch {}
-
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.COMPOSITIONS);
-      if (raw) {
-        const list: CostComposition[] = JSON.parse(raw);
-        return list.find((c) => c.id === id) || null;
-      }
-    } catch {}
-
-    return null;
+    if (!id?.trim() || id.includes('/')) throw new Error('Identificador de composição inválido.');
+    const snap = await getDoc(doc(db, 'commercial_cost_compositions', id));
+    if (!snap.exists()) return null;
+    return snap.data() as CostComposition;
   },
 
   async saveComposition(comp: CostComposition): Promise<CostComposition> {
+    if (!comp.id?.trim() || comp.id.includes('/') || !comp.organizationId?.trim()) {
+      throw new Error('Composição ou empresa inválida. Nada foi salvo.');
+    }
     const now = new Date().toISOString();
     const updated: CostComposition = {
       ...comp,
       updatedAt: now,
     };
 
-    // Calculate updated price formation memory using all 18 sheets
+    // Recalculate price formation using the full cost model before persistence.
     updated.priceFormation = calculatePriceFormation(
       updated.items,
       updated.risks,
@@ -1228,11 +1196,7 @@ export const CostCompositionService = {
       updated.financialSettings,
       updated
     );
-
-    // Calculate classification
     updated.classificationResult = calculateProjectClassification(updated.classificationCriteria);
-
-    // Generate Scenarios
     updated.scenarios = generatePricingScenarios(
       updated.priceFormation.suggestedSellingPrice,
       updated.priceFormation.subtotalWithContingency,
@@ -1240,38 +1204,23 @@ export const CostCompositionService = {
       updated.financialSettings.targetNetMarginPercent
     );
 
-    try {
-      await setDoc(doc(db, 'commercial_cost_compositions', updated.id), updated);
-    } catch (e) {
-      console.warn('Could not write composition to Firestore, persisting in localStorage', e);
-    }
-
-    try {
-      const current = await this.listCompositions(updated.organizationId);
-      const idx = current.findIndex((c) => c.id === updated.id);
-      if (idx >= 0) {
-        current[idx] = updated;
-      } else {
-        current.unshift(updated);
-      }
-      localStorage.setItem(STORAGE_KEYS.COMPOSITIONS, JSON.stringify(current));
-    } catch (e) {
-      console.error('LocalStorage write error', e);
-    }
-
+    // Firestore is authoritative. A failed write is an error, never a local-only "success".
+    await setDoc(doc(db, 'commercial_cost_compositions', updated.id), updated);
     return updated;
   },
 
-  async deleteComposition(id: string, orgId: string = 'org_aguero_default'): Promise<void> {
-    try {
-      await deleteDoc(doc(db, 'commercial_cost_compositions', id));
-    } catch {}
-
-    try {
-      const current = await this.listCompositions(orgId);
-      const filtered = current.filter((c) => c.id !== id);
-      localStorage.setItem(STORAGE_KEYS.COMPOSITIONS, JSON.stringify(filtered));
-    } catch {}
+  async deleteComposition(id: string, orgId: string): Promise<void> {
+    if (!id?.trim() || id.includes('/') || !orgId?.trim()) {
+      throw new Error('Composição ou empresa inválida. Nada foi excluído.');
+    }
+    const ref = doc(db, 'commercial_cost_compositions', id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const composition = snap.data() as CostComposition;
+    if (composition.organizationId !== orgId) {
+      throw new Error('A composição informada não pertence à empresa selecionada.');
+    }
+    await deleteDoc(ref);
   },
 
   // Duplicate an existing composition with new revision

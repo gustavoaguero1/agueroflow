@@ -347,11 +347,18 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
       updatedBy: userName,
       updatedAt: new Date().toISOString(),
     };
-    const saved = await CostCompositionService.saveComposition(toSave);
-    setComp(saved);
-    onSave(saved);
-    setSyncStatus('✓ Composição e 18 abas salvas com sucesso no banco de dados!');
-    setTimeout(() => setSyncStatus(null), 3500);
+    try {
+      const saved = await CostCompositionService.saveComposition(toSave);
+      setComp(saved);
+      onSave(saved);
+      setSyncStatus('✓ Composição e 18 abas salvas com sucesso no Firestore.');
+      setTimeout(() => setSyncStatus(null), 3500);
+    } catch (error) {
+      console.error('Erro ao salvar composição:', error);
+      setSyncStatus(error instanceof Error
+        ? `Falha no Firestore: ${error.message}. Nenhum salvamento local foi simulado.`
+        : 'Falha ao salvar no Firestore. Nenhum dado foi salvo localmente.');
+    }
   };
 
   // Sync to Proposal
@@ -360,23 +367,33 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
       alert('Esta composição não está vinculada a nenhuma proposta comercial do OrçaÁgil.');
       return;
     }
-    const ok = await CostCompositionService.syncPriceToProposal(comp);
-    if (ok) {
-      setSyncStatus(`✓ Preço de R$ ${currentPriceFormation.suggestedSellingPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sincronizado diretamente com a Proposta ${comp.proposalCode || comp.proposalId}!`);
-      setTimeout(() => setSyncStatus(null), 4000);
-    } else {
-      alert('Não foi possível sincronizar com a proposta selecionada.');
+    try {
+      const ok = await CostCompositionService.syncPriceToProposal(comp);
+      if (ok) {
+        setSyncStatus(`✓ Preço de R$ ${currentPriceFormation.suggestedSellingPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sincronizado diretamente com a Proposta ${comp.proposalCode || comp.proposalId}!`);
+        setTimeout(() => setSyncStatus(null), 4000);
+      } else {
+        alert('Não foi possível sincronizar com a proposta selecionada.');
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar proposta:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível sincronizar a proposta.');
     }
   };
 
   // Import items from proposal BOM
   const handleImportProposalBOM = async () => {
     if (!selectedProposalToImport) return;
-    const updated = await CostCompositionService.importItemsFromProposal(comp.id, selectedProposalToImport);
-    if (updated) {
-      setComp(updated);
-      setSyncStatus(`✓ Materiais importados com sucesso da proposta ${selectedProposalToImport}!`);
-      setTimeout(() => setSyncStatus(null), 4000);
+    try {
+      const updated = await CostCompositionService.importItemsFromProposal(comp.id, selectedProposalToImport);
+      if (updated) {
+        setComp(updated);
+        setSyncStatus(`✓ Materiais importados com sucesso da proposta ${selectedProposalToImport}!`);
+        setTimeout(() => setSyncStatus(null), 4000);
+      }
+    } catch (error) {
+      console.error('Erro ao importar materiais da proposta:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível importar os materiais.');
     }
   };
 

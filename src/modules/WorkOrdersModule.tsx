@@ -9,12 +9,12 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  addDoc,
   getDocs,
   runTransaction,
 } from 'firebase/firestore';
 import { maxOrderSeq, nextOrderNumber } from '../services/workOrderNumbering';
 import { db } from '../firebase';
+import { apiFetch } from '../apiAuthFetch';
 import {
   WorkOrder,
   WorkOrderStatus,
@@ -545,7 +545,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     setFormPriority('media');
     const initialSt = statuses.find((s) => s.isInitial)?.id || statuses[0]?.id || 'aberto';
     setFormStatus(initialSt);
-    setFormUnitId(units[0]?.id || '');
+    setFormUnitId('');
     setFormContractId(contracts[0]?.id || '');
     setFormCostCenterId(costCenters[0]?.id || '');
     setFormAssetId(assets[0]?.id || '');
@@ -566,17 +566,22 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (!formUnitId || !units.some((unit) => unit.id === formUnitId)) {
+      alert('Selecione uma unidade válida antes de criar a OS.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
       const orderId = `os_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const targetStatus = formStatus || statuses.find((s) => s.isInitial)?.id || 'aberto';
       const statusCfg = getStatusConfig(targetStatus, statuses);
+      const createdAt = new Date().toISOString();
 
       const newOrder: WorkOrder = {
         id: orderId,
         orgId: organization.id,
-        unitId: formUnitId || (units[0]?.id ?? 'default_unit'),
+        unitId: formUnitId,
         contractId: formContractId || undefined,
         costCenterId: formCostCenterId || undefined,
         assetId: formAssetId || undefined,
@@ -597,19 +602,14 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
         isRework: formIsRework,
         reworkReason: formIsRework ? formReworkReason.trim() : undefined,
         notes: formNotes.trim() || undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt,
+        updatedAt: createdAt,
       };
 
-      // Untouched preview -> allocate the real number from the org counter, atomically with the OS.
+      // Untouched preview -> allocate the real number and create the OS + timeline event atomically.
       const autoNumber = formNumber.trim() === previewNumber;
-      await runTransaction(db, async (tx) => {
-        if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
-        tx.set(doc(db, 'work_orders', orderId), JSON.parse(JSON.stringify(newOrder))); // Firestore rejects undefined fields
-      });
-
-      // Record creation event in timeline
-      await addDoc(collection(db, 'order_events'), {
+      const creationEvent: OrderEvent = {
+        id: `${orderId}_created`,
         orgId: organization.id,
         orderId,
         userId: user.uid,
@@ -617,7 +617,12 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
         eventType: 'criacao',
         description: `Demanda / OS ${newOrder.orderNumber} cadastrada no estado "${statusCfg.name}".`,
         newStatus: targetStatus,
-        timestamp: new Date().toISOString(),
+        timestamp: createdAt,
+      };
+      await runTransaction(db, async (tx) => {
+        if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
+        tx.set(doc(db, 'work_orders', orderId), JSON.parse(JSON.stringify(newOrder))); // Firestore rejects undefined fields
+        tx.set(doc(db, 'order_events', creationEvent.id), creationEvent);
       });
 
       await logAudit(
@@ -649,37 +654,27 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     const targetCfg = getStatusConfig(targetStatusId, statuses);
 
     try {
-      const orderRef = doc(db, 'work_orders', order.id);
-      const updates: Partial<WorkOrder> = {
+      const idempotencyKey = `os_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const response = await apiFetch(`/api/work-orders/${encodeURIComponent(order.id)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organization.id,
+          expectedStatus: order.status,
+          targetStatusId,
+          notes: transitionNotes?.trim() || '',
+          idempotencyKey,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(typeof result?.error === 'string' ? result.error : 'O servidor recusou a transição da OS.');
+      }
+
+      const updates = (result.orderUpdates || {
         status: targetStatusId,
         updatedAt: new Date().toISOString(),
-      };
-
-      const today = new Date().toISOString().split('T')[0];
-      if (targetStatusId === 'em_execucao' && !order.actualStartDate) {
-        updates.actualStartDate = today;
-      }
-      if (targetCfg.isCompleted && !order.actualEndDate) {
-        updates.actualEndDate = today;
-      }
-
-      await updateDoc(orderRef, updates);
-
-      const eventDesc = transitionNotes?.trim()
-        ? `Transição de estado: ${currentCfg.name} → ${targetCfg.name}. Motivo/Apontamento: ${transitionNotes.trim()}`
-        : `Transição de estado operacional: ${currentCfg.name} → ${targetCfg.name}`;
-
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organization.id,
-        orderId: order.id,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Operador',
-        eventType: 'mudanca_status',
-        description: eventDesc,
-        previousStatus: order.status,
-        newStatus: targetStatusId,
-        timestamp: new Date().toISOString(),
-      });
+      }) as Partial<WorkOrder>;
 
       await logAudit(
         'Ordens de Serviço',
@@ -694,6 +689,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
       }
     } catch (err) {
       console.error('Erro ao atualizar status da OS:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível atualizar a OS.');
     }
   };
 
@@ -826,40 +822,52 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
       return;
     }
 
-    const inUseCount = orders.filter((o) => resolveStatusKey(o.status, statuses) === statusId).length;
+    const ordersToUpdate = orders.filter((o) => resolveStatusKey(o.status, statuses) === statusId);
+    const fallback = statuses.find((s) => s.id !== statusId && s.isInitial)?.id
+      || statuses.find((s) => s.id !== statusId)?.id;
+    if (ordersToUpdate.length > 0 && !fallback) {
+      alert('Não há outro estado disponível para migrar as OS vinculadas.');
+      return;
+    }
+
     const confirmMsg =
-      inUseCount > 0
-        ? `Atenção: existem ${inUseCount} ordem(ns) de serviço neste estado. Ao excluir, elas serão migradas para o estado inicial. Confirmar exclusão?`
+      ordersToUpdate.length > 0
+        ? `Atenção: existem ${ordersToUpdate.length} ordem(ns) de serviço neste estado. Elas serão migradas para "${getStatusConfig(fallback!, statuses).name}" antes da exclusão. Confirmar?`
         : 'Tem certeza que deseja excluir este estado operacional?';
 
     if (!confirm(confirmMsg)) return;
 
     try {
-      await deleteDoc(doc(db, 'work_order_statuses', `${organization.id}_${statusId}`));
-
-      // If orders had this status, reassign them to initial status
-      if (inUseCount > 0) {
-        const fallback = statuses.find((s) => s.id !== statusId && s.isInitial)?.id || statuses[0]?.id;
-        if (fallback) {
-          const ordersToUpdate = orders.filter((o) => resolveStatusKey(o.status, statuses) === statusId);
-          for (const ord of ordersToUpdate) {
-            await updateDoc(doc(db, 'work_orders', ord.id), {
-              status: fallback,
-              updatedAt: new Date().toISOString(),
-            });
-          }
+      // Migrate each order through the same audited backend transition used by the board.
+      // The state configuration remains available until every migration has succeeded.
+      for (const ord of ordersToUpdate) {
+        const response = await apiFetch(`/api/work-orders/${encodeURIComponent(ord.id)}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId: organization.id,
+            expectedStatus: ord.status,
+            targetStatusId: fallback!,
+            notes: `Migração após exclusão do estado "${statusId}".`,
+            idempotencyKey: `remove_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.ok !== true) {
+          throw new Error(typeof result?.error === 'string' ? result.error : `Não foi possível migrar a OS ${ord.orderNumber}.`);
         }
       }
 
+      await deleteDoc(doc(db, 'work_order_statuses', `${organization.id}_${statusId}`));
       await logAudit(
         'Configurações',
         'Excluir Estado',
-        `Estado "${statusId}" removido do fluxo de OS`,
+        `Estado "${statusId}" removido do fluxo de OS. OS vinculadas migradas: ${ordersToUpdate.length}.`,
         statusId
       );
     } catch (err) {
       console.error('Erro ao excluir estado:', err);
-      alert('Erro ao excluir estado.');
+      alert(err instanceof Error ? err.message : 'Erro ao excluir estado. As OS já migradas foram preservadas.');
     }
   };
 
@@ -1727,10 +1735,12 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Unidade</label>
                   <select
+                    required
                     value={formUnitId}
                     onChange={(e) => setFormUnitId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value="" disabled>Selecione a unidade</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}

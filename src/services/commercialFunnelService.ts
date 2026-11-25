@@ -1,12 +1,10 @@
-import { collection, doc, getDocs, query, runTransaction, where, type Firestore } from 'firebase/firestore';
-import { maxOrderSeq, nextOrderNumber } from './workOrderNumbering';
-import type { CommercialProposal, CommercialProposalStatus } from '../types/commercial';
+import { apiFetch } from '../apiAuthFetch';
+import type { CommercialProposal } from '../types/commercial';
 
 export const FUNNEL_STATUSES = ['enviada', 'negociacao', 'ganha', 'perdida'] as const;
 export const LOSS_REASONS = ['Preço', 'Prazo', 'Escopo', 'Concorrente', 'Cliente desistiu', 'Outro'];
 const DEFAULT_PROB: Record<string, number> = { enviada: 30, negociacao: 60 };
 
-type Actor = { uid: string; name: string };
 const lastChange = (p: CommercialProposal) => p.statusHistory?.at(-1)?.at || p.updatedAt || p.createdAt;
 
 export function funnelSummary(proposals: CommercialProposal[], period?: { from?: string; to?: string }) {
@@ -44,75 +42,66 @@ export function validateLoss(reason: string, detail: string): string {
   return text ? `${reason}: ${text}` : reason;
 }
 
-const historyEntry = (status: CommercialProposalStatus, by: string) => ({ status, at: new Date().toISOString(), by });
+async function postFunnelAction<T extends Record<string, any>>(path: string, body: Record<string, unknown>): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok !== true) {
+    throw new Error(typeof payload?.error === 'string' ? payload.error : 'Não foi possível atualizar o funil comercial.');
+  }
+  return payload as T;
+}
 
-export async function moveProposalStage(db: Firestore, proposal: CommercialProposal, status: 'enviada' | 'negociacao', user: Actor) {
-  await runTransaction(db, async (tx) => {
-    const ref = doc(db, 'commercial_proposals', proposal.id);
-    const cur = (await tx.get(ref)).data() as CommercialProposal;
-    tx.update(ref, { status, updatedAt: new Date().toISOString(), statusHistory: [...(cur.statusHistory || []), historyEntry(status, user.name)] });
+export async function moveProposalStage(
+  _db: unknown,
+  proposal: CommercialProposal,
+  status: 'enviada' | 'negociacao',
+  _user: { uid: string; name: string },
+) {
+  await postFunnelAction(`/api/commercial/proposals/${encodeURIComponent(proposal.id)}/stage`, {
+    orgId: proposal.organizationId,
+    status,
   });
 }
 
-export async function markProposalLost(db: Firestore, proposal: CommercialProposal, motivo: string, user: Actor, detail = '') {
+export async function markProposalLost(
+  _db: unknown,
+  proposal: CommercialProposal,
+  motivo: string,
+  _user: { uid: string; name: string },
+  detail = '',
+) {
   const motivoPerda = validateLoss(motivo, detail);
-  await runTransaction(db, async (tx) => {
-    const ref = doc(db, 'commercial_proposals', proposal.id);
-    const cur = (await tx.get(ref)).data() as CommercialProposal;
-    if (cur.workOrderId) throw new Error('Proposta já gerou OS e não pode ser marcada como perdida.');
-    tx.update(ref, { status: 'perdida', motivoPerda, updatedAt: new Date().toISOString(), statusHistory: [...(cur.statusHistory || []), historyEntry('perdida', user.name)] });
+  await postFunnelAction(`/api/commercial/proposals/${encodeURIComponent(proposal.id)}/lost`, {
+    orgId: proposal.organizationId,
+    reason: motivo,
+    detail,
   });
+  return motivoPerda;
 }
 
 /** isInitial first, then lowest order (same as WorkOrdersModule). */
 export function pickInitialStatus<T extends { order?: number; isInitial?: boolean }>(list: T[]): T | undefined {
-  return [...list].sort((a, b) => Number(!!b.isInitial) - Number(!!a.isInitial) || (a.order ?? 0) - (b.order ?? 0))[0];
+  return list
+    .filter((status) => status.isInitial === true)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
 }
 
-/** Deterministic OS id + transaction: concurrent calls yield a single work order. */
-export async function markProposalWon(db: Firestore, proposal: CommercialProposal, user: Actor): Promise<string> {
-  const orgId = proposal.organizationId;
-  const sts = await getDocs(query(collection(db, 'work_order_statuses'), where('orgId', '==', orgId)));
-  const first = pickInitialStatus(sts.docs.map((d) => d.data() as { id?: string; order?: number; isInitial?: boolean }));
-  const status = first?.id || 'aberto';
-  const existing = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', orgId)));
-  const seed = maxOrderSeq(existing.docs.map((d) => d.data() as { orderNumber?: string }));
-  const orderId = `os_prop_${proposal.id}`;
-
-  return runTransaction(db, async (tx) => {
-    const pRef = doc(db, 'commercial_proposals', proposal.id);
-    const cur = (await tx.get(pRef)).data() as CommercialProposal;
-    if (cur.workOrderId) return cur.workOrderId;
-    if (cur.status === 'perdida' || cur.status === 'rejeitada') throw new Error('Proposta perdida/rejeitada não pode gerar OS.');
-
-    const now = new Date().toISOString();
-    const orderNumber = await nextOrderNumber(tx, db, orgId, seed);
-    tx.set(doc(db, 'work_orders', orderId), {
-      id: orderId,
-      orgId,
-      unitId: cur.unitId || 'default_unit',
-      ...(cur.contractId ? { contractId: cur.contractId } : {}),
-      orderNumber,
-      title: `${cur.code} - ${cur.title}`,
-      description: `Cliente: ${cur.clientName}\n${cur.scopeDescription || ''}`.trim(),
-      orderType: 'solicitacao',
-      priority: 'media',
-      status,
-      requesterId: user.uid,
-      requesterName: user.name,
-      estimatedHours: 0,
-      estimatedCost: (cur.totalBaseCost || 0) + (cur.totalFreightCost || 0) + (cur.totalTaxCost || 0),
-      proposalId: cur.id,
-      isRework: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-    tx.set(doc(collection(db, 'order_events')), {
-      orgId, orderId, userId: user.uid, userName: user.name, eventType: 'criacao',
-      description: `OS ${orderNumber} criada a partir da proposta ${cur.code}.`,
-      newStatus: status, timestamp: now,
-    });
-    tx.update(pRef, { status: 'ganha', workOrderId: orderId, updatedAt: now, statusHistory: [...(cur.statusHistory || []), historyEntry('ganha', user.name)] });
-    return orderId;
-  });
+/** The server atomically creates the proposal, OS, counter and timeline under Admin transaction control. */
+export async function markProposalWon(
+  _db: unknown,
+  proposal: CommercialProposal,
+  _user: { uid: string; name: string },
+): Promise<string> {
+  const result = await postFunnelAction<{ workOrderId: string }>(
+    `/api/commercial/proposals/${encodeURIComponent(proposal.id)}/win`,
+    { orgId: proposal.organizationId },
+  );
+  if (typeof result.workOrderId !== 'string' || !result.workOrderId) {
+    throw new Error('A conversão foi aceita, mas o servidor não retornou o identificador da OS.');
+  }
+  return result.workOrderId;
 }

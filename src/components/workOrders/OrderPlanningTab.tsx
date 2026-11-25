@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, collection, runTransaction } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   WorkOrder,
@@ -107,19 +107,30 @@ export const OrderPlanningTab: React.FC<OrderPlanningTabProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      await updateDoc(doc(db, 'work_orders', order.id), updates);
+      const orderRef = doc(db, 'work_orders', order.id);
+      const eventRef = eventDescription ? doc(collection(db, 'order_events')) : null;
+      await runTransaction(db, async (tx) => {
+        const currentSnap = await tx.get(orderRef);
+        if (!currentSnap.exists() || currentSnap.data().orgId !== organizationId) {
+          throw new Error('A ordem de serviço não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        if (currentSnap.data().updatedAt !== order.updatedAt) {
+          throw new Error('A OS foi alterada por outra pessoa. Atualize os dados antes de salvar o planejamento.');
+        }
 
-      if (eventDescription) {
-        await addDoc(collection(db, 'order_events'), {
-          orgId: organizationId,
-          orderId: order.id,
-          userId: currentUser.uid,
-          userName: currentUser.displayName || currentUser.email || 'Planejador',
-          eventType: 'planejamento',
-          description: eventDescription,
-          timestamp: new Date().toISOString(),
-        });
-      }
+        tx.update(orderRef, updates);
+        if (eventRef && eventDescription) {
+          tx.set(eventRef, {
+            orgId: organizationId,
+            orderId: order.id,
+            userId: currentUser.uid,
+            userName: currentUser.displayName || currentUser.email || 'Planejador',
+            eventType: 'planejamento',
+            description: eventDescription,
+            timestamp: updates.updatedAt,
+          });
+        }
+      });
 
       if (onOrderUpdated) {
         onOrderUpdated(updates);
@@ -130,6 +141,7 @@ export const OrderPlanningTab: React.FC<OrderPlanningTabProps> = ({
       }
     } catch (err) {
       console.error('Erro ao atualizar planejamento da OS:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível salvar o planejamento da OS.');
     } finally {
       setIsSaving(false);
     }

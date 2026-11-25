@@ -11,6 +11,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { apiFetch } from '../apiAuthFetch';
 import { Inspection, Unit, Asset, WorkOrder } from '../types';
 import {
   CheckSquare,
@@ -38,7 +39,8 @@ export const InspectionsModule: React.FC = () => {
   const [assetId, setAssetId] = useState('');
   const [orderId, setOrderId] = useState('');
   const [findings, setFindings] = useState('');
-  const [result, setResult] = useState<Inspection['result']>('conforme');
+  const [result, setResult] = useState<Inspection['result']>('pendente');
+  const [inspectionToComplete, setInspectionToComplete] = useState<Inspection | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Occurrence creation quick prompt if non-conformant
@@ -69,39 +71,162 @@ export const InspectionsModule: React.FC = () => {
   const handleCreateInspection = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (!unitId || !units.some((unit) => unit.id === unitId)) {
+      alert('Selecione uma unidade válida para agendar a inspeção.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
-      const inspId = `insp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newInsp: Inspection = {
-        id: inspId,
-        orgId: organization.id,
-        unitId: unitId || (units[0]?.id ?? 'default_unit'),
-        assetId: assetId || undefined,
-        orderId: orderId || undefined,
-        title: title.trim(),
-        inspectorId: user.uid,
-        inspectorName: user.displayName || user.email || 'Inspetor Técnico',
-        status: 'concluida',
-        result,
-        findings: findings.trim(),
-        completedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const response = await apiFetch('/api/inspections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organization.id,
+          unitId,
+          ...(assetId ? { assetId } : {}),
+          ...(orderId ? { orderId } : {}),
+          title: title.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Não foi possível agendar a inspeção.');
+      }
 
-      await setDoc(doc(db, 'inspections', inspId), newInsp);
-      await logAudit('Inspeções', 'Registrar Inspeção', `Vistoria: ${title} - Resultado: ${result}`, inspId);
-
+      const created = payload.inspection as Inspection;
+      setInspections((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      try {
+        await logAudit('Inspeções', 'Agendar Inspeção', `Inspeção agendada: ${created.title}`, created.id);
+      } catch (auditError) {
+        console.warn('A inspeção foi agendada, mas o registro complementar de auditoria falhou:', auditError);
+      }
       setShowCreateModal(false);
       setTitle('');
       setFindings('');
-
-      if (result === 'nao_conforme') {
-        setNonConformantPrompt(newInsp);
-      }
+      setOrderId('');
     } catch (err) {
-      console.error('Erro ao salvar inspeção:', err);
+      console.error('Erro ao agendar inspeção:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível agendar a inspeção.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const transitionInspection = async (
+    inspection: Inspection,
+    action: 'start' | 'submit' | 'approve' | 'reject' | 'reopen',
+    payload: { comment?: string; result?: Inspection['result']; findings?: string } = {}
+  ): Promise<Inspection> => {
+    if (!organization || !user) throw new Error('Sessão ou empresa não disponível.');
+    const response = await apiFetch(`/api/inspections/${encodeURIComponent(inspection.id)}/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: organization.id,
+        expectedStatus: inspection.status,
+        action,
+        idempotencyKey: `insp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        ...payload,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok !== true || !body.inspection) {
+      throw new Error(typeof body?.error === 'string' ? body.error : 'O servidor recusou a transição da inspeção.');
+    }
+    const updated = body.inspection as Inspection;
+    setInspections((current) => current.map((item) => item.id === updated.id ? updated : item));
+    return updated;
+  };
+
+  const handleStartInspection = async (inspection: Inspection) => {
+    setIsSubmitting(true);
+    try {
+      await transitionInspection(inspection, 'start');
+      await logAudit('Inspeções', 'Iniciar Inspeção', `Inspeção iniciada: ${inspection.title}`, inspection.id);
+    } catch (err) {
+      console.error('Erro ao iniciar inspeção:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível iniciar a inspeção.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitInspection = async () => {
+    if (!inspectionToComplete) return;
+    if (result !== 'conforme' && findings.trim().length < 5) {
+      alert('Descreva as constatações técnicas para um resultado não conforme ou pendente.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const submitted = await transitionInspection(inspectionToComplete, 'submit', {
+        result,
+        findings: findings.trim(),
+      });
+      try {
+        await logAudit('Inspeções', 'Enviar para Revisão', `Inspeção enviada para revisão: ${submitted.title} | Resultado: ${submitted.result}`, submitted.id);
+      } catch (auditError) {
+        console.warn('A inspeção foi enviada para revisão, mas o registro complementar de auditoria falhou:', auditError);
+      }
+      setInspectionToComplete(null);
+      setFindings('');
+      setResult('pendente');
+      if (submitted.result === 'nao_conforme') setNonConformantPrompt(submitted);
+    } catch (err) {
+      console.error('Erro ao enviar inspeção para revisão:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível enviar a inspeção para revisão.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReviewInspection = async (inspection: Inspection, action: 'approve' | 'reject') => {
+    let comment = '';
+    if (action === 'reject') {
+      const entered = window.prompt('Informe o motivo para devolver a inspeção ao campo:');
+      if (entered === null) return;
+      comment = entered.trim();
+      if (comment.length < 5) {
+        alert('Informe um motivo com pelo menos 5 caracteres.');
+        return;
+      }
+    } else if (!window.confirm(`Aprovar a inspeção "${inspection.title}"?`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const updated = await transitionInspection(inspection, action, { comment });
+      await logAudit(
+        'Inspeções',
+        action === 'approve' ? 'Aprovar Inspeção' : 'Devolver Inspeção',
+        `${action === 'approve' ? 'Inspeção aprovada' : 'Inspeção devolvida'}: ${updated.title}`,
+        updated.id
+      );
+    } catch (err) {
+      console.error('Erro ao revisar inspeção:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível revisar a inspeção.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReopenInspection = async (inspection: Inspection) => {
+    const entered = window.prompt('Informe o motivo para reexecutar esta inspeção:');
+    if (entered === null) return;
+    const comment = entered.trim();
+    if (comment.length < 5) {
+      alert('Informe um motivo com pelo menos 5 caracteres.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await transitionInspection(inspection, 'reopen', { comment });
+    } catch (err) {
+      console.error('Erro ao reabrir inspeção:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível reabrir a inspeção.');
     } finally {
       setIsSubmitting(false);
     }
@@ -180,7 +305,7 @@ export const InspectionsModule: React.FC = () => {
 
         <button
           onClick={() => {
-            setUnitId(units[0]?.id || '');
+            setUnitId('');
             setAssetId(assets[0]?.id || '');
             setShowCreateModal(true);
           }}
@@ -230,14 +355,16 @@ export const InspectionsModule: React.FC = () => {
                 <th className="py-3 px-4">Título da Vistoria</th>
                 <th className="py-3 px-4">Inspetor</th>
                 <th className="py-3 px-4">Resultado</th>
+                <th className="py-3 px-4">Etapa</th>
                 <th className="py-3 px-4">Constatações Técnicas</th>
                 <th className="py-3 px-4">Data/Hora</th>
+                <th className="py-3 px-4">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
               {inspections.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-slate-400">
+                  <td colSpan={7} className="text-center py-8 text-slate-400">
                     Nenhuma inspeção técnica registrada ainda.
                   </td>
                 </tr>
@@ -256,14 +383,57 @@ export const InspectionsModule: React.FC = () => {
                             : 'bg-amber-950/70 text-amber-300 border border-amber-800/50'
                         }`}
                       >
-                        {insp.result.replace('_', ' ')}
+                        {(insp.result || 'pendente').replace('_', ' ')}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        insp.status === 'aprovada' || insp.status === 'concluida'
+                          ? 'bg-emerald-950/70 text-emerald-400'
+                          : insp.status === 'reprovada'
+                          ? 'bg-red-950/70 text-red-300'
+                          : insp.status === 'aguardando_revisao'
+                          ? 'bg-amber-950/70 text-amber-300'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}>
+                        {({
+                          agendada: 'Agendada',
+                          em_campo: 'Em campo',
+                          aguardando_revisao: 'Aguardando revisão',
+                          aprovada: 'Aprovada',
+                          reprovada: 'Devolvida',
+                          concluida: 'Concluída (legado)',
+                        } as Record<string, string>)[insp.status] || 'Legado'}
+                      </span>
+                      {insp.reviewComment && <p className="mt-1 max-w-[180px] text-[10px] text-red-300" title={insp.reviewComment}>{insp.reviewComment}</p>}
                     </td>
                     <td className="py-3 px-4 max-w-sm text-slate-300 truncate" title={insp.findings}>
                       {insp.findings || '—'}
                     </td>
-                    <td className="py-3 px-4 text-slate-400">
-                      {insp.completedAt ? new Date(insp.completedAt).toLocaleString('pt-BR') : '—'}
+                    <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                      {insp.completedAt ? new Date(insp.completedAt).toLocaleString('pt-BR') : insp.startedAt ? new Date(insp.startedAt).toLocaleString('pt-BR') : new Date(insp.createdAt).toLocaleString('pt-BR')}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex flex-wrap gap-1 min-w-[180px]">
+                        {areaLevel('operacoes') >= 2 && insp.status === 'agendada' && (
+                          <button type="button" disabled={isSubmitting} onClick={() => handleStartInspection(insp)} className="rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Iniciar</button>
+                        )}
+                        {areaLevel('operacoes') >= 2 && insp.status === 'em_campo' && (
+                          <button type="button" disabled={isSubmitting} onClick={() => { setInspectionToComplete(insp); setResult('pendente'); setFindings(''); }} className="rounded bg-cyan-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Registrar resultado</button>
+                        )}
+                        {(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2 && insp.status === 'aguardando_revisao' && (
+                          <>
+                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'approve')} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Aprovar</button>
+                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'reject')} className="rounded bg-red-800 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Devolver</button>
+                          </>
+                        )}
+                        {areaLevel('operacoes') >= 2 && insp.status === 'reprovada' && (
+                          <button type="button" disabled={isSubmitting} onClick={() => handleReopenInspection(insp)} className="rounded bg-amber-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Reexecutar</button>
+                        )}
+                        {['aprovada', 'reprovada', 'aguardando_revisao'].includes(insp.status) || insp.status === 'concluida'
+                          ? <span className="text-[10px] text-slate-500">—</span>
+                          : null}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -301,10 +471,12 @@ export const InspectionsModule: React.FC = () => {
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Unidade</label>
                   <select
+                    required
                     value={unitId}
                     onChange={(e) => setUnitId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value="" disabled>Selecione a unidade</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
@@ -345,44 +517,8 @@ export const InspectionsModule: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block font-medium text-slate-300 mb-1">Resultado da Avaliação *</label>
-                <div className="flex items-center space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setResult('conforme')}
-                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${
-                      result === 'conforme'
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    ✓ Conforme
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setResult('nao_conforme')}
-                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${
-                      result === 'nao_conforme'
-                        ? 'bg-red-600 text-white shadow-md'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    ✕ Não Conforme
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-medium text-slate-300 mb-1">Constatações Técnicas / Evidências *</label>
-                <textarea
-                  rows={3}
-                  required
-                  value={findings}
-                  onChange={(e) => setFindings(e.target.value)}
-                  placeholder="Relatório detalhado das condições encontradas no local..."
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
-                />
+              <div className="rounded-lg border border-blue-800/50 bg-blue-950/30 p-3 text-xs text-blue-200">
+                A vistoria será criada como <strong>Agendada</strong>. O inspetor iniciará a execução em campo e registrará o resultado e as constatações ao concluir, enviando o registro para revisão.
               </div>
 
               <div className="pt-2 flex justify-end space-x-2">
@@ -402,6 +538,38 @@ export const InspectionsModule: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {inspectionToComplete && (
+        <div className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#121826] border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white">Concluir inspeção e enviar para revisão</h3>
+                <p className="mt-1 text-xs text-slate-400">{inspectionToComplete.title}</p>
+              </div>
+              <button type="button" onClick={() => setInspectionToComplete(null)} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold text-slate-300">Resultado técnico *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button type="button" onClick={() => setResult('conforme')} className={`rounded-lg px-2 py-2 text-xs font-bold ${result === 'conforme' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>Conforme</button>
+                  <button type="button" onClick={() => setResult('nao_conforme')} className={`rounded-lg px-2 py-2 text-xs font-bold ${result === 'nao_conforme' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-300'}`}>Não conforme</button>
+                  <button type="button" onClick={() => setResult('pendente')} className={`rounded-lg px-2 py-2 text-xs font-bold ${result === 'pendente' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-300'}`}>Pendente</button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-300">Constatações técnicas {result !== 'conforme' ? '*' : '(opcional)'}</label>
+                <textarea rows={5} value={findings} onChange={(e) => setFindings(e.target.value)} placeholder="Registre medições, condições encontradas, desvios e evidências observadas." className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none" />
+                {result !== 'conforme' && <p className="mt-1 text-[10px] text-amber-300">Para resultado não conforme ou pendente, informe pelo menos 5 caracteres.</p>}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button type="button" onClick={() => setInspectionToComplete(null)} className="rounded-lg bg-slate-800 px-4 py-2 text-xs text-slate-300">Cancelar</button>
+                <button type="button" disabled={isSubmitting || (result !== 'conforme' && findings.trim().length < 5)} onClick={handleSubmitInspection} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{isSubmitting ? 'Enviando...' : 'Enviar para revisão'}</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

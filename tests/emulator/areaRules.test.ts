@@ -91,8 +91,9 @@ test('Checklists e inspeções exigem acesso à área Operações', async () => 
   await assertFails(setDoc(doc(viewer, 'inspections/viewer_create'), { orgId: 'org_a' }));
 
   const operationsEditor = as('member_ops', 'Operacional');
-  await assertSucceeds(setDoc(doc(operationsEditor, 'checklist_runs/ops_create'), { orgId: 'org_a' }));
-  await assertSucceeds(setDoc(doc(operationsEditor, 'inspections/ops_create'), { orgId: 'org_a' }));
+  // Registros operacionais são criados pelos endpoints validados, não diretamente pelo cliente.
+  await assertFails(setDoc(doc(operationsEditor, 'checklist_runs/ops_create'), { orgId: 'org_a' }));
+  await assertFails(setDoc(doc(operationsEditor, 'inspections/ops_create'), { orgId: 'org_a' }));
 
   const noOperations = as('member_no_ops', 'Supervisor', withArea('Supervisor', { operacoes: 0 }));
   await assertFails(getDoc(doc(noOperations, 'checklist_templates/tpl1')));

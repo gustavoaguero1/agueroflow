@@ -42,6 +42,36 @@ test('work-order evidence and Operations attachments require Operations area acc
   await assertFails(getBytes(ref(st({ orgs: { org_b: 'Admin' } }), operationsPath)));
 });
 
+test('work-order evidence is immutable, size-limited and restricted to safe image types', async () => {
+  const editor = st({ orgs: { org_a: 'Operacional' } }, 'evidence-editor');
+  const path = 'work-orders/org_a/wo1/evidence.jpg';
+  await assertSucceeds(uploadBytes(ref(editor, path), jpg, { contentType: 'image/jpeg' }));
+  await assertFails(uploadBytes(ref(editor, path), jpg, { contentType: 'image/jpeg' }));
+  await assertFails(uploadBytes(ref(editor, 'work-orders/org_a/wo1/evidence.svg'), jpg, { contentType: 'image/svg+xml' }));
+  await assertFails(uploadBytes(ref(editor, 'work-orders/org_a/wo1/evidence.pdf'), pdf, { contentType: 'application/pdf' }));
+  const large = new Uint8Array(10 * 1024 * 1024 + 1);
+  await assertFails(uploadBytes(ref(editor, 'work-orders/org_a/wo1/large.jpg'), large, { contentType: 'image/jpeg' }));
+  await assertFails(deleteObject(ref(editor, path)));
+});
+
+test('Operations attachments are immutable except authorized legacy JSON backup replacement', async () => {
+  const editor = st({ orgs: { org_a: 'Operacional' } }, 'operations-editor');
+  const filePath = 'operacoes/org_a/ctps_1234.pdf';
+  await assertSucceeds(uploadBytes(ref(editor, filePath), pdf, { contentType: 'application/pdf' }));
+  await assertFails(uploadBytes(ref(editor, filePath), pdf, { contentType: 'application/pdf' }));
+  await assertFails(uploadBytes(ref(editor, 'operacoes/org_a/vector.svg'), jpg, { contentType: 'image/svg+xml' }));
+  await assertFails(uploadBytes(ref(editor, 'operacoes/org_a/large.pdf'), new Uint8Array(15 * 1024 * 1024 + 1), { contentType: 'application/pdf' }));
+
+  const backupPath = 'operacoes/org_a/arquivos_historico.json';
+  await assertSucceeds(uploadBytes(ref(editor, backupPath), new TextEncoder().encode('{}'), { contentType: 'application/json' }));
+  await assertSucceeds(uploadBytes(ref(editor, backupPath), new TextEncoder().encode('{"revision":2}'), { contentType: 'application/json' }));
+  await assertFails(uploadBytes(ref(editor, backupPath), pdf, { contentType: 'application/pdf' }));
+  const otherJsonPath = 'operacoes/org_a/arquivos_outro.json';
+  await assertSucceeds(uploadBytes(ref(editor, otherJsonPath), new TextEncoder().encode('{}'), { contentType: 'application/json' }));
+  await assertFails(uploadBytes(ref(editor, otherJsonPath), new TextEncoder().encode('{"revision":2}'), { contentType: 'application/json' }));
+  await assertFails(deleteObject(ref(editor, backupPath)));
+});
+
 test('non-image, anonymous and other paths are denied; master allowed', async () => {
   const s = st({ orgs: { org_a: 'Admin' } });
   await assertFails(uploadBytes(ref(s, 'work-orders/org_a/wo1/x.svg'), jpg, { contentType: 'image/svg+xml' }));

@@ -233,9 +233,11 @@ export interface WorkOrder {
   signedBy?: string;
   signedAt?: string;
   technicianSignatureUrl?: string;
+  technicianSignaturePath?: string;
   technicianSignedBy?: string;
   technicianSignedAt?: string;
   clientSignatureUrl?: string;
+  clientSignaturePath?: string;
   clientSignedBy?: string;
   clientSignedAt?: string;
   isBlockedByReservation?: boolean;
@@ -301,6 +303,7 @@ export interface OrderMessage {
   resolved?: boolean;
   resolvedAt?: string;
   resolvedBy?: string;
+  resolvedByName?: string;
   createdAt: string;
 }
 
@@ -402,6 +405,8 @@ export interface ChecklistTemplate {
   description: string;
   category: string;
   items: ChecklistItemDef[];
+  /** Revision number; existing templates without this field are treated as version 1. */
+  version?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -429,6 +434,9 @@ export interface ChecklistRun {
   nonConformityCount?: number;
   hasNonConformities?: boolean;
   answers: Record<string, ChecklistItemAnswer>;
+  /** Exact template revision and snapshot used for this completed execution. */
+  templateVersion?: number;
+  templateSnapshot?: ChecklistTemplate;
   status: 'em_andamento' | 'concluido' | 'cancelado';
   completedAt?: string;
   createdAt: string;
@@ -444,11 +452,22 @@ export interface Inspection {
   title: string;
   inspectorId: string;
   inspectorName: string;
-  status: 'agendada' | 'em_campo' | 'concluida';
+  status: 'agendada' | 'em_campo' | 'aguardando_revisao' | 'aprovada' | 'reprovada' | 'concluida';
   result: 'conforme' | 'nao_conforme' | 'pendente';
   findings: string;
   checklistRunId?: string;
+  startedAt?: string;
+  startedBy?: string;
   completedAt?: string;
+  submittedBy?: string;
+  submittedByName?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewComment?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -654,6 +673,7 @@ export interface FieldWorker {
   id: string;
   orgId: string;
   rhEmployeeId?: string; // vínculo com o cadastro oficial do RH
+  isDemo?: boolean; // dado ilustrativo, nunca entra em apuração real
   name: string;
   cpf: string;
   whatsapp?: string;

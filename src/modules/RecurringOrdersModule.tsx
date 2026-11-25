@@ -7,10 +7,11 @@ import {
   onSnapshot,
   doc,
   setDoc,
-  addDoc,
   getDocs,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { maxOrderSeq, nextOrderNumber } from '../services/workOrderNumbering';
 import { RecurringOrder, WorkOrderPriority, Unit, Asset, Team } from '../types';
 import {
   Repeat,
@@ -67,6 +68,10 @@ export const RecurringOrdersModule: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (!unitId || !units.some((unit) => unit.id === unitId)) {
+      alert('Selecione uma unidade cadastrada para criar a recorrência.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -74,7 +79,7 @@ export const RecurringOrdersModule: React.FC = () => {
       const newRec: RecurringOrder = {
         id: recId,
         orgId: organization.id,
-        unitId: unitId || (units[0]?.id ?? 'default_unit'),
+        unitId,
         assetId: assetId || undefined,
         title: title.trim(),
         description: description.trim(),
@@ -102,50 +107,71 @@ export const RecurringOrdersModule: React.FC = () => {
 
   const handleGenerateWorkOrder = async (rec: RecurringOrder) => {
     if (!organization || !user) return;
+    if (!rec.unitId || !units.some((unit) => unit.id === rec.unitId)) {
+      setActionFeedback('Esta recorrência não possui uma unidade válida. Edite o cadastro e selecione uma unidade antes de gerar a OS.');
+      return;
+    }
     setIsSubmitting(true);
     setActionFeedback(null);
 
     try {
-      const orderId = `os_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const orderNumber = `OS-REC-${Date.now().toString().slice(-4)}`;
+      const orderId = `os_rec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const orderRef = doc(db, 'work_orders', orderId);
+      const eventId = `${orderId}_created`;
+      const eventRef = doc(db, 'order_events', eventId);
+      const existingOrders = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', organization.id)));
+      const seed = maxOrderSeq(existingOrders.docs.map((snapshot) => snapshot.data() as { orderNumber?: string }));
+      const createdAt = new Date().toISOString();
+      const orderNumber = await runTransaction(db, async (tx) => {
+        const unitSnap = await tx.get(doc(db, 'units', rec.unitId));
+        if (!unitSnap.exists() || unitSnap.data()?.orgId !== organization.id) {
+          throw new Error('A unidade desta recorrência não pertence à empresa selecionada.');
+        }
 
-      await setDoc(doc(db, 'work_orders', orderId), {
-        id: orderId,
-        orgId: organization.id,
-        unitId: rec.unitId,
-        assetId: rec.assetId || null,
-        orderNumber,
-        title: `[Preventiva Periódica] ${rec.title}`,
-        description: rec.description,
-        priority: rec.priority,
-        status: 'planejada',
-        requesterId: user.uid,
-        requesterName: 'Automação / Recorrência',
-        assignedTeam: rec.assignedTeam || null,
-        scheduledStartDate: new Date().toISOString().split('T')[0],
-        estimatedCost: 0,
-        notes: `OS gerada manualmente a partir da regra de periodicidade ${rec.frequency}.`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        const generatedNumber = await nextOrderNumber(tx, db, organization.id, seed);
+        tx.set(orderRef, {
+          id: orderId,
+          orgId: organization.id,
+          unitId: rec.unitId,
+          ...(rec.assetId ? { assetId: rec.assetId } : {}),
+          orderNumber: generatedNumber,
+          title: `[Preventiva Periódica] ${rec.title}`,
+          description: rec.description,
+          priority: rec.priority,
+          status: 'planejada',
+          requesterId: user.uid,
+          requesterName: user.displayName || user.email || 'Operador',
+          assignedTeam: rec.assignedTeam || undefined,
+          scheduledStartDate: rec.nextRunDate,
+          estimatedCost: 0,
+          notes: `OS gerada manualmente a partir do plano de periodicidade ${rec.frequency}.`,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        tx.set(eventRef, {
+          id: eventId,
+          orgId: organization.id,
+          orderId,
+          userId: user.uid,
+          userName: user.displayName || user.email || 'Operador',
+          eventType: 'criacao',
+          description: `OS ${generatedNumber} criada manualmente a partir do plano de recorrência.`,
+          newStatus: 'planejada',
+          timestamp: createdAt,
+        });
+        return generatedNumber;
       });
 
-      // Add timeline event
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organization.id,
-        orderId,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Operador',
-        eventType: 'criacao',
-        description: `OS ${orderNumber} criada manualmente a partir do plano de recorrência.`,
-        newStatus: 'planejada',
-        timestamp: new Date().toISOString(),
-      });
-
-      await logAudit('Recorrências', 'Gerar OS Recorrente', `OS ${orderNumber} gerada a partir da recorrência ${rec.title}`, orderId);
+      try {
+        await logAudit('Recorrências', 'Gerar OS Recorrente', `OS ${orderNumber} gerada a partir da recorrência ${rec.title}`, orderId);
+      } catch (auditError) {
+        console.warn('A OS foi criada, mas a auditoria complementar falhou:', auditError);
+      }
 
       setActionFeedback(`Ordem de Serviço ${orderNumber} gerada com sucesso! Acompanhe na Lista de OS.`);
     } catch (err) {
       console.error('Erro ao gerar OS a partir da recorrência:', err);
+      setActionFeedback(err instanceof Error ? err.message : 'Não foi possível gerar a OS.');
     } finally {
       setIsSubmitting(false);
     }
@@ -164,11 +190,12 @@ export const RecurringOrdersModule: React.FC = () => {
 
         <button
           onClick={() => {
-            setUnitId(units[0]?.id || '');
+            setUnitId('');
             setAssetId(assets[0]?.id || '');
             setAssignedTeam(teams[0]?.name || '');
             setShowCreateModal(true);
           }}
+          disabled={units.length === 0}
           className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -302,10 +329,12 @@ export const RecurringOrdersModule: React.FC = () => {
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Unidade</label>
                   <select
+                    required
                     value={unitId}
                     onChange={(e) => setUnitId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value="" disabled>Selecione a unidade</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}

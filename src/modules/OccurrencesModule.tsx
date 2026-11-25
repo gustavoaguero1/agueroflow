@@ -8,8 +8,8 @@ import {
   doc,
   setDoc,
   updateDoc,
-  addDoc,
   getDocs,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Occurrence, OccurrenceStatus, Unit, Asset, WorkOrder } from '../types';
@@ -142,6 +142,10 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (!unitId || !units.some((unit) => unit.id === unitId)) {
+      alert('Selecione uma unidade cadastrada para registrar a ocorrência.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
@@ -149,7 +153,7 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
       const newOcc: Occurrence = {
         id: occId,
         orgId: organization.id,
-        unitId: unitId || (units[0]?.id ?? 'default_unit'),
+        unitId,
         assetId: assetId || undefined,
         orderId: orderId || undefined,
         title: title.trim(),
@@ -186,67 +190,113 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
   // Convert Occurrence into a Corrective Work Order
   const handleGenerateCorrectiveOrder = async (occ: Occurrence) => {
     if (!organization || !user) return;
+    if (!occ.unitId || !units.some((unit) => unit.id === occ.unitId)) {
+      alert('Esta ocorrência não possui uma unidade válida. Corrija o vínculo antes de gerar a OS.');
+      return;
+    }
+    if (occ.orderId) {
+      alert(`Esta ocorrência já possui a OS ${occ.linkedOrderNumber || occ.orderId} vinculada.`);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const woId = `wo_corretiva_${Date.now()}`;
+      const woId = `wo_corretiva_${occ.id}`;
       const woNumber = `OS-${new Date().getFullYear()}/${String(workOrders.length + 101).padStart(4, '0')}`;
-      
+      const createdAt = new Date().toISOString();
+      const eventId = `${woId}_created`;
       const newOrder: WorkOrder = {
         id: woId,
         orgId: organization.id,
         unitId: occ.unitId,
-        assetId: occ.assetId,
+        ...(occ.assetId ? { assetId: occ.assetId } : {}),
         orderNumber: woNumber,
         title: `[Ação Corretiva] ${occ.title}`,
-        description: `Demanda corretiva industrial gerada a partir da Ocorrência ${occ.title}.\n\nDesvio identificado:\n${occ.description}`,
+        description: `Demanda corretiva industrial gerada a partir da Ocorrência ${occ.title}.\\n\\nDesvio identificado:\\n${occ.description}`,
         orderType: 'corretiva',
         type: 'corretiva',
         priority: occ.urgency === 'critica' ? 'critica' : occ.urgency === 'alta' ? 'alta' : 'media',
         status: 'planejada',
-        requesterName: occ.reportedBy || user.displayName || 'Qualidade / SMS',
+        requesterId: user.uid,
+        requesterName: user.displayName || user.email || 'Qualidade / SMS',
         assignedTo: occ.assignedTo,
-        estimatedHours: 4,
         isRework: occ.type === 'qualidade',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt,
+        updatedAt: createdAt,
       };
 
-      await setDoc(doc(db, 'work_orders', woId), newOrder);
-
-      // Add timeline event to Work Order
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organization.id,
-        orderId: woId,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Sistema',
-        description: `Ordem de Serviço criada automaticamente a partir da Ocorrência: ${occ.title}`,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Update Occurrence
+      const occurrenceRef = doc(db, 'occurrences', occ.id);
+      const unitRef = doc(db, 'units', occ.unitId);
+      const assetRef = occ.assetId ? doc(db, 'assets', occ.assetId) : null;
+      const orderRef = doc(db, 'work_orders', woId);
+      const eventRef = doc(db, 'order_events', eventId);
       const updates: Partial<Occurrence> = {
         status: 'acao_corretiva',
         orderId: woId,
         linkedOrderNumber: woNumber,
-        updatedAt: new Date().toISOString(),
+        updatedAt: createdAt,
       };
-      await updateDoc(doc(db, 'occurrences', occ.id), updates);
 
-      await logAudit(
-        'Ocorrências',
-        'Gerar OS Corretiva',
-        `OS Corretiva ${woNumber} vinculada à ocorrência ${occ.title}`,
-        occ.id
-      );
+      await runTransaction(db, async (tx) => {
+        const reads = [tx.get(occurrenceRef), tx.get(unitRef), tx.get(orderRef)];
+        if (assetRef) reads.push(tx.get(assetRef));
+        const snapshots = await Promise.all(reads);
+        const currentOccurrenceSnap = snapshots[0];
+        const unitSnap = snapshots[1];
+        const existingOrderSnap = snapshots[2];
+        const currentOccurrence = currentOccurrenceSnap.data() as Occurrence | undefined;
 
-      if (selectedOcc && selectedOcc.id === occ.id) {
-        setSelectedOcc({ ...selectedOcc, ...updates });
+        if (!currentOccurrenceSnap.exists() || currentOccurrence?.orgId !== organization.id) {
+          throw new Error('A ocorrência não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        if (currentOccurrence.orderId) {
+          throw new Error(`A ocorrência já está vinculada à OS ${currentOccurrence.linkedOrderNumber || currentOccurrence.orderId}.`);
+        }
+        if (!unitSnap.exists() || unitSnap.data()?.orgId !== organization.id) {
+          throw new Error('A unidade da ocorrência não pertence à empresa selecionada.');
+        }
+        if (assetRef) {
+          const assetSnap = snapshots[3];
+          const asset = assetSnap.data();
+          if (!assetSnap.exists() || asset?.orgId !== organization.id || (asset.unitId && asset.unitId !== occ.unitId)) {
+            throw new Error('O ativo vinculado não pertence à mesma unidade/empresa da ocorrência.');
+          }
+        }
+        if (existingOrderSnap.exists()) {
+          throw new Error('Já existe uma OS com o identificador desta ocorrência. Atualize os dados antes de tentar novamente.');
+        }
+
+        tx.set(orderRef, newOrder);
+        tx.set(eventRef, {
+          id: eventId,
+          orgId: organization.id,
+          orderId: woId,
+          userId: user.uid,
+          userName: user.displayName || user.email || 'Sistema',
+          eventType: 'criacao',
+          description: `OS ${woNumber} criada automaticamente a partir da Ocorrência: ${occ.title}`,
+          newStatus: 'planejada',
+          timestamp: createdAt,
+        });
+        tx.update(occurrenceRef, updates);
+      });
+
+      try {
+        await logAudit(
+          'Ocorrências',
+          'Gerar OS Corretiva',
+          `OS Corretiva ${woNumber} vinculada à ocorrência ${occ.title}`,
+          occ.id
+        );
+      } catch (auditError) {
+        console.warn('A OS foi criada, mas a auditoria complementar falhou:', auditError);
       }
 
+      if (selectedOcc && selectedOcc.id === occ.id) setSelectedOcc({ ...selectedOcc, ...updates });
       alert(`Ordem de Serviço ${woNumber} gerada com sucesso! Ela já está disponível no menu de Ordens de Serviço.`);
     } catch (err) {
       console.error('Erro ao gerar OS Corretiva:', err);
-      alert('Erro ao gerar OS Corretiva.');
+      alert(err instanceof Error ? err.message : 'Erro ao gerar OS Corretiva.');
     } finally {
       setIsSubmitting(false);
     }
@@ -347,10 +397,11 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
 
         <button
           onClick={() => {
-            setUnitId(units[0]?.id || '');
+            setUnitId('');
             setAssetId(assets[0]?.id || '');
             setShowCreateModal(true);
           }}
+          disabled={units.length === 0}
           className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -732,6 +783,18 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
                   placeholder="Ex: Vazamento de fluido no trocador de calor inox"
                   className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                 />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">Unidade *</label>
+                <select
+                  required
+                  value={unitId}
+                  onChange={(e) => setUnitId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="" disabled>Selecione a unidade</option>
+                  {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

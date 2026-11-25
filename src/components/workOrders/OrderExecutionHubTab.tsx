@@ -8,12 +8,13 @@ import {
 } from '../../types';
 import {
   doc,
-  updateDoc,
   addDoc,
   collection,
+  runTransaction,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
+import { apiFetch } from '../../apiAuthFetch';
 import { compressImage } from '../../lib/compressImage';
 import {
   ShieldAlert,
@@ -121,19 +122,27 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         };
 
         try {
-          await updateDoc(doc(db, 'work_orders', order.id), {
-            executionGps: coords,
-            updatedAt: new Date().toISOString(),
-          });
-
-          await addDoc(collection(db, 'order_events'), {
-            orgId: organizationId,
-            orderId: order.id,
-            userId: currentUser.uid,
-            userName: currentUser.displayName || currentUser.email || 'Técnico',
-            eventType: 'gps',
-            description: `Validação de GPS de campo capturada: Lat ${coords.latitude.toFixed(4)}, Long ${coords.longitude.toFixed(4)} (Precisão: ±${coords.accuracy.toFixed(0)}m)`,
-            timestamp: new Date().toISOString(),
+          const now = new Date().toISOString();
+          const orderRef = doc(db, 'work_orders', order.id);
+          const eventRef = doc(collection(db, 'order_events'));
+          await runTransaction(db, async (tx) => {
+            const current = await tx.get(orderRef);
+            if (!current.exists() || current.data().orgId !== organizationId) {
+              throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+            }
+            tx.update(orderRef, {
+              executionGps: coords,
+              updatedAt: now,
+            });
+            tx.set(eventRef, {
+              orgId: organizationId,
+              orderId: order.id,
+              userId: currentUser.uid,
+              userName: currentUser.displayName || currentUser.email || 'Técnico',
+              eventType: 'gps',
+              description: `Validação de GPS de campo capturada: Lat ${coords.latitude.toFixed(4)}, Long ${coords.longitude.toFixed(4)} (Precisão: ±${coords.accuracy.toFixed(0)}m)`,
+              timestamp: now,
+            });
           });
 
           onOrderUpdated({ executionGps: coords });
@@ -147,43 +156,61 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
         console.error('GPS error:', err);
         // Never invent coordinates: record no location and tell the user.
         setGpsError('Localização não autorizada');
-        updateDoc(doc(db, 'work_orders', order.id), {
-          executionGps: null,
-          updatedAt: new Date().toISOString(),
-        })
-          .then(() => onOrderUpdated({ executionGps: null }))
-          .catch((e) => console.error('Erro ao salvar GPS:', e))
-          .finally(() => setGpsLoading(false));
+        // A falha de geolocalização não apaga a última posição real registrada na OS.
+        setGpsLoading(false);
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   };
 
-  // Toggle checklist item
+  // Checklist item and timeline event are committed together to avoid local/database divergence.
   const handleToggleChecklist = async (id: string) => {
-    const updated = checklist.map((item) => {
-      if (item.id === id) {
-        const nextStatus = item.status === 'concluido' ? 'pendente' : 'concluido';
-        return {
-          ...item,
-          status: nextStatus as any,
-          completedAt: nextStatus === 'concluido' ? new Date().toISOString() : undefined,
-          completedBy: nextStatus === 'concluido' ? (currentUser.displayName || currentUser.email || 'Usuário') : undefined,
-        };
-      }
-      return item;
-    });
-
-    setChecklist(updated);
-
+    const target = checklist.find((item) => item.id === id);
+    if (!target) return;
+    const now = new Date().toISOString();
+    const nextStatus = target.status === 'concluido' ? 'pendente' : 'concluido';
+    const orderRef = doc(db, 'work_orders', order.id);
+    const eventRef = doc(collection(db, 'order_events'));
     try {
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        executionChecklist: updated,
-        updatedAt: new Date().toISOString(),
+      const updated = await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        const currentChecklist = Array.isArray(current.data().executionChecklist)
+          ? current.data().executionChecklist as OrderChecklistItem[]
+          : checklist;
+        const nextChecklist = currentChecklist.map((item) => item.id === id
+          ? {
+            ...item,
+            status: nextStatus as any,
+            completedAt: nextStatus === 'concluido' ? now : undefined,
+            completedBy: nextStatus === 'concluido'
+              ? (currentUser.displayName || currentUser.email || 'Usuário')
+              : undefined,
+          }
+          : item);
+        tx.update(orderRef, {
+          executionChecklist: nextChecklist,
+          updatedAt: now,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || 'Usuário',
+          eventType: 'checklist',
+          description: `Checklist de execução: "${target.task}" marcado como ${nextStatus === 'concluido' ? 'concluído' : 'pendente'}.`,
+          timestamp: now,
+          meta: { checklistItemId: id, status: nextStatus },
+        });
+        return nextChecklist;
       });
+      setChecklist(updated);
       onOrderUpdated({ executionChecklist: updated });
     } catch (err) {
       console.error('Erro ao atualizar checklist:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível atualizar o checklist da OS.');
     }
   };
 
@@ -198,28 +225,78 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
       const kind = type === 'before' ? ('antes' as const) : ('depois' as const);
       const takenAt = new Date().toISOString();
       const blob = await compressImage(file);
+      if (!blob.size || blob.size > 10 * 1024 * 1024) {
+        throw new Error('A evidência deve ter até 10 MB.');
+      }
       const path = `work-orders/${organizationId}/${order.id}/${kind}_${Date.now()}.jpg`;
-      const r = storageRef(storage, path);
-      await uploadBytes(r, blob, { contentType: 'image/jpeg' });
-      const url = await getDownloadURL(r);
-      const nextBefore = type === 'before' ? [...beforePhotos, url] : beforePhotos;
-      const nextAfter = type === 'after' ? [...afterPhotos, url] : afterPhotos;
-      const meta = [
-        ...(order.evidencePhotoMeta || []),
-        { kind, path, url, takenAt, lat: order.executionGps?.latitude ?? null, lng: order.executionGps?.longitude ?? null },
-      ];
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        evidencePhotos: { before: nextBefore, after: nextAfter },
-        evidencePhotoMeta: meta,
-        updatedAt: new Date().toISOString(),
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, blob, { contentType: 'image/jpeg' });
+      const url = await getDownloadURL(fileRef);
+
+      const orderRef = doc(db, 'work_orders', order.id);
+      const eventRef = doc(collection(db, 'order_events'));
+      const taskId = type === 'before' ? 'chk_2' : 'chk_3';
+      const saved = await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        const currentData = current.data() as WorkOrder;
+        const currentPhotos = currentData.evidencePhotos || { before: [], after: [] };
+        const before = type === 'before' ? [...(currentPhotos.before || []), url] : (currentPhotos.before || []);
+        const after = type === 'after' ? [...(currentPhotos.after || []), url] : (currentPhotos.after || []);
+        const metadata = [
+          ...(currentData.evidencePhotoMeta || []),
+          {
+            kind,
+            path,
+            url,
+            takenAt,
+            lat: currentData.executionGps?.latitude ?? null,
+            lng: currentData.executionGps?.longitude ?? null,
+          },
+        ];
+        const currentChecklist = Array.isArray(currentData.executionChecklist)
+          ? currentData.executionChecklist
+          : checklist;
+        const updatedChecklist = currentChecklist.map((item) => item.id === taskId
+          ? {
+            ...item,
+            status: 'concluido' as const,
+            completedAt: takenAt,
+            completedBy: currentUser.displayName || currentUser.email || 'Usuário',
+          }
+          : item);
+        tx.update(orderRef, {
+          evidencePhotos: { before, after },
+          evidencePhotoMeta: metadata,
+          executionChecklist: updatedChecklist,
+          updatedAt: takenAt,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || 'Técnico',
+          eventType: 'pecas',
+          description: `Evidência fotográfica ${kind} anexada à OS.`,
+          timestamp: takenAt,
+          meta: { storagePath: path, kind, checklistItemId: taskId },
+        });
+        return { before, after, metadata, updatedChecklist };
       });
-      setBeforePhotos(nextBefore);
-      setAfterPhotos(nextAfter);
-      onOrderUpdated({ evidencePhotos: { before: nextBefore, after: nextAfter }, evidencePhotoMeta: meta });
-      handleToggleChecklist(type === 'before' ? 'chk_2' : 'chk_3');
+
+      setBeforePhotos(saved.before);
+      setAfterPhotos(saved.after);
+      setChecklist(saved.updatedChecklist);
+      onOrderUpdated({
+        evidencePhotos: { before: saved.before, after: saved.after },
+        evidencePhotoMeta: saved.metadata,
+        executionChecklist: saved.updatedChecklist,
+      });
     } catch (err) {
       console.error('Erro ao enviar foto:', err);
-      setPhotoError('Não foi possível enviar a foto. Verifique a conexão e tente novamente.');
+      setPhotoError(err instanceof Error ? err.message : 'Não foi possível enviar a foto. Verifique a conexão e tente novamente.');
     } finally {
       setUploading(null);
     }
@@ -284,93 +361,123 @@ export const OrderExecutionHubTab: React.FC<OrderExecutionHubTabProps> = ({
   const saveSignature = async (target: 'tech' | 'client') => {
     const canvas = target === 'tech' ? techCanvasRef.current : clientCanvasRef.current;
     if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
+    const signerName = (target === 'tech' ? techName : clientName).trim();
+    if (!signerName) {
+      alert('Informe o nome de quem está assinando antes de salvar.');
+      return;
+    }
 
     try {
-      if (target === 'tech') {
-        await updateDoc(doc(db, 'work_orders', order.id), {
-          technicianSignatureUrl: dataUrl,
-          technicianSignedBy: techName,
-          technicianSignedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        onOrderUpdated({
-          technicianSignatureUrl: dataUrl,
-          technicianSignedBy: techName,
-          technicianSignedAt: new Date().toISOString(),
-        });
-        handleToggleChecklist('chk_5');
-      } else {
-        await updateDoc(doc(db, 'work_orders', order.id), {
-          clientSignatureUrl: dataUrl,
-          clientSignedBy: clientName,
-          clientSignedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        onOrderUpdated({
-          clientSignatureUrl: dataUrl,
-          clientSignedBy: clientName,
-          clientSignedAt: new Date().toISOString(),
-        });
-        handleToggleChecklist('chk_6');
+      const signatureBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+      if (!signatureBlob || signatureBlob.size === 0 || signatureBlob.size > 10 * 1024 * 1024) {
+        throw new Error('Não foi possível gerar uma assinatura válida ou o arquivo excede 10 MB.');
       }
+
+      const now = new Date().toISOString();
+      const path = `work-orders/${organizationId}/${order.id}/signature_${target}_${currentUser.uid}_${Date.now()}.png`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, signatureBlob, {
+        contentType: 'image/png',
+        customMetadata: {
+          orgId: organizationId,
+          orderId: order.id,
+          signerUid: currentUser.uid,
+          signerType: target,
+        },
+      });
+      const url = await getDownloadURL(fileRef);
+
+      const orderRef = doc(db, 'work_orders', order.id);
+      const eventRef = doc(collection(db, 'order_events'));
+      const taskId = target === 'tech' ? 'chk_5' : 'chk_6';
+      const updatedChecklist = checklist.map((item) => item.id === taskId
+        ? {
+          ...item,
+          status: 'concluido' as const,
+          completedAt: now,
+          completedBy: currentUser.displayName || currentUser.email || 'Usuário',
+        }
+        : item);
+      const signatureFields = target === 'tech'
+        ? {
+          technicianSignatureUrl: url,
+          technicianSignaturePath: path,
+          technicianSignedBy: signerName,
+          technicianSignedAt: now,
+        }
+        : {
+          clientSignatureUrl: url,
+          clientSignaturePath: path,
+          clientSignedBy: signerName,
+          clientSignedAt: now,
+        };
+
+      await runTransaction(db, async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists() || current.data().orgId !== organizationId) {
+          throw new Error('A OS não pertence à empresa selecionada ou não está mais disponível.');
+        }
+        tx.update(orderRef, {
+          ...signatureFields,
+          executionChecklist: updatedChecklist,
+          updatedAt: now,
+        });
+        tx.set(eventRef, {
+          orgId: organizationId,
+          orderId: order.id,
+          userId: currentUser.uid,
+          userName: currentUser.displayName || currentUser.email || signerName,
+          eventType: 'assinatura',
+          description: `Assinatura ${target === 'tech' ? 'do técnico executor' : 'do responsável do cliente'} registrada em arquivo privado do Storage.`,
+          timestamp: now,
+          meta: { signerName, signerType: target, storagePath: path },
+        });
+      });
+
+      setChecklist(updatedChecklist);
+      onOrderUpdated({
+        ...signatureFields,
+        executionChecklist: updatedChecklist,
+      });
     } catch (err) {
       console.error('Erro ao salvar assinatura:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível salvar a assinatura.');
     }
   };
 
   // Manager Action: Approve reservation & unblock execution
   const handleApproveReservationAndUnblock = async () => {
+    if (!canApprove) {
+      alert('Seu perfil não possui alçada para aprovar a reserva desta OS.');
+      return;
+    }
     try {
-      const updatedParts = (order.plannedParts || []).map((p) => ({
-        ...p,
-        status: 'disponivel' as const,
-      }));
-
-      await updateDoc(doc(db, 'work_orders', order.id), {
-        status: 'em_execucao',
-        isBlockedByReservation: false,
-        reservationApprovalStatus: 'aprovado',
-        reservationApprovedBy: currentUser.displayName || currentUser.email || 'Gestor',
-        reservationApprovedAt: new Date().toISOString(),
-        plannedParts: updatedParts,
-        actualStartDate: order.actualStartDate || new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString(),
+      setGpsError(null);
+      const idempotencyKey = `reservation_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const response = await apiFetch(`/api/work-orders/${encodeURIComponent(order.id)}/reservation-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organizationId,
+          expectedStatus: order.status,
+          idempotencyKey,
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload.orderUpdates) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'O servidor recusou a aprovação da reserva.');
+      }
 
-      // Dispara evento na linha do tempo
-      await addDoc(collection(db, 'order_events'), {
-        orgId: organizationId,
-        orderId: order.id,
-        userId: currentUser.uid,
-        userName: currentUser.displayName || currentUser.email || 'Gestor',
-        eventType: 'aprovacao',
-        description: `Reserva de peças aprovada pelo Gestor. Ordem desbloqueada e liberada para execução.`,
-        newStatus: 'em_execucao',
-        timestamp: new Date().toISOString(),
-      });
-
-      // Posta mensagem oficial no diálogo
-      await addDoc(collection(db, 'order_messages'), {
-        orgId: organizationId,
-        orderId: order.id,
-        senderId: currentUser.uid,
-        senderName: currentUser.displayName || 'Gestor / Superior',
-        senderRole: 'Superior',
-        messageType: 'liberacao',
-        content: '✅ APROVADO: A reserva de peças foi autorizada pela gestão. A ordem está desbloqueada e em execução.',
-        createdAt: new Date().toISOString(),
-        resolved: true,
-      });
-
-      onOrderUpdated({
-        status: 'em_execucao',
-        isBlockedByReservation: false,
-        reservationApprovalStatus: 'aprovado',
-        plannedParts: updatedParts,
-      });
+      onOrderUpdated(payload.orderUpdates);
+      if (payload.replayed !== true) {
+        // The backend commits status, event, message and idempotency in a single transaction.
+        // No local confirmation is shown until the server confirms the operation.
+      }
     } catch (err) {
       console.error('Erro ao aprovar reserva:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível aprovar a reserva da OS.');
     }
   };
 

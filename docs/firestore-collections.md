@@ -14,8 +14,10 @@ Owner kinds:
 |---|---|---|---|
 | assets | orgId | `orgId ==` | |
 | audit_logs | orgId (immutable) | `orgId ==` | append-only |
-| checklist_runs | orgId | `orgId ==` | |
-| checklist_templates | orgId | `orgId ==` | |
+| checklist_runs | orgId | `orgId ==` | Conclusão somente por `/api/checklists/templates/:templateId/runs`; armazena versão e snapshot do template. Eventos append-only em `checklist_run_events`. |
+| checklist_run_events | orgId (immutable) | `orgId ==` + `runId ==` | Histórico append-only da execução do checklist. |
+| checklist_template_events | orgId (immutable) | `orgId ==` + `templateId ==` | Histórico de criação/versões do template, com snapshot. |
+| checklist_templates | orgId | `orgId ==` | Criação e versionamento somente por `/api/checklists/templates`; revisões registradas em `checklist_template_events`. |
 | collective_asset_categories | orgId | `orgId ==` | |
 | collective_asset_movements | orgId | `orgId ==`, `orgId ==` + `status in` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
 | collective_asset_policies | doc id | getDoc | written in transactions |
@@ -59,16 +61,17 @@ Owner kinds:
 | finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades, incluindo as chaves das NF-e, fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
-| inspections | orgId | `orgId ==` | |
-| item_categories | orgId | `orgId ==` | |
-| items | orgId | `orgId ==` | |
+| inspections | orgId | `orgId ==` | Fluxo criado e atualizado somente por `/api/inspections`; a transição gera evento imutável na mesma transação. Estados: agendada → em campo → aguardando revisão → aprovada/devolvida. |
+| item_categories | orgId | `orgId ==` | Stock editor administra categorias; Operações e Comercial podem consultar. |
+| inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
+| items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
 | ops_orgs/{orgId}/{coll}/{doc} | path (orgId) | full collection listeners | módulo Operações (`public/operacoes`, ponte `src/modules/operations/opsBridge.ts`). Membros leem/escrevem; Visualizador só lê; `salarios` só Admin/Gerente; `membros` e `config/params` escrita Admin/Gerente |
-| order_events | orgId (immutable) | `orgId ==` + `orderId ==` | timeline |
-| order_messages | orgId | `orgId ==` + `orderId ==` | |
+| order_events | orgId (immutable) | `orgId ==` + `orderId ==` | Operations (nível 1 para leitura, nível 2 para escrita); timeline imutável. Evento inicial da OS e transições de status são gravados na mesma transação da OS. |
+| order_messages | orgId | `orgId ==` + `orderId ==` | Operations (nível 1 para leitura, nível 2 para escrita). |
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
@@ -83,8 +86,8 @@ Owner kinds:
 | rh_directory | orgId | `orgId ==` | Diretório sem salários publicado pelo RH; é a fonte oficial de pessoas para a equipe PT e movimentações de EPI. Os registros guardam `rhEmployeeId` para ligar a equipe operacional sem duplicar o colaborador. |
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
-| stock_balances | orgId | `orgId ==` | |
-| stock_movements | orgId (immutable) | `orgId ==` | Append-only; entradas por recebimento registram OC, NF-e, recibo, custo unitário/total e referência idempotente. | |
+| stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
+| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas por recebimento preservam OC, NF-e, recibo, custo e idempotência. | |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
@@ -100,8 +103,8 @@ Owner kinds:
 | whatsapp_ocr_receipts | none | full list | no client delete |
 | whatsapp_quick_replies | none | — | |
 | whatsapp_scheduled_jobs | none | full list | |
-| work_order_statuses | orgId | `orgId ==` | doc id `${orgId}_${statusId}` |
-| work_orders | orgId | `orgId ==` | |
+| work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
+| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 

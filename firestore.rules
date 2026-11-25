@@ -458,11 +458,11 @@ service cloud.firestore {
       function orgScoped() {
         return coll in [
           // orgId
-          'assets', 'checklist_runs', 'checklist_templates', 'collective_asset_categories',
+          'assets', 'checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'collective_asset_categories',
           'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers',
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
           'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
-          'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
+          'contracts', 'cost_centers', 'field_workers', 'inspections', 'inspection_events', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
           'teams', 'units', 'work_order_statuses', 'work_orders', 'work_shifts', 'worker_time_logs',
@@ -475,7 +475,7 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'inspection_events', 'checklist_runs', 'checklist_run_events', 'checklist_template_events']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -483,18 +483,65 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['checklist_runs', 'checklist_templates', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
+          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
-              : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
+              : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       function areaRead(d) {
-        return coll in ['purchasing_orders', 'purchasing_receipts']
-          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-          : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1));
+        return coll in ['items', 'item_categories']
+          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+          : (coll in ['stock_balances', 'stock_movements']
+            ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+            : (coll in ['purchasing_orders', 'purchasing_receipts']
+              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))));
       }
-      function areaWrite(d) { return collArea() < 0 || areaOk(orgOf(d), collArea(), 2); }
-      // Operações aloca a pessoa numa obra: no RH muda só obra/código.
+      function areaWrite(d) {
+        return coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
+          : (coll in ['stock_balances', 'stock_movements']
+            ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
+            : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2)));
+      }
+      // Validate each reference independently to stay under the Firestore Rules local-variable limit.
+      function workOrderUnitValid(d) {
+        let unitId = d.get('unitId', '');
+        let unitPath = /databases/$(database)/documents/units/$(unitId);
+        return unitId is string && unitId.size() > 0 && unitId.size() <= 180
+          && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+')
+          && orgOf(get(unitPath).data) == orgOf(d);
+      }
+      function workOrderContractValid(d) {
+        let contractId = d.get('contractId', '');
+        let contractPath = /databases/$(database)/documents/contracts/$(contractId);
+        return contractId == '' || contractId == null
+          || (contractId is string && contractId.size() > 0 && contractId.size() <= 180
+            && contractId.matches('[A-Za-z0-9_-]+')
+            && orgOf(get(contractPath).data) == orgOf(d));
+      }
+      function workOrderAssetReferenceValid(d, unitId, assetId) {
+        let assetPath = /databases/$(database)/documents/assets/$(assetId);
+        let asset = get(assetPath).data;
+        return orgOf(asset) == orgOf(d)
+          && (asset.get('unitId', '') == '' || asset.get('unitId', '') == unitId);
+      }
+      function workOrderAssetValid(d) {
+        let unitId = d.get('unitId', '');
+        let assetId = d.get('assetId', '');
+        return assetId == '' || assetId == null
+          || (assetId is string && assetId.size() > 0 && assetId.size() <= 180
+            && assetId.matches('[A-Za-z0-9_-]+')
+            && workOrderAssetReferenceValid(d, unitId, assetId));
+      }
+      function workOrderReferencesValid(d) {
+        return coll != 'work_orders'
+          || (workOrderUnitValid(d) && workOrderContractValid(d) && workOrderAssetValid(d));
+      }
+      function workOrderUpdateReferencesValid() {
+        return coll != 'work_orders'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unitId', 'contractId', 'assetId'])
+          || workOrderReferencesValid(request.resource.data);
+      }
       function rhAllocation() {
         return coll == 'rh_employees' && areaOk(orgOf(resource.data), A_OPS(), 2)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
@@ -504,6 +551,109 @@ service cloud.firestore {
       // Deterministic ids (finance_*, NF-e items) must embed the owner org, so one tenant cannot pre-claim another's ids.
       function idHasOrg(prefix, d) { let p = prefix + orgOf(d) + '_'; return docId.size() > p.size() && docId[0:p.size()] == p; }
       function nfeItemOk() { return coll != 'items' || docId[0:9] != 'item_nfe_' || idHasOrg('item_nfe_', request.resource.data); }
+      function orderMessageParentValid(d, orderId) {
+        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
+        let validId = orderId is string && orderId.size() > 0
+          && orderId.size() <= 180 && orderId.matches('[A-Za-z0-9_-]+');
+        let existsAfterOrder = validId && existsAfter(orderPath);
+        let parent = existsAfterOrder ? getAfter(orderPath).data : {};
+        return existsAfterOrder && orgOf(parent) == orgOf(d);
+      }
+      function orderMessageReplyValid(d, orderId) {
+        let replyToId = d.get('replyToId', '');
+        let validReplyId = replyToId is string && replyToId.size() > 0
+          && replyToId.size() <= 180 && replyToId.matches('[A-Za-z0-9_-]+');
+        let replyPath = /databases/$(database)/documents/order_messages/$(replyToId);
+        let replyExistsAfter = replyToId == '' || (validReplyId && existsAfter(replyPath));
+        let reply = replyToId != '' && replyExistsAfter ? getAfter(replyPath).data : {};
+        return replyExistsAfter && (replyToId == '' || (
+          orgOf(reply) == orgOf(d) && reply.get('orderId', '') == orderId
+        ));
+      }
+      function validOrderMessageCreate() {
+        let d = request.resource.data;
+        let orderId = d.get('orderId', '');
+        let senderRole = d.get('senderRole', '');
+        let messageType = d.get('messageType', '');
+        return coll != 'order_messages' || (
+          signedIn()
+          && orderMessageParentValid(d, orderId)
+          && d.get('senderId', '') == request.auth.uid
+          && d.get('senderName', '') is string
+          && d.get('senderName', '').size() > 0
+          && d.get('senderName', '').size() <= 180
+          && senderRole in ['Superior', 'Responsavel', 'Tecnico', 'Supervisor', 'Solicitante']
+          && (senderRole != 'Superior' || hasRole(orgOf(d), ['Admin', 'Gerente']))
+          && (senderRole != 'Supervisor' || hasRole(orgOf(d), ['Supervisor']))
+          && messageType in ['pergunta', 'resposta', 'orientacao', 'apontamento', 'liberacao']
+          && (messageType in ['resposta', 'orientacao', 'liberacao']
+            ? senderRole in ['Superior', 'Supervisor'] : true)
+          && d.get('content', '') is string
+          && d.get('content', '').size() > 0
+          && d.get('content', '').size() <= 4000
+          && d.get('createdAt', '') is string
+          && d.get('createdAt', '').size() >= 10
+          && orderMessageReplyValid(d, orderId)
+        );
+      }
+      function validOrderMessageUpdate() {
+        let d = request.resource.data;
+        let orderId = resource.data.get('orderId', '');
+        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
+        let orderIdValid = orderId is string
+          && orderId.size() > 0 && orderId.size() <= 180
+          && orderId.matches('[A-Za-z0-9_-]+');
+        let orderExists = orderIdValid && exists(orderPath);
+        let parentOrder = orderExists ? get(orderPath).data : {};
+        let resolved = d.get('resolved', false);
+        return coll != 'order_messages' || (
+          signedIn()
+          && orderExists
+          && orgOf(parentOrder) == orgOf(resource.data)
+          && d.get('orgId', '') == orgOf(resource.data)
+          && d.get('orderId', '') == orderId
+          && d.diff(resource.data).affectedKeys().hasOnly(['resolved', 'resolvedAt', 'resolvedBy', 'resolvedByName'])
+          && resolved is bool
+          && (resolved
+            ? ((resource.data.get('senderId', '') == request.auth.uid
+                || hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
+              && d.get('resolvedBy', '') == request.auth.uid
+              && d.get('resolvedAt', '') is string
+              && d.get('resolvedAt', '').size() >= 10
+              && d.get('resolvedByName', '') is string
+              && d.get('resolvedByName', '').size() > 0
+              && d.get('resolvedByName', '').size() <= 180)
+            : (d.get('resolvedBy', null) == null
+              && d.get('resolvedAt', null) == null
+              && d.get('resolvedByName', null) == null))
+        );
+      }
+
+      function validOrderEventCreate() {
+        let d = request.resource.data;
+        let orderId = d.get('orderId', '');
+        let orderPath = /databases/$(database)/documents/work_orders/$(orderId);
+        let orderIdValid = orderId is string && orderId.size() > 0 && orderId.size() <= 180 && orderId.matches('[A-Za-z0-9_-]+');
+        let orderExistsAfter = orderIdValid && existsAfter(orderPath);
+        let parentOrder = orderExistsAfter ? getAfter(orderPath).data : {};
+        return coll != 'order_events' || (
+          signedIn()
+          && d.get('userId', '') == request.auth.uid
+          && d.get('userName', '') is string
+          && d.get('userName', '').size() > 0
+          && d.get('userName', '').size() <= 180
+          && d.get('orgId', '') == orgOf(parentOrder)
+          && orderExistsAfter
+          && d.get('eventType', '') is string
+          && d.get('eventType', '').size() > 0
+          && d.get('eventType', '').size() <= 60
+          && d.get('description', '') is string
+          && d.get('description', '').size() > 0
+          && d.get('description', '').size() <= 10000
+          && d.get('timestamp', '') is string
+          && d.get('timestamp', '').size() >= 10
+        );
+      }
       function validRdoCreate() {
         return coll != 'construction_reports' || (
           signedIn()
@@ -847,18 +997,32 @@ service cloud.firestore {
       }
       function genericCreate() {
         return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+          // Inspections and checklists are created only by their validated server workflows.
+          && !(coll in ['inspections', 'inspection_events', 'checklist_templates', 'checklist_runs', 'checklist_run_events', 'checklist_template_events'])
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
-          && validRdoCreate()
-          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+          // Evaluate expensive validations only for the collection that needs them.
+          && (coll != 'construction_reports' || validRdoCreate())
+          && (coll != 'quality_records' || validQualityRecordCreate())
+          && (coll != 'quality_record_events' || validQualityEventCreate())
+          && (coll != 'quality_record_states' || validQualityStateCreate())
+          && (coll != 'work_orders' || workOrderReferencesValid(request.resource.data))
+          && (coll != 'order_events' || validOrderEventCreate())
+          && (coll != 'order_messages' || validOrderMessageCreate())
           && areaWrite(request.resource.data);
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
-        && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
+        // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
+        && !(coll in ['inspections', 'checklist_templates', 'checklist_runs'])
+        && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
+        && (coll == 'work_orders' ? workOrderUpdateReferencesValid() : true)
+        && (coll == 'order_messages'
+          ? (areaWrite(resource.data) && validOrderMessageUpdate())
+          : (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
           ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
           : (coll == 'quality_record_states'
             ? (areaWrite(resource.data) && validQualityStateUpdate())
-            : (areaWrite(resource.data) || rhAllocation())));
-      allow delete: if orgScoped() && coll != 'quality_record_states' && !immutable() && canDelete() && areaWrite(resource.data)
+            : (areaWrite(resource.data) || rhAllocation()))));
+      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs', 'order_messages']) && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.

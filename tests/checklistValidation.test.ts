@@ -4,6 +4,7 @@ import type { ChecklistTemplate } from '../src/types';
 import {
   assessChecklistCompletion,
   createInitialChecklistAnswers,
+  validateChecklistSubmission,
 } from '../src/services/checklistValidation.ts';
 
 const template: ChecklistTemplate = {
@@ -61,4 +62,55 @@ test('empty templates cannot be concluded', () => {
   const result = assessChecklistCompletion(empty, {});
   assert.equal(result.canComplete, false);
   assert.equal(result.progressPercent, 0);
+});
+
+
+test('server validation accepts zero as a numeric answer and derives conformity from the template', () => {
+  const answers = createInitialChecklistAnswers(template);
+  answers.sim.value = 'nao';
+  answers.sim.conforme = true; // client-supplied flag is ignored
+  answers.numero.value = '0';
+  const result = validateChecklistSubmission(template, answers);
+  assert.equal(result.canComplete, true);
+  assert.equal(result.progressPercent, 67);
+  assert.equal(result.nonConformityCount, 1);
+  assert.equal(result.answers.sim.conforme, false);
+  assert.equal(typeof result.answers.numero.value, 'number');
+  assert.equal(result.answers.numero.value, 0);
+});
+
+test('server validation rejects missing required answers and unknown answer IDs', () => {
+  const answers = createInitialChecklistAnswers(template);
+  answers.sim.value = 'sim';
+  const result = validateChecklistSubmission(template, { ...answers, unexpected: { value: 'x' } });
+  assert.equal(result.canComplete, false);
+  assert.ok(result.errors.some((error) => error.includes('Pressão')));
+  assert.ok(result.errors.some((error) => error.includes('unexpected')));
+});
+
+test('server validation rejects malformed numeric and unsupported multiple-choice answers', () => {
+  const numeric = validateChecklistSubmission(template, {
+    sim: { value: 'sim' },
+    numero: { value: 'não é número' },
+  });
+  assert.equal(numeric.canComplete, false);
+  assert.ok(numeric.errors.some((error) => error.includes('número válido')));
+
+  const multipleChoiceTemplate: ChecklistTemplate = {
+    ...template,
+    items: [{ id: 'choice', title: 'Material', type: 'multipla_escolha', options: ['inox', 'carbono'], required: true }],
+  };
+  const choice = validateChecklistSubmission(multipleChoiceTemplate, { choice: { value: 'alumínio' } });
+  assert.equal(choice.canComplete, false);
+  assert.ok(choice.errors.some((error) => error.includes('opção válida')));
+});
+
+test('server validation reconstructs title and answer type from the saved template', () => {
+  const answers = createInitialChecklistAnswers(template);
+  answers.sim = { itemId: 'sim', itemTitle: 'Título inventado', type: 'texto', value: 'sim', conforme: true };
+  answers.numero.value = '12';
+  const result = validateChecklistSubmission(template, answers);
+  assert.equal(result.canComplete, true);
+  assert.equal(result.answers.sim.itemTitle, 'Proteção instalada');
+  assert.equal(result.answers.sim.type, 'sim_nao');
 });

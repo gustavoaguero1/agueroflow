@@ -6,10 +6,10 @@ import {
   where,
   onSnapshot,
   doc,
-  setDoc,
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { apiFetch } from '../apiAuthFetch';
 import { assessChecklistCompletion, createInitialChecklistAnswers } from '../services/checklistValidation';
 import {
   ChecklistTemplate,
@@ -112,29 +112,47 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization || !user) return;
+    if (items.length === 0 || items.some((item) => item.title.trim().length < 2)) {
+      alert('Inclua ao menos um item e informe o título de todos os itens.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {
-      const templateId = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newTemplate: ChecklistTemplate = {
-        id: templateId,
-        orgId: organization.id,
-        title: templateTitle.trim(),
-        description: templateDesc.trim(),
-        category: templateCategory,
-        items,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const response = await apiFetch('/api/checklists/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organization.id,
+          title: templateTitle.trim(),
+          description: templateDesc.trim(),
+          category: templateCategory.trim(),
+          items,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload.template) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Não foi possível salvar o template.');
+      }
 
-      await setDoc(doc(db, 'checklist_templates', templateId), newTemplate);
-      await logAudit('Checklists', 'Criar Template', `Template de checklist: ${templateTitle}`, templateId);
+      const savedTemplate = payload.template as ChecklistTemplate;
+      setTemplates((current) => [savedTemplate, ...current.filter((item) => item.id !== savedTemplate.id)]);
+      try {
+        await logAudit('Checklists', 'Criar Template', `Template de checklist: ${savedTemplate.title} | Versão ${savedTemplate.version ?? 1}`, savedTemplate.id);
+      } catch (auditError) {
+        console.warn('O template foi criado, mas o registro complementar de auditoria falhou:', auditError);
+      }
 
       setShowCreateModal(false);
       setTemplateTitle('');
       setTemplateDesc('');
+      setItems([
+        { id: '1', title: 'Verificação visual de vazamentos de fluidos', type: 'sim_nao', required: true },
+        { id: '2', title: 'Pressão manométrica indicada (bar)', type: 'numerico', required: true },
+      ]);
     } catch (err) {
       console.error('Erro ao salvar template:', err);
+      alert(err instanceof Error ? err.message : 'Não foi possível salvar o template no servidor.');
     } finally {
       setIsSubmitting(false);
     }
@@ -169,36 +187,37 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
     setIsSubmitting(true);
 
     try {
-      const runId = `run_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const newRun: ChecklistRun = {
-        id: runId,
-        orgId: organization.id,
-        templateId: activeRunTemplate.id,
-        templateTitle: activeRunTemplate.title,
-        inspectorId: user.uid,
-        inspectorName: user.displayName || user.email || 'Inspetor',
-        progressPercent: assessment.progressPercent,
-        nonConformityCount: assessment.nonConformityCount,
-        hasNonConformities: assessment.nonConformityCount > 0,
-        answers: currentAnswers,
-        status: 'concluido',
-        completedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const response = await apiFetch(`/api/checklists/templates/${encodeURIComponent(activeRunTemplate.id)}/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: organization.id,
+          answers: currentAnswers,
+          idempotencyKey: `checklist_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok !== true || !payload.run) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'O servidor não permitiu concluir o checklist.');
+      }
 
-      await setDoc(doc(db, 'checklist_runs', runId), newRun);
-      await logAudit(
-        'Checklists',
-        'Executar Checklist',
-        `Checklist concluído: ${activeRunTemplate.title} | Não conformidades: ${assessment.nonConformityCount}`,
-        runId
-      );
+      const savedRun = payload.run as ChecklistRun;
+      try {
+        await logAudit(
+          'Checklists',
+          'Executar Checklist',
+          `Checklist concluído: ${savedRun.templateTitle} | Versão ${savedRun.templateVersion ?? 1} | Não conformidades: ${savedRun.nonConformityCount ?? 0}`,
+          savedRun.id
+        );
+      } catch (auditError) {
+        console.warn('O checklist foi concluído, mas o registro complementar de auditoria falhou:', auditError);
+      }
 
       setActiveRunTemplate(null);
       setValidationMessage('');
     } catch (err) {
       console.error('Erro ao finalizar execução de checklist:', err);
+      setValidationMessage(err instanceof Error ? err.message : 'Não foi possível concluir o checklist no servidor.');
     } finally {
       setIsSubmitting(false);
     }
@@ -277,6 +296,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                     <span>{tpl.items?.length || 0} itens</span>
                   </div>
                   <h4 className="font-bold text-white text-sm">{tpl.title}</h4>
+                  <p className="mt-1 text-[10px] font-mono text-cyan-400">Versão {tpl.version ?? 1}</p>
                   <p className="text-xs text-slate-400 mt-1 line-clamp-2">{tpl.description}</p>
                 </div>
 
@@ -304,6 +324,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-900/60 text-slate-400 font-semibold">
                   <th className="py-3 px-4">Template</th>
+                  <th className="py-3 px-4">Versão</th>
                   <th className="py-3 px-4">Inspetor</th>
                   <th className="py-3 px-4">Progresso</th>
                   <th className="py-3 px-4">Status</th>
@@ -313,7 +334,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
               <tbody className="divide-y divide-slate-800/60 text-slate-200">
                 {runs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-6 text-slate-400">
+                    <td colSpan={6} className="text-center py-6 text-slate-400">
                       Nenhuma execução registrada ainda.
                     </td>
                   </tr>
@@ -321,6 +342,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                   runs.map((r) => (
                     <tr key={r.id} className="hover:bg-slate-800/40">
                       <td className="py-3 px-4 font-semibold text-slate-100">{r.templateTitle}</td>
+                      <td className="py-3 px-4 font-mono text-cyan-300">v{r.templateVersion ?? 1}</td>
                       <td className="py-3 px-4 text-slate-300">{r.inspectorName}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center space-x-2">
@@ -464,6 +486,39 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                             });
                           }}
                           placeholder="Descreva as constatações..."
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                        />
+                      )}
+
+                      {it.type === 'multipla_escolha' && (
+                        <select
+                          value={ans?.value ?? ''}
+                          onChange={(e) => {
+                            setValidationMessage('');
+                            setCurrentAnswers({
+                              ...currentAnswers,
+                              [it.id]: { ...ans, value: e.target.value },
+                            });
+                          }}
+                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Selecione uma opção...</option>
+                          {(it.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      )}
+
+                      {(it.type === 'foto' || it.type === 'assinatura') && (
+                        <input
+                          type="url"
+                          value={ans?.value ?? ''}
+                          onChange={(e) => {
+                            setValidationMessage('');
+                            setCurrentAnswers({
+                              ...currentAnswers,
+                              [it.id]: { ...ans, value: e.target.value },
+                            });
+                          }}
+                          placeholder={it.type === 'foto' ? 'Cole a referência HTTPS do arquivo no Storage...' : 'Cole a referência HTTPS da assinatura no Storage...'}
                           className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
                       )}

@@ -7,6 +7,7 @@ import {
   doc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { calculateLaborCost } from '../../services/laborCostIntegrity';
 import { FieldWorker, WorkerTimeLog, Unit, Contract, OvertimeCalculationRules } from '../../types';
 import {
   DollarSign,
@@ -91,15 +92,42 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
     return () => unsub();
   }, [organizationId, selectedDate]);
 
+  // Demo personnel never enters production cost or productivity totals.
+  const operationalLogs = useMemo(
+    () => timeLogs.filter((log) => workerMap.get(log.workerId)?.isDemo !== true),
+    [timeLogs, workerMap],
+  );
+
   // Filter logs by selected site
   const filteredLogs = useMemo(() => {
-    if (selectedSite === 'todos') return timeLogs;
-    return timeLogs.filter((l) =>
-      l.siteName.toLowerCase().includes(selectedSite.toLowerCase())
+    if (selectedSite === 'todos') return operationalLogs;
+    return operationalLogs.filter((l) =>
+      (l.siteName || '').toLowerCase().includes(selectedSite.toLowerCase())
     );
-  }, [timeLogs, selectedSite]);
+  }, [operationalLogs, selectedSite]);
 
-  // Financial Computations for the selected date & site
+  const calculateLogCost = (log: WorkerTimeLog) => {
+    const worker = workerMap.get(log.workerId);
+    return calculateLaborCost({
+      logHourlyRate: log.hourlyRate,
+      workerHourlyRate: worker?.hourlyRate,
+      normalHours: log.normalHours,
+      overtime50Hours: log.overtime50Hours,
+      overtime100Hours: log.overtime100Hours,
+      travelHours: log.travelHours,
+      nightShiftHours: log.nightShiftHours,
+      mealAllowance: log.mealAllowance,
+      lodgingAllowance: log.lodgingAllowance,
+      otherExpenses: log.otherExpenses,
+      overtime50Multiplier: worker?.customCalculationRules?.overtime50Multiplier ?? rules?.overtime50Multiplier ?? 1.5,
+      overtime100Multiplier: worker?.customCalculationRules?.overtime100Multiplier ?? rules?.overtime100Multiplier ?? 2.0,
+      travelHourMultiplier: worker?.customCalculationRules?.travelHourMultiplier ?? rules?.travelHourMultiplier ?? 1.0,
+      nightShiftBonusPercent: worker?.customCalculationRules?.nightShiftBonusPercent ?? rules?.nightShiftBonusPercent ?? 20,
+      recordedTotal: log.totalLaborCost,
+    });
+  };
+
+  // Financial computation only uses recorded or source-backed hourly rates.
   const totals = useMemo(() => {
     let baseSalaryCost = 0;
     let ot50Cost = 0;
@@ -112,31 +140,22 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
     let totalOt50Hours = 0;
     let totalOt100Hours = 0;
     let totalTravelHours = 0;
+    let unpricedHours = 0;
+    let missingRateCount = 0;
+    let unclassifiedRecordedCost = 0;
 
     filteredLogs.forEach((log) => {
-      const worker = workerMap.get(log.workerId);
-      const ot50Mul = worker?.customCalculationRules?.overtime50Multiplier ?? rules?.overtime50Multiplier ?? 1.5;
-      const ot100Mul = worker?.customCalculationRules?.overtime100Multiplier ?? rules?.overtime100Multiplier ?? 2.0;
-      const travelMul = worker?.customCalculationRules?.travelHourMultiplier ?? rules?.travelHourMultiplier ?? 1.0;
-      const nightBonusPercent = worker?.customCalculationRules?.nightShiftBonusPercent ?? rules?.nightShiftBonusPercent ?? 20;
-      const nightBonusMul = nightBonusPercent / 100;
-
-      const rate = log.hourlyRate || worker?.hourlyRate || 19.09;
-      const normalC = log.normalHours * rate;
-      const ot50C = log.overtime50Hours * rate * ot50Mul;
-      const ot100C = log.overtime100Hours * rate * ot100Mul;
-      const travelC = log.travelHours * rate * travelMul;
-      const nightC = log.nightShiftHours * rate * nightBonusMul;
-      const allowC = (log.mealAllowance || 0) + (log.lodgingAllowance || 0) + (log.otherExpenses || 0);
-
-      baseSalaryCost += normalC;
-      ot50Cost += ot50C;
-      ot100Cost += ot100C;
-      travelCost += travelC;
-      nightShiftCost += nightC;
-      allowancesCost += allowC;
-      totalLaborCost += log.totalLaborCost || (normalC + ot50C + ot100C + travelC + nightC + allowC);
-
+      const cost = calculateLogCost(log);
+      baseSalaryCost += cost.baseSalaryCost;
+      ot50Cost += cost.overtime50Cost;
+      ot100Cost += cost.overtime100Cost;
+      travelCost += cost.travelCost;
+      nightShiftCost += cost.nightShiftCost;
+      allowancesCost += cost.allowancesCost;
+      totalLaborCost += cost.totalLaborCost;
+      unpricedHours += cost.unpricedHours;
+      missingRateCount += cost.hasMissingHourlyRate ? 1 : 0;
+      unclassifiedRecordedCost += cost.unclassifiedRecordedCost;
       totalNormalHours += Number(log.normalHours) || 0;
       totalOt50Hours += Number(log.overtime50Hours) || 0;
       totalOt100Hours += Number(log.overtime100Hours) || 0;
@@ -144,132 +163,79 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
     });
 
     return {
-      baseSalaryCost,
-      ot50Cost,
-      ot100Cost,
-      travelCost,
-      nightShiftCost,
-      allowancesCost,
-      totalLaborCost,
-      totalNormalHours,
-      totalOt50Hours,
-      totalOt100Hours,
-      totalTravelHours,
-      workerCount: filteredLogs.length,
+      baseSalaryCost, ot50Cost, ot100Cost, travelCost, nightShiftCost, allowancesCost,
+      totalLaborCost, totalNormalHours, totalOt50Hours, totalOt100Hours, totalTravelHours,
+      workerCount: filteredLogs.length, unpricedHours, missingRateCount, unclassifiedRecordedCost,
     };
   }, [filteredLogs, workerMap, rules]);
 
-  // Group costs by project / site
+  // Group all operational logs by project / site, independently of the selected site filter.
   const costsByProject = useMemo(() => {
-    const map: Record<
-      string,
-      {
-        siteName: string;
-        totalCost: number;
-        baseCost: number;
-        overtimeCost: number;
-        travelCost: number;
-        allowancesCost: number;
-        workersCount: number;
-        totalHours: number;
-      }
-    > = {};
+    const map: Record<string, {
+      siteName: string;
+      totalCost: number;
+      baseCost: number;
+      overtimeCost: number;
+      travelCost: number;
+      allowancesCost: number;
+      workersCount: number;
+      totalHours: number;
+      unpricedHours: number;
+      missingRateCount: number;
+    }> = {};
 
-    timeLogs.forEach((l) => {
-      const site = l.siteName || 'Obra Geral';
+    operationalLogs.forEach((log) => {
+      const site = log.siteName || 'Obra sem identificação';
       if (!map[site]) {
         map[site] = {
-          siteName: site,
-          totalCost: 0,
-          baseCost: 0,
-          overtimeCost: 0,
-          travelCost: 0,
-          allowancesCost: 0,
-          workersCount: 0,
-          totalHours: 0,
+          siteName: site, totalCost: 0, baseCost: 0, overtimeCost: 0, travelCost: 0,
+          allowancesCost: 0, workersCount: 0, totalHours: 0, unpricedHours: 0, missingRateCount: 0,
         };
       }
-      const worker = workerMap.get(l.workerId);
-      const ot50Mul = worker?.customCalculationRules?.overtime50Multiplier ?? rules?.overtime50Multiplier ?? 1.5;
-      const ot100Mul = worker?.customCalculationRules?.overtime100Multiplier ?? rules?.overtime100Multiplier ?? 2.0;
-      const travelMul = worker?.customCalculationRules?.travelHourMultiplier ?? rules?.travelHourMultiplier ?? 1.0;
-      const nightBonusMul = (worker?.customCalculationRules?.nightShiftBonusPercent ?? rules?.nightShiftBonusPercent ?? 20) / 100;
-
-      const rate = l.hourlyRate || worker?.hourlyRate || 19.09;
-      const baseC = l.normalHours * rate;
-      const otC = (l.overtime50Hours * ot50Mul + l.overtime100Hours * ot100Mul) * rate;
-      const travC = l.travelHours * rate * travelMul;
-      const nightC = l.nightShiftHours * rate * nightBonusMul;
-      const allowC = (l.mealAllowance || 0) + (l.lodgingAllowance || 0) + (l.otherExpenses || 0);
-      const rowTotal = l.totalLaborCost || (baseC + otC + travC + nightC + allowC);
-
-      map[site].totalCost += rowTotal;
-      map[site].baseCost += baseC;
-      map[site].overtimeCost += otC;
-      map[site].travelCost += travC;
-      map[site].allowancesCost += allowC;
+      const cost = calculateLogCost(log);
+      map[site].totalCost += cost.totalLaborCost;
+      map[site].baseCost += cost.baseSalaryCost;
+      map[site].overtimeCost += cost.overtime50Cost + cost.overtime100Cost;
+      map[site].travelCost += cost.travelCost;
+      map[site].allowancesCost += cost.allowancesCost;
       map[site].workersCount += 1;
-      map[site].totalHours += l.normalHours + l.overtime50Hours + l.overtime100Hours + l.travelHours;
+      map[site].totalHours += cost.totalHours;
+      map[site].unpricedHours += cost.unpricedHours;
+      map[site].missingRateCount += cost.hasMissingHourlyRate ? 1 : 0;
     });
 
     return Object.values(map).sort((a, b) => b.totalCost - a.totalCost);
-  }, [timeLogs, workerMap, rules]);
+  }, [operationalLogs, workerMap, rules]);
 
   // Export summary to CSV
   const handleExportSummaryCSV = () => {
     const headers = [
-      'Data',
-      'Obra / Projeto',
-      'Colaborador',
-      'Cargo',
-      'Valor Hora (R$)',
-      'Horas Normais',
-      'Custo Base (R$)',
-      'HE 50%',
-      'Custo HE 50% (R$)',
-      'HE 100%',
-      'Custo HE 100% (R$)',
-      'Hora Viagem',
-      'Custo Viagem (R$)',
-      'Diárias & Hospedagem (R$)',
-      'Custo Total Força de Trabalho (R$)',
+      'Data', 'Obra / Projeto', 'Colaborador', 'Cargo', 'Valor Hora (R$)',
+      'Horas Normais', 'Custo Base (R$)', 'HE 50%', 'Custo HE 50% (R$)',
+      'HE 100%', 'Custo HE 100% (R$)', 'Hora Viagem', 'Custo Viagem (R$)',
+      'Diárias & Hospedagem (R$)', 'Custo Total Força de Trabalho (R$)', 'Status do custo',
     ];
 
-    const csvData = filteredLogs.map((l) => {
-      const worker = workerMap.get(l.workerId);
-      const ot50Mul = worker?.customCalculationRules?.overtime50Multiplier ?? rules?.overtime50Multiplier ?? 1.5;
-      const ot100Mul = worker?.customCalculationRules?.overtime100Multiplier ?? rules?.overtime100Multiplier ?? 2.0;
-      const travelMul = worker?.customCalculationRules?.travelHourMultiplier ?? rules?.travelHourMultiplier ?? 1.0;
-      const rate = l.hourlyRate || worker?.hourlyRate || 19.09;
-      const baseC = (l.normalHours * rate).toFixed(2);
-      const ot50C = (l.overtime50Hours * rate * ot50Mul).toFixed(2);
-      const ot100C = (l.overtime100Hours * rate * ot100Mul).toFixed(2);
-      const travC = (l.travelHours * rate * travelMul).toFixed(2);
-      const allowC = ((l.mealAllowance || 0) + (l.lodgingAllowance || 0)).toFixed(2);
-
+    const csvData = filteredLogs.map((log) => {
+      const cost = calculateLogCost(log);
       return [
-        selectedDate,
-        `"${l.siteName}"`,
-        `"${l.workerName}"`,
-        `"${l.role}"`,
-        rate.toFixed(2),
-        l.normalHours,
-        baseC,
-        l.overtime50Hours,
-        ot50C,
-        l.overtime100Hours,
-        ot100C,
-        l.travelHours,
-        travC,
-        allowC,
-        l.totalLaborCost.toFixed(2),
+        selectedDate, `"${log.siteName}"`, `"${log.workerName}"`, `"${log.role}"`,
+        cost.hourlyRate === null ? '' : cost.hourlyRate.toFixed(2),
+        log.normalHours,
+        cost.hourlyRate === null ? '' : cost.baseSalaryCost.toFixed(2),
+        log.overtime50Hours,
+        cost.hourlyRate === null ? '' : cost.overtime50Cost.toFixed(2),
+        log.overtime100Hours,
+        cost.hourlyRate === null ? '' : cost.overtime100Cost.toFixed(2),
+        log.travelHours,
+        cost.hourlyRate === null ? '' : cost.travelCost.toFixed(2),
+        cost.allowancesCost.toFixed(2),
+        cost.totalLaborCost.toFixed(2),
+        cost.hasMissingHourlyRate ? (cost.unclassifiedRecordedCost > 0 ? 'Valor total registrado; taxa ausente' : 'Sem taxa horária; horas não custeadas') : 'Custeio com taxa cadastrada',
       ];
     });
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(';'), ...csvData.map((e) => e.join(';'))].join('\n');
-
+    const csvContent = 'data:text/csv;charset=utf-8,\\uFEFF' + [headers.join(';'), ...csvData.map((row) => row.join(';'))].join('\\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -278,6 +244,8 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
     link.click();
     document.body.removeChild(link);
   };
+
+  // Export summary to CSV
 
   const handlePrint = () => {
     window.print();
@@ -345,6 +313,18 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
           </button>
         </div>
       </div>
+
+      {totals.missingRateCount > 0 && (
+        <div className="rounded-xl border border-amber-800/60 bg-amber-950/20 px-4 py-3 text-xs text-amber-100 space-y-1">
+          <strong>{totals.missingRateCount} apontamento(s) sem taxa horária válida.</strong>
+          <p>
+            {totals.unpricedHours.toFixed(1)}h não foram custeadas por falta de valor-hora.
+            {totals.unclassifiedRecordedCost > 0
+              ? ` R$ ${totals.unclassifiedRecordedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} têm valor total registrado, mas não possuem composição por taxa.`
+              : ' Os totais não incluem essas horas como custo salarial.'}
+          </p>
+        </div>
+      )}
 
       {/* KPI Cards: Big Totals */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -541,6 +521,9 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                     <span className="text-[10px] text-slate-400">
                       {p.workersCount} profissionais • {p.totalHours.toFixed(1)}h totais
                     </span>
+                    {p.unpricedHours > 0 && (
+                      <span className="text-[10px] text-amber-300 block">{p.unpricedHours.toFixed(1)}h sem taxa horária</span>
+                    )}
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
                     {sharePercent.toFixed(1)}% do dia
@@ -625,13 +608,7 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
-                  const rate = log.hourlyRate || 19.09;
-                  const baseC = log.normalHours * rate;
-                  const ot50C = log.overtime50Hours * rate * 1.5;
-                  const ot100C = log.overtime100Hours * rate * 2.0;
-                  const travC = log.travelHours * rate;
-                  const allowC = (log.mealAllowance || 0) + (log.lodgingAllowance || 0);
-                  const total = log.totalLaborCost || (baseC + ot50C + ot100C + travC + allowC);
+                  const cost = calculateLogCost(log);
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-800/40 transition-colors">
@@ -645,41 +622,41 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-emerald-400">
-                        {canViewFinancials ? `R$ ${rate.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? 'Sem taxa' : `R$ ${cost.hourlyRate.toFixed(2)}`) : 'R$ ••'}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-slate-200">
-                        {canViewFinancials ? `R$ ${baseC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.baseSalaryCost.toFixed(2)}`) : 'R$ ••'}
                         <span className="text-[9px] text-slate-500 block">({log.normalHours}h)</span>
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-amber-300">
-                        {canViewFinancials ? `R$ ${ot50C.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.overtime50Cost.toFixed(2)}`) : 'R$ ••'}
                         {log.overtime50Hours > 0 && (
                           <span className="text-[9px] text-amber-500 block">({log.overtime50Hours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-red-300">
-                        {canViewFinancials ? `R$ ${ot100C.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.overtime100Cost.toFixed(2)}`) : 'R$ ••'}
                         {log.overtime100Hours > 0 && (
                           <span className="text-[9px] text-red-500 block">({log.overtime100Hours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-blue-300">
-                        {canViewFinancials ? `R$ ${travC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.travelCost.toFixed(2)}`) : 'R$ ••'}
                         {log.travelHours > 0 && (
                           <span className="text-[9px] text-blue-500 block">({log.travelHours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-purple-300">
-                        {canViewFinancials ? `R$ ${allowC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? `R$ ${cost.allowancesCost.toFixed(2)}` : 'R$ ••'}
                       </td>
 
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
-                        {canViewFinancials ? `R$ ${total.toFixed(2)}` : 'R$ •••••'}
+                        {canViewFinancials ? `R$ ${cost.totalLaborCost.toFixed(2)}` : 'R$ •••••'}
                       </td>
 
                       <td className="py-2.5 px-3 text-slate-400 text-[11px] max-w-xs truncate" title={log.activities}>

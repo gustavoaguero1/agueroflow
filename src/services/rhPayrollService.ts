@@ -28,6 +28,9 @@ import { calculateProgressiveInss } from './inss';
 import { directoryChanges, toDirectoryEntry } from './rhDirectory';
 import { PAY_COLLECTION } from './fieldWorkerPay';
 import { saveFieldWorker } from './fieldWorkerPayStore';
+import { buildFieldWorkerProjection } from './fieldWorkerProjection';
+import { calculateThirteenthAvos } from './rhPayrollRules';
+export { calculateThirteenthAvos } from './rhPayrollRules';
 export * from './inss';
 
 /**
@@ -35,68 +38,6 @@ export * from './inss';
  * Regra CLT: A fração igual ou superior a 15 dias de trabalho dentro do mês
  * confere ao empregado o direito a 1/12 (um avo).
  */
-export function calculateThirteenthAvos(
-  admissionDateStr: string,
-  referenceYear = 2025,
-  dismissalDateStr?: string | null
-): number {
-  if (!admissionDateStr) return 12;
-
-  const admissionDate = new Date(admissionDateStr + 'T00:00:00');
-  const admYear = admissionDate.getFullYear();
-  const admMonth = admissionDate.getMonth(); // 0-11
-  const admDay = admissionDate.getDate();
-
-  // Se admitido em ano posterior ao ano de referência
-  if (admYear > referenceYear) {
-    return 0;
-  }
-
-  let cutOffMonth = 11; // Dezembro (0-11)
-  let cutOffDay = 31;
-
-  if (dismissalDateStr) {
-    const disDate = new Date(dismissalDateStr + 'T00:00:00');
-    if (disDate.getFullYear() === referenceYear) {
-      cutOffMonth = disDate.getMonth();
-      cutOffDay = disDate.getDate();
-    } else if (disDate.getFullYear() < referenceYear) {
-      return 0; // Já desligado antes do ano
-    }
-  }
-
-  // Admitido em anos anteriores: conta de Janeiro (0) até cutOffMonth
-  if (admYear < referenceYear) {
-    let avos = cutOffMonth + 1;
-    if (dismissalDateStr && cutOffDay < 15) {
-      avos -= 1; // Último mês trabalhou menos de 15 dias
-    }
-    return Math.max(0, Math.min(12, avos));
-  }
-
-  // Admitido no próprio ano de referência
-  let avos = 0;
-  for (let m = admMonth; m <= cutOffMonth; m++) {
-    if (m === admMonth) {
-      // No mês de admissão: confere se trabalhou 15 dias ou mais
-      const daysInMonth = new Date(referenceYear, m + 1, 0).getDate();
-      const workedDays = daysInMonth - admDay + 1;
-      if (workedDays >= 15) {
-        avos += 1;
-      }
-    } else if (m === cutOffMonth && dismissalDateStr) {
-      // No mês de demissão
-      if (cutOffDay >= 15) {
-        avos += 1;
-      }
-    } else {
-      // Meses intermediários completos
-      avos += 1;
-    }
-  }
-
-  return Math.max(0, Math.min(12, avos));
-}
 
 /**
  * Arredondamento monetário preciso para 2 casas decimais.
@@ -113,7 +54,7 @@ export function roundCurrency(val: number): number {
  */
 export function calculateEmployeeThirteenth({
   employee,
-  referenceYear = 2025,
+  referenceYear = new Date().getFullYear(),
   monthlyHours = 220,
   importedRef,
   porForaConfirmed = true,
@@ -276,9 +217,9 @@ export function calculateEmployeeThirteenth({
     referenceYear,
     employeeId: employee.id,
     employeeName: employee.name,
-    codigoObra: employee.codigoObra || employee.registrationNumber || '198',
-    registrationNumber: employee.codigoObra || employee.registrationNumber || '198',
-    companyName: employee.companyName || 'Aguero Inox',
+    codigoObra: employee.codigoObra || employee.registrationNumber || '',
+    registrationNumber: employee.registrationNumber || employee.codigoObra || '',
+    companyName: employee.companyName || '',
     unitId: employee.unitId || null,
     contractId: employee.contractId || null,
     admissionDate: employee.admissionDate,
@@ -454,10 +395,10 @@ export async function parseAgueroSpreadsheet(file: File): Promise<{
     const total1aParcela = parseExcelNumber(r[11]);
     const descontos2aParcela = parseExcelNumber(r[12]);
     const total2aParcela = parseExcelNumber(r[13]);
-    const empresa = String(r[14] || 'Aguero Inox').trim();
+    const empresa = String(r[14] || '').trim();
     const colunaP_auxiliar = String(r[15] || ''); // Coluna P auxiliar - sem significado financeiro
     const codigoRaw = String(r[16] || '').trim();
-    const codigoObra = codigoRaw || '198'; // Coluna Q: Código da Obra onde o colaborador está alocado
+    const codigoObra = codigoRaw; // Campo vazio permanece vazio; não atribuir código fictício.
     const codigoMatricula = codigoObra;
 
     const validationErrors: string[] = [];
@@ -644,78 +585,27 @@ export function cleanFirestoreData<T>(obj: T): T {
  * Preserva NRs, certificações e histórico caso o colaborador já exista em campo.
  */
 export async function syncRhEmployeeToFieldWorker(employee: RhEmployee): Promise<void> {
-  if (!employee || !employee.orgId) return;
-
+  if (!employee || !employee.orgId || !employee.id) return;
   const fwId = `fw_${employee.id.replace(/^emp_/, '')}`;
-  const ref = doc(db, 'field_workers', fwId);
-
-  let existingData: Partial<FieldWorker> | null = null;
-  try {
-    const existingSnap = await getDoc(ref);
-    if (existingSnap.exists()) {
-      existingData = existingSnap.data() as Partial<FieldWorker>;
-    } else {
-      // Tenta localizar por nome no mesmo orgId para evitar duplicações
-      const qName = query(
-        collection(db, 'field_workers'),
-        where('orgId', '==', employee.orgId),
-        where('name', '==', employee.name.trim())
-      );
-      const snapName = await getDocs(qName);
-      if (!snapName.empty) {
-        existingData = snapName.docs[0].data() as Partial<FieldWorker>;
-      }
+  const canonicalRef = doc(db, 'field_workers', fwId);
+  const canonicalSnap = await getDoc(canonicalRef);
+  let targetId = fwId;
+  let existingData: Partial<FieldWorker> | null = canonicalSnap.exists()
+    ? ({ id: canonicalSnap.id, ...canonicalSnap.data() } as Partial<FieldWorker>)
+    : null;
+  // Legacy migration may match only a stable RH id, never a person's name.
+  if (!existingData) {
+    const linked = await getDocs(query(collection(db, 'field_workers'), where('orgId', '==', employee.orgId), where('rhEmployeeId', '==', employee.id)));
+    if (linked.size > 1) throw new Error('Mais de um registro de campo está vinculado ao mesmo colaborador RH. Concilie pelo ID antes de sincronizar.');
+    if (linked.size === 1) {
+      targetId = linked.docs[0].id;
+      existingData = { id: targetId, ...linked.docs[0].data() } as Partial<FieldWorker>;
     }
-  } catch (err) {
-    console.warn('Erro ao consultar field_worker existente:', err);
   }
-
-  const totalBaseSalary = roundCurrency(
-    (employee.baseSalaryCarteira || 0) + (employee.baseSalaryPorFora || 0)
-  );
-  const totalHourlyRate = roundCurrency(
-    (employee.hourlyRateCarteira || 0) + (employee.hourlyRatePorFora || 0)
-  );
-  const obraCode = employee.codigoObra || employee.registrationNumber || '198';
-  const siteName = `Obra ${obraCode}`;
-
-  const targetId = existingData?.id || fwId;
-  // Histórico de salário mora em field_worker_pay (só RH lê); field_workers antigos ainda podem tê-lo.
-  const existingPay = await getDoc(doc(db, PAY_COLLECTION, targetId))
-    .then((s) => (s.exists() ? (s.data() as Partial<FieldWorker>) : null))
-    .catch(() => null);
-  if (existingData && existingPay?.salaryHistory) existingData = { ...existingData, salaryHistory: existingPay.salaryHistory };
-  const workerData: FieldWorker = {
-    id: targetId,
-    orgId: employee.orgId,
-    rhEmployeeId: employee.id,
-    name: employee.name.trim(),
-    cpf: existingData?.cpf || '',
-    role: employee.role || existingData?.role || 'Colaborador',
-    baseSalary: totalBaseSalary > 0 ? totalBaseSalary : existingData?.baseSalary || 3500,
-    hourlyRate: totalHourlyRate > 0 ? totalHourlyRate : existingData?.hourlyRate || 15.91,
-    currentSite: existingData?.currentSite || siteName,
-    status: employee.active ? 'ativo' : 'desligado',
-    admissionDate: employee.admissionDate || existingData?.admissionDate || '2024-01-01',
-    certifications: existingData?.certifications || [],
-    nrCertifications: existingData?.nrCertifications || [],
-    salaryHistory: existingData?.salaryHistory || [
-      {
-        date: employee.admissionDate || '2024-01-01',
-        previousSalary: 0,
-        newSalary: totalBaseSalary > 0 ? totalBaseSalary : 3500,
-        previousRole: 'Admissão',
-        newRole: employee.role || 'Colaborador',
-        reason: 'Cadastro integrado via Módulo RH / Salários',
-      },
-    ],
-    shiftId: existingData?.shiftId,
-    shiftName: existingData?.shiftName,
-    customCalculationRules: existingData?.customCalculationRules,
-    createdAt: existingData?.createdAt || employee.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
+  const paySnap = await getDoc(doc(db, PAY_COLLECTION, targetId));
+  const existingPay = paySnap.exists() ? (paySnap.data() as Partial<FieldWorker>) : null;
+  const workerData = buildFieldWorkerProjection(employee, existingData, existingPay?.salaryHistory || existingData?.salaryHistory || []);
+  workerData.id = targetId;
   await saveFieldWorker(cleanFirestoreData(workerData) as unknown as FieldWorker & Record<string, unknown>);
 }
 
@@ -768,8 +658,8 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
   const ref = doc(db, 'rh_employees', employee.id);
   const data = cleanFirestoreData({
     ...employee,
-    codigoObra: employee.codigoObra || employee.registrationNumber || '198',
-    registrationNumber: employee.codigoObra || employee.registrationNumber || '198',
+    codigoObra: employee.codigoObra?.trim() || null,
+    registrationNumber: employee.codigoObra?.trim() || employee.registrationNumber?.trim() || '',
     unitId: employee.unitId || null,
     contractId: employee.contractId || null,
     updatedAt: new Date().toISOString(),
@@ -781,7 +671,8 @@ export async function saveRhEmployee(employee: RhEmployee): Promise<void> {
   try {
     await syncRhEmployeeToFieldWorker(employee);
   } catch (err) {
-    console.warn('Erro ao sincronizar colaborador para o Módulo 13 (field_workers):', err);
+    const detail = err instanceof Error ? err.message : 'Erro desconhecido.';
+    throw new Error(`O cadastro de RH foi salvo, mas a sincronização da equipe de campo falhou: ${detail}`);
   }
 }
 
@@ -804,8 +695,8 @@ export async function saveRhCalculation(calc: RhThirteenthCalculation): Promise<
   const ref = doc(db, 'rh_calculations', calc.id);
   const data = cleanFirestoreData({
     ...calc,
-    codigoObra: calc.codigoObra || calc.registrationNumber || '198',
-    registrationNumber: calc.codigoObra || calc.registrationNumber || '198',
+    codigoObra: calc.codigoObra?.trim() || null,
+    registrationNumber: calc.codigoObra?.trim() || calc.registrationNumber?.trim() || '',
     unitId: calc.unitId || null,
     contractId: calc.contractId || null,
     updatedAt: new Date().toISOString(),
