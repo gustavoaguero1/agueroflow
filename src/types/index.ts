@@ -92,8 +92,37 @@ export interface Asset {
   status: 'operacional' | 'em_manutencao' | 'inativo';
   location?: string;
   lastMaintenanceDate?: string;
+  calibrationDueDate?: string;
+  hourmeter?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkOrderActivity {
+  id: string;
+  title: string;
+  responsibleEmployeeId?: string;
+  responsibleName?: string;
+  plannedHours: number;
+  actualHours?: number;
+  status: 'pendente' | 'em_andamento' | 'concluida' | 'bloqueada';
+  precedenceIds?: string[];
+  notes?: string;
+}
+
+export type WorkOrderTimeCategory = 'producao' | 'espera' | 'deslocamento' | 'improdutivo';
+
+export interface WorkOrderTimeEntry {
+  id: string;
+  date: string;
+  rhEmployeeId: string;
+  employeeName: string;
+  activityId?: string;
+  category: WorkOrderTimeCategory;
+  hours: number;
+  reason?: string;
+  createdByUid: string;
+  createdAt: string;
 }
 
 export interface Team {
@@ -194,6 +223,8 @@ export interface WorkOrder {
   plannedServices?: PlannedService[];
   plannedLabor?: PlannedLabor[];
   plannedParts?: PlannedPart[];
+  activities?: WorkOrderActivity[];
+  timeEntries?: WorkOrderTimeEntry[];
   messageCount?: number;
   pendingQuestionCount?: number;
   lastDiscussionAt?: string;

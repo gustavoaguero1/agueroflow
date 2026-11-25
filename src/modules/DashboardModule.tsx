@@ -41,6 +41,11 @@ import {
 import { NavSection } from '../components/layout/AppLayout';
 import { PendingCenter } from '../components/dashboard/PendingCenter';
 import { todaySaoPaulo } from '../services/pendingService';
+import { computeDashboardDataCoverage } from '../services/dashboardCoverageRules';
+import type { Project } from '../types/project';
+import type { MeasurementBulletin } from '../types/measurement';
+import type { FinanceReceivable } from '../types/finance';
+import type { StockMovement } from '../types';
 
 // Used until the org has configured work_order_statuses.
 const FALLBACK_COMPLETED = ['concluido', 'validado', 'concluida', 'encerrada'];
@@ -79,6 +84,10 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
   const [checklistRuns, setChecklistRuns] = useState<ChecklistRun[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [bulletins, setBulletins] = useState<MeasurementBulletin[]>([]);
+  const [receivables, setReceivables] = useState<FinanceReceivable[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [completedIds, setCompletedIds] = useState<string[]>(FALLBACK_COMPLETED);
 
@@ -159,6 +168,27 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
       (snap) => setCompletedIds(completedFrom(snap.docs.map((d) => ({ id: d.id.replace(`${organization.id}_`, ''), ...d.data() } as { id: string; isCompleted?: boolean }))))
     );
 
+    const unsubProjects = onSnapshot(
+      query(collection(db, 'projects'), where('orgId', '==', organization.id)),
+      (snap) => setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project))),
+      () => setProjects([]),
+    );
+    const unsubBulletins = onSnapshot(
+      query(collection(db, 'measurement_bulletins'), where('orgId', '==', organization.id)),
+      (snap) => setBulletins(snap.docs.map((d) => ({ id: d.id, ...d.data() } as MeasurementBulletin))),
+      () => setBulletins([]),
+    );
+    const unsubReceivables = onSnapshot(
+      query(collection(db, 'finance_receivables'), where('orgId', '==', organization.id)),
+      (snap) => setReceivables(snap.docs.map((d) => ({ id: d.id, ...d.data() } as FinanceReceivable))),
+      () => setReceivables([]),
+    );
+    const unsubStockMovs = onSnapshot(
+      query(collection(db, 'stock_movements'), where('orgId', '==', organization.id)),
+      (snap) => setStockMovements(snap.docs.map((d) => ({ id: d.id, ...d.data() } as StockMovement))),
+      () => setStockMovements([]),
+    );
+
     setLoading(false);
 
     return () => {
@@ -171,6 +201,10 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
       unsubRuns();
       unsubTeams();
       unsubCC();
+      unsubProjects();
+      unsubBulletins();
+      unsubReceivables();
+      unsubStockMovs();
     };
   }, [organization]);
 
@@ -659,6 +693,89 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
           <TrendingUp className="w-6 h-6 text-[#1E7E34]/35 dark:text-[#30D158]/40 shrink-0" />
         </div>
       </div>
+
+      {/* Cobertura de Dados & Separação Econômica (PR #58 P0.6) */}
+      {(() => {
+        const cov = computeDashboardDataCoverage({
+          orgId: organization?.id || '',
+          projects,
+          workOrders: filteredOrders,
+          stockMovements,
+          bulletins,
+          receivables,
+        });
+        const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        return (
+          <div className="bg-white dark:bg-[#1C1C1E] border border-black/[0.08] dark:border-white/[0.10] shadow-[0_1px_2px_rgba(0,0,0,0.04)] rounded-[22px] p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-[#1D1D1F] dark:text-[#F5F5F7]">
+                  Governança &amp; Cobertura dos Dados
+                </h3>
+                <p className="text-xs text-[#6E6E73] dark:text-[#98989D]">
+                  Separação explícita entre Previsto, Realizado, Medido, Faturado e Recebido · Cobertura OS→Projeto: <strong className="tabular-nums">{cov.workOrdersWithProjectPct}%</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate('relatorios')}
+                className="text-xs text-[#0071E3] dark:text-[#409CFF] hover:underline font-semibold inline-flex items-center space-x-1"
+              >
+                <span>Resultado por Obra</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {canViewFinancials && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Previsto (Baseline)</p>
+                  <p className="font-bold text-[#1D1D1F] dark:text-[#F5F5F7] tabular-nums mt-0.5">{brl(cov.economic.previstoOrcado)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Realizado (Estoque/HH)</p>
+                  <p className="font-bold text-[#1D1D1F] dark:text-[#F5F5F7] tabular-nums mt-0.5">{brl(cov.economic.realizadoConhecido)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Medido (BMs)</p>
+                  <p className="font-bold text-[#1D1D1F] dark:text-[#F5F5F7] tabular-nums mt-0.5">{brl(cov.economic.medidoTotal)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Aprovado (Medição)</p>
+                  <p className="font-bold text-[#0071E3] dark:text-[#409CFF] tabular-nums mt-0.5">{brl(cov.economic.aprovadoMedicao)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Faturado (A Receber)</p>
+                  <p className="font-bold text-[#1D1D1F] dark:text-[#F5F5F7] tabular-nums mt-0.5">{brl(cov.economic.faturadoReceber)}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#F5F5F7] dark:bg-[#2C2C2E]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">Recebido (Caixa)</p>
+                  <p className="font-bold text-[#1E7E34] dark:text-[#30D158] tabular-nums mt-0.5">{brl(cov.economic.recebidoCaixa)}</p>
+                </div>
+              </div>
+            )}
+            {cov.alerts.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {cov.alerts.map((al) => (
+                  <button
+                    key={al.id}
+                    type="button"
+                    onClick={() => onNavigate(al.targetSection)}
+                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer ${
+                      al.severity === 'critical'
+                        ? 'bg-[#FFE5E7] dark:bg-[#FF453A]/15 text-[#D70015] dark:text-[#FF453A]'
+                        : 'bg-[#FFF4E5] dark:bg-[#FF9F0A]/15 text-[#B25000] dark:text-[#FF9F0A]'
+                    }`}
+                    title={al.detail}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{al.label}: {al.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Main Grid: Recent Work Orders & Status Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

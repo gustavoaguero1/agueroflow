@@ -16,6 +16,7 @@ import type { FinancePayable } from '../../types/finance';
 import type { Project } from '../../types/project';
 import type { PurchaseOrder } from '../../types/purchasing';
 import { computeProjectResultReport } from '../../services/projectCostLedger';
+import { computeProjectEac } from '../../services/projectEacAndSCurve';
 
 interface ProjectResultReportViewProps {
   orgId: string;
@@ -262,6 +263,7 @@ export const ProjectResultReportView: React.FC<ProjectResultReportViewProps> = (
                 <th className="py-3 px-3 text-right">Realizado (HH)</th>
                 <th className="py-3 px-3 text-right">Realizado (Mat/OC)</th>
                 <th className="py-3 px-3 text-right">Realizado Total</th>
+                <th className="py-3 px-3 text-right">Projetado (EAC)</th>
                 <th className="py-3 px-3 text-right">Desvio Orç.</th>
                 <th className="py-3 px-4 text-right">Margem Real.</th>
               </tr>
@@ -269,19 +271,26 @@ export const ProjectResultReportView: React.FC<ProjectResultReportViewProps> = (
             <tbody className="divide-y divide-slate-800/70">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-slate-400">
                     Consolidando livro de custos por obra...
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-500">
+                  <td colSpan={9} className="py-10 text-center text-slate-500">
                     <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     Nenhum projeto/obra encontrado para exibir o resultado.
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
+                filteredRows.map((row) => {
+                  const eac = computeProjectEac({
+                    projectId: row.projectId,
+                    baselineBudget: row.plannedDirectCost,
+                    committedOpen: row.committedCost,
+                    realizedToDate: row.realizedTotalCost,
+                  });
+                  return (
                   <tr key={row.projectId} className="hover:bg-slate-900/50">
                     <td className="py-3 px-4">
                       <div className="font-mono font-bold text-cyan-300">{row.projectCode}</div>
@@ -299,6 +308,12 @@ export const ProjectResultReportView: React.FC<ProjectResultReportViewProps> = (
                       {fmtBrl(row.realizedMaterialCost + row.realizedPurchasingCost)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-white">{fmtBrl(row.realizedTotalCost)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-cyan-300" title={eac.assumptionNote}>
+                      <div>{fmtBrl(eac.eacProjectedCost)}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {eac.varianceAtCompletion >= 0 ? 'Dentro' : `Estouro ${fmtBrl(Math.abs(eac.varianceAtCompletion))}`}
+                      </div>
+                    </td>
                     <td
                       className={`py-3 px-3 text-right font-mono font-semibold ${
                         row.budgetVariance >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -315,7 +330,8 @@ export const ProjectResultReportView: React.FC<ProjectResultReportViewProps> = (
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

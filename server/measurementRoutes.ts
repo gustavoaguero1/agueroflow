@@ -352,5 +352,147 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
     }
   });
 
+  // 3. Create versioned LPU Price Table per contract (altering LPU never mutates historical BMs)
+  router.post('/lpu-tables', requireArea('comercial', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const b = req.body ?? {};
+    if (!orgId || !actor) return res.status(401).json({ ok: false, error: 'Não autenticado.' });
+    const contractId = String(b.contractId || '').trim();
+    const code = String(b.code || '').trim().toUpperCase();
+    const effectiveFrom = String(b.effectiveFrom || '').trim();
+    const rawItems = Array.isArray(b.items) ? b.items : [];
+    if (!validId(contractId) || code.length < 3 || !validDate(effectiveFrom) || rawItems.length === 0) {
+      return res.status(400).json({ ok: false, error: 'Informe contrato, código, data de vigência e itens da LPU.' });
+    }
+    const admin = getH();
+    if (!admin) return res.status(503).json({ ok: false, error: 'Serviço indisponível.' });
+    try {
+      const table = await admin.db.runTransaction(async (tx) => {
+        const contractSnap = await tx.get(admin.db.collection('contracts').doc(contractId));
+        if (!contractSnap.exists || orgOf(contractSnap.data()) !== orgId) {
+          throw new MeasurementRouteError(400, 'Contrato informado não pertence a esta empresa.');
+        }
+        const prevSnap = await tx.get(
+          admin.db.collection('lpu_tables').where('orgId', '==', orgId).where('contractId', '==', contractId),
+        );
+        const maxVer = prevSnap.docs.reduce((m, d) => Math.max(m, Number(d.data()?.version) || 0), 0);
+        const version = maxVer + 1;
+        const now = new Date().toISOString();
+        const tableId = `lpu_${contractId}_v${version}`;
+        const items = rawItems.map((it: any, idx: number) => ({
+          id: String(it.id || `lpui_${idx + 1}`),
+          itemCode: String(it.itemCode || `LPU-${idx + 1}`).trim().toUpperCase(),
+          description: String(it.description || '').trim(),
+          unit: String(it.unit || 'UN').trim().toUpperCase(),
+          unitPrice: Number(it.unitPrice) || 0,
+          ...(it.contractedQuantity !== undefined ? { contractedQuantity: Number(it.contractedQuantity) } : {}),
+        }));
+        const created = {
+          id: tableId,
+          orgId,
+          contractId,
+          code,
+          version,
+          effectiveFrom,
+          ...(validDate(b.effectiveUntil) ? { effectiveUntil: String(b.effectiveUntil).trim() } : {}),
+          ...(b.readjustmentIndex ? { readjustmentIndex: String(b.readjustmentIndex).trim() } : {}),
+          ...(b.readjustmentPercent !== undefined ? { readjustmentPercent: Number(b.readjustmentPercent) } : {}),
+          status: 'vigente',
+          items,
+          createdByUid: actor.uid,
+          createdByName: actor.email || actor.uid,
+          createdAt: now,
+        };
+        for (const prev of prevSnap.docs) {
+          if (prev.data()?.status === 'vigente') {
+            tx.update(prev.ref, { status: 'substituida' });
+          }
+        }
+        tx.create(admin.db.collection('lpu_tables').doc(tableId), created);
+        return created;
+      });
+      return res.status(201).json({ ok: true, table });
+    } catch (err) {
+      if (err instanceof MeasurementRouteError) {
+        return res.status(err.status).json({ ok: false, error: err.message });
+      }
+      console.error('[lpu table create] failed:', err);
+      return res.status(500).json({ ok: false, error: 'Erro ao versionar tabela LPU.' });
+    }
+  });
+
+  // 4. Revise a returned/glosado Measurement Bulletin preserving immutable prior revision
+  router.post('/bulletins/:bulletinId/revise', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const sourceId = req.params.bulletinId;
+    if (!orgId || !actor || !validId(sourceId)) {
+      return res.status(400).json({ ok: false, error: 'Boletim inválido para revisão.' });
+    }
+    const admin = getH();
+    if (!admin) return res.status(503).json({ ok: false, error: 'Serviço indisponível.' });
+    try {
+      const revised = await admin.db.runTransaction(async (tx) => {
+        const srcSnap = await tx.get(admin.db.collection('measurement_bulletins').doc(sourceId));
+        if (!srcSnap.exists || orgOf(srcSnap.data()) !== orgId) {
+          throw new MeasurementRouteError(404, 'Boletim de Medição original não encontrado.');
+        }
+        const src = srcSnap.data() as MeasurementBulletin;
+        if (!['devolvido', 'glosado'].includes(src.status)) {
+          throw new MeasurementRouteError(422, `Apenas boletins devolvidos ou glosados podem gerar revisão (status atual: ${src.status}).`);
+        }
+        const nextRev = (Number(src.revision) || 1) + 1;
+        const newId = `${sourceId.split('_rev')[0]}_rev${nextRev}_${crypto.randomBytes(2).toString('hex')}`;
+        const itemsInput = Array.isArray(req.body?.items) && req.body.items.length > 0 ? req.body.items : src.items;
+        const totals = computeBulletinTotals(itemsInput);
+        const now = new Date().toISOString();
+        const actorName = actor.email || actor.uid;
+        const nextBulletin: MeasurementBulletin = {
+          ...src,
+          id: newId,
+          code: `${src.code.split('-Rev')[0]}-Rev${nextRev}`,
+          revision: nextRev,
+          previousBulletinId: sourceId,
+          status: 'rascunho',
+          items: totals.items,
+          totalMeasuredAmount: totals.totalMeasuredAmount,
+          totalApprovedAmount: totals.totalApprovedAmount,
+          totalGlosaAmount: totals.totalGlosaAmount,
+          receivableId: undefined,
+          submittedAt: undefined,
+          approvedAt: undefined,
+          approvedByUid: undefined,
+          approvedByName: undefined,
+          createdByUid: actor.uid,
+          createdByName: actorName,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const cleanBulletin = JSON.parse(JSON.stringify(nextBulletin));
+        tx.create(admin.db.collection('measurement_bulletins').doc(newId), cleanBulletin);
+        tx.create(admin.db.collection('measurement_events').doc(`bmevt_${newId}_created`), {
+          id: `bmevt_${newId}_created`,
+          orgId,
+          bulletinId: newId,
+          eventType: 'created',
+          toStatus: 'rascunho',
+          actorUid: actor.uid,
+          actorName,
+          comment: `Revisão ${nextRev} criada a partir do boletim ${src.code}.`,
+          timestamp: now,
+        });
+        return cleanBulletin as MeasurementBulletin;
+      });
+      return res.status(201).json({ ok: true, bulletin: revised });
+    } catch (err) {
+      if (err instanceof MeasurementRouteError) {
+        return res.status(err.status).json({ ok: false, error: err.message });
+      }
+      console.error('[measurement bulletin revise] failed:', err);
+      return res.status(500).json({ ok: false, error: 'Erro ao gerar revisão do Boletim de Medição.' });
+    }
+  });
+
   return router;
 }

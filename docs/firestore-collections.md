@@ -12,8 +12,15 @@ Owner kinds:
 
 | Collection | Owner | Client queries | Notes |
 |---|---|---|---|
+| ai_action_audit | orgId (server-only, append-only) | `orgId ==` | Trilha imutável de ações da IA confirmadas explicitamente por usuário humano (`/api/ai-actions/:id/confirm`); leitura pela área Estrutura (`A_EST()` nível 1). |
+| ai_action_proposals | orgId (server-only) | `orgId ==` | Propostas de ação sugeridas pela IA aguardando confirmação humana explícita (`/api/ai-actions/propose`); leitura por membros da empresa; escrita exclusiva do servidor. |
 | assets | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | audit_logs | orgId (immutable) | `orgId ==` | Append-only; criação permitida para membros da empresa ao executar ações; leitura restrita à área Estrutura (`A_EST()` nível 1). |
+| client_portal_audit | orgId (server-only, append-only) | `orgId ==` | Trilha imutável de visualizações e comentários externos do Portal do Cliente; leitura por Operações ou Comercial (nível 1+). |
+| client_portal_grants | orgId (server-only) | `orgId ==` | Credenciais externas isoladas do Portal do Cliente (hash SHA-256, escopo explícito por contrato/projeto, validade e revogação via `/api/client-portal/grants`); leitura restrita a Admin/Gerente com Operações nível 1+. |
+| durable_jobs | server-only | — | Fila durável de jobs assíncronos com retry exponencial e dead-letter (`server/distributedInfra.ts`); acesso negado ao cliente. |
+| job_locks | server-only | — | Locks distribuídos de rotinas periódicas (`server/distributedInfra.ts`); acesso negado ao cliente. |
+| protheus_sync_records | orgId (server-only) | `orgId ==` | Registro idempotente de exportação e reconciliação gradual com ERP Protheus (`/api/protheus-sync/sync`); leitura por Financeiro ou Estoque (nível 1+); divergências sinalizadas explicitamente sem sobrescrita silenciosa. |
 | checklist_runs | orgId | `orgId ==` | Conclusão somente por `/api/checklists/templates/:templateId/runs`; armazena versão e snapshot do template. Eventos append-only em `checklist_run_events`. |
 | checklist_run_events | orgId (immutable) | `orgId ==` + `runId ==` | Histórico append-only da execução do checklist. |
 | checklist_template_events | orgId (immutable) | `orgId ==` + `templateId ==` | Histórico de criação/versões do template, com snapshot. |
@@ -24,6 +31,9 @@ Owner kinds:
 | collective_asset_services | orgId | `orgId ==` | |
 | collective_asset_workers | orgId | `orgId ==` | Projeção operacional de colaboradores para bens coletivos. Quando `rhEmployeeId` é informado, a regra valida existência e pertencimento em `rh_directory/{rhEmployeeId}` da mesma empresa; vínculos legados sem `rhEmployeeId` seguem legíveis para saneamento manual. |
 | collective_assets | orgId (+ optional `organizationId` alias) | `orgId ==` | AiAssistantModule fixed as above |
+| cmms_plans | orgId (server-only) | `orgId ==` | Planos preventivos CMMS (calendário/horímetro/ciclos) sobre ativos existentes (`assets`); leitura por Operações (`A_OPS()` nível 1); geração idempotente de OS preventiva via `/api/cmms/plans/:planId/trigger`. |
+| cmms_records | orgId (server-only, append-only) | `orgId ==` | Histórico de manutenções, falhas, paradas e calibrações CMMS via `/api/cmms/records` para cálculo real de MTBF/MTTR/Disponibilidade; leitura por Operações (`A_OPS()` nível 1). |
+| fabrication_orders | orgId (server-only) | `orgId ==` | Ordens de Fabricação de oficina vinculadas a Projeto/Obra, documento de engenharia liberado, corridas metalúrgicas e roteiro de operações com pontos de parada; leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/manufacturing/*`. |
 | commercial_clients | organizationId | `organizationId ==` | |
 | commercial_cost_compositions | organizationId | `organizationId ==`, getDoc | |
 | commercial_imports | organizationId | `organizationId ==` | |
@@ -66,11 +76,12 @@ Owner kinds:
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
 | items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
+| lpu_tables | orgId (server-only) | `orgId ==` | Tabelas LPU versionadas por contrato com vigência e reajuste (`POST /api/measurements/lpu-tables`); leitura por Comercial, Operações ou Financeiro (nível 1+). Alterar a LPU gera nova versão sem modificar BMs históricos. |
 | marketing_assets | organizationId | `organizationId ==` | Assets criativos e portfólio técnico multiusuário (substitui `localStorage`); área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
 | marketing_brand_configs | doc id (`organizationId`) | getDoc | Identidade visual corporativa por empresa; área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
 | marketing_campaigns | organizationId | `organizationId ==` | Campanhas de marketing multiusuário no Firestore (sem seed demo); área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
 | marketing_events | organizationId | `organizationId ==` | Eventos corporativos multiusuário no Firestore; área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
-| measurement_bulletins | orgId (server-only) | `orgId ==` | Boletins de Medição vinculados a contrato, unidade, projeto/obra (opcional) e aprovações LPU. Leitura por Operações, Comercial ou Financeiro (nível 1+); criação e transições exclusivamente via `/api/measurements/*`. Aprovação (`aprovado` / `aprovado_parcial`) gera atomicamente e de forma idempotente título em `finance_receivables` (`recv_{orgId}_bm_{bulletinId}`, `origem: 'medicao'`). |
+| measurement_bulletins | orgId (server-only) | `orgId ==` | Boletins de Medição vinculados a contrato, unidade, projeto/obra (opcional), LPU versionada (`lpuTableId`/`lpuVersionSnapshot`), retenções/reajustes, revisões (`POST /api/measurements/bulletins/:id/revise`) e evidências no Storage privado (`measurement-evidences/`). Leitura por Operações, Comercial ou Financeiro (nível 1+); escrita exclusiva via `/api/measurements/*`. Aprovação gera atomicamente e de forma idempotente título em `finance_receivables` pelo valor líquido aprovado. |
 | measurement_events | orgId (server-only, append-only) | `orgId ==` + `bulletinId ==` | Trilha imutável de criação, envio, aprovação, glosa, devolução e cancelamento de Boletins de Medição. Leitura por Operações, Comercial ou Financeiro (nível 1+); escrita exclusiva do servidor. |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
@@ -83,12 +94,15 @@ Owner kinds:
 | overtime_rules | doc id | getDoc / onSnapshot | |
 | project_cost_facts | orgId (immutable / append-only) | `orgId ==` | Livro de fatos de custo realizado e comprometido por Projeto/Obra (HH, consumo de estoque, compras, despesas de campo e ajustes). Leitura por Financeiro, Operações, Comercial ou Estoque (nível 1+); criação por Admin/Gerente/Supervisor com Financeiro ou Operações nível 2 validando `projectId` na mesma empresa. Estornos exigem `isReversal: true` (valores negativos); atualização e exclusão são bloqueadas. |
 | projects | orgId | `orgId ==` | Entidade mestre Projeto/Obra. Leitura por Operações, Comercial, Estoque ou Financeiro (nível 1+). Criação e atualização exigem Admin/Gerente/Supervisor com Operações ou Comercial nível 2, validando `unitId` (sem `default_unit`), `contractId` e `costCenterId` (quando informado) na mesma empresa. Exclusão pelo cliente bloqueada (encerramento via status). |
+| purchasing_approval_rules | orgId (server-only) | `orgId ==` | Regras de alçada de aprovação de compras por faixa de valor, perfil e centro de custo (`POST /api/purchasing/approvals/rules`); leitura por Estoque ou Financeiro (nível 1+). |
+| purchasing_approvals | orgId (server-only, append-only) | `orgId ==` | Trilha imutável de aprovações de OCs por alçada (`POST /api/purchasing/approvals/orders/:orderId/approve`); leitura por Estoque ou Financeiro (nível 1+). |
 | purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. Financeiro: leitura somente para conciliar NF-e/OC; sem escrita. |
 | purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. Financeiro: leitura somente para conciliar NF-e/recibo; sem escrita. |
 | purchasing_requisitions | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_suppliers | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
-| recurring_orders | orgId | `orgId ==` | |
+| recurring_order_runs | orgId (server-only, append-only) | `orgId ==` | Execuções idempotentes de OS recorrentes (`recrun_{orgId}_{recurringId}_{periodDate}`) gravadas exclusivamente por `/api/recurring-orders/*`; leitura por Operações (`A_OPS()` nível 1). |
+| recurring_orders | orgId | `orgId ==` | Planos de OS periódicas com calendário de exceções, pausa/retomada/encerramento e execução idempotente via `/api/recurring-orders/:id/run` que avança `nextRunDate` atomicamente e registra `lastRunError` em caso de bloqueio. |
 | rh_batches | orgId | `orgId ==` | |
 | rh_calculations | orgId | `orgId ==` | |
 | rh_directory | orgId | `orgId ==` | Diretório sem salários publicado pelo RH; é a fonte oficial de pessoas para a equipe PT e movimentações de EPI. Os registros guardam `rhEmployeeId` para ligar a equipe operacional sem duplicar o colaborador. |
@@ -96,6 +110,7 @@ Owner kinds:
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
 | stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas e saídas persistem snapshot de `unitCost`, `totalCost` e `projectId` (quando informado) para apropriação de custo por obra. |
+| stock_reservations | orgId (server-only) | `orgId ==` | Reservas de material por OS/Projeto (`sres_{orgId}_{key}`) gerenciadas exclusivamente via `/api/stock-reservations/*`, separando saldo físico, reservado e disponível e gerando RC automática (`purchasing_requisitions`) em caso de falta. Leitura por Estoque ou Operações (nível 1+). |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
@@ -113,6 +128,12 @@ Owner kinds:
 | whatsapp_scheduled_jobs | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`) + validação de campos. |
 | work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
 | work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Criação atômica (OS + `order_events` inicial + numeração) via `POST /api/work-orders` validando `unitId != default_unit`, vínculos da empresa e status inicial (`isInitial: true`). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. Para OS de risco (`requiresSafetyPermit: true` ou `safetyPermitType` != `geral`), a transição para execução valida PT aprovada e dentro da validade + certificados/NRs e EPIs vigentes da equipe (via `rh_directory`), registrando `safetyGateVerified` no evento. |
+| material_lots | orgId (server-only) | `orgId ==` | Rastreabilidade de lote, corrida metalúrgica (`heatNumber`), fabricante e certificado (Storage privado `industrial-certificates/{orgId}/{recordId}/{fileId}`); leitura por Operações ou Estoque (`A_OPS()`/`A_STOCK()` nível 1); escrita exclusiva via `/api/industrial-quality/material-lots`. |
+| ndt_reports | orgId (server-only) | `orgId ==` | Laudos END (LP/PM/US/RX) e testes hidrostáticos/pneumáticos exigindo instrumento calibrado em `assets`; leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/industrial-quality/ndt-reports`. |
+| quality_itp_matrices | orgId (server-only) | `orgId ==` | Matrizes ITP/PIT por Projeto/Contrato com pontos Hold (H), Witness (W) e Review (R); leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/industrial-quality/itp-matrices`. |
+| weld_joints | orgId (server-only) | `orgId ==` | Passaporte de juntas soldadas por Projeto/Obra, linha/spool, corrida, EPS ativa e soldador qualificado vigente; leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/industrial-quality/weld-joints`. |
+| welder_qualifications | orgId (server-only) | `orgId ==` | Qualificações e sinetes de soldadores vinculados ao `rh_directory`; leitura por Operações ou RH (`A_OPS()`/`A_RH()` nível 1); escrita exclusiva via `/api/industrial-quality/welder-qualifications`. |
+| welding_procedures | orgId (server-only) | `orgId ==` | Procedimentos de soldagem EPS/WPS/PQR; leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/industrial-quality/procedures`. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 

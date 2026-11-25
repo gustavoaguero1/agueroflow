@@ -15,6 +15,9 @@ export interface RawMeasurementLineInput {
   description: string;
   unit: string;
   lpuItemId?: string;
+  workOrderId?: string;
+  stageName?: string;
+  evidenceDocRef?: string;
   contractedQuantity?: number;
   previousAccumulatedQuantity?: number;
   measuredQuantity: number;
@@ -64,6 +67,9 @@ export function normalizeMeasurementLine(
     description,
     unit,
     ...(input.lpuItemId?.trim() ? { lpuItemId: input.lpuItemId.trim() } : {}),
+    ...(input.workOrderId?.trim() ? { workOrderId: input.workOrderId.trim() } : {}),
+    ...(input.stageName?.trim() ? { stageName: input.stageName.trim() } : {}),
+    ...(input.evidenceDocRef?.trim() ? { evidenceDocRef: input.evidenceDocRef.trim() } : {}),
     ...(input.contractedQuantity !== undefined && Number.isFinite(Number(input.contractedQuantity))
       ? { contractedQuantity: round4(Number(input.contractedQuantity)) }
       : {}),
@@ -77,6 +83,39 @@ export function normalizeMeasurementLine(
     approvedTotal,
     glosaAmount,
     ...(glosaReason ? { glosaReason } : {}),
+  };
+}
+
+export function computeBulletinFinancialAdjustments(params: {
+  totalApprovedAmount: number;
+  readjustmentPercent?: number;
+  retentionPercent?: number;
+}): {
+  readjustmentPercent: number;
+  readjustmentAmount: number;
+  retentionPercent: number;
+  retentionAmount: number;
+  netApprovedReceivableAmount: number;
+} {
+  const base = round2(Math.max(0, Number(params.totalApprovedAmount) || 0));
+  const readjustmentPercent = Number.isFinite(Number(params.readjustmentPercent))
+    ? Math.max(-50, Math.min(100, Number(params.readjustmentPercent)))
+    : 0;
+  const retentionPercent = Number.isFinite(Number(params.retentionPercent))
+    ? Math.max(0, Math.min(50, Number(params.retentionPercent)))
+    : 0;
+
+  const readjustmentAmount = round2((base * readjustmentPercent) / 100);
+  const grossWithReadjustment = round2(base + readjustmentAmount);
+  const retentionAmount = round2((grossWithReadjustment * retentionPercent) / 100);
+  const netApprovedReceivableAmount = round2(Math.max(0, grossWithReadjustment - retentionAmount));
+
+  return {
+    readjustmentPercent,
+    readjustmentAmount,
+    retentionPercent,
+    retentionAmount,
+    netApprovedReceivableAmount,
   };
 }
 
@@ -140,10 +179,25 @@ export function buildReceivableFromApprovedBulletin(
   actorUid: string,
   nowIso: string,
 ): FinanceReceivable {
-  if (bulletin.totalApprovedAmount <= 0) {
-    throw new Error('Não é possível gerar título a receber para boletim com valor aprovado zerado.');
+  const adjustments = computeBulletinFinancialAdjustments({
+    totalApprovedAmount: bulletin.totalApprovedAmount,
+    readjustmentPercent: bulletin.readjustmentPercent,
+    retentionPercent: bulletin.retentionPercent,
+  });
+  const finalAmount =
+    typeof bulletin.netApprovedReceivableAmount === 'number' && bulletin.netApprovedReceivableAmount > 0
+      ? round2(bulletin.netApprovedReceivableAmount)
+      : adjustments.netApprovedReceivableAmount;
+
+  if (finalAmount <= 0) {
+    throw new Error('Não é possível gerar título a receber para boletim com valor líquido aprovado zerado.');
   }
   const id = receivableIdForBulletin(bulletin.orgId, bulletin.id);
+  const extraDetail =
+    adjustments.retentionAmount > 0 || adjustments.readjustmentAmount !== 0
+      ? ` (Reajuste: R$ ${adjustments.readjustmentAmount.toFixed(2)}, Retenção/Caução: R$ ${adjustments.retentionAmount.toFixed(2)})`
+      : '';
+
   return {
     id,
     orgId: bulletin.orgId,
@@ -153,16 +207,16 @@ export function buildReceivableFromApprovedBulletin(
       ...(bulletin.clientCnpj ? { cnpj: bulletin.clientCnpj } : {}),
     },
     documento: bulletin.code,
-    valor: round2(bulletin.totalApprovedAmount),
+    valor: finalAmount,
     vencimento: bulletin.dueDate,
     status: 'aberto',
     valorRecebido: 0,
-    saldoAberto: round2(bulletin.totalApprovedAmount),
+    saldoAberto: finalAmount,
     receiptCount: 0,
     ...(bulletin.projectId ? { projectId: bulletin.projectId } : {}),
     contractId: bulletin.contractId,
     measurementBulletinId: bulletin.id,
-    notes: `Gerado automaticamente pela aprovação do Boletim de Medição ${bulletin.code} (${bulletin.periodStart} a ${bulletin.periodEnd}).`,
+    notes: `Gerado automaticamente pela aprovação do Boletim de Medição ${bulletin.code} (${bulletin.periodStart} a ${bulletin.periodEnd})${extraDetail}.`,
     createdAt: nowIso,
     createdBy: actorUid,
   };

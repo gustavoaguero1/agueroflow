@@ -11,7 +11,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { maxOrderSeq, nextOrderNumber } from '../services/workOrderNumbering';
+import { apiFetch } from '../apiAuthFetch';
 import { RecurringOrder, WorkOrderPriority, Unit, Asset, Team } from '../types';
 import {
   Repeat,
@@ -115,60 +115,30 @@ export const RecurringOrdersModule: React.FC = () => {
     setActionFeedback(null);
 
     try {
-      const orderId = `os_rec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const orderRef = doc(db, 'work_orders', orderId);
-      const eventId = `${orderId}_created`;
-      const eventRef = doc(db, 'order_events', eventId);
-      const existingOrders = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', organization.id)));
-      const seed = maxOrderSeq(existingOrders.docs.map((snapshot) => snapshot.data() as { orderNumber?: string }));
-      const createdAt = new Date().toISOString();
-      const orderNumber = await runTransaction(db, async (tx) => {
-        const unitSnap = await tx.get(doc(db, 'units', rec.unitId));
-        if (!unitSnap.exists() || unitSnap.data()?.orgId !== organization.id) {
-          throw new Error('A unidade desta recorrência não pertence à empresa selecionada.');
-        }
-
-        const generatedNumber = await nextOrderNumber(tx, db, organization.id, seed);
-        tx.set(orderRef, {
-          id: orderId,
-          orgId: organization.id,
-          unitId: rec.unitId,
-          ...(rec.assetId ? { assetId: rec.assetId } : {}),
-          orderNumber: generatedNumber,
-          title: `[Preventiva Periódica] ${rec.title}`,
-          description: rec.description,
-          priority: rec.priority,
-          status: 'planejada',
-          requesterId: user.uid,
-          requesterName: user.displayName || user.email || 'Operador',
-          assignedTeam: rec.assignedTeam || undefined,
-          scheduledStartDate: rec.nextRunDate,
-          estimatedCost: 0,
-          notes: `OS gerada manualmente a partir do plano de periodicidade ${rec.frequency}.`,
-          createdAt,
-          updatedAt: createdAt,
-        });
-        tx.set(eventRef, {
-          id: eventId,
-          orgId: organization.id,
-          orderId,
-          userId: user.uid,
-          userName: user.displayName || user.email || 'Operador',
-          eventType: 'criacao',
-          description: `OS ${generatedNumber} criada manualmente a partir do plano de recorrência.`,
-          newStatus: 'planejada',
-          timestamp: createdAt,
-        });
-        return generatedNumber;
+      const response = await apiFetch(`/api/recurring-orders/${encodeURIComponent(rec.id)}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: organization.id }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.ok !== true) {
+        throw new Error(result?.error || 'Não foi possível gerar a OS recorrente.');
+      }
 
+      const orderNumber = String(result.workOrderNumber || '');
+      const orderId = String(result.workOrderId || '');
+      const nextDate = String(result.nextRunDate || '');
       try {
-        await logAudit('Recorrências', 'Gerar OS Recorrente', `OS ${orderNumber} gerada a partir da recorrência ${rec.title}`, orderId);
+        await logAudit('Recorrências', 'Gerar OS Recorrente', `OS ${orderNumber} gerada de forma idempotente a partir de ${rec.title}`, orderId);
       } catch (auditError) {
         console.warn('A OS foi criada, mas a auditoria complementar falhou:', auditError);
       }
 
-      setActionFeedback(`Ordem de Serviço ${orderNumber} gerada com sucesso! Acompanhe na Lista de OS.`);
+      setActionFeedback(
+        result.replayed
+          ? `Esta ocorrência já havia gerado a OS ${orderNumber} (proteção contra duplicidade).`
+          : `Ordem de Serviço ${orderNumber} gerada com sucesso! Próxima execução avançada para ${nextDate}.`
+      );
     } catch (err) {
       console.error('Erro ao gerar OS a partir da recorrência:', err);
       setActionFeedback(err instanceof Error ? err.message : 'Não foi possível gerar a OS.');

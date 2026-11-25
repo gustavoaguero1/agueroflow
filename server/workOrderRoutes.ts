@@ -12,6 +12,7 @@ import {
   buildWorkOrderAndCreationEvent,
   validateWorkOrderCreateInput,
 } from '../src/services/workOrderCreateRules.ts';
+import { evaluateAssetAvailability } from '../src/services/assetAvailabilityRules.ts';
 import type { SafetyPermitRecord, SafetyPermitState } from '../src/types/safety.ts';
 import type {
   SafetyComplianceSnapshot,
@@ -162,8 +163,14 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
         if (projectRef && (!projectSnap?.exists || (projectSnap.data()?.orgId ?? projectSnap.data()?.organizationId) !== orgId)) {
           throw new RouteError(400, 'Projeto/Obra informado não pertence a esta empresa.');
         }
-        if (assetRef && (!assetSnap?.exists || (assetSnap.data()?.orgId ?? assetSnap.data()?.organizationId) !== orgId)) {
-          throw new RouteError(400, 'Ativo/equipamento informado não pertence a esta empresa.');
+        if (assetRef) {
+          if (!assetSnap?.exists || (assetSnap.data()?.orgId ?? assetSnap.data()?.organizationId) !== orgId) {
+            throw new RouteError(400, 'Ativo/equipamento informado não pertence a esta empresa.');
+          }
+          const availability = evaluateAssetAvailability(assetSnap.data() as any, new Date().toISOString());
+          if (!availability.available && normalized.orderType !== 'corretiva' && normalized.orderType !== 'preventiva') {
+            throw new RouteError(422, availability.blockers.join(' '));
+          }
         }
 
         const statuses: Array<{ id: string; name?: string; isInitial?: boolean }> = statusesSnap.docs.map((d) => {

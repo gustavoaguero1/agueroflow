@@ -1427,5 +1427,107 @@ service cloud.firestore {
       allow create, update: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2) && orgOf(request.resource.data) == orgId);
       allow delete: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2));
     }
+
+    // ---- Execuções idempotentes de OS recorrentes (escrita exclusiva do servidor) ----
+    match /recurring_order_runs/{runId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Reservas de estoque por OS/Projeto (escrita exclusiva do servidor) ---------
+    match /stock_reservations/{resId} {
+      function sresCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_STOCK(), 1) || areaOk(o, A_OPS(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || sresCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Soldagem, END, Lotes/Corridas e ITP/PIT (escrita exclusiva /api/industrial-quality) ----
+    match /welding_procedures/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /welder_qualifications/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_RH(), 1));
+      allow create, update, delete: if false;
+    }
+    match /material_lots/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_STOCK(), 1));
+      allow create, update, delete: if false;
+    }
+    match /weld_joints/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /ndt_reports/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /quality_itp_matrices/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Tabelas LPU versionadas e Alçadas/Aprovações de Compras (server-only) ----
+    match /lpu_tables/{tableId} {
+      function lpuCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_COM(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || lpuCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
+    match /purchasing_approval_rules/{ruleId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow create, update, delete: if false;
+    }
+    match /purchasing_approvals/{approvalId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Produção/Fabricação (Oficina) e CMMS (escrita exclusiva do servidor) ----
+    match /fabrication_orders/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /cmms_plans/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /cmms_records/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Portal do Cliente (identidade externa isolada), IA com confirmação e Protheus (server-only) ----
+    match /client_portal_grants/{grantId} {
+      allow read: if canRead(resource) && (resource == null || (areaOk(orgOf(resource.data), A_OPS(), 1) && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))));
+      allow create, update, delete: if false;
+    }
+    match /client_portal_audit/{auditId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow create, update, delete: if false;
+    }
+    match /ai_action_proposals/{propId} {
+      allow read: if canRead(resource) && (resource == null || isMemberOf(orgOf(resource.data)));
+      allow create, update, delete: if false;
+    }
+    match /ai_action_audit/{auditId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_EST(), 1));
+      allow create, update, delete: if false;
+    }
+    match /protheus_sync_records/{recId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1) || areaOk(orgOf(resource.data), A_STOCK(), 1));
+      allow create, update, delete: if false;
+    }
+    match /job_locks/{lockId} {
+      allow read, write: if false;
+    }
+    match /durable_jobs/{jobId} {
+      allow read, write: if false;
+    }
   }
 }
