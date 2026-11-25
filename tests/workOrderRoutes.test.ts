@@ -114,6 +114,14 @@ async function post(base: string, body: unknown, orderId = order.id) {
   });
 }
 
+async function postReservation(base: string, body: unknown, orderId = order.id) {
+  return fetch(base + '/api/work-orders/' + encodeURIComponent(orderId) + '/reservation-approval', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 function standardSeed() {
   return {
     ['work_orders/' + order.id]: { ...order },
@@ -210,6 +218,79 @@ test('read-only Operations access cannot change a work order status', async () =
   await withApi('Visualizador', standardSeed(), async (base, docs) => {
     const response = await post(base, requestBody);
     assert.equal(response.status, 403);
+    assert.equal((docs.get('work_orders/' + order.id) as Record<string, unknown>).status, 'aberto');
+  });
+});
+
+test('reservation approval updates the OS, history and release message atomically', async () => {
+  const seed = {
+    ...standardSeed(),
+    ['work_orders/' + order.id]: {
+      ...order,
+      isBlockedByReservation: true,
+      reservationApprovalStatus: 'pendente',
+      plannedParts: [
+        { id: 'part_1', sku: 'P-01', name: 'Válvula', status: 'aguardando_compra' },
+        { id: 'part_2', sku: 'P-02', name: 'Junta', status: 'disponivel' },
+      ],
+    },
+  };
+  await withApi('Supervisor', seed, async (base, docs) => {
+    const request = {
+      orgId: 'org_a',
+      expectedStatus: 'aberto',
+      idempotencyKey: 'reservation_approve_0001',
+    };
+    const response = await postReservation(base, request);
+    assert.equal(response.status, 200);
+    const body = await response.json() as { ok: boolean; replayed: boolean; orderUpdates: Record<string, any>; eventId: string; messageId: string };
+    assert.equal(body.ok, true);
+    assert.equal(body.replayed, false);
+    assert.equal(body.orderUpdates.status, 'em_execucao');
+    assert.equal(body.orderUpdates.reservationApprovalStatus, 'aprovado');
+    assert.equal(body.orderUpdates.isBlockedByReservation, false);
+    assert.equal(body.orderUpdates.plannedParts[0].status, 'disponivel');
+
+    const savedOrder = docs.get('work_orders/' + order.id) as Record<string, any>;
+    assert.equal(savedOrder.status, 'em_execucao');
+    assert.equal(savedOrder.reservationApprovalStatus, 'aprovado');
+    const event = docs.get('order_events/' + body.eventId) as Record<string, any>;
+    assert.equal(event.eventType, 'aprovacao');
+    assert.equal(event.userId, 'operator_1');
+    const message = docs.get('order_messages/' + body.messageId) as Record<string, any>;
+    assert.equal(message.senderId, 'operator_1');
+    assert.equal(message.messageType, 'liberacao');
+    assert.equal([...docs.keys()].filter((key) => key.startsWith('order_events/')).length, 1);
+    assert.equal([...docs.keys()].filter((key) => key.startsWith('order_messages/')).length, 1);
+
+    const retry = await postReservation(base, request);
+    const retryBody = await retry.json() as { replayed: boolean; eventId: string; messageId: string };
+    assert.equal(retry.status, 200);
+    assert.equal(retryBody.replayed, true);
+    assert.equal(retryBody.eventId, body.eventId);
+    assert.equal(retryBody.messageId, body.messageId);
+    assert.equal([...docs.keys()].filter((key) => key.startsWith('order_events/')).length, 1);
+    assert.equal([...docs.keys()].filter((key) => key.startsWith('order_messages/')).length, 1);
+  });
+});
+
+test('only management roles may approve reservations and approval requires a pending reservation', async () => {
+  const seed = {
+    ...standardSeed(),
+    ['work_orders/' + order.id]: { ...order, isBlockedByReservation: true },
+  };
+  await withApi('Operacional', seed, async (base, docs) => {
+    const response = await postReservation(base, {
+      orgId: 'org_a', expectedStatus: 'aberto', idempotencyKey: 'reservation_denied_0001',
+    });
+    assert.equal(response.status, 403);
+    assert.equal((docs.get('work_orders/' + order.id) as Record<string, unknown>).status, 'aberto');
+  });
+  await withApi('Supervisor', standardSeed(), async (base, docs) => {
+    const response = await postReservation(base, {
+      orgId: 'org_a', expectedStatus: 'aberto', idempotencyKey: 'reservation_not_pending_001',
+    });
+    assert.equal(response.status, 409);
     assert.equal((docs.get('work_orders/' + order.id) as Record<string, unknown>).status, 'aberto');
   });
 });
