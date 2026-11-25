@@ -28,6 +28,7 @@ export const PUBLIC_API_PATTERNS: RegExp[] = [
   /^\/api\/composio\/whatsapp\/webhook\/?$/,
   /^\/api\/webhooks\/whatsapp-receipts\/?$/,
   /^\/api\/nd-export\//, // ND_EXPORT_TOKEN checked by its router
+  /^\/api\/client-portal\/public\//, // Isolated external x-portal-token (SHA-256) checked by clientPortalRoutes
 ];
 
 export const isPublicPath = (originalUrl: string) => {

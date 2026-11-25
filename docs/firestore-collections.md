@@ -12,8 +12,15 @@ Owner kinds:
 
 | Collection | Owner | Client queries | Notes |
 |---|---|---|---|
+| ai_action_audit | orgId (server-only, append-only) | `orgId ==` | Trilha imutável de ações da IA confirmadas explicitamente por usuário humano (`/api/ai-actions/:id/confirm`); leitura pela área Estrutura (`A_EST()` nível 1). |
+| ai_action_proposals | orgId (server-only) | `orgId ==` | Propostas de ação sugeridas pela IA aguardando confirmação humana explícita (`/api/ai-actions/propose`); leitura por membros da empresa; escrita exclusiva do servidor. |
 | assets | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | audit_logs | orgId (immutable) | `orgId ==` | Append-only; criação permitida para membros da empresa ao executar ações; leitura restrita à área Estrutura (`A_EST()` nível 1). |
+| client_portal_audit | orgId (server-only, append-only) | `orgId ==` | Trilha imutável de visualizações e comentários externos do Portal do Cliente; leitura por Operações ou Comercial (nível 1+). |
+| client_portal_grants | orgId (server-only) | `orgId ==` | Credenciais externas isoladas do Portal do Cliente (hash SHA-256, escopo explícito por contrato/projeto, validade e revogação via `/api/client-portal/grants`); leitura restrita a Admin/Gerente com Operações nível 1+. |
+| durable_jobs | server-only | — | Fila durável de jobs assíncronos com retry exponencial e dead-letter (`server/distributedInfra.ts`); acesso negado ao cliente. |
+| job_locks | server-only | — | Locks distribuídos de rotinas periódicas (`server/distributedInfra.ts`); acesso negado ao cliente. |
+| protheus_sync_records | orgId (server-only) | `orgId ==` | Registro idempotente de exportação e reconciliação gradual com ERP Protheus (`/api/protheus-sync/sync`); leitura por Financeiro ou Estoque (nível 1+); divergências sinalizadas explicitamente sem sobrescrita silenciosa. |
 | checklist_runs | orgId | `orgId ==` | Conclusão somente por `/api/checklists/templates/:templateId/runs`; armazena versão e snapshot do template. Eventos append-only em `checklist_run_events`. |
 | checklist_run_events | orgId (immutable) | `orgId ==` + `runId ==` | Histórico append-only da execução do checklist. |
 | checklist_template_events | orgId (immutable) | `orgId ==` + `templateId ==` | Histórico de criação/versões do template, com snapshot. |
