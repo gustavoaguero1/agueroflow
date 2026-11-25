@@ -92,7 +92,7 @@ test('member read/write allowed', async () => {
   const db = member();
   await assertSucceeds(getDoc(doc(db, 'work_orders/wo_a')));
   await assertSucceeds(getDocs(query(collection(db, 'work_orders'), where('orgId', '==', 'org_a'))));
-  await assertSucceeds(setDoc(doc(db, 'work_orders/new'), { orgId: 'org_a', title: 'n' }));
+  await assertSucceeds(setDoc(doc(db, 'work_orders/new'), { orgId: 'org_a', unitId: 'unit_a', title: 'n', status: 'aberto' }));
   await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { title: 'x' }));
   await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { status: 'em_execucao' }));
   await assertSucceeds(deleteDoc(doc(db, 'work_orders/new')));
@@ -178,7 +178,11 @@ test('Operations area controls work orders, status config and timeline reads/wri
   await assertSucceeds(setDoc(doc(editor, 'work_order_statuses/org_a_custom'), {
     id: 'custom', orgId: 'org_a', name: 'Em análise',
   }));
-  await assertSucceeds(setDoc(doc(editor, 'order_events/ops_event'), { orgId: 'org_a', orderId: 'wo_a' }));
+  await assertSucceeds(setDoc(doc(editor, 'order_events/ops_event'), {
+    orgId: 'org_a', orderId: 'wo_a', userId: 'member_m_op', userName: 'Operador',
+    eventType: 'mudanca_status', description: 'Transição de teste', previousStatus: 'aberto',
+    newStatus: 'em_execucao', timestamp: new Date().toISOString(),
+  }));
 });
 
 test('catalog is readable by Operations/Commercial but editable only by Stock', async () => {
@@ -320,7 +324,7 @@ test('master allowed', async () => {
   const db = master();
   await assertSucceeds(getDoc(doc(db, 'work_orders/wo_b')));
   await assertSucceeds(getDocs(collection(db, 'work_orders')));
-  await assertSucceeds(setDoc(doc(db, 'work_orders/m'), { orgId: 'org_b' }));
+  await assertSucceeds(setDoc(doc(db, 'work_orders/m'), { orgId: 'org_b', unitId: 'unit_b', status: 'aberto' }));
   await assertSucceeds(getDocs(collection(db, 'org_members')));
   await assertSucceeds(setDoc(doc(db, 'organizations/org_n'), { name: 'N' }));
 });
