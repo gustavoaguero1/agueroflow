@@ -27,7 +27,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'contracts/contract_b'), { id: 'contract_b', orgId: 'org_b' });
     await setDoc(doc(db, 'assets/asset_a'), { id: 'asset_a', orgId: 'org_a', unitId: 'unit_a' });
     await setDoc(doc(db, 'assets/asset_b'), { id: 'asset_b', orgId: 'org_b', unitId: 'unit_b' });
-    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A', status: 'aberto' });
+    await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', unitId: 'unit_a', title: 'A', status: 'aberto' });
+    await setDoc(doc(db, 'order_messages/msg_a'), { id: 'msg_a', orgId: 'org_a', orderId: 'wo_a', senderId: 'member_m_op', senderName: 'Operador', senderRole: 'Tecnico', messageType: 'pergunta', content: 'Conferir a flange?', createdAt: '2026-11-25T09:00:00.000Z' });
     await setDoc(doc(db, 'inspections/insp_a'), { orgId: 'org_a', unitId: 'unit_a', status: 'agendada' });
     await setDoc(doc(db, 'inspection_events/evt_a'), { orgId: 'org_a', inspectionId: 'insp_a' });
     await setDoc(doc(db, 'checklist_templates/tpl_a'), { orgId: 'org_a', title: 'Checklist A', version: 1 });
@@ -460,6 +461,68 @@ test('timeline events require the authenticated author and an OS in the same com
   await assertFails(setDoc(doc(db, 'order_events/cross_org'), {
     ...validEvent, orgId: 'org_b', orderId: 'wo_b',
   }));
+});
+
+test('OS messages require an authenticated sender, same-company parent and valid reply reference', async () => {
+  const db = member();
+  const validMessage = {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    senderId: 'member_m_op',
+    senderName: 'Operador',
+    senderRole: 'Tecnico',
+    messageType: 'pergunta',
+    content: 'Qual a pressão de teste definida?',
+    createdAt: new Date().toISOString(),
+  };
+  await assertSucceeds(setDoc(doc(db, 'order_messages/valid_message'), validMessage));
+  await assertFails(setDoc(doc(db, 'order_messages/forged_sender'), {
+    ...validMessage, senderId: 'another_user',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/orphan'), {
+    ...validMessage, orderId: 'missing_work_order',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/cross_org'), {
+    ...validMessage, orgId: 'org_b', orderId: 'wo_b',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/bad_reply'), {
+    ...validMessage, replyToId: 'missing_message',
+  }));
+  await assertFails(setDoc(doc(db, 'order_messages/bad_role'), {
+    ...validMessage, senderRole: 'Admin',
+  }));
+
+  const viewer = as('ops_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(viewer, 'order_messages/msg_a')));
+  await assertFails(setDoc(doc(viewer, 'order_messages/viewer_message'), validMessage));
+});
+
+test('OS messages are immutable except for an authenticated resolution action', async () => {
+  const db = member();
+  const messageRef = doc(db, 'order_messages/msg_a');
+  const resolvedAt = new Date().toISOString();
+  await assertSucceeds(updateDoc(messageRef, {
+    resolved: true,
+    resolvedAt,
+    resolvedBy: 'member_m_op',
+    resolvedByName: 'Operador',
+  }));
+  await assertFails(updateDoc(messageRef, { content: 'Texto adulterado' }));
+  await assertFails(updateDoc(messageRef, { resolvedBy: 'another_user' }));
+  await assertFails(updateDoc(messageRef, {
+    resolved: false,
+    resolvedAt: null,
+    resolvedBy: null,
+    resolvedByName: null,
+    senderName: 'Alterado',
+  }));
+  await assertSucceeds(updateDoc(messageRef, {
+    resolved: false,
+    resolvedAt: null,
+    resolvedBy: null,
+    resolvedByName: null,
+  }));
+  await assertFails(deleteDoc(messageRef));
 });
 
 test('an OS and its initial event may be created together in one Firestore transaction', async () => {
