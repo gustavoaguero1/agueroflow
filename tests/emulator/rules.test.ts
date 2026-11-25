@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp, runTransaction } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -415,16 +415,68 @@ test('org_members create with foreign userId denied', async () => {
   await assertFails(updateDoc(doc(admin(), 'org_members/m_b'), { userId: 'x' }));
 });
 
-test('order_events/stock_movements/audit_logs not updatable', async () => {
+test('order_events, stock_movements and audit_logs are append-only', async () => {
   const db = member();
-  for (const c of ['order_events', 'stock_movements', 'audit_logs']) {
+  await assertSucceeds(setDoc(doc(db, 'order_events/new'), {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    userId: 'member_m_op',
+    userName: 'Operador',
+    eventType: 'comentario',
+    description: 'Evento de teste vinculado a uma OS.',
+    timestamp: new Date().toISOString(),
+  }));
+  for (const c of ['stock_movements', 'audit_logs']) {
     await assertSucceeds(setDoc(doc(db, `${c}/new`), { orgId: 'org_a' }));
     await assertFails(setDoc(doc(db, `${c}/other`), { orgId: 'org_b' }));
     await assertFails(updateDoc(doc(db, `${c}/new`), { x: 1 }));
     await assertFails(deleteDoc(doc(db, `${c}/new`)));
     await assertFails(updateDoc(doc(master(), `${c}/new`), { x: 1 }));
   }
+  await assertFails(updateDoc(doc(db, 'order_events/new'), { description: 'Tentativa de adulteração' }));
+  await assertFails(deleteDoc(doc(db, 'order_events/new')));
+  await assertFails(updateDoc(doc(master(), 'order_events/new'), { description: 'Master também não altera o histórico' }));
   await assertSucceeds(getDocs(query(collection(db, 'order_events'), where('orgId', '==', 'org_a'), where('orderId', '==', 'wo_a'))));
+});
+
+test('timeline events require the authenticated author and an OS in the same company', async () => {
+  const db = member();
+  const validEvent = {
+    orgId: 'org_a',
+    orderId: 'wo_a',
+    userId: 'member_m_op',
+    userName: 'Operador',
+    eventType: 'comentario',
+    description: 'Evento de teste vinculado a uma OS.',
+    timestamp: new Date().toISOString(),
+  };
+  await assertSucceeds(setDoc(doc(db, 'order_events/valid_parent'), validEvent));
+  await assertFails(setDoc(doc(db, 'order_events/forged_author'), {
+    ...validEvent, userId: 'another_user',
+  }));
+  await assertFails(setDoc(doc(db, 'order_events/orphan'), {
+    ...validEvent, orderId: 'work_order_missing',
+  }));
+  await assertFails(setDoc(doc(db, 'order_events/cross_org'), {
+    ...validEvent, orgId: 'org_b', orderId: 'wo_b',
+  }));
+});
+
+test('an OS and its initial event may be created together in one Firestore transaction', async () => {
+  const db = member();
+  const orderRef = doc(db, 'work_orders/atomic_os');
+  const eventRef = doc(db, 'order_events/atomic_event');
+  await assertSucceeds(runTransaction(db, async (tx) => {
+    tx.set(orderRef, {
+      id: 'atomic_os', orgId: 'org_a', unitId: 'unit_a', title: 'OS atômica', status: 'aberto',
+    });
+    tx.set(eventRef, {
+      id: 'atomic_event', orgId: 'org_a', orderId: 'atomic_os',
+      userId: 'member_m_op', userName: 'Operador',
+      eventType: 'criacao', description: 'OS criada com seu evento inicial.',
+      newStatus: 'aberto', timestamp: new Date().toISOString(),
+    });
+  }));
 });
 
 test('unlisted collection denied', async () => {
