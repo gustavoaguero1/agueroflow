@@ -15,36 +15,29 @@ import type {
   SafetyPermitRecord,
   SafetyPermitState,
   SafetyPermitType,
-  SafetyRiskAssessment,
   SafetyRiskLevel,
 } from '../../types/safety';
 import {
   createSafetyPermit,
-  getSafetyNextStatus,
   localSafetyDate,
   requiredSafetyControls,
   SAFETY_PERMIT_TYPES,
   safetyEventLabel,
-  safetyPermitCode,
   safetyPermitStatusLabel,
   safetyPermitTypeLabel,
   transitionSafetyPermit,
   validateSafetyPermitInput,
 } from '../../services/safetyManagement';
 import {
-  AlertTriangle,
   CalendarClock,
-  Check,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
   FileCheck2,
-  FileText,
   HardHat,
   Plus,
   RefreshCw,
   ShieldAlert,
-  ShieldCheck,
   X,
 } from 'lucide-react';
 
@@ -223,11 +216,10 @@ export const SafetyManagementPanel: React.FC<SafetyManagementPanelProps> = ({
   const expiredCount = permits.filter((permit) => (
     permit.documentType === 'pt'
     && stateByPermit[permit.id]?.status === 'approved'
-    && permit.validUntil < new Date().toISOString().slice(0, 16)
+    && new Date(permit.validUntil).getTime() < Date.now()
   )).length;
 
   const selectedPermit = permits.find((permit) => permit.id === selectedPermitId) || null;
-  const selectedState = selectedPermit ? stateByPermit[selectedPermit.id] : undefined;
   const selectedEvents = selectedPermit ? (eventsByPermit[selectedPermit.id] || []) : [];
   const visibleContracts = contracts.filter((contract) => (
     !contract.unitIds?.length || contract.unitIds.includes(unitId)
