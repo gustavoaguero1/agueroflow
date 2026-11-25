@@ -32,15 +32,40 @@ const statuses = {
 
 function mockAdmin(seed: Record<string, unknown>) {
   const docs = new Map(Object.entries(seed));
+  const runQuery = (col: string, field: string, value: unknown) => {
+    const prefix = `${col}/`;
+    const matched = [...docs.entries()]
+      .filter(([path, data]) => path.startsWith(prefix) && (data as Record<string, unknown>)[field] === value)
+      .map(([path, data]) => ({ id: path.slice(prefix.length), exists: true, data: () => data }));
+    return { docs: matched, empty: matched.length === 0, size: matched.length };
+  };
   const db: any = {
     collection: (name: string) => ({
-      doc: (id: string) => ({ path: name + '/' + id, id }),
+      doc: (id: string) => {
+        const path = name + '/' + id;
+        return {
+          path,
+          id,
+          get: async () => {
+            const data = docs.get(path);
+            return { id, exists: data !== undefined, data: () => data };
+          },
+        };
+      },
+      where: (field: string, _op: string, value: unknown) => ({
+        kind: 'query',
+        collection: name,
+        field,
+        value,
+        get: async () => runQuery(name, field, value),
+      }),
     }),
     runTransaction: async (fn: (tx: any) => Promise<unknown>) => {
       const creates: Array<{ path: string; data: unknown }> = [];
       const updates: Array<{ path: string; data: Record<string, unknown> }> = [];
       const tx = {
-        get: async (ref: { path: string; id: string }) => {
+        get: async (ref: any) => {
+          if (ref?.kind === 'query') return runQuery(ref.collection, ref.field, ref.value);
           const data = docs.get(ref.path);
           return { id: ref.id, exists: data !== undefined, data: () => data };
         },
@@ -303,5 +328,112 @@ test('the endpoint rejects a work order that belongs to a different organization
     const response = await post(base, requestBody);
     assert.equal(response.status, 404);
     assert.equal((docs.get('work_orders/' + order.id) as Record<string, unknown>).status, 'aberto');
+  });
+});
+
+test('risk work order blocks em_execucao without approved PT and valid NR/EPI, and passes once compliant', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const nextYear = `${Number(today.slice(0, 4)) + 1}-12-31`;
+  const pastYear = `${Number(today.slice(0, 4)) - 1}-01-01`;
+
+  const riskOrder = {
+    ...order,
+    requiresSafetyPermit: true,
+    safetyPermitType: 'trabalho_em_altura',
+    safetyPermitId: 'pt_001',
+    assignedEmployeeIds: ['emp_1'],
+  };
+
+  // 1. Blocked when PT is not approved and NR-35 is missing
+  await withApi('Supervisor', {
+    ...standardSeed(),
+    ['work_orders/' + order.id]: riskOrder,
+    'safety_permits/pt_001': {
+      id: 'pt_001',
+      orgId: 'org_a',
+      unitId: 'unit_a',
+      contractId: 'ct_a',
+      documentType: 'pt',
+      permitCode: 'PT-001',
+      permitType: 'trabalho_em_altura',
+      validFrom: pastYear,
+      validUntil: nextYear,
+      teamMemberIds: ['emp_1'],
+    },
+    'safety_permit_states/pt_001': { id: 'pt_001', orgId: 'org_a', status: 'draft' },
+    'rh_directory/emp_1': { id: 'emp_1', orgId: 'org_a', name: 'Carlos', active: true },
+  }, async (base, docs) => {
+    const checkRes = await fetch(base + '/api/work-orders/' + encodeURIComponent(order.id) + '/safety-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: 'org_a' }),
+    });
+    assert.equal(checkRes.status, 200);
+    const checkBody = await checkRes.json() as any;
+    assert.equal(checkBody.allowed, false);
+    assert.ok(checkBody.blockers.length >= 2);
+
+    const blocked = await post(base, { ...requestBody, idempotencyKey: 'risk_blocked_0001' });
+    assert.equal(blocked.status, 422);
+    const blockedBody = await blocked.json() as any;
+    assert.match(blockedBody.error, /bloqueada pelo SMS/i);
+    assert.equal((docs.get('work_orders/' + order.id) as any).status, 'aberto');
+    assert.equal([...docs.keys()].some((k) => k.startsWith('order_events/')), false);
+  });
+
+  // 2. Allowed when PT is approved, in validity window, and crew has current NR-35 + delivered EPI with valid CA
+  await withApi('Supervisor', {
+    ...standardSeed(),
+    ['work_orders/' + order.id]: riskOrder,
+    'safety_permits/pt_001': {
+      id: 'pt_001',
+      orgId: 'org_a',
+      unitId: 'unit_a',
+      contractId: 'ct_a',
+      documentType: 'pt',
+      permitCode: 'PT-001',
+      permitType: 'trabalho_em_altura',
+      validFrom: pastYear,
+      validUntil: nextYear,
+      teamMemberIds: ['emp_1'],
+    },
+    'safety_permit_states/pt_001': { id: 'pt_001', orgId: 'org_a', status: 'approved' },
+    'rh_directory/emp_1': { id: 'emp_1', orgId: 'org_a', name: 'Carlos', active: true },
+    'safety_ppe_catalog/ppe_1': {
+      id: 'ppe_1',
+      orgId: 'org_a',
+      name: 'Cinto Paraquedista',
+      category: 'Cinto paraquedista',
+      caNumber: 'CA-9999',
+      caExpiresAt: nextYear,
+      requiredForPermitTypes: ['trabalho_em_altura'],
+      active: true,
+    },
+    'safety_ppe_movements/mov_1': {
+      id: 'mov_1',
+      orgId: 'org_a',
+      employeeId: 'emp_1',
+      ppeId: 'ppe_1',
+      eventType: 'entregue',
+      movementDate: pastYear,
+      createdAt: `${pastYear}T10:00:00.000Z`,
+    },
+    'safety_training_records/tr_1': {
+      id: 'tr_1',
+      orgId: 'org_a',
+      employeeId: 'emp_1',
+      trainingCode: 'NR-35',
+      title: 'NR-35',
+      issueDate: pastYear,
+      expirationDate: nextYear,
+    },
+  }, async (base, docs) => {
+    const allowed = await post(base, { ...requestBody, idempotencyKey: 'risk_allowed_0001' });
+    assert.equal(allowed.status, 200);
+    const body = await allowed.json() as any;
+    assert.equal(body.safetyGateVerified.permitCode, 'PT-001');
+    assert.equal(body.safetyGateVerified.checkedEmployeeCount, 1);
+    const event = docs.get('order_events/' + body.eventId) as any;
+    assert.equal(event.meta.safetyGateVerified.permitId, 'pt_001');
   });
 });

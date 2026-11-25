@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Package,
   Plus,
@@ -19,7 +19,10 @@ import {
   Loader2,
   Image as ImageIcon,
   Trash2,
+  Link2,
+  Unlink,
 } from 'lucide-react';
+import type { Item } from '../../types';
 import { CommercialMaterial, PriceSourceType, ExtractedSupplierQuote } from '../../types/commercial';
 import {
   isQuoteValid,
@@ -35,6 +38,14 @@ import {
   filterMaterialsByMultiToken,
   STANDARD_INDUSTRIAL_CATALOG,
 } from '../../services/commercialService';
+import {
+  listMasterCatalogItems,
+  suggestMasterItemMatches,
+  confirmMaterialMasterLink,
+  clearMaterialMasterLink,
+  auditMaterialCatalogLinks,
+} from '../../services/materialCatalogLinkService';
+import { useAuth } from '../../contexts/AuthContext';
 import { SupplierQuotePdfModal } from './SupplierQuotePdfModal';
 
 interface CommercialMaterialsCatalogProps {
@@ -50,6 +61,7 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
   userName,
   onRefresh,
 }) => {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('todos');
   const [sourceFilter, setSourceFilter] = useState<'todos' | 'empresa' | 'padroes'>('todos');
@@ -57,6 +69,112 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
   const [editingMaterial, setEditingMaterial] = useState<CommercialMaterial | null>(null);
   const [saving, setSaving] = useState(false);
   const [absorbingId, setAbsorbingId] = useState<string | null>(null);
+
+  // Master catalog (`items`) explicit human-review linking state
+  const [masterItems, setMasterItems] = useState<Item[]>([]);
+  const [linkingMaterial, setLinkingMaterial] = useState<CommercialMaterial | null>(null);
+  const [masterSearchTerm, setMasterSearchTerm] = useState('');
+  const [masterLinkNotes, setMasterLinkNotes] = useState('');
+  const [linkingBusy, setLinkingBusy] = useState(false);
+  const [linkingError, setLinkingError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!organizationId) {
+      setMasterItems([]);
+      return;
+    }
+    listMasterCatalogItems(organizationId)
+      .then((items) => {
+        if (active) setMasterItems(items);
+      })
+      .catch((err) => {
+        console.warn('Falha ao carregar itens do catálogo mestre:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [organizationId]);
+
+  const masterLinkAudit = useMemo(
+    () =>
+      auditMaterialCatalogLinks({
+        orgId: organizationId,
+        commercialMaterials: catalog,
+        masterItems,
+      }),
+    [organizationId, catalog, masterItems],
+  );
+
+  const linkSuggestions = useMemo(() => {
+    if (!linkingMaterial) return [];
+    return suggestMasterItemMatches(linkingMaterial, masterItems, 6);
+  }, [linkingMaterial, masterItems]);
+
+  const filteredMasterItems = useMemo(() => {
+    const q = masterSearchTerm.trim().toLowerCase();
+    const activeItems = masterItems.filter((i) => i.active && i.status !== 'INACTIVE');
+    if (!q) return activeItems.slice(0, 20);
+    return activeItems
+      .filter((i) =>
+        `${i.sku || ''} ${i.code || ''} ${i.name || ''} ${i.description || ''}`.toLowerCase().includes(q),
+      )
+      .slice(0, 20);
+  }, [masterItems, masterSearchTerm]);
+
+  const handleOpenMasterLink = (mat: CommercialMaterial) => {
+    setLinkingMaterial(mat);
+    setMasterSearchTerm('');
+    setMasterLinkNotes(mat.masterLinkNotes || '');
+    setLinkingError('');
+  };
+
+  const handleConfirmMasterLink = async (masterItemId: string) => {
+    if (!linkingMaterial) return;
+    setLinkingBusy(true);
+    setLinkingError('');
+    try {
+      await confirmMaterialMasterLink({
+        orgId: organizationId,
+        materialId: linkingMaterial.id,
+        masterItemId,
+        actorUid: user?.uid || 'unknown',
+        actorName: userName || user?.displayName || 'Usuário',
+        notes: masterLinkNotes.trim() || undefined,
+      });
+      setLinkingMaterial(null);
+      setPdfSuccess('Vínculo explícito com o catálogo mestre confirmado com sucesso.');
+      setTimeout(() => setPdfSuccess(''), 4000);
+      await onRefresh();
+    } catch (err: any) {
+      setLinkingError(err?.message || 'Falha ao confirmar vínculo com o catálogo mestre.');
+    } finally {
+      setLinkingBusy(false);
+    }
+  };
+
+  const handleClearMasterLink = async () => {
+    if (!linkingMaterial) return;
+    setLinkingBusy(true);
+    setLinkingError('');
+    try {
+      await clearMaterialMasterLink({
+        orgId: organizationId,
+        materialId: linkingMaterial.id,
+        actorUid: user?.uid || 'unknown',
+        actorName: userName || user?.displayName || 'Usuário',
+        reason: masterLinkNotes.trim() || undefined,
+      });
+      setLinkingMaterial(null);
+      setPdfSuccess('Vínculo com o catálogo mestre removido.');
+      setTimeout(() => setPdfSuccess(''), 4000);
+      await onRefresh();
+    } catch (err: any) {
+      setLinkingError(err?.message || 'Falha ao desvincular material.');
+    } finally {
+      setLinkingBusy(false);
+    }
+  };
 
   // Form states
   const [internalCode, setInternalCode] = useState('');
@@ -283,6 +401,17 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
         category,
         importedBy: userName,
         createdAt: editingMaterial?.createdAt || new Date().toISOString(),
+        ...(editingMaterial?.masterItemId
+          ? {
+              masterItemId: editingMaterial.masterItemId,
+              masterItemSku: editingMaterial.masterItemSku,
+              masterItemName: editingMaterial.masterItemName,
+              masterLinkStatus: editingMaterial.masterLinkStatus,
+              masterLinkConfirmedBy: editingMaterial.masterLinkConfirmedBy,
+              masterLinkConfirmedAt: editingMaterial.masterLinkConfirmedAt,
+              masterLinkNotes: editingMaterial.masterLinkNotes,
+            }
+          : {}),
       };
 
       await saveMaterial(materialPayload);
@@ -476,7 +605,7 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl text-xs">
           <span className="text-slate-400 block mb-1">Total de Materiais Catalogados</span>
           <p className="text-xl font-bold font-mono text-white">{catalog.length}</p>
@@ -488,6 +617,18 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
         <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl text-xs">
           <span className="text-slate-400 block mb-1">Cotações Expiradas / Para Revalidação</span>
           <p className="text-xl font-bold font-mono text-amber-400">{expiredQuotesCount}</p>
+        </div>
+        <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl text-xs">
+          <span className="text-slate-400 block mb-1">Vinculados ao Catálogo Mestre</span>
+          <p className="text-xl font-bold font-mono text-cyan-400">
+            {masterLinkAudit.linkedCount}
+            <span className="text-xs font-normal text-slate-400 ml-1">/ {masterLinkAudit.totalCommercialMaterials}</span>
+          </p>
+          {masterLinkAudit.brokenLinkCount > 0 && (
+            <span className="text-[10px] text-rose-400 mt-0.5 block">
+              {masterLinkAudit.brokenLinkCount} vínculo(s) quebrado(s)
+            </span>
+          )}
         </div>
       </div>
 
@@ -592,9 +733,21 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
                   <tr key={mat.id} className="hover:bg-slate-900/40">
                     <td className="py-2.5 px-3 font-bold text-cyan-300">
                       <span>{mat.internalCode}</span>
-                      {isBenchmarkOnly && (
+                      {isBenchmarkOnly ? (
                         <span className="block text-[9px] text-amber-400 font-sans font-normal mt-0.5">
                           Referência Inox
+                        </span>
+                      ) : mat.masterItemId ? (
+                        <span
+                          className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[9px] font-sans font-semibold text-emerald-300"
+                          title={mat.masterItemName ? `Item mestre: ${mat.masterItemName}` : 'Vinculado ao catálogo mestre'}
+                        >
+                          <Link2 className="w-2.5 h-2.5" />
+                          <span>Mestre: {mat.masterItemSku || mat.masterItemId}</span>
+                        </span>
+                      ) : (
+                        <span className="block text-[9px] text-slate-500 font-sans font-normal mt-0.5">
+                          Sem vínculo mestre
                         </span>
                       )}
                     </td>
@@ -646,6 +799,21 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
                           </button>
                         ) : (
                           <>
+                            <button
+                              onClick={() => handleOpenMasterLink(mat)}
+                              className={`p-1 rounded transition cursor-pointer ${
+                                mat.masterItemId
+                                  ? 'bg-emerald-900/50 hover:bg-emerald-800/70 text-emerald-300'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white'
+                              }`}
+                              title={
+                                mat.masterItemId
+                                  ? 'Gerenciar vínculo com o catálogo mestre (items)'
+                                  : 'Vincular ao catálogo mestre de estoque (revisão humana)'
+                              }
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               onClick={() => handleOpenEdit(mat)}
                               className="p-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-white rounded transition cursor-pointer"
@@ -879,6 +1047,175 @@ export const CommercialMaterialsCatalog: React.FC<CommercialMaterialsCatalogProp
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Master Catalog (`items`) Human-Review Link Modal */}
+      {linkingMaterial && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0B132B] border border-slate-700 rounded-xl max-w-2xl w-full p-5 space-y-4 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-cyan-400" />
+                  <span>Vínculo com Catálogo Mestre (Revisão Humana)</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {linkingMaterial.internalCode} — {linkingMaterial.originalDescription} ({linkingMaterial.unit})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkingMaterial(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-cyan-950/40 border border-cyan-800/50 rounded-lg text-[11px] text-cyan-200">
+              Sugestões assistidas por código e descrição técnica. Nenhum vínculo é aplicado automaticamente — confirme explicitamente o item correspondente do catálogo mestre (<code className="text-cyan-300">items</code>).
+            </div>
+
+            {linkingError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{linkingError}</span>
+              </div>
+            )}
+
+            {linkingMaterial.masterItemId && (
+              <div className="p-3 bg-emerald-950/40 border border-emerald-700/50 rounded-lg flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block">
+                    Vínculo Atual Confirmado
+                  </span>
+                  <span className="font-mono text-white font-semibold">
+                    {linkingMaterial.masterItemSku || linkingMaterial.masterItemId}
+                  </span>
+                  {linkingMaterial.masterItemName && (
+                    <span className="text-slate-300 ml-2">— {linkingMaterial.masterItemName}</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={linkingBusy}
+                  onClick={handleClearMasterLink}
+                  className="px-3 py-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <Unlink className="w-3.5 h-3.5" />
+                  <span>Desvincular</span>
+                </button>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">Observação da revisão (opcional)</label>
+              <input
+                type="text"
+                value={masterLinkNotes}
+                onChange={(e) => setMasterLinkNotes(e.target.value)}
+                placeholder="Ex: Confirmado com almoxarifado / mesmo SKU ASTM A312"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
+              />
+            </div>
+
+            {/* Suggested Matches */}
+            <div className="space-y-2">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                Sugestões Ranqueadas ({linkSuggestions.length})
+              </h4>
+              {linkSuggestions.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">
+                  Nenhuma correspondência automática sugerida. Use a busca manual abaixo para escolher um item mestre.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {linkSuggestions.map((sug) => (
+                    <div
+                      key={sug.itemId}
+                      className="p-3 bg-slate-900/90 border border-slate-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-cyan-300">{sug.itemSku}</span>
+                          <span className="text-white font-medium">{sug.itemName}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                            {sug.unitOfMeasure}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-semibold">
+                            Afinidade {sug.score}%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">{sug.reasons.join(' • ')}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={linkingBusy || linkingMaterial.masterItemId === sug.itemId}
+                        onClick={() => handleConfirmMasterLink(sug.itemId)}
+                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-[11px] font-semibold shrink-0 disabled:opacity-50 cursor-pointer"
+                      >
+                        {linkingMaterial.masterItemId === sug.itemId ? 'Vinculado' : 'Confirmar Vínculo'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Search across all org master items */}
+            <div className="space-y-2 border-t border-slate-800 pt-3">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                Busca Manual no Catálogo Mestre ({masterItems.length} itens na empresa)
+              </h4>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={masterSearchTerm}
+                  onChange={(e) => setMasterSearchTerm(e.target.value)}
+                  placeholder="Filtrar por SKU, código ou nome do item no estoque..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white"
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto divide-y divide-slate-800/70 border border-slate-800 rounded-lg bg-slate-950/60">
+                {filteredMasterItems.length === 0 ? (
+                  <p className="p-3 text-xs text-slate-500 text-center">Nenhum item ativo encontrado.</p>
+                ) : (
+                  filteredMasterItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="px-3 py-2 flex items-center justify-between gap-2 text-xs hover:bg-slate-900/70"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-mono text-cyan-300 font-semibold mr-2">{item.sku}</span>
+                        <span className="text-slate-200 truncate">{item.name}</span>
+                        <span className="text-[10px] text-slate-500 ml-2">({item.unitOfMeasure})</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={linkingBusy || linkingMaterial.masterItemId === item.id}
+                        onClick={() => handleConfirmMasterLink(item.id)}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-cyan-600 text-slate-200 hover:text-white rounded text-[11px] font-semibold shrink-0 disabled:opacity-50 cursor-pointer"
+                      >
+                        {linkingMaterial.masterItemId === item.id ? 'Atual' : 'Vincular'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setLinkingMaterial(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

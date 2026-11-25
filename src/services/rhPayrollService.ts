@@ -492,6 +492,25 @@ export function subscribeRhEmployees(
   );
 }
 
+export function subscribeRhFieldWorkers(
+  orgId: string,
+  onData: (workers: FieldWorker[]) => void
+) {
+  if (!orgId) return () => {};
+  const q = query(collection(db, 'field_workers'), where('orgId', '==', orgId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FieldWorker));
+      items.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      onData(items);
+    },
+    (err) => {
+      console.warn('Erro ao sincronizar colaboradores de campo para auditoria RH:', err);
+    }
+  );
+}
+
 export function subscribeRhCalculations(
   orgId: string,
   referenceYear: number,
@@ -816,7 +835,7 @@ export async function seedRhDemoData(orgId: string, userEmail: string): Promise<
       orgId,
       registrationNumber: emp.registrationNumber || 'MAT-0000',
       name: emp.name || '',
-      admissionDate: emp.admissionDate || '2024-01-01',
+      admissionDate: emp.admissionDate || '',
       active: true,
       department: emp.department || 'Geral',
       role: emp.role || 'Colaborador',

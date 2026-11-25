@@ -22,15 +22,15 @@ Owner kinds:
 | collective_asset_movements | orgId | `orgId ==`, `orgId ==` + `status in` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
 | collective_asset_policies | doc id | getDoc | written in transactions |
 | collective_asset_services | orgId | `orgId ==` | |
-| collective_asset_workers | orgId | `orgId ==` | |
+| collective_asset_workers | orgId | `orgId ==` | Projeção operacional de colaboradores para bens coletivos. Quando `rhEmployeeId` é informado, a regra valida existência e pertencimento em `rh_directory/{rhEmployeeId}` da mesma empresa; vínculos legados sem `rhEmployeeId` seguem legíveis para saneamento manual. |
 | collective_assets | orgId (+ optional `organizationId` alias) | `orgId ==` | AiAssistantModule fixed as above |
 | commercial_clients | organizationId | `organizationId ==` | |
 | commercial_cost_compositions | organizationId | `organizationId ==`, getDoc | |
 | commercial_imports | organizationId | `organizationId ==` | |
-| commercial_materials | organizationId | `organizationId ==` | |
+| commercial_materials | organizationId | `organizationId ==` | Catálogo comercial. Quando `masterItemId` é confirmado por revisão humana, a regra valida existência e pertencimento em `items/{masterItemId}` da mesma empresa. |
 | commercial_policies | doc id | getDoc | doc id = organizationId |
 | commercial_proposal_items | organizationId, parent `commercial_proposals/{proposalId}` | `proposalId ==` only | read/delete also allowed via the parent proposal's org (`get()`), so the proposalId-only query works; create/update need the parent to exist and share the item's organizationId |
-| commercial_proposals | organizationId | `organizationId ==`, getDoc | |
+| commercial_proposals | organizationId | `organizationId ==`, getDoc | Conversão para `ganha` via `POST /api/commercial/proposals/:proposalId/win` cria/vincula atomicamente Contrato (`ct_prop_*`), Projeto/Obra mestre (`prj_prop_*`) com `budgetBaseline` v1 congelado e OS inicial (`os_prop_*`), rejeitando `default_unit` e unidades/contratos de outra empresa. |
 | construction_milestones | orgId | `orgId ==` | Marcos do cronograma por contrato/obra; guarda peso, avanço físico, início e término previstos, início e conclusão reais e responsável. O template cria etapas zeradas e não sobrescreve medições existentes. |
 | construction_reports | orgId (append-only) | `orgId ==` | RDO com unidade, contrato e clima escolhidos explicitamente; equipe registra quantidade e horas por profissional (`hours`), equipamentos registram quantidade e horas em operação; avanço diário é opcional. Criação exige `confirmedByUid == request.auth.uid`, nome, horário, local, contrato, clima e atividades. A área Operações nível 2 pode criar; nível 1 pode ler. Atualização e exclusão pelo cliente são bloqueadas. RDOs antigos continuam legíveis; `supervisorSignature` é apenas campo legado e não é interpretado como assinatura certificada. |
 | engineering_documents | orgId (append-only) | `orgId ==` | Cadastro privado de documentos técnicos por código/revisão, unidade e contrato; o ID é determinístico (`eng_{orgId}_{codigo}_{revisao}`), impede duplicar uma revisão e preserva versões anteriores. Firestore valida identidade de quem cadastrou, vínculo dos registros à mesma empresa, tipo, MIME, tamanho (até 20 MB) e caminho privado no Storage. Operações nível 2 cria; nível 1 lê. Sem atualização/exclusão pelo cliente. Arquivos PDF/JPEG/PNG/WEBP. | 
@@ -60,12 +60,14 @@ Owner kinds:
 | finance_payables | orgId | `orgId ==` | create by Admin/Gerente/Supervisor with `createdBy` = caller and no payment accumulators; Admin/Gerente may edit open-title fields only; payment totals/balance, settlement metadata and paid state change only through the authenticated backend transaction. Original `valor` is preserved; `valorPago`, `valorAbatido` and `saldoAberto` track the ledger. NF-e ids `pay_{orgId}_{chave}_{parcela}` remain create-if-absent; OC/OS/receipt references remain intact |
 | finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades, incluindo as chaves das NF-e, fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
-| hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
+| hr_onboardings | orgId + organizationId | `organizationId ==` | Persistido diretamente no Firestore pelo backend `/api/hr/onboarding/*` (`server/hrOnboardingRoutes.ts`, sem arquivo JSON local). Anexos de documentos do candidato são gravados no Firebase Storage privado em `hr-onboardings/{orgId}/{onboardingId}/{fileId}` (leitura restrita a RH nível 1; escrita somente servidor via Admin SDK). |
 | inspections | orgId | `orgId ==` | Fluxo criado e atualizado somente por `/api/inspections`; a transição gera evento imutável na mesma transação. Estados: agendada → em campo → aguardando revisão → aprovada/devolvida. |
 | item_categories | orgId | `orgId ==` | Stock editor administra categorias; Operações e Comercial podem consultar. |
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
 | items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
+| measurement_bulletins | orgId (server-only) | `orgId ==` | Boletins de Medição vinculados a contrato, unidade, projeto/obra (opcional) e aprovações LPU. Leitura por Operações, Comercial ou Financeiro (nível 1+); criação e transições exclusivamente via `/api/measurements/*`. Aprovação (`aprovado` / `aprovado_parcial`) gera atomicamente e de forma idempotente título em `finance_receivables` (`recv_{orgId}_bm_{bulletinId}`, `origem: 'medicao'`). |
+| measurement_events | orgId (server-only, append-only) | `orgId ==` + `bulletinId ==` | Trilha imutável de criação, envio, aprovação, glosa, devolução e cancelamento de Boletins de Medição. Leitura por Operações, Comercial ou Financeiro (nível 1+); escrita exclusiva do servidor. |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
 | nfe_sync | doc id | getDoc | read by members; server-only writes |
 | occurrences | orgId | `orgId ==` | |
@@ -75,6 +77,8 @@ Owner kinds:
 | org_members | orgId | see notes | read: member of `orgId`, own doc (`userId == uid`, or `uid == member_<docId>`), or verified token email (lowercased) == `userEmail`. Master may move a member to another org (`MasterCompanySelectorPage`). create/update/delete: master or Admin/Gerente of the org; a Gerente cannot create, change or delete an Admin; Admin/Gerente cannot change `orgId`. Self-update limited to `userName, updatedAt, lastLoginAt`. Nobody writes `passwordHash` or changes `userId`; on create `userId` is absent, `''` or the caller's uid |
 | organizations | doc id | full list, `slug ==`, `name ==` | read: any signed-in user. create/delete: master. update: master or Admin of that org |
 | overtime_rules | doc id | getDoc / onSnapshot | |
+| project_cost_facts | orgId (immutable / append-only) | `orgId ==` | Livro de fatos de custo realizado e comprometido por Projeto/Obra (HH, consumo de estoque, compras, despesas de campo e ajustes). Leitura por Financeiro, Operações, Comercial ou Estoque (nível 1+); criação por Admin/Gerente/Supervisor com Financeiro ou Operações nível 2 validando `projectId` na mesma empresa. Estornos exigem `isReversal: true` (valores negativos); atualização e exclusão são bloqueadas. |
+| projects | orgId | `orgId ==` | Entidade mestre Projeto/Obra. Leitura por Operações, Comercial, Estoque ou Financeiro (nível 1+). Criação e atualização exigem Admin/Gerente/Supervisor com Operações ou Comercial nível 2, validando `unitId` (sem `default_unit`), `contractId` e `costCenterId` (quando informado) na mesma empresa. Exclusão pelo cliente bloqueada (encerramento via status). |
 | purchasing_orders | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. Financeiro: leitura somente para conciliar NF-e/OC; sem escrita. |
 | purchasing_quotations | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. Financeiro: leitura somente para conciliar NF-e/recibo; sem escrita. |
@@ -87,7 +91,7 @@ Owner kinds:
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
-| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas por recebimento preservam OC, NF-e, recibo, custo e idempotência. | |
+| stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas e saídas persistem snapshot de `unitCost`, `totalCost` e `projectId` (quando informado) para apropriação de custo por obra. |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
@@ -95,16 +99,16 @@ Owner kinds:
 | travel_searches | organizationId | `organizationId ==` | |
 | trusted_devices | orgId + userId | `userId == && orgId ==`, `orgId ==` | read: org members. create: own `userId` only. update/delete: owner or Admin/Gerente; `userId`/org unchanged |
 | units | orgId | `orgId ==` | |
-| whatsapp_ai_rules | none (server-wide bridge) | full list | see WhatsApp below |
-| whatsapp_ai_settings | none | — | |
-| whatsapp_contacts | none | full list | |
-| whatsapp_nd_records | optional organizationId | full list | no client delete |
-| whatsapp_nd_rules | optional organizationId | full list | |
-| whatsapp_ocr_receipts | none | full list | no client delete |
-| whatsapp_quick_replies | none | — | |
-| whatsapp_scheduled_jobs | none | full list | |
+| whatsapp_ai_rules | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
+| whatsapp_ai_settings | orgId + organizationId | `orgId ==` | Doc id namespaced por empresa (`${orgId}_mention_trigger`); área WhatsApp (`A_WA()`). |
+| whatsapp_contacts | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
+| whatsapp_nd_records | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`); sem exclusão pelo cliente. |
+| whatsapp_nd_rules | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
+| whatsapp_ocr_receipts | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`); sem exclusão pelo cliente. |
+| whatsapp_quick_replies | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
+| whatsapp_scheduled_jobs | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`) + validação de campos. |
 | work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
-| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. |
+| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. Para OS de risco (`requiresSafetyPermit: true` ou `safetyPermitType` != `geral`), a transição para execução valida PT aprovada e dentro da validade + certificados/NRs e EPIs vigentes da equipe (via `rh_directory`), registrando `safetyGateVerified` no evento. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 
@@ -147,13 +151,13 @@ Este recurso é uma trilha interna de preparação e controle. Não é uma autor
 
 Os metadados são armazenados em `engineering_documents`; cada movimentação fica como evento separado em `engineering_document_events`. Ambos são escopados por `orgId`, vinculados a unidade e contrato da mesma empresa e append-only para o cliente. Os arquivos ficam em `engineering-documents/{orgId}/{documentId}/{fileId}` no Firebase Storage, sem URL pública, com leitura por Operações nível 1 e criação por Operações nível 2; formatos aceitos: PDF, JPEG, PNG e WEBP, até 20 MB. Novas revisões criam novos documentos e caminhos. O fluxo de aprovação do cliente registra a referência informada pelo responsável interno, sem autenticação externa ou assinatura digital certificada.
 
-## WhatsApp mirror
+## WhatsApp mirror (multi-tenant & área `whatsapp`)
 
-`src/services/composioWhatsAppClient.ts` mirrors the server's WhatsApp bridge state to `whatsapp_*` as a backup and
-reads it back with unfiltered `getDocs`. The bridge is one server-wide instance: its data has no org, and the server
-API (`/api/whatsapp/contacts`, `/assistant/*`, `/nd/*`, `/ocr-dashboard`) serves it to any authenticated member.
-The rules match that: master or a member of at least one org, plus the old field validations. Scoping these needs the
-server to tag bridge data with an org first.
+Todas as 8 coleções `whatsapp_*` exigem `orgId`/`organizationId` da empresa do chamador e permissão da área `whatsapp` (`A_WA()`: nível 1 para leitura, nível 2 para escrita) nas regras do Firestore, além de validação de empresa e área `whatsapp` nível >= 1 no middleware de API (`server/whatsappMiddleware.ts`). `src/services/composioWhatsAppClient.ts` sempre grava `orgId` + `organizationId` da empresa ativa (sem defaults fictícios) e consulta com `where('orgId', '==', orgId)`.
+
+## Admissões digitais (HR Onboarding)
+
+Os convites e submissões de admissão ficam na coleção `hr_onboardings` no Firestore (gerenciada por `server/hrOnboardingRoutes.ts`, sem arquivo JSON em disco). Os documentos enviados pelo candidato (RG, CPF, CTPS, PIS, comprovante de residência, ASO) são gravados pelo backend no Storage privado em `hr-onboardings/{orgId}/{onboardingId}/{fileId}` e baixados sob demanda via endpoint autenticado (`requireArea('rh', 1)`). As regras do Storage bloqueiam toda escrita direta do cliente e permitem leitura apenas a membros com RH nível >= 1 na mesma empresa.
 
 ## Client queries changed for the rules
 
@@ -168,7 +172,7 @@ server to tag bridge data with an org first.
 Composite index for `collective_asset_movements` (`orgId` + `status`) is in `firestore.indexes.json`.
 
 Unfiltered reads that stay: `organizations` (any signed-in user may list), `org_members` in
-`MasterCompanySelectorPage` (master only), `whatsapp_*` (see above).
+`MasterCompanySelectorPage` (master only).
 
 
 Contas a Receber usa `finance_receivables` para o título original e `finance_receivable_receipts` como razão imutável. `POST /api/finance/receivable-receipts` valida empresa, permissão, saldo disponível e chave de idempotência; a transação grava o evento e atualiza os acumuladores no título de forma atômica. Recebimentos parciais mantêm o status em aberto; somente saldo zero muda para Recebido. A conciliação de crédito usa `POST /api/finance/bank-reconciliation/:transactionId/match-receipt`, exige crédito bancário e igualdade exata com o dinheiro efetivamente recebido. Não emite NF-e, boleto, cobrança, transferência ou baixa fiscal.

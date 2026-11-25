@@ -37,11 +37,13 @@ import {
   listOnboardings,
   generateOnboardingLink,
   updateOnboardingStatus,
-  deleteOnboarding
+  deleteOnboarding,
+  fetchOnboardingDocument,
 } from '../../services/onboardingService';
 
 interface RhOnboardingManagerProps {
   currentOrgId: string;
+  orgName?: string;
   userEmail: string;
   userName: string;
   units?: Unit[];
@@ -53,6 +55,7 @@ interface RhOnboardingManagerProps {
 
 export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
   currentOrgId,
+  orgName = '',
   userEmail,
   userName,
   units = [],
@@ -73,8 +76,8 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
   const [activeDocPreview, setActiveDocPreview] = useState<{ title: string; base64: string; mimeType: string } | null>(null);
 
   // New Link Form State
-  const [targetRole, setTargetRole] = useState('Caldeireiro Montador');
-  const [targetDepartment, setTargetDepartment] = useState('Obras & Montagem');
+  const [targetRole, setTargetRole] = useState('');
+  const [targetDepartment, setTargetDepartment] = useState('');
   const [candidateName, setCandidateName] = useState('');
   const [candidatePhone, setCandidatePhone] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
@@ -87,6 +90,10 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
   // Load Data
   const loadData = async () => {
     try {
+      if (!currentOrgId) {
+        setOnboardings([]);
+        return;
+      }
       const data = await listOnboardings(currentOrgId);
       setOnboardings(data);
     } catch (err) {
@@ -114,8 +121,8 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
     setCandidatePhone('');
     setCandidateEmail('');
     setProposedSalary('');
-    setTargetRole('Caldeireiro Montador');
-    setTargetDepartment('Obras & Montagem');
+    setTargetRole('');
+    setTargetDepartment('');
     setExpiresInDays(7);
     setIsGenerateModalOpen(true);
   };
@@ -123,6 +130,10 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
   // Generate Link Action
   const handleGenerateLink = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentOrgId) {
+      alert('Selecione uma empresa ativa antes de emitir o link de admissão.');
+      return;
+    }
     if (!targetRole || !targetDepartment) {
       alert('Por favor, informe o cargo e departamento.');
       return;
@@ -132,7 +143,7 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
     try {
       const res = await generateOnboardingLink({
         organizationId: currentOrgId,
-        createdBy: userEmail || 'rh@agueroinox.com.br',
+        createdBy: userEmail,
         createdByName: userName || 'Recursos Humanos',
         targetRole,
         targetDepartment,
@@ -167,8 +178,9 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
   const handleSendWhatsApp = (onb: EmployeeOnboarding, customUrl?: string) => {
     const link = customUrl || `${window.location.origin}/admissao?token=${onb.token}`;
     const nameStr = onb.candidateName ? ` ${onb.candidateName}` : '';
+    const companyLabel = orgName || 'nossa empresa';
     const text = encodeURIComponent(
-      `Olá${nameStr}! Bem-vindo(a) à Aguero Inox & Montagens Industriais.\n\nPara iniciarmos seu processo de admissão para a vaga de *${onb.targetRole}*, por favor preencha seus dados cadastrais e envie fotos dos seus documentos pelo nosso link seguro de uso único:\n\n👉 ${link}\n\nQualquer dúvida estamos à disposição!`
+      `Olá${nameStr}! Bem-vindo(a) à ${companyLabel}.\n\nPara iniciarmos seu processo de admissão para a vaga de *${onb.targetRole}*, por favor preencha seus dados cadastrais e envie fotos dos seus documentos pelo nosso link seguro de uso único:\n\n👉 ${link}\n\nQualquer dúvida estamos à disposição!`
     );
 
     const cleanPhone = (onb.candidatePhone || '').replace(/\D/g, '');
@@ -194,29 +206,31 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
       return;
     }
 
-    if (!confirm(`Confirmar a admissão e efetivação de ${onb.submittedData.fullName} como funcionário ativo na Aguero Inox?`)) {
+    const companyLabel = orgName || 'a empresa selecionada';
+    if (!confirm(`Confirmar a admissão e efetivação de ${onb.submittedData.fullName} como funcionário ativo em ${companyLabel}?`)) {
       return;
     }
 
     try {
       const sub = onb.submittedData;
       const newEmpId = `emp_${Date.now()}`;
-      const hourlyRate = (onb.proposedSalary ? onb.proposedSalary / 220 : 18.5);
+      const proposedBase = typeof onb.proposedSalary === 'number' && onb.proposedSalary > 0 ? onb.proposedSalary : 0;
+      const hourlyRate = proposedBase > 0 ? Math.round((proposedBase / 220) * 100) / 100 : 0;
 
       const newEmployee: RhEmployee = {
         id: newEmpId,
         orgId: currentOrgId,
-        registrationNumber: `REG-${Math.floor(100 + Math.random() * 900)}`,
+        registrationNumber: '',
         name: sub.fullName,
         admissionDate: new Date().toISOString().split('T')[0],
         active: true,
-        department: onb.targetDepartment || sub.department || 'Produção',
-        role: onb.targetRole || sub.role || 'Operador',
-        companyName: 'Aguero Inox',
-        hourlyRateCarteira: Math.round(hourlyRate * 100) / 100,
+        department: onb.targetDepartment || sub.department || '',
+        role: onb.targetRole || sub.role || '',
+        companyName: orgName,
+        hourlyRateCarteira: hourlyRate,
         hourlyRatePorFora: 0,
         monthlyHours: 220,
-        baseSalaryCarteira: onb.proposedSalary || 4070,
+        baseSalaryCarteira: proposedBase,
         baseSalaryPorFora: 0,
         dependentsCount: sub.dependentsCount || 0,
         porForaEligible: false,
@@ -966,31 +980,51 @@ export const RhOnboardingManager: React.FC<RhOnboardingManagerProps> = ({
                         };
 
                         const isImage = doc.mimeType.startsWith('image/');
+                        const handleOpenDoc = async () => {
+                          if (doc.dataBase64) {
+                            setActiveDocPreview({
+                              title: docLabels[key] || doc.fileName,
+                              base64: doc.dataBase64,
+                              mimeType: doc.mimeType,
+                            });
+                            return;
+                          }
+                          try {
+                            const loaded = await fetchOnboardingDocument(
+                              selectedOnboardingForView.id,
+                              key,
+                              currentOrgId,
+                            );
+                            setActiveDocPreview({
+                              title: docLabels[key] || loaded.fileName,
+                              base64: loaded.dataBase64,
+                              mimeType: loaded.mimeType,
+                            });
+                          } catch (err: any) {
+                            alert(err?.message || 'Não foi possível carregar o documento do Storage.');
+                          }
+                        };
 
                         return (
                           <div
                             key={key}
-                            onClick={() =>
-                              setActiveDocPreview({
-                                title: docLabels[key] || doc.fileName,
-                                base64: doc.dataBase64,
-                                mimeType: doc.mimeType,
-                              })
-                            }
+                            onClick={handleOpenDoc}
                             className="bg-slate-950 border border-slate-800 hover:border-cyan-500 rounded-xl p-2.5 transition cursor-pointer group flex flex-col justify-between"
                           >
                             <span className="text-[10px] font-bold text-slate-300 truncate block mb-1">
                               {docLabels[key] || doc.fileName}
                             </span>
 
-                            {isImage ? (
+                            {isImage && doc.dataBase64 ? (
                               <div className="h-24 w-full bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-slate-800">
                                 <img src={doc.dataBase64} alt={key} className="h-full w-full object-cover group-hover:scale-105 transition" />
                               </div>
                             ) : (
                               <div className="h-24 w-full bg-slate-900 rounded-lg flex flex-col items-center justify-center text-slate-400 gap-1 border border-slate-800">
                                 <FileText size={24} className="text-cyan-400" />
-                                <span className="text-[9px] font-mono">PDF / Documento</span>
+                                <span className="text-[9px] font-mono">
+                                  {doc.storagePath ? 'Storage Privado (RH)' : 'PDF / Documento'}
+                                </span>
                               </div>
                             )}
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   WorkOrder,
   WorkOrderStatusConfig,
@@ -19,8 +19,12 @@ import {
   Sliders,
   ArrowRight,
   MessageSquare,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { getActiveTimeInfo, getPlanningSummary } from './workOrderHelpers';
+import { isRiskWorkOrder, type WorkOrderSafetyGateResult } from '../../services/workOrderSafetyGate';
+import { apiFetch } from '../../apiAuthFetch';
 
 interface OrderOverviewTabProps {
   order: WorkOrder;
@@ -47,6 +51,36 @@ export const OrderOverviewTab: React.FC<OrderOverviewTabProps> = ({
 }) => {
   const activeTime = getActiveTimeInfo(order);
   const planning = getPlanningSummary(order);
+  const riskOrder = isRiskWorkOrder(order);
+  const [safetyGate, setSafetyGate] = useState<WorkOrderSafetyGateResult | null>(null);
+  const [loadingSafety, setLoadingSafety] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!riskOrder || !order.id || !order.orgId) {
+      setSafetyGate(null);
+      return;
+    }
+    setLoadingSafety(true);
+    apiFetch(`/api/work-orders/${encodeURIComponent(order.id)}/safety-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId: order.orgId }),
+    })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (active && payload?.ok) setSafetyGate(payload as WorkOrderSafetyGateResult);
+      })
+      .catch(() => {
+        if (active) setSafetyGate(null);
+      })
+      .finally(() => {
+        if (active) setLoadingSafety(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [riskOrder, order.id, order.orgId, order.safetyPermitId, order.safetyPermitType, order.assignedEmployeeIds]);
 
   const resolveStatusKey = (rawStatus: string | undefined): string => {
     if (!rawStatus) return statuses[0]?.id || 'aberto';
@@ -59,6 +93,48 @@ export const OrderOverviewTab: React.FC<OrderOverviewTabProps> = ({
 
   return (
     <div className="space-y-4 text-xs">
+      {/* SMS / PT Execution Gate Banner for Risk Work Orders */}
+      {riskOrder && (
+        <div
+          className={`p-3.5 rounded-xl border ${
+            safetyGate?.allowed
+              ? 'bg-emerald-950/30 border-emerald-700/50 text-emerald-200'
+              : 'bg-amber-950/30 border-amber-700/60 text-amber-100'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              {safetyGate?.allowed ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              )}
+              <div className="space-y-1">
+                <p className="font-bold text-xs">
+                  {loadingSafety
+                    ? 'Verificando prontidão SMS (PT, NRs e EPIs)...'
+                    : safetyGate?.allowed
+                    ? `SMS Liberado — PT ${safetyGate.permitCode || safetyGate.permitId} aprovada (${safetyGate.checkedEmployeeCount} colaborador(es) apto(s))`
+                    : 'OS de Risco: Pendências de SMS bloqueiam o início da execução'}
+                </p>
+                {safetyGate && !safetyGate.allowed && safetyGate.blockers.length > 0 && (
+                  <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-200/90">
+                    {safetyGate.blockers.map((b, idx) => (
+                      <li key={`${b.code}_${idx}`}>{b.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            {order.safetyPermitType && (
+              <span className="px-2 py-0.5 rounded bg-slate-900/80 border border-slate-700 text-[10px] font-mono text-slate-300 shrink-0">
+                {order.safetyPermitType}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Active Time & SLA Highlight Banner */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900 border border-blue-900/40 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3.5">

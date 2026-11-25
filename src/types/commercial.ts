@@ -74,6 +74,14 @@ export interface CommercialMaterial {
   taxCost?: number;
   sourceDocumentRef?: string;
   importedBy?: string;
+  /** Vínculo explícito (confirmado por revisão humana) com o catálogo mestre `items`. */
+  masterItemId?: string | null;
+  masterItemSku?: string | null;
+  masterItemName?: string | null;
+  masterLinkStatus?: 'unlinked' | 'linked' | 'rejected';
+  masterLinkConfirmedBy?: string;
+  masterLinkConfirmedAt?: string;
+  masterLinkNotes?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -138,6 +146,7 @@ export interface CommercialProposalItem {
 export interface CommercialProposal {
   id: string;
   organizationId: string;
+  projectId?: string;
   contractId?: string;
   unitId?: string;
   code: string; // e.g., PROP-2026-001
@@ -195,6 +204,10 @@ export interface CommercialProposal {
   previsaoFechamento?: string;
   motivoPerda?: string;
   workOrderId?: string;
+  workOrderCode?: string;
+  projectCode?: string;
+  costCenterId?: string;
+  approvedBaselineSnapshot?: import('./project').ProjectBudgetBaseline;
   statusHistory?: Array<{ status: CommercialProposalStatus; at: string; by: string }>;
 
   history: Array<{

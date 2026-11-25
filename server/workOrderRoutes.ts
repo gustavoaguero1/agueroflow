@@ -2,9 +2,24 @@ import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { requireArea, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
+import {
+  evaluateWorkOrderSafetyGate,
+  isExecutionTransitionStatus,
+  isRiskWorkOrder,
+  type WorkOrderSafetyGateResult,
+} from '../src/services/workOrderSafetyGate.ts';
+import type { SafetyPermitRecord, SafetyPermitState } from '../src/types/safety.ts';
+import type {
+  SafetyComplianceSnapshot,
+  SafetyEmployee,
+  SafetyPpeCatalogItem,
+  SafetyPpeMovement,
+  SafetyTrainingCatalogItem,
+  SafetyTrainingRecord,
+} from '../src/services/safetyCompliance.ts';
 
 class RouteError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public details?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -25,8 +40,93 @@ type TransitionRequest = {
   actorUid: string;
 };
 
+async function loadSafetyGateResult(
+  reader: { get: (ref: any) => Promise<any> },
+  db: AdminHandles['db'],
+  orgId: string,
+  order: Record<string, any>,
+  nowIso: string,
+): Promise<WorkOrderSafetyGateResult> {
+  if (!isRiskWorkOrder(order)) {
+    return { requiresGate: false, allowed: true, blockers: [], checkedEmployeeCount: 0 };
+  }
+
+  const permitId = typeof order.safetyPermitId === 'string' ? order.safetyPermitId.trim() : '';
+  const [permitSnap, permitStateSnap, dirSnap, ppeCatSnap, ppeMovSnap, trainCatSnap, trainRecSnap] =
+    await Promise.all([
+      permitId ? reader.get(db.collection('safety_permits').doc(permitId)) : Promise.resolve(null),
+      permitId ? reader.get(db.collection('safety_permit_states').doc(permitId)) : Promise.resolve(null),
+      reader.get(db.collection('rh_directory').where('orgId', '==', orgId)),
+      reader.get(db.collection('safety_ppe_catalog').where('orgId', '==', orgId)),
+      reader.get(db.collection('safety_ppe_movements').where('orgId', '==', orgId)),
+      reader.get(db.collection('safety_training_catalog').where('orgId', '==', orgId)),
+      reader.get(db.collection('safety_training_records').where('orgId', '==', orgId)),
+    ]);
+
+  const permit = permitSnap?.exists ? ({ id: permitSnap.id, ...permitSnap.data() } as SafetyPermitRecord) : null;
+  const permitState = permitStateSnap?.exists
+    ? ({ id: permitStateSnap.id, ...permitStateSnap.data() } as SafetyPermitState)
+    : null;
+
+  const compliance: SafetyComplianceSnapshot = {
+    loading: false,
+    employees: (dirSnap?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() }) as SafetyEmployee),
+    ppeCatalog: (ppeCatSnap?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() }) as SafetyPpeCatalogItem),
+    ppeMovements: (ppeMovSnap?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() }) as SafetyPpeMovement),
+    trainingCatalog: (trainCatSnap?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() }) as SafetyTrainingCatalogItem),
+    trainingRecords: (trainRecSnap?.docs ?? []).map((d: any) => ({ id: d.id, ...d.data() }) as SafetyTrainingRecord),
+    legacyTrainingRecords: [],
+  };
+
+  return evaluateWorkOrderSafetyGate({
+    order: {
+      id: String(order.id || ''),
+      orgId,
+      unitId: String(order.unitId || ''),
+      contractId: typeof order.contractId === 'string' ? order.contractId : undefined,
+      requiresSafetyPermit: order.requiresSafetyPermit === true,
+      safetyPermitType: order.safetyPermitType,
+      safetyPermitId: permitId || undefined,
+      assignedEmployeeIds: Array.isArray(order.assignedEmployeeIds) ? order.assignedEmployeeIds : undefined,
+    },
+    permit,
+    permitState,
+    compliance,
+    nowIso,
+  });
+}
+
 export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
+
+  router.post('/:orderId/safety-check', requireArea('operacoes', 1), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const orderId = req.params.orderId;
+    if (!orgId || (req.body?.orgId && req.body.orgId !== orgId) || !validId(orderId)) {
+      return res.status(400).json({ ok: false, error: 'Informe empresa e OS válidas.' });
+    }
+    const admin = getH();
+    if (!admin) return res.status(503).json({ ok: false, error: 'Serviço de dados indisponível.' });
+
+    try {
+      const orderSnap = await admin.db.collection('work_orders').doc(orderId).get();
+      if (!orderSnap.exists) return res.status(404).json({ ok: false, error: 'Ordem de serviço não encontrada.' });
+      const order: Record<string, any> = { id: orderSnap.id, ...(orderSnap.data() as Record<string, any>) };
+      if (order.orgId !== orgId) return res.status(404).json({ ok: false, error: 'Ordem de serviço não encontrada.' });
+
+      const gate = await loadSafetyGateResult(
+        { get: (ref: any) => ref.get() },
+        admin.db,
+        orgId,
+        order,
+        new Date().toISOString(),
+      );
+      return res.status(200).json({ ok: true, ...gate });
+    } catch (error) {
+      console.error('[work order safety-check] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível validar a prontidão de SMS da OS.' });
+    }
+  });
 
   router.post('/:orderId/status', requireArea('operacoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
@@ -93,7 +193,7 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
         ]);
 
         if (!orderSnap.exists) throw new RouteError(404, 'Ordem de serviço não encontrada.');
-        const order = orderSnap.data() as Record<string, any>;
+        const order: Record<string, any> = { id: orderSnap.id, ...(orderSnap.data() as Record<string, any>) };
         if (order.orgId !== orgId) throw new RouteError(404, 'Ordem de serviço não encontrada.');
         if (String(order.status ?? '') !== expectedStatus) {
           throw new RouteError(409, 'A OS foi atualizada por outra pessoa. Atualize os dados e tente novamente.');
@@ -118,6 +218,27 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
         }
 
         const now = new Date().toISOString();
+
+        let safetyGateVerified: Record<string, unknown> | undefined;
+        if (isRiskWorkOrder(order) && isExecutionTransitionStatus(targetStatusId)) {
+          const gate = await loadSafetyGateResult(tx, admin.db, orgId, order, now);
+          if (!gate.allowed) {
+            const summary = gate.blockers.map((b) => b.message).join(' | ');
+            throw new RouteError(
+              422,
+              `Execução bloqueada pelo SMS: ${summary}`,
+              { blockers: gate.blockers },
+            );
+          }
+          safetyGateVerified = {
+            permitId: gate.permitId,
+            permitCode: gate.permitCode,
+            permitType: gate.permitType,
+            checkedEmployeeCount: gate.checkedEmployeeCount,
+            verifiedAt: now,
+          };
+        }
+
         const today = now.slice(0, 10);
         const orderUpdates: Record<string, string> = {
           status: targetStatusId,
@@ -146,20 +267,27 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
           previousStatus: expectedStatus,
           newStatus: targetStatusId,
           timestamp: now,
-          meta: { idempotencyKey },
+          meta: {
+            idempotencyKey,
+            ...(safetyGateVerified ? { safetyGateVerified } : {}),
+          },
         };
 
         tx.update(orderRef, orderUpdates);
         tx.create(eventRef, event);
         tx.create(operationRef, { ...request, eventId, orderUpdates, createdAt: now });
 
-        return { replayed: false, eventId, orderUpdates };
+        return { replayed: false, eventId, orderUpdates, ...(safetyGateVerified ? { safetyGateVerified } : {}) };
       });
 
       return res.status(200).json({ ok: true, ...result });
     } catch (error) {
       if (error instanceof RouteError) {
-        return res.status(error.status).json({ ok: false, error: error.message });
+        return res.status(error.status).json({
+          ok: false,
+          error: error.message,
+          ...(error.details ?? {}),
+        });
       }
       const code = (error as { code?: number | string })?.code;
       if (code === 6 || code === 'already-exists' || code === 10 || code === 'aborted') {

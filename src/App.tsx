@@ -19,6 +19,7 @@ import { AiAssistantModule } from './modules/AiAssistantModule';
 import { StructureModule } from './modules/StructureModule';
 import { SettingsModule } from './modules/SettingsModule';
 import { ConstructionModule } from './modules/ConstructionModule';
+import { MeasurementsModule } from './modules/MeasurementsModule';
 import { CollectiveAssetsModule, CollectiveAssetsSubSection } from './modules/CollectiveAssetsModule';
 import { RhPayrollModule, RhSubSection } from './modules/RhPayrollModule';
 import { CommercialModule, CommercialSubSection } from './modules/CommercialModule';
@@ -306,6 +307,7 @@ function MainRouter() {
         />
       )}
       {section === 'obras' && <ConstructionModule />}
+      {section === 'obras-medicoes' && <MeasurementsModule />}
       {(section === 'operacoes' || section.startsWith('ops-')) && (
         <OperationsModule
           route={section === 'operacoes' ? 'inicio' : section.slice(4)}

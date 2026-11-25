@@ -8,7 +8,9 @@ export const DIRECTORY_FIELDS = [
   'department', 'registrationNumber', 'unitId', 'codigoObra', 'updatedAt',
 ] as const;
 
-export type DirectoryEntry = Pick<RhEmployee, (typeof DIRECTORY_FIELDS)[number]>;
+export type DirectoryEntry = Pick<RhEmployee, (typeof DIRECTORY_FIELDS)[number]> & {
+  rhEmployeeId: string;
+};
 
 export type DirectoryOp = { kind: 'set'; id: string; data: DirectoryEntry } | { kind: 'delete'; id: string };
 
@@ -34,7 +36,7 @@ export function directoryChanges(
 }
 
 export function toDirectoryEntry(emp: RhEmployee): DirectoryEntry {
-  const out: Record<string, unknown> = {};
+  const out: Record<string, unknown> = { rhEmployeeId: emp.id };
   for (const k of DIRECTORY_FIELDS) {
     const v = (emp as unknown as Record<string, unknown>)[k];
     if (v !== undefined) out[k] = v;

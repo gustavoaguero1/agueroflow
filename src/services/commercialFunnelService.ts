@@ -90,18 +90,36 @@ export function pickInitialStatus<T extends { order?: number; isInitial?: boolea
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
 }
 
-/** The server atomically creates the proposal, OS, counter and timeline under Admin transaction control. */
-export async function markProposalWon(
+export interface ProposalWinResult {
+  workOrderId: string;
+  orderNumber: string | null;
+  contractId: string | null;
+  projectId: string | null;
+  projectCode: string | null;
+  replayed: boolean;
+}
+
+/** The server atomically creates Contract, Project (with frozen budgetBaseline), OS, counter and timeline under Admin transaction control. */
+export async function markProposalWonDetailed(
   _db: unknown,
   proposal: CommercialProposal,
   _user: { uid: string; name: string },
-): Promise<string> {
-  const result = await postFunnelAction<{ workOrderId: string }>(
+): Promise<ProposalWinResult> {
+  const result = await postFunnelAction<ProposalWinResult>(
     `/api/commercial/proposals/${encodeURIComponent(proposal.id)}/win`,
     { orgId: proposal.organizationId },
   );
   if (typeof result.workOrderId !== 'string' || !result.workOrderId) {
     throw new Error('A conversão foi aceita, mas o servidor não retornou o identificador da OS.');
   }
+  return result;
+}
+
+export async function markProposalWon(
+  _db: unknown,
+  proposal: CommercialProposal,
+  _user: { uid: string; name: string },
+): Promise<string> {
+  const result = await markProposalWonDetailed(_db, proposal, _user);
   return result.workOrderId;
 }

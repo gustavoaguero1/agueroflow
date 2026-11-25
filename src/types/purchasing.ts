@@ -38,6 +38,7 @@ export interface PurchaseRequisitionItem {
 export interface PurchaseRequisition {
   id: string;
   organizationId: string;
+  projectId?: string;
   code: string; // Ex: RC-2026-001
   title: string;
   requestedBy: string;
@@ -89,6 +90,7 @@ export interface SupplierBid {
 export interface PurchaseQuotationMap {
   id: string;
   organizationId: string;
+  projectId?: string;
   code: string; // Ex: MAP-2026-001
   title: string;
   requisitionId?: string;
@@ -135,6 +137,7 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrder {
   id: string;
   organizationId: string;
+  projectId?: string;
   code: string; // Ex: OC-2026-0042
   requisitionCode?: string;
   quotationMapCode?: string;
@@ -195,6 +198,7 @@ export interface PurchasingSupplier {
 export interface MaterialReceiptRecord {
   id: string;
   organizationId: string;
+  projectId?: string;
   purchaseOrderId: string;
   purchaseOrderCode: string;
   supplierName: string;

@@ -1,4 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
 import {
   CollectiveAssetWorker,
   CollectiveAssetMovement,
@@ -8,7 +10,9 @@ import {
   createCollectiveWorker,
   updateCollectiveWorker,
   toggleWorkerStatus,
+  linkCollectiveWorkerToRhDirectory,
 } from '../../services/collectiveAssetsService';
+import type { DirectoryEntry } from '../../services/rhDirectory';
 import {
   Users,
   Plus,
@@ -23,6 +27,7 @@ import {
   Phone,
   Briefcase,
   Building,
+  Link2,
 } from 'lucide-react';
 
 interface CollectiveWorkersManagerProps {
@@ -47,8 +52,10 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingWorker, setEditingWorker] = useState<CollectiveAssetWorker | null>(null);
+  const [rhDirectory, setRhDirectory] = useState<DirectoryEntry[]>([]);
 
   // Form states
+  const [formRhEmployeeId, setFormRhEmployeeId] = useState('');
   const [formRegistration, setFormRegistration] = useState('');
   const [formName, setFormName] = useState('');
   const [formSector, setFormSector] = useState('');
@@ -58,6 +65,28 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
   const [formIsActive, setFormIsActive] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!organizationId) {
+      setRhDirectory([]);
+      return;
+    }
+    getDocs(query(collection(db, 'rh_directory'), where('orgId', '==', organizationId)))
+      .then((snap) => {
+        if (!active) return;
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, rhEmployeeId: d.id, ...d.data() } as DirectoryEntry))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setRhDirectory(rows);
+      })
+      .catch((err) => {
+        console.warn('Falha ao carregar diretório de pessoas do RH:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [organizationId]);
 
   // Count active checkouts in possession of each worker
   const activeCheckoutsByWorker = useMemo(() => {
@@ -100,6 +129,7 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
 
   const handleOpenAdd = () => {
     setEditingWorker(null);
+    setFormRhEmployeeId('');
     setFormRegistration('');
     setFormName('');
     setFormSector('');
@@ -113,6 +143,7 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
 
   const handleOpenEdit = (worker: CollectiveAssetWorker) => {
     setEditingWorker(worker);
+    setFormRhEmployeeId(worker.rhEmployeeId || '');
     setFormRegistration(worker.registrationNumber || worker.registration || '');
     setFormName(worker.name);
     setFormSector(worker.department || worker.sector || '');
@@ -122,6 +153,19 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
     setFormIsActive(worker.active !== undefined ? worker.active : worker.isActive ?? true);
     setErrorMessage('');
     setIsModalOpen(true);
+  };
+
+  const handleSelectRhDirectory = (rhId: string) => {
+    setFormRhEmployeeId(rhId);
+    if (!rhId) return;
+    const entry = rhDirectory.find((d) => d.id === rhId);
+    if (!entry) return;
+    setFormName(entry.name || formName);
+    if (!editingWorker) {
+      setFormRegistration(entry.codigoObra || entry.registrationNumber || formRegistration);
+    }
+    if (entry.department) setFormSector(entry.department);
+    if (entry.role) setFormRole(entry.role);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -139,7 +183,11 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
 
     try {
       setIsSubmitting(true);
+      const selectedRhId = formRhEmployeeId.trim();
       if (editingWorker) {
+        if (selectedRhId && selectedRhId !== (editingWorker.rhEmployeeId || '')) {
+          await linkCollectiveWorkerToRhDirectory(organizationId, editingWorker.id, selectedRhId);
+        }
         await updateCollectiveWorker(editingWorker.id, {
           name: formName.trim(),
           sector: formSector.trim() || undefined,
@@ -147,10 +195,12 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
           contactPhone: formContactPhone.trim() || undefined,
           notes: formNotes.trim() || undefined,
           isActive: formIsActive,
+          ...(selectedRhId ? { rhEmployeeId: selectedRhId } : { rhEmployeeId: null }),
         });
       } else {
         await createCollectiveWorker({
           organizationId,
+          ...(selectedRhId ? { rhEmployeeId: selectedRhId } : {}),
           registration: formRegistration.trim(),
           name: formName.trim(),
           sector: formSector.trim() || undefined,
@@ -294,12 +344,27 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
 
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-200 text-xs">{w.name}</div>
-                        {w.contactPhone && (
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                            <Phone className="w-3 h-3 text-slate-500" />
-                            {w.contactPhone}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          {w.rhEmployeeId ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-mono text-emerald-300"
+                              title="Identidade vinculada ao cadastro mestre do RH (rh_employees)"
+                            >
+                              <Link2 className="w-2.5 h-2.5" />
+                              RH: {w.rhEmployeeId}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-300">
+                              Sem vínculo RH
+                            </span>
+                          )}
+                          {w.contactPhone && (
+                            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-500" />
+                              {w.contactPhone}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">
@@ -401,6 +466,27 @@ export const CollectiveWorkersManager: React.FC<CollectiveWorkersManagerProps> =
                   <span>{errorMessage}</span>
                 </div>
               )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Vínculo com Cadastro Mestre de RH (<span className="font-mono text-[11px] text-cyan-400">rhEmployeeId</span>)
+                </label>
+                <select
+                  value={formRhEmployeeId}
+                  onChange={(e) => handleSelectRhDirectory(e.target.value)}
+                  className="w-full bg-[#0b101b] border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">Sem vínculo explícito (cadastro legado/externo)</option>
+                  {rhDirectory.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.name} {entry.codigoObra || entry.registrationNumber ? `(${entry.codigoObra || entry.registrationNumber})` : ''} — {entry.role || 'Sem cargo'}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  O vínculo é sempre explícito por ID do RH — nunca associado automaticamente por nome.
+                </p>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

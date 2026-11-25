@@ -52,6 +52,7 @@ service cloud.firestore {
     function A_COM() { return 3; }
     function A_FIN() { return 4; }
     function A_RH() { return 5; }
+    function A_WA() { return 6; }
 
     // ---- Segurança do Trabalho & SMS ----------------------------------------
       function safetyRiskRank(level) {
@@ -463,7 +464,7 @@ service cloud.firestore {
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
           'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'inspection_events', 'item_categories', 'items',
-          'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
+          'lpu_approvals', 'occurrences', 'order_messages', 'projects', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
           'teams', 'units', 'work_order_statuses', 'work_orders', 'work_shifts', 'worker_time_logs',
           // organizationId
@@ -489,19 +490,73 @@ service cloud.firestore {
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       function areaRead(d) {
-        return coll in ['items', 'item_categories']
-          ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
-          : (coll in ['stock_balances', 'stock_movements']
-            ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
-            : (coll in ['purchasing_orders', 'purchasing_receipts']
-              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))));
+        return coll == 'projects'
+          ? (areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1) || areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+          : (coll in ['items', 'item_categories']
+            ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+            : (coll in ['stock_balances', 'stock_movements']
+              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+              : (coll in ['purchasing_orders', 'purchasing_receipts']
+                ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+                : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1)))));
       }
       function areaWrite(d) {
-        return coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
-          : (coll in ['stock_balances', 'stock_movements']
-            ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
-            : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2)));
+        return coll == 'projects'
+          ? (areaOk(orgOf(d), A_OPS(), 2) || areaOk(orgOf(d), A_COM(), 2))
+          : (coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
+            : (coll in ['stock_balances', 'stock_movements']
+              ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
+              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2))));
+      }
+      function projectUnitValid(d) {
+        let unitId = d.get('unitId', '');
+        let unitPath = /databases/$(database)/documents/units/$(unitId);
+        return unitId is string && unitId.size() > 0 && unitId.size() <= 180
+          && unitId != 'default_unit' && unitId.matches('[A-Za-z0-9_-]+')
+          && exists(unitPath) && orgOf(get(unitPath).data) == orgOf(d);
+      }
+      function projectContractValid(d) {
+        let contractId = d.get('contractId', '');
+        let contractPath = /databases/$(database)/documents/contracts/$(contractId);
+        return contractId is string && contractId.size() > 0 && contractId.size() <= 180
+          && contractId.matches('[A-Za-z0-9_-]+')
+          && exists(contractPath) && orgOf(get(contractPath).data) == orgOf(d);
+      }
+      function projectCostCenterValid(d) {
+        let ccId = d.get('costCenterId', '');
+        let ccPath = /databases/$(database)/documents/cost_centers/$(ccId);
+        return ccId == '' || ccId == null
+          || (ccId is string && ccId.size() > 0 && ccId.size() <= 180
+            && ccId.matches('[A-Za-z0-9_-]+')
+            && exists(ccPath) && orgOf(get(ccPath).data) == orgOf(d));
+      }
+      function validProjectCreate() {
+        let d = request.resource.data;
+        return signedIn()
+          && (isMaster() || hasRole(orgOf(d), ['Admin', 'Gerente', 'Supervisor']))
+          && d.get('id', '') == docId
+          && d.get('code', '') is string && d.get('code', '').size() >= 2 && d.get('code', '').size() <= 40
+          && d.get('name', '') is string && d.get('name', '').size() >= 3 && d.get('name', '').size() <= 180
+          && d.get('status', '') in ['planejamento', 'mobilizacao', 'em_execucao', 'paralisado', 'concluido', 'encerrado', 'cancelado']
+          && d.get('createdByUid', '') == request.auth.uid
+          && d.get('createdByName', '') is string && d.get('createdByName', '').size() > 0 && d.get('createdByName', '').size() <= 180
+          && projectUnitValid(d)
+          && projectContractValid(d)
+          && projectCostCenterValid(d);
+      }
+      function validProjectUpdate() {
+        let d = request.resource.data;
+        return signedIn()
+          && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
+          && d.get('id', '') == resource.data.get('id', '')
+          && d.get('createdByUid', '') == resource.data.get('createdByUid', '')
+          && d.get('createdAt', '') == resource.data.get('createdAt', '')
+          && d.get('code', '') is string && d.get('code', '').size() >= 2 && d.get('code', '').size() <= 40
+          && d.get('name', '') is string && d.get('name', '').size() >= 3 && d.get('name', '').size() <= 180
+          && d.get('status', '') in ['planejamento', 'mobilizacao', 'em_execucao', 'paralisado', 'concluido', 'encerrado', 'cancelado']
+          && (!d.diff(resource.data).affectedKeys().hasAny(['unitId']) || projectUnitValid(d))
+          && (!d.diff(resource.data).affectedKeys().hasAny(['contractId']) || projectContractValid(d))
+          && (!d.diff(resource.data).affectedKeys().hasAny(['costCenterId']) || projectCostCenterValid(d));
       }
       // Validate each reference independently to stay under the Firestore Rules local-variable limit.
       function workOrderUnitValid(d) {
@@ -1002,27 +1057,48 @@ service cloud.firestore {
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
           // Evaluate expensive validations only for the collection that needs them.
           && (coll != 'construction_reports' || validRdoCreate())
-          && (coll != 'quality_records' || validQualityRecordCreate())
-          && (coll != 'quality_record_events' || validQualityEventCreate())
-          && (coll != 'quality_record_states' || validQualityStateCreate())
           && (coll != 'work_orders' || workOrderReferencesValid(request.resource.data))
           && (coll != 'order_events' || validOrderEventCreate())
           && (coll != 'order_messages' || validOrderMessageCreate())
           && areaWrite(request.resource.data);
+      }
+      function collectiveWorkerRhLinkValid(d) {
+        let rhId = d.get('rhEmployeeId', '');
+        let rhPath = /databases/$(database)/documents/rh_directory/$(rhId);
+        return rhId == '' || rhId == null
+          || (rhId is string && rhId.size() > 0 && rhId.size() <= 180
+            && rhId.matches('[A-Za-z0-9_-]+')
+            && exists(rhPath) && orgOf(get(rhPath).data) == orgOf(d));
+      }
+      function commercialMaterialMasterItemValid(d) {
+        let itemId = d.get('masterItemId', '');
+        let itemPath = /databases/$(database)/documents/items/$(itemId);
+        return itemId == '' || itemId == null
+          || (itemId is string && itemId.size() > 0 && itemId.size() <= 180
+            && itemId.matches('[A-Za-z0-9_-]+')
+            && exists(itemPath) && orgOf(get(itemPath).data) == orgOf(d));
       }
       allow update: if orgScoped() && !immutable() && canUpdate()
         // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
         && !(coll in ['inspections', 'checklist_templates', 'checklist_runs'])
         && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
         && (coll == 'work_orders' ? workOrderUpdateReferencesValid() : true)
-        && (coll == 'order_messages'
-          ? (areaWrite(resource.data) && validOrderMessageUpdate())
-          : (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
-          ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
-          : (coll == 'quality_record_states'
-            ? (areaWrite(resource.data) && validQualityStateUpdate())
-            : (areaWrite(resource.data) || rhAllocation()))));
-      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs', 'order_messages']) && !immutable() && canDelete() && areaWrite(resource.data)
+        && (coll != 'collective_asset_workers'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['rhEmployeeId'])
+          || collectiveWorkerRhLinkValid(request.resource.data))
+        && (coll != 'commercial_materials'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['masterItemId'])
+          || commercialMaterialMasterItemValid(request.resource.data))
+        && (coll == 'projects'
+          ? (areaWrite(resource.data) && validProjectUpdate())
+          : (coll == 'order_messages'
+            ? (areaWrite(resource.data) && validOrderMessageUpdate())
+            : (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
+            ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
+            : (coll == 'quality_record_states'
+              ? (areaWrite(resource.data) && validQualityStateUpdate())
+              : (areaWrite(resource.data) || rhAllocation())))));
+      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs', 'order_messages', 'projects']) && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
@@ -1114,18 +1190,30 @@ service cloud.firestore {
           || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
       allow update, delete: if perOrgMutation();
-      // Keep engineering writes on a narrow validation path; the wildcard branch handles other domains.
+      // Keep engineering, quality, project, and master-data link writes on a narrow validation path; the wildcard branch handles other domains.
       allow create: if coll == 'engineering_documents'
         ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringDocumentCreate())
         : (coll == 'engineering_document_events'
           ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringEventCreate())
-          : (coll in [
-              'safety_permits', 'safety_permit_events', 'safety_permit_states',
-              'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
-            ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
-            ? false
-            : (finance() ? financeCreate()
-              : (perOrgDoc() ? perOrgCreate() : genericCreate()))));
+          : (coll == 'quality_records'
+            ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityRecordCreate())
+            : (coll == 'quality_record_events'
+              ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityEventCreate())
+              : (coll == 'quality_record_states'
+                ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityStateCreate())
+                : (coll == 'projects'
+                  ? (canCreate() && areaWrite(request.resource.data) && validProjectCreate())
+                  : (coll == 'collective_asset_workers'
+                    ? (canCreate() && areaWrite(request.resource.data) && collectiveWorkerRhLinkValid(request.resource.data))
+                    : (coll == 'commercial_materials'
+                      ? (canCreate() && areaWrite(request.resource.data) && commercialMaterialMasterItemValid(request.resource.data))
+                      : (coll in [
+                          'safety_permits', 'safety_permit_events', 'safety_permit_states',
+                          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
+                        ] || (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
+                        ? false
+                        : (finance() ? financeCreate()
+                          : (perOrgDoc() ? perOrgCreate() : genericCreate()))))))))));
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
@@ -1169,52 +1257,145 @@ service cloud.firestore {
       allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
     }
 
-    // ---- WhatsApp bridge mirror ----------------------------------------------
-    // The bridge is one server-wide instance: its data has no org owner and the server API serves it to any
-    // authenticated member. The mirror matches that: any member of some org (or master).
-    function waMember() { return isMaster() || hasAnyOrg(); }
+    // ---- WhatsApp bridge mirror (strict multi-tenant + area isolation) -------
+    // Every mirrored WhatsApp document must carry orgId/organizationId matching a caller's org
+    // and the caller must have WhatsApp area access (level >= 1 read, level >= 2 write).
+    function waCanRead(res) { return canRead(res) && (res == null || areaOk(orgOf(res.data), A_WA(), 1)); }
+    function waCanCreate() { return canCreate() && areaOk(orgOf(request.resource.data), A_WA(), 2); }
+    function waCanUpdate() { return canUpdate() && areaOk(orgOf(resource.data), A_WA(), 2); }
+    function waCanDelete() { return canDelete() && areaOk(orgOf(resource.data), A_WA(), 2); }
 
-    match /whatsapp_contacts/{id} { allow read, write: if waMember(); }
-    match /whatsapp_quick_replies/{id} { allow read, write: if waMember(); }
-    match /whatsapp_ai_rules/{id} { allow read, write: if waMember(); }
-    match /whatsapp_ai_settings/{id} { allow read, write: if waMember(); }
+    match /whatsapp_contacts/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_quick_replies/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_ai_rules/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
+    match /whatsapp_ai_settings/{id} {
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate();
+      allow update: if waCanUpdate();
+      allow delete: if waCanDelete();
+    }
 
     match /whatsapp_scheduled_jobs/{jobId} {
-      allow read, delete: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 160
-        && request.resource.data.scheduleTime is string
-        && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
-        && request.resource.data.promptInstruction is string
-        && request.resource.data.promptInstruction.size() > 0
-        && request.resource.data.promptInstruction.size() <= 2000;
+      function validWaJobPayload() {
+        return request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 160
+          && request.resource.data.scheduleTime is string
+          && request.resource.data.scheduleTime.matches('^\\d{2}:\\d{2}$')
+          && request.resource.data.promptInstruction is string
+          && request.resource.data.promptInstruction.size() > 0
+          && request.resource.data.promptInstruction.size() <= 2000;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaJobPayload();
+      allow update: if waCanUpdate() && validWaJobPayload();
+      allow delete: if waCanDelete();
     }
 
     match /whatsapp_ocr_receipts/{receiptId} {
-      allow read: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.establishmentName is string
-        && request.resource.data.establishmentName.size() <= 200
-        && request.resource.data.totalAmount is number;
+      function validWaReceiptPayload() {
+        return request.resource.data.establishmentName is string
+          && request.resource.data.establishmentName.size() <= 200
+          && request.resource.data.totalAmount is number;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaReceiptPayload();
+      allow update: if waCanUpdate() && validWaReceiptPayload();
+      allow delete: if false;
     }
 
     match /whatsapp_nd_rules/{ruleId} {
-      allow read, delete: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 160
-        && request.resource.data.groupJid is string;
+      function validWaNdRulePayload() {
+        return request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 160
+          && request.resource.data.groupJid is string;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaNdRulePayload();
+      allow update: if waCanUpdate() && validWaNdRulePayload();
+      allow delete: if waCanDelete();
     }
 
     match /whatsapp_nd_records/{recordId} {
-      allow read: if waMember();
-      allow create, update: if waMember()
-        && request.resource.data.receiverName is string
-        && request.resource.data.receiverName.size() <= 180
-        && request.resource.data.amount is number;
+      function validWaNdRecordPayload() {
+        return request.resource.data.receiverName is string
+          && request.resource.data.receiverName.size() <= 180
+          && request.resource.data.amount is number;
+      }
+      allow read: if waCanRead(resource);
+      allow create: if waCanCreate() && validWaNdRecordPayload();
+      allow update: if waCanUpdate() && validWaNdRecordPayload();
+      allow delete: if false;
+    }
+
+    // ---- Livro de custos realizados por Projeto/Obra (append-only) -----------
+    match /project_cost_facts/{factId} {
+      function factProjectValid(d) {
+        let projectId = d.get('projectId', '');
+        let pPath = /databases/$(database)/documents/projects/$(projectId);
+        return projectId is string && projectId.size() > 0 && projectId.size() <= 180
+          && projectId.matches('[A-Za-z0-9_-]+')
+          && exists(pPath) && orgOf(get(pPath).data) == orgOf(d);
+      }
+      function factPayloadValid(d) {
+        return d.get('id', '') == factId
+          && d.get('source', '') in ['labor_hh', 'stock_consumption', 'purchasing_order', 'purchasing_receipt', 'finance_payable', 'field_expense', 'manual_adjustment']
+          && d.get('stage', '') in ['comprometido', 'realizado']
+          && d.get('sourceId', '') is string && d.get('sourceId', '').size() > 0 && d.get('sourceId', '').size() <= 180
+          && d.get('idempotencyKey', '') is string && d.get('idempotencyKey', '').size() > 0 && d.get('idempotencyKey', '').size() <= 240
+          && d.get('description', '') is string && d.get('description', '').size() >= 3 && d.get('description', '').size() <= 300
+          && d.get('amount', 0) is number && d.get('amount', 0) != 0 && d.get('amount', 0) >= -1000000000 && d.get('amount', 0) <= 1000000000
+          && (d.get('amount', 0) > 0 || d.get('isReversal', false) == true)
+          && d.get('createdByUid', '') == request.auth.uid;
+      }
+      function factCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_FIN(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_STOCK(), 1);
+      }
+      function factCanCreate(d) {
+        let o = orgOf(d);
+        return (isMaster() || hasRole(o, ['Admin', 'Gerente', 'Supervisor']))
+          && (areaOk(o, A_FIN(), 2) || areaOk(o, A_OPS(), 2));
+      }
+      allow read: if canRead(resource) && (resource == null || factCanRead(resource.data));
+      allow create: if canCreate() && factCanCreate(request.resource.data)
+        && factProjectValid(request.resource.data)
+        && factPayloadValid(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // ---- Medições e Boletim de Medição (escrita exclusiva do backend /api/measurements) ----
+    match /measurement_bulletins/{bulletinId} {
+      function bmCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || bmCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
+    match /measurement_events/{eventId} {
+      function bmEventCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || bmEventCanRead(resource.data));
+      allow create, update, delete: if false;
     }
   }
 }

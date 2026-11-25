@@ -91,6 +91,12 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // HR onboarding candidate documents (uploaded exclusively by backend Admin SDK).
+    match /hr-onboardings/{orgId}/{onboardingId}/{fileId} {
+      allow read: if isMaster() || (isMember(orgId) && int(areaCode(orgId)[5:6]) >= 1);
+      allow write: if false;
+    }
+
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

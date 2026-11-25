@@ -25,7 +25,7 @@ export const AREAS: Array<{ id: AreaId; label: string; description: string; sect
   { id: 'comercial', label: 'Comercial', description: 'Propostas, clientes, composições e marketing.', sections: ['comercial', 'marketing'], enforcedInDatabase: true },
   { id: 'financeiro', label: 'Financeiro', description: 'Contas a pagar, categorias e notas fiscais.', sections: ['financeiro'], enforcedInDatabase: true },
   { id: 'rh', label: 'RH e salários', description: 'Funcionários, salários, admissões, 13º e relatórios de RH.', sections: ['rh'], enforcedInDatabase: true },
-  { id: 'whatsapp', label: 'WhatsApp', description: 'Central de conversas, automações, NDs e recibos.', sections: ['whatsapp'], enforcedInDatabase: false },
+  { id: 'whatsapp', label: 'WhatsApp', description: 'Central de conversas, automações, NDs e recibos.', sections: ['whatsapp'], enforcedInDatabase: true },
   { id: 'relatorios', label: 'Relatórios e IA', description: 'Relatórios gerais e assistente de IA.', sections: ['relatorios', 'ia'], enforcedInDatabase: false },
   { id: 'estrutura', label: 'Estrutura', description: 'Unidades, contratos, equipes e auditoria.', sections: ['estrutura', 'contratos', 'auditoria'], enforcedInDatabase: false },
   { id: 'configuracoes', label: 'Configurações', description: 'Tema e dispositivos (todo mundo); empresa, equipe e acessos (quem edita).', sections: ['configuracoes'], enforcedInDatabase: true },

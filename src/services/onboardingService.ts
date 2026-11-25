@@ -117,7 +117,8 @@ export async function submitOnboardingForm(
   return data;
 }
 
-export async function listOnboardings(orgId: string = 'org_aguero_default'): Promise<EmployeeOnboarding[]> {
+export async function listOnboardings(orgId: string): Promise<EmployeeOnboarding[]> {
+  if (!orgId) return [];
   const byId = new Map<string, EmployeeOnboarding>();
 
   // 1. Load from server gateway (includes public candidate submissions)
@@ -214,4 +215,24 @@ export async function deleteOnboarding(id: string): Promise<void> {
       // Non-blocking
     }
   }
+}
+
+export async function fetchOnboardingDocument(
+  onboardingId: string,
+  docKey: string,
+  orgId?: string,
+): Promise<{ fileName: string; mimeType: string; dataBase64: string }> {
+  const qs = orgId ? `?orgId=${encodeURIComponent(orgId)}` : '';
+  const res = await apiFetch(
+    `/api/hr/onboarding/${encodeURIComponent(onboardingId)}/document/${encodeURIComponent(docKey)}${qs}`,
+  );
+  const data = await res.json();
+  if (!res.ok || !data.success || !data.dataBase64) {
+    throw new Error(data.error || 'Falha ao carregar documento de admissão.');
+  }
+  return {
+    fileName: data.fileName || docKey,
+    mimeType: data.mimeType || 'application/octet-stream',
+    dataBase64: data.dataBase64,
+  };
 }

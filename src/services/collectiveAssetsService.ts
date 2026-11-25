@@ -1083,21 +1083,25 @@ export async function toggleCategoryStatus(id: string, active: boolean): Promise
 
 export async function createCollectiveWorker(data: any): Promise<string> {
   const orgId = data.orgId || data.organizationId;
-  const id = `wrk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const rhEmployeeId = typeof data.rhEmployeeId === 'string' && data.rhEmployeeId.trim() ? data.rhEmployeeId.trim() : undefined;
+  const id = rhEmployeeId
+    ? `caw_${rhEmployeeId.replace(/^emp_/, '')}`
+    : `wrk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const now = new Date().toISOString();
   const reg = data.registrationNumber || data.registration || '';
   const dept = data.department || data.sector || '';
   const workerData: CollectiveAssetWorker = {
     id,
     orgId,
+    ...(rhEmployeeId ? { rhEmployeeId } : {}),
     registrationNumber: reg,
     name: data.name,
     department: dept,
-    role: data.role || 'Geral',
-    contactPhone: data.contactPhone,
+    role: data.role || '',
+    ...(data.contactPhone ? { contactPhone: data.contactPhone } : {}),
     active: data.active !== undefined ? data.active : data.isActive ?? true,
-    notes: data.notes,
-    linkedUserId: data.linkedUserId,
+    ...(data.notes ? { notes: data.notes } : {}),
+    ...(data.linkedUserId ? { linkedUserId: data.linkedUserId } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -1109,6 +1113,7 @@ export async function updateCollectiveWorker(id: string, data: Partial<any>): Pr
   const updates: any = {
     updatedAt: new Date().toISOString(),
   };
+  if (data.rhEmployeeId !== undefined) updates.rhEmployeeId = data.rhEmployeeId || null;
   if (data.name !== undefined) updates.name = data.name;
   if (data.registrationNumber !== undefined) updates.registrationNumber = data.registrationNumber;
   if (data.registration !== undefined) updates.registrationNumber = data.registration;
@@ -1121,6 +1126,31 @@ export async function updateCollectiveWorker(id: string, data: Partial<any>): Pr
   if (data.notes !== undefined) updates.notes = data.notes;
 
   await updateDoc(doc(db, 'collective_asset_workers', id), updates);
+}
+
+export async function linkCollectiveWorkerToRhDirectory(
+  orgId: string,
+  workerId: string,
+  rhEmployeeId: string,
+): Promise<void> {
+  const cleanRhId = rhEmployeeId.trim();
+  if (!cleanRhId) throw new Error('Informe o rhEmployeeId para vincular o colaborador.');
+  const dirSnap = await getDoc(doc(db, 'rh_directory', cleanRhId));
+  if (!dirSnap.exists() || dirSnap.data()?.orgId !== orgId) {
+    throw new Error('Colaborador não encontrado no diretório oficial do RH desta empresa.');
+  }
+  const dir = dirSnap.data() as Record<string, any>;
+  const patch: Record<string, unknown> = {
+    rhEmployeeId: cleanRhId,
+    active: dir.active === true && !dir.dismissalDate,
+    updatedAt: new Date().toISOString(),
+  };
+  if (dir.name) patch.name = dir.name;
+  const reg = dir.codigoObra || dir.registrationNumber;
+  if (reg) patch.registrationNumber = reg;
+  if (dir.department) patch.department = dir.department;
+  if (dir.role) patch.role = dir.role;
+  await updateDoc(doc(db, 'collective_asset_workers', workerId), patch);
 }
 
 export async function toggleWorkerStatus(id: string, active: boolean): Promise<void> {

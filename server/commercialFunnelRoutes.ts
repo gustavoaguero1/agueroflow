@@ -1,6 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { requireArea } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
+import {
+  buildDerivedContractFromProposal,
+  buildDerivedProjectFromProposal,
+  buildFrozenBudgetBaselineFromProposal,
+  validateProposalWinUnitId,
+} from '../src/services/proposalBaselineRules.ts';
 
 class FunnelRouteError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -96,6 +102,10 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
     const eventId = `${orderId}_created`;
     const eventRef = admin.db.collection('order_events').doc(eventId);
     const counterRef = admin.db.collection('counters').doc(`${orgId}_work_orders`);
+    const derivedContractId = `ct_prop_${proposalId}`;
+    const derivedContractRef = admin.db.collection('contracts').doc(derivedContractId);
+    const derivedProjectId = `prj_prop_${proposalId}`;
+    const derivedProjectRef = admin.db.collection('projects').doc(derivedProjectId);
 
     try {
       const result = await admin.db.runTransaction(async (tx) => {
@@ -104,25 +114,83 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
         const proposal = proposalSnap.data() as Record<string, any>;
         if (orgOf(proposal) !== orgId) throw new FunnelRouteError(404, 'Proposta não encontrada.');
         if (proposal.workOrderId) {
-          return { workOrderId: proposal.workOrderId, orderNumber: proposal.workOrderCode ?? null, replayed: true };
+          return {
+            workOrderId: proposal.workOrderId,
+            orderNumber: proposal.workOrderCode ?? null,
+            contractId: proposal.contractId ?? null,
+            projectId: proposal.projectId ?? null,
+            projectCode: proposal.projectCode ?? null,
+            replayed: true,
+          };
         }
         if (proposal.status === 'perdida' || proposal.status === 'rejeitada') {
           throw new FunnelRouteError(409, 'Proposta perdida/rejeitada não pode gerar OS.');
         }
-        const unitId = typeof proposal.unitId === 'string' ? proposal.unitId.trim() : '';
-        if (!unitId) throw new FunnelRouteError(400, 'Vincule uma unidade válida à proposta antes de convertê-la em OS.');
+
+        let unitId: string;
+        try {
+          unitId = validateProposalWinUnitId(proposal.unitId);
+        } catch (err: any) {
+          throw new FunnelRouteError(400, err?.message || 'Vincule uma unidade válida à proposta antes de convertê-la.');
+        }
 
         const unitSnap = await tx.get(admin.db.collection('units').doc(unitId));
         if (!unitSnap.exists || orgOf(unitSnap.data() as Record<string, any>) !== orgId) {
           throw new FunnelRouteError(400, 'A unidade vinculada à proposta não pertence à empresa selecionada.');
         }
 
-        let contractId: string | undefined;
+        let contractId: string;
+        let shouldCreateContract = false;
         if (typeof proposal.contractId === 'string' && proposal.contractId.trim()) {
           contractId = proposal.contractId.trim();
           const contractSnap = await tx.get(admin.db.collection('contracts').doc(contractId));
           if (!contractSnap.exists || orgOf(contractSnap.data() as Record<string, any>) !== orgId) {
             throw new FunnelRouteError(400, 'O contrato vinculado à proposta não pertence à empresa selecionada.');
+          }
+        } else {
+          contractId = derivedContractId;
+          const derivedContractSnap = await tx.get(derivedContractRef);
+          if (derivedContractSnap.exists) {
+            if (orgOf(derivedContractSnap.data() as Record<string, any>) !== orgId) {
+              throw new FunnelRouteError(409, 'Conflito de identificador de contrato para esta proposta.');
+            }
+          } else {
+            shouldCreateContract = true;
+          }
+        }
+
+        let costCenterId: string | undefined;
+        if (typeof proposal.costCenterId === 'string' && proposal.costCenterId.trim()) {
+          costCenterId = proposal.costCenterId.trim();
+          const ccSnap = await tx.get(admin.db.collection('cost_centers').doc(costCenterId));
+          if (!ccSnap.exists || orgOf(ccSnap.data() as Record<string, any>) !== orgId) {
+            throw new FunnelRouteError(400, 'O centro de custo vinculado à proposta não pertence à empresa selecionada.');
+          }
+        }
+
+        let projectId: string;
+        let projectCode: string;
+        let shouldCreateProject = false;
+        let existingProjectSnap: any = null;
+        if (typeof proposal.projectId === 'string' && proposal.projectId.trim()) {
+          projectId = proposal.projectId.trim();
+          existingProjectSnap = await tx.get(admin.db.collection('projects').doc(projectId));
+          if (!existingProjectSnap.exists || orgOf(existingProjectSnap.data() as Record<string, any>) !== orgId) {
+            throw new FunnelRouteError(400, 'O projeto vinculado à proposta não pertence à empresa selecionada.');
+          }
+          projectCode = String(existingProjectSnap.data()?.code || projectId);
+        } else {
+          projectId = derivedProjectId;
+          const derivedProjSnap = await tx.get(derivedProjectRef);
+          if (derivedProjSnap.exists) {
+            if (orgOf(derivedProjSnap.data() as Record<string, any>) !== orgId) {
+              throw new FunnelRouteError(409, 'Conflito de identificador de projeto para esta proposta.');
+            }
+            existingProjectSnap = derivedProjSnap;
+            projectCode = String(derivedProjSnap.data()?.code || derivedProjectId);
+          } else {
+            shouldCreateProject = true;
+            projectCode = '';
           }
         }
 
@@ -163,35 +231,114 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
         const now = new Date().toISOString();
         const orderNumber = `OS-${now.slice(0, 4)}-${String(nextSeq).padStart(3, '0')}`;
         const userName = actor.email || actor.uid;
+
+        const budgetBaseline = buildFrozenBudgetBaselineFromProposal({
+          proposal: { id: proposalId, ...proposal },
+          actorUid: actor.uid,
+          actorName: userName,
+          frozenAt: now,
+        });
+
+        const derivedContract = shouldCreateContract
+          ? buildDerivedContractFromProposal({
+              orgId,
+              unitId,
+              proposal: { id: proposalId, ...proposal },
+              now,
+            })
+          : null;
+
+        const derivedProject = shouldCreateProject
+          ? buildDerivedProjectFromProposal({
+              orgId,
+              unitId,
+              contractId,
+              costCenterId,
+              proposal: { id: proposalId, ...proposal },
+              budgetBaseline,
+              actorUid: actor.uid,
+              actorName: userName,
+              now,
+            })
+          : null;
+
+        if (derivedProject) {
+          projectCode = derivedProject.code;
+        }
+
         const workOrder = {
-          id: orderId, orgId, unitId, ...(contractId ? { contractId } : {}),
+          id: orderId,
+          orgId,
+          unitId,
+          contractId,
+          projectId,
           orderNumber,
           title: `${proposal.code || proposalId} - ${proposal.title || 'Nova OS'}`,
           description: [proposal.clientName ? `Cliente: ${proposal.clientName}` : '', proposal.scopeDescription || '']
             .filter(Boolean).join('\n').trim(),
-          orderType: 'solicitacao', priority: 'media', status: initial.id,
-          requesterId: actor.uid, requesterName: userName, estimatedHours: 0,
-          estimatedCost: (Number(proposal.totalBaseCost) || 0) + (Number(proposal.totalFreightCost) || 0) + (Number(proposal.totalTaxCost) || 0),
-          proposalId, isRework: false, createdAt: now, updatedAt: now,
+          orderType: 'solicitacao',
+          priority: 'media',
+          status: initial.id,
+          requesterId: actor.uid,
+          requesterName: userName,
+          estimatedHours: 0,
+          estimatedCost: budgetBaseline.plannedDirectCost,
+          proposalId,
+          isRework: false,
+          createdAt: now,
+          updatedAt: now,
         };
         const event = {
-          id: eventId, orgId, orderId, userId: actor.uid, userName,
+          id: eventId,
+          orgId,
+          orderId,
+          userId: actor.uid,
+          userName,
           eventType: 'criacao',
-          description: `OS ${orderNumber} criada a partir da proposta ${proposal.code || proposalId}.`,
-          newStatus: initial.id, timestamp: now,
+          description: `OS ${orderNumber} criada a partir da proposta ${proposal.code || proposalId} (Projeto ${projectCode}).`,
+          newStatus: initial.id,
+          timestamp: now,
         };
+
+        if (derivedContract) tx.create(derivedContractRef, derivedContract);
+        if (derivedProject) {
+          tx.create(derivedProjectRef, derivedProject);
+        } else if (existingProjectSnap && !existingProjectSnap.data()?.budgetBaseline) {
+          tx.update(admin.db.collection('projects').doc(projectId), {
+            budgetBaseline,
+            proposalId,
+            ...(proposal.code ? { proposalCode: proposal.code } : {}),
+            updatedAt: now,
+          });
+        }
 
         if (counterSnap.exists) tx.update(counterRef, { seq: nextSeq });
         else tx.create(counterRef, { orgId, seq: nextSeq });
         tx.create(orderRef, workOrder);
         tx.create(eventRef, event);
         tx.update(proposalRef, {
-          status: 'ganha', workOrderId: orderId, workOrderCode: orderNumber,
+          status: 'ganha',
+          contractId,
+          projectId,
+          projectCode,
+          workOrderId: orderId,
+          workOrderCode: orderNumber,
+          approvedBaselineSnapshot: budgetBaseline,
           updatedAt: now,
-          statusHistory: [...(Array.isArray(proposal.statusHistory) ? proposal.statusHistory : []),
-            historyEntry('ganha', actor.email || actor.uid, now)],
+          statusHistory: [
+            ...(Array.isArray(proposal.statusHistory) ? proposal.statusHistory : []),
+            historyEntry('ganha', actor.email || actor.uid, now),
+          ],
         });
-        return { workOrderId: orderId, orderNumber, replayed: false };
+        return {
+          workOrderId: orderId,
+          orderNumber,
+          contractId,
+          projectId,
+          projectCode,
+          budgetBaseline,
+          replayed: false,
+        };
       });
       return res.status(200).json({ ok: true, ...result });
     } catch (error) {
