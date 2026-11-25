@@ -11,9 +11,6 @@ import {
 import type { SafetyPermitInput, SafetyOccurrenceInput } from '../src/services/safetyManagement';
 
 const validPermit: SafetyPermitInput = {
-  unitId: 'unit_a',
-  contractId: 'contract_a',
-  documentType: 'apr',
   validFrom: '2026-11-25T07:00',
   validUntil: '2026-11-25T17:00',
   permitType: 'trabalho_a_quente',
@@ -46,8 +43,7 @@ const validOccurrence: SafetyOccurrenceInput = {
 test('validates an APR/PT for hot work with controls and risk assessment', () => {
   assert.deepEqual(validateSafetyPermitInput(validPermit), []);
   assert.equal(requiredSafetyControls('trabalho_a_quente').some((item) => item.key === 'fireWatch'), true);
-  assert.equal(safetyPermitCode('apr', '2026-11-25', 'permit_abc12345'), 'APR-2026-ABC12345');
-  assert.equal(safetyPermitCode('pt', '2026-11-25', 'permit_abc12345'), 'PT-2026-ABC12345');
+  assert.equal(safetyPermitCode('2026-11-25', 'permit_abc12345'), 'PT-2026-ABC12345');
 });
 
 test('accepts multiple separately described hazards in one APR', () => {
@@ -67,14 +63,6 @@ test('accepts multiple separately described hazards in one APR', () => {
   assert.deepEqual(errors, []);
 });
 
-test('requires APR link for a PT and prevents linking an APR to another APR', () => {
-  const missingLink = validateSafetyPermitInput({ ...validPermit, documentType: 'pt' });
-  assert.ok(missingLink.some((message) => message.includes('APR aprovada')));
-  const aprWithLink = validateSafetyPermitInput({ ...validPermit, relatedAprId: 'apr_123' });
-  assert.ok(aprWithLink.some((message) => message.includes('não pode ser vinculada')));
-  assert.deepEqual(validateSafetyPermitInput({ ...validPermit, documentType: 'pt', relatedAprId: 'apr_approved_01' }), []);
-});
-
 test('requires specialized controls for height, confined-space, electrical and lifting work', () => {
   const required = (type: Parameters<typeof requiredSafetyControls>[0]) =>
     requiredSafetyControls(type).map((item) => item.key);
@@ -83,6 +71,7 @@ test('requires specialized controls for height, confined-space, electrical and l
   assert.ok(required('espaco_confinado').includes('rescuePlan'));
   assert.ok(required('eletrico').includes('zeroEnergyVerified'));
   assert.ok(required('icamento').includes('liftPlanReviewed'));
+  assert.ok(required('abertura_de_linha').includes('lockoutTagout'));
 });
 
 test('rejects permits with missing mandatory control, reversed validity or higher residual risk', () => {
@@ -116,6 +105,20 @@ test('rejects incomplete risk descriptions and duplicate team members', () => {
   assert.ok(errors.some((message) => message.includes('medidas de controle')));
 });
 
+test('rejects more than five hazards', () => {
+  const errors = validateSafetyPermitInput({
+    ...validPermit,
+    risks: Array.from({ length: 6 }, (_, index) => ({
+      hazard: 'Perigo identificado ' + index,
+      consequence: 'Consequência possível ' + index,
+      initialRisk: 'alto' as const,
+      controlMeasures: 'Medida de controle suficiente para o perigo ' + index,
+      residualRisk: 'medio' as const,
+    })),
+  });
+  assert.ok(errors.some((message) => message.includes('1 a 5')));
+});
+
 test('validates SMS occurrences without requiring unnecessary personal health details', () => {
   assert.deepEqual(validateSafetyOccurrenceInput(validOccurrence), []);
   const errors = validateSafetyOccurrenceInput({
@@ -126,7 +129,7 @@ test('validates SMS occurrences without requiring unnecessary personal health de
   });
   assert.ok(errors.some((message) => message.includes('data válida')));
   assert.ok(errors.some((message) => message.includes('classificação')));
-  assert.ok(errors.some((message) => message.includes('Descrição') || message.includes('Descreva')));
+  assert.ok(errors.some((message) => message.includes('Descreva')));
 });
 
 test('APR/PT status workflow does not allow approval or closure out of order', () => {
@@ -141,6 +144,6 @@ test('APR/PT status workflow does not allow approval or closure out of order', (
 });
 
 test('local safety date and permit code are deterministic in their formats', () => {
-  assert.match(localSafetyDate(), /^\d{4}-\d{2}-\d{2}$/);
-  assert.match(safetyPermitCode('pt', localSafetyDate(), 'abcdefghi'), /^PT-\\d{4}-[A-Z0-9]{8}$/);
+  assert.match(localSafetyDate(), /^\\d{4}-\\d{2}-\\d{2}$/);
+  assert.match(safetyPermitCode(localSafetyDate(), 'abcdefghi'), /^PT-\\d{4}-[A-Z0-9]{8}$/);
 });
