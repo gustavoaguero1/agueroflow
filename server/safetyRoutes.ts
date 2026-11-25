@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../src/services/safetyCompliance.ts';
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
 import type { SafetyPermitEventType } from '../src/types/safety.ts';
-import { areaLevelOf, requireArea } from './authMiddleware.ts';
+import { requireArea } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class SafetyRouteError extends Error {
@@ -171,7 +171,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
   });
 
   const validDate = (value: unknown): value is string => {
-    if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const [year, month, day] = value.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
