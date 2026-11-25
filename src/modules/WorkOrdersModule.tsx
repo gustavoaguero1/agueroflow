@@ -407,9 +407,17 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   const [formPriority, setFormPriority] = useState<WorkOrderPriority>('media');
   const [formStatus, setFormStatus] = useState<string>('aberto');
   const [formUnitId, setFormUnitId] = useState('');
+  const [formProjectId, setFormProjectId] = useState('');
   const [formContractId, setFormContractId] = useState('');
   const [formCostCenterId, setFormCostCenterId] = useState('');
   const [formAssetId, setFormAssetId] = useState('');
+  const [formRequiresSafetyPermit, setFormRequiresSafetyPermit] = useState(false);
+  const [formSafetyPermitType, setFormSafetyPermitType] = useState('');
+  const [formSafetyPermitId, setFormSafetyPermitId] = useState('');
+  const [formAssignedEmployeeIds, setFormAssignedEmployeeIds] = useState<string[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; code: string; name: string; unitId?: string; contractId?: string }>>([]);
+  const [safetyPermits, setSafetyPermits] = useState<Array<{ id: string; permitCode: string; activityTitle: string; documentType: string }>>([]);
+  const [directoryEmployees, setDirectoryEmployees] = useState<Array<{ id: string; fullName: string; roleTitle?: string }>>([]);
   const [formAssignedTeam, setFormAssignedTeam] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formSpecificService, setFormSpecificService] = useState('');
@@ -510,6 +518,15 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     getDocs(query(collection(db, 'items'), where('orgId', '==', organization.id))).then((s) =>
       setStockItems(s.docs.map((d) => ({ id: d.id, ...d.data() } as Item)))
     ).catch(() => {});
+    getDocs(query(collection(db, 'projects'), where('orgId', '==', organization.id))).then((s) =>
+      setProjects(s.docs.map((d) => ({ id: d.id, code: String(d.data().code || d.id), name: String(d.data().name || ''), unitId: d.data().unitId, contractId: d.data().contractId })))
+    ).catch(() => {});
+    getDocs(query(collection(db, 'safety_permits'), where('orgId', '==', organization.id))).then((s) =>
+      setSafetyPermits(s.docs.map((d) => ({ id: d.id, permitCode: String(d.data().permitCode || d.id), activityTitle: String(d.data().activityTitle || ''), documentType: String(d.data().documentType || 'pt') })))
+    ).catch(() => {});
+    getDocs(query(collection(db, 'rh_directory'), where('orgId', '==', organization.id))).then((s) =>
+      setDirectoryEmployees(s.docs.map((d) => ({ id: d.id, fullName: String(d.data().fullName || d.data().name || d.id), roleTitle: d.data().roleTitle || d.data().role })))
+    ).catch(() => {});
 
     return () => unsubOrders();
   }, [organization]);
@@ -583,6 +600,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
         body: JSON.stringify({
           orgId: organization.id,
           unitId: formUnitId,
+          projectId: formProjectId || undefined,
           contractId: formContractId || undefined,
           costCenterId: formCostCenterId || undefined,
           assetId: formAssetId || undefined,
@@ -595,6 +613,10 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           status: targetStatus,
           assignedTeam: formAssignedTeam || undefined,
           assignedTo: formAssignedTo.trim() || undefined,
+          assignedEmployeeIds: formAssignedEmployeeIds.length > 0 ? formAssignedEmployeeIds : undefined,
+          requiresSafetyPermit: formRequiresSafetyPermit || undefined,
+          safetyPermitType: formRequiresSafetyPermit && formSafetyPermitType ? formSafetyPermitType : undefined,
+          safetyPermitId: formRequiresSafetyPermit && formSafetyPermitId ? formSafetyPermitId : undefined,
           scheduledStartDate: formScheduledStart || undefined,
           scheduledEndDate: formScheduledEnd || undefined,
           estimatedHours: parseFloat(formEstimatedHours) || 0,
@@ -1754,20 +1776,113 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                 </div>
 
                 <div>
+                  <label className="block font-medium text-slate-300 mb-1">Projeto / Obra (Mestre)</label>
+                  <select
+                    value={formProjectId}
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setFormProjectId(pid);
+                      const proj = projects.find((p) => p.id === pid);
+                      if (proj?.unitId && !formUnitId) setFormUnitId(proj.unitId);
+                      if (proj?.contractId && !formContractId) setFormContractId(proj.contractId);
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Nenhum projeto vinculado</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.code} — {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
                   <label className="block font-medium text-slate-300 mb-1">Ativo / Equipamento</label>
                   <select
                     value={formAssetId}
                     onChange={(e) => setFormAssetId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
-                    <option value="">Geral / Sem ativo específico</option>
+                    <option value="">Nenhum ativo vinculado</option>
                     {assets.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.tag} - {a.name}
+                        {a.tag ? `${a.tag} — ` : ''}{a.name}{a.status !== 'operacional' ? ` [${a.status}]` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* SMS / PT & Equipe Oficial (Gate de Execução) */}
+              <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formRequiresSafetyPermit}
+                    onChange={(e) => setFormRequiresSafetyPermit(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-0"
+                  />
+                  <span className="font-semibold text-slate-200">OS de Risco — exige Permissão de Trabalho (PT) e NRs/EPIs vigentes</span>
+                </label>
+                {formRequiresSafetyPermit && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">Tipo de Atividade / PT</label>
+                      <select
+                        value={formSafetyPermitType}
+                        onChange={(e) => setFormSafetyPermitType(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded bg-slate-800 border border-slate-700 text-white text-xs"
+                      >
+                        <option value="">Selecione o tipo de risco</option>
+                        <option value="trabalho_a_quente">Trabalho a Quente / Solda</option>
+                        <option value="trabalho_em_altura">Trabalho em Altura (NR-35)</option>
+                        <option value="espaco_confinado">Espaço Confinado (NR-33)</option>
+                        <option value="eletrico">Serviço Elétrico (NR-10)</option>
+                        <option value="icamento">Içamento de Carga</option>
+                        <option value="abertura_de_linha">Abertura de Linha</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">PT Vinculada (opcional na abertura)</label>
+                      <select
+                        value={formSafetyPermitId}
+                        onChange={(e) => setFormSafetyPermitId(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded bg-slate-800 border border-slate-700 text-white text-xs"
+                      >
+                        <option value="">Vincular posteriormente</option>
+                        {safetyPermits
+                          .filter((pt) => pt.documentType === 'pt')
+                          .map((pt) => (
+                            <option key={pt.id} value={pt.id}>
+                              {pt.permitCode} — {pt.activityTitle}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                {directoryEmployees.length > 0 && (
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Equipe Alocada (Diretório RH — {formAssignedEmployeeIds.length} selecionado(s))
+                    </label>
+                    <select
+                      multiple
+                      value={formAssignedEmployeeIds}
+                      onChange={(e) =>
+                        setFormAssignedEmployeeIds(Array.from(e.target.selectedOptions, (opt) => opt.value))
+                      }
+                      className="w-full px-2 py-1.5 rounded bg-slate-800 border border-slate-700 text-white text-xs h-20"
+                    >
+                      {directoryEmployees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.fullName}{emp.roleTitle ? ` (${emp.roleTitle})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

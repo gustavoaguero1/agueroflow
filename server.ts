@@ -92,6 +92,8 @@ import { createWorkOrderRouter } from './server/workOrderRoutes';
 import { createCommercialFunnelRouter } from './server/commercialFunnelRoutes';
 import { createHrOnboardingRouter } from './server/hrOnboardingRoutes';
 import { createMeasurementRouter } from './server/measurementRoutes';
+import { createRecurringOrderRouter } from './server/recurringOrderRoutes';
+import { createStockReservationRouter } from './server/stockReservationRoutes';
 import { runAccessMigration } from './server/accessMigration';
 import { authRouter } from './server/authRoutes';
 import { nfeRouter } from './server/nfe/nfeStore';
@@ -583,6 +585,8 @@ async function main() {
   app.use('/api/work-orders', createWorkOrderRouter());
   app.use('/api/commercial/proposals', createCommercialFunnelRouter());
   app.use('/api/measurements', createMeasurementRouter());
+  app.use('/api/recurring-orders', createRecurringOrderRouter());
+  app.use('/api/stock-reservations', createStockReservationRouter());
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
