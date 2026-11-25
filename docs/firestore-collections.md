@@ -59,8 +59,9 @@ Owner kinds:
 | finance_reconciliation_cases | orgId | `orgId ==` | Registro imutável de divergência entre OC/NF-e/recebimento. Supervisor+ com Financeiro nível 2 abre (`rcase_{orgId}_*`); Admin/Gerente com Financeiro nível 2 inicia análise e aprova/rejeita com justificativa; sem exclusão. Snapshot dos valores e quantidades, incluindo as chaves das NF-e, fica preservado; não bloqueia nem libera títulos automaticamente. |
 | finance_rules | orgId | `orgId ==` | same roles; learned classification `cnpj_ncm:` keys |
 | hr_onboardings | organizationId | `organizationId ==` | status merge-writes on missing docs are denied (no owner); they are best-effort |
-| inspections | orgId | `orgId ==` | |
+| inspections | orgId | `orgId ==` | Fluxo criado e atualizado somente por `/api/inspections`; a transição gera evento imutável na mesma transação. Estados: agendada → em campo → aguardando revisão → aprovada/devolvida. |
 | item_categories | orgId | `orgId ==` | |
+| inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
 | items | orgId | `orgId ==` | |
 | lpu_approvals | orgId | `orgId ==` | |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
