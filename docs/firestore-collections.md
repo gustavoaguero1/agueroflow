@@ -14,8 +14,10 @@ Owner kinds:
 |---|---|---|---|
 | assets | orgId | `orgId ==` | |
 | audit_logs | orgId (immutable) | `orgId ==` | append-only |
-| checklist_runs | orgId | `orgId ==` | |
-| checklist_templates | orgId | `orgId ==` | |
+| checklist_runs | orgId | `orgId ==` | Conclusão somente por `/api/checklists/templates/:templateId/runs`; armazena versão e snapshot do template. Eventos append-only em `checklist_run_events`. |
+| checklist_run_events | orgId (immutable) | `orgId ==` + `runId ==` | Histórico append-only da execução do checklist. |
+| checklist_template_events | orgId (immutable) | `orgId ==` + `templateId ==` | Histórico de criação/versões do template, com snapshot. |
+| checklist_templates | orgId | `orgId ==` | Criação e versionamento somente por `/api/checklists/templates`; revisões registradas em `checklist_template_events`. |
 | collective_asset_categories | orgId | `orgId ==` | |
 | collective_asset_movements | orgId | `orgId ==`, `orgId ==` + `status in` | AiAssistantModule queried `organizationId` (never written); fixed to `orgId` |
 | collective_asset_policies | doc id | getDoc | written in transactions |
