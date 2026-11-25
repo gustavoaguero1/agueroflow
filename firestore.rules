@@ -519,16 +519,19 @@ service cloud.firestore {
             && contractId.matches('[A-Za-z0-9_-]+')
             && orgOf(get(contractPath).data) == orgOf(d));
       }
+      function workOrderAssetReferenceValid(d, unitId, assetId) {
+        let assetPath = /databases/$(database)/documents/assets/$(assetId);
+        let asset = get(assetPath).data;
+        return orgOf(asset) == orgOf(d)
+          && (asset.get('unitId', '') == '' || asset.get('unitId', '') == unitId);
+      }
       function workOrderAssetValid(d) {
         let unitId = d.get('unitId', '');
         let assetId = d.get('assetId', '');
-        let assetPath = /databases/$(database)/documents/assets/$(assetId);
-        let asset = get(assetPath).data;
         return assetId == '' || assetId == null
           || (assetId is string && assetId.size() > 0 && assetId.size() <= 180
             && assetId.matches('[A-Za-z0-9_-]+')
-            && orgOf(asset) == orgOf(d)
-            && (asset.get('unitId', '') == '' || asset.get('unitId', '') == unitId));
+            && workOrderAssetReferenceValid(d, unitId, assetId));
       }
       function workOrderReferencesValid(d) {
         return coll != 'work_orders'
