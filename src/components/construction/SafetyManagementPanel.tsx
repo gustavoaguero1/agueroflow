@@ -39,6 +39,14 @@ import {
   validateSafetyPermitInput,
 } from '../../services/safetyManagement';
 
+interface PermitRiskDraft {
+  hazard: string;
+  consequence: string;
+  initialRisk: SafetyRiskLevel;
+  controlMeasures: string;
+  residualRisk: SafetyRiskLevel;
+}
+
 interface PermitDraftState {
   permitType: SafetyPermitType;
   unitId: string;
@@ -50,11 +58,7 @@ interface PermitDraftState {
   validUntil: string;
   supervisorName: string;
   teamMembersText: string;
-  hazard: string;
-  consequence: string;
-  initialRisk: SafetyRiskLevel;
-  controlMeasures: string;
-  residualRisk: SafetyRiskLevel;
+  risks: PermitRiskDraft[];
   emergencyPlan: string;
   controls: SafetyPermitControls;
 }
@@ -81,11 +85,7 @@ const emptyPermitDraft = (unitId = '', contractId = ''): PermitDraftState => ({
   validUntil: '',
   supervisorName: '',
   teamMembersText: '',
-  hazard: '',
-  consequence: '',
-  initialRisk: 'alto',
-  controlMeasures: '',
-  residualRisk: 'medio',
+  risks: [{ hazard: '', consequence: '', initialRisk: 'alto', controlMeasures: '', residualRisk: 'medio' }],
   emergencyPlan: '',
   controls: {
     teamBriefed: false,
@@ -250,6 +250,21 @@ export const SafetyManagementPanel: React.FC = () => {
     setPermitDraft((current) => ({ ...current, [key]: value }));
   };
 
+  const patchRisk = <K extends keyof PermitRiskDraft>(index: number, key: K, value: PermitRiskDraft[K]) => {
+    setPermitDraft((current) => ({
+      ...current,
+      risks: current.risks.map((risk, itemIndex) => itemIndex === index ? { ...risk, [key]: value } : risk),
+    }));
+  };
+  const addRisk = () => setPermitDraft((current) => current.risks.length >= 5 ? current : ({
+    ...current,
+    risks: [...current.risks, { hazard: '', consequence: '', initialRisk: 'alto', controlMeasures: '', residualRisk: 'medio' }],
+  }));
+  const removeRisk = (index: number) => setPermitDraft((current) => current.risks.length <= 1 ? current : ({
+    ...current,
+    risks: current.risks.filter((_, itemIndex) => itemIndex !== index),
+  }));
+
   const patchOccurrence = <K extends keyof OccurrenceDraftState>(key: K, value: OccurrenceDraftState[K]) => {
     setOccurrenceDraft((current) => ({ ...current, [key]: value }));
   };
@@ -278,13 +293,7 @@ export const SafetyManagementPanel: React.FC = () => {
       location: permitDraft.location,
       supervisorName: permitDraft.supervisorName,
       teamMembers,
-      risks: [{
-        hazard: permitDraft.hazard,
-        consequence: permitDraft.consequence,
-        initialRisk: permitDraft.initialRisk,
-        controlMeasures: permitDraft.controlMeasures,
-        residualRisk: permitDraft.residualRisk,
-      }],
+      risks: permitDraft.risks,
       controls: permitDraft.controls,
       emergencyPlan: permitDraft.emergencyPlan,
     };
@@ -318,14 +327,14 @@ export const SafetyManagementPanel: React.FC = () => {
         validUntil: permitDraft.validUntil,
         supervisorName: permitDraft.supervisorName.trim(),
         teamMembers,
-        risks: [{
-          id: 'risk_1',
-          hazard: permitDraft.hazard.trim(),
-          consequence: permitDraft.consequence.trim(),
-          initialRisk: permitDraft.initialRisk,
-          controlMeasures: permitDraft.controlMeasures.trim(),
-          residualRisk: permitDraft.residualRisk,
-        }],
+        risks: permitDraft.risks.map((risk, index) => ({
+          id: 'risk_' + (index + 1),
+          hazard: risk.hazard.trim(),
+          consequence: risk.consequence.trim(),
+          initialRisk: risk.initialRisk,
+          controlMeasures: risk.controlMeasures.trim(),
+          residualRisk: risk.residualRisk,
+        })),
         controls: permitDraft.controls,
         emergencyPlan: permitDraft.emergencyPlan.trim(),
         createdByUid: user.uid,
@@ -782,23 +791,36 @@ export const SafetyManagementPanel: React.FC = () => {
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <h4 className="flex items-center gap-2 text-xs font-bold text-white"><AlertTriangle className="h-4 w-4 text-amber-400" /> Análise de perigo e risco</h4>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="text-[11px] text-slate-400">Perigo identificado
-                  <input value={permitDraft.hazard} onChange={(event) => patchPermit('hazard', event.target.value)} required maxLength={180} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white" />
-                </label>
-                <label className="text-[11px] text-slate-400">Consequência possível
-                  <input value={permitDraft.consequence} onChange={(event) => patchPermit('consequence', event.target.value)} required maxLength={300} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white" />
-                </label>
-                <label className="text-[11px] text-slate-400">Risco inicial
-                  <select value={permitDraft.initialRisk} onChange={(event) => patchPermit('initialRisk', event.target.value as SafetyRiskLevel)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white">{RISK_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-                </label>
-                <label className="text-[11px] text-slate-400">Risco residual após os controles
-                  <select value={permitDraft.residualRisk} onChange={(event) => patchPermit('residualRisk', event.target.value as SafetyRiskLevel)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white">{RISK_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-                </label>
-                <label className="text-[11px] text-slate-400 sm:col-span-2">Medidas de prevenção e controle
-                  <textarea value={permitDraft.controlMeasures} onChange={(event) => patchPermit('controlMeasures', event.target.value)} required rows={2} maxLength={700} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white" />
-                </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="flex items-center gap-2 text-xs font-bold text-white"><AlertTriangle className="h-4 w-4 text-amber-400" /> Análise de perigo e risco</h4>
+                <button type="button" onClick={addRisk} disabled={permitDraft.risks.length >= 5} className="rounded-lg border border-slate-700 px-3 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-40">Adicionar perigo ({permitDraft.risks.length}/5)</button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {permitDraft.risks.map((risk, index) => (
+                  <div key={index} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="text-[11px] font-bold text-amber-300">Perigo {index + 1}</p>
+                      {permitDraft.risks.length > 1 && <button type="button" onClick={() => removeRisk(index)} className="text-[10px] text-rose-300 hover:text-rose-200">Remover</button>}
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="text-[11px] text-slate-400">Perigo identificado
+                        <input value={risk.hazard} onChange={(event) => patchRisk(index, 'hazard', event.target.value)} required maxLength={180} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
+                      </label>
+                      <label className="text-[11px] text-slate-400">Consequência possível
+                        <input value={risk.consequence} onChange={(event) => patchRisk(index, 'consequence', event.target.value)} required maxLength={300} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
+                      </label>
+                      <label className="text-[11px] text-slate-400">Risco inicial
+                        <select value={risk.initialRisk} onChange={(event) => patchRisk(index, 'initialRisk', event.target.value as SafetyRiskLevel)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">{RISK_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+                      </label>
+                      <label className="text-[11px] text-slate-400">Risco residual após os controles
+                        <select value={risk.residualRisk} onChange={(event) => patchRisk(index, 'residualRisk', event.target.value as SafetyRiskLevel)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white">{RISK_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+                      </label>
+                      <label className="text-[11px] text-slate-400 sm:col-span-2">Medidas de prevenção e controle
+                        <textarea value={risk.controlMeasures} onChange={(event) => patchRisk(index, 'controlMeasures', event.target.value)} required rows={2} maxLength={700} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white" />
+                      </label>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
