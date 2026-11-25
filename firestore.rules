@@ -723,6 +723,7 @@ service cloud.firestore {
           && safetyStatusAfter(resource.data.get('status', ''), eventType) != ''
           && (!managerAction || hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
           && (eventType != 'approved' || permit.get('createdByUid', '') != request.auth.uid)
+          && (eventType != 'approved' || validSafetyAprLink(permit))
         );
       }
       function validSafetyOccurrencePermit(d) {
