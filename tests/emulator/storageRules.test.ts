@@ -66,6 +66,9 @@ test('Operations attachments are immutable except authorized legacy JSON backup 
   await assertSucceeds(uploadBytes(ref(editor, backupPath), new TextEncoder().encode('{}'), { contentType: 'application/json' }));
   await assertSucceeds(uploadBytes(ref(editor, backupPath), new TextEncoder().encode('{"revision":2}'), { contentType: 'application/json' }));
   await assertFails(uploadBytes(ref(editor, backupPath), pdf, { contentType: 'application/pdf' }));
+  const otherJsonPath = 'operacoes/org_a/arquivos_outro.json';
+  await assertSucceeds(uploadBytes(ref(editor, otherJsonPath), new TextEncoder().encode('{}'), { contentType: 'application/json' }));
+  await assertFails(uploadBytes(ref(editor, otherJsonPath), new TextEncoder().encode('{"revision":2}'), { contentType: 'application/json' }));
   await assertFails(deleteObject(ref(editor, backupPath)));
 });
 
