@@ -120,7 +120,8 @@ function ptSeed(): Seed {
       id: 'pt_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
       documentType: 'pt', permitType: 'trabalho_em_altura', permitCode: 'PT-2026-12345678',
       validFrom: '2026-11-25T07:00', validUntil: '2027-11-25T17:00',
-      createdByUid: 'operator_1', teamMemberIds: ['employee_01'], relatedAprId: 'apr_01',
+      createdByUid: 'operator_1', teamMembers: ['Profissional de Altura'],
+      teamMemberIds: ['employee_01'], relatedAprId: 'apr_01',
     },
     'safety_permit_states/pt_01': {
       id: 'pt_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
