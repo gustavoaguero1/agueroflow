@@ -100,6 +100,18 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
             tx.get(h.db.collection('field_workers').where('orgId', '==', orgId)),
           ]);
           const employees = toRows<SafetyComplianceSnapshot['employees'][number]>(employeeSnap);
+          if (new Set(employeeIds).size !== employeeIds.length) {
+            throw new SafetyRouteError(409, 'PT bloqueada: a equipe contém colaboradores duplicados.');
+          }
+          const linkedEmployees = employeeIds.map((employeeId) => employees.find((item) => item.id === employeeId));
+          const expectedNames = linkedEmployees.filter(Boolean).map((item) => item!.name).sort((x, y) => x.localeCompare(y, 'pt-BR'));
+          const recordedNames = Array.isArray(permit.teamMembers)
+            ? permit.teamMembers.filter((name: unknown): name is string => typeof name === 'string').slice().sort((x: string, y: string) => x.localeCompare(y, 'pt-BR'))
+            : [];
+          if (expectedNames.length !== employeeIds.length || recordedNames.length !== expectedNames.length
+            || expectedNames.some((name, index) => name !== recordedNames[index])) {
+            throw new SafetyRouteError(409, 'PT bloqueada: os nomes registrados precisam corresponder aos colaboradores do diretório RH.');
+          }
           const workers = toRows<Record<string, any>>(workersSnap);
           const legacyTrainingRecords: SafetyComplianceSnapshot['legacyTrainingRecords'] = [];
           for (const employee of employees) {
