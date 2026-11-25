@@ -123,30 +123,6 @@ async function createPermit(uid = 'operator_1', role = 'Operacional', id = 'perm
   return { db, initialEventId };
 }
 
-async function transitionPermit(
-  uid: string,
-  role: string,
-  permitId: string,
-  previousEventId: string,
-  nextEventId: string,
-  eventType: string,
-  nextStatus: string,
-) {
-  const db = dbFor(uid, role);
-  await assertSucceeds(setDoc(
-    doc(db, 'safety_permit_events', nextEventId),
-    eventData(uid, permitId, eventType, { previousEventId }),
-  ));
-  await assertSucceeds(updateDoc(doc(db, 'safety_permit_states', permitId), {
-    status: nextStatus,
-    latestEventId: nextEventId,
-    updatedByUid: uid,
-    updatedByName: 'Supervisor SMS',
-    updatedAt: serverTimestamp(),
-  }));
-  return db;
-}
-
 test('Operations editor creates an APR, initial event and state in sequence', async () => {
   const { db, initialEventId } = await createPermit();
   const savedPermit = await assertSucceeds(getDoc(doc(db, 'safety_permits/permit_01')));
@@ -249,20 +225,30 @@ test('viewer reads APR/PT but cannot create or change it; another organization c
   await assertFails(getDoc(doc(otherOrg, 'safety_permit_states/permit_01')));
 });
 
-test('manager approval events are server-only and creator separation is enforced by the API', async () => {
-  const { initialEventId } = await createPermit();
+test('all permit state transitions are server-only and creator separation is enforced by the API', async () => {
+  const { db, initialEventId } = await createPermit();
   const operator = dbFor('operator_1', 'Operacional');
   await assertFails(setDoc(
-    doc(operator, 'safety_permit_events/operator_approval_orphan'),
-    eventData('operator_1', 'permit_01', 'approved', { previousEventId: initialEventId }),
+    doc(operator, 'safety_permit_events/operator_submission'),
+    eventData('operator_1', 'permit_01', 'submitted_for_approval', { previousEventId: initialEventId }),
   ));
+  await assertFails(updateDoc(doc(operator, 'safety_permit_states/permit_01'), {
+    status: 'awaiting_approval',
+    latestEventId: 'operator_submission',
+    updatedByUid: 'operator_1',
+    updatedByName: 'Operador de Campo',
+    updatedAt: serverTimestamp(),
+  }));
 
-  await transitionPermit('supervisor_1', 'Supervisor', 'permit_01', initialEventId, 'send_for_approval', 'submitted_for_approval', 'awaiting_approval');
   const supervisor = dbFor('supervisor_2', 'Supervisor');
   await assertFails(setDoc(
     doc(supervisor, 'safety_permit_events/supervisor_approval'),
-    eventData('supervisor_2', 'permit_01', 'approved', { previousEventId: 'send_for_approval' }),
+    eventData('supervisor_2', 'permit_01', 'approved', { previousEventId: initialEventId }),
   ));
+  await assertFails(updateDoc(doc(supervisor, 'safety_permit_states/permit_01'), {
+    status: 'approved', latestEventId: 'supervisor_approval',
+    updatedByUid: 'supervisor_2', updatedByName: 'Supervisor SMS', updatedAt: serverTimestamp(),
+  }));
 
   const own = await createPermit('supervisor_owner', 'Supervisor', 'supervisor_own_permit');
   await assertFails(setDoc(
@@ -270,12 +256,11 @@ test('manager approval events are server-only and creator separation is enforced
     eventData('supervisor_owner', 'supervisor_own_permit', 'approved', { previousEventId: 'supervisor_own_permit_created' }),
   ));
 });
-
-test('state transitions require the latest event pointer and correct sequence', async () => {
+test('client cannot create submission events or change a permit state', async () => {
   const { db, initialEventId } = await createPermit();
-  await assertSucceeds(setDoc(
+  await assertFails(setDoc(
     doc(db, 'safety_permit_events/stale_submission'),
-    eventData('operator_1', 'permit_01', 'submitted_for_approval', { previousEventId: 'old_event' }),
+    eventData('operator_1', 'permit_01', 'submitted_for_approval', { previousEventId: initialEventId }),
   ));
   await assertFails(updateDoc(doc(db, 'safety_permit_states/permit_01'), {
     status: 'awaiting_approval',
@@ -284,17 +269,10 @@ test('state transitions require the latest event pointer and correct sequence', 
     updatedByName: 'Operador de Campo',
     updatedAt: serverTimestamp(),
   }));
-  await assertFails(updateDoc(doc(db, 'safety_permit_states/permit_01'), {
-    status: 'closed',
-    latestEventId: initialEventId,
-    updatedByUid: 'operator_1',
-    updatedByName: 'Operador de Campo',
-    updatedAt: serverTimestamp(),
-  }));
   const unchanged = await assertSucceeds(getDoc(doc(db, 'safety_permit_states/permit_01')));
   assert.equal(unchanged.data()?.status, 'draft');
+  assert.equal(unchanged.data()?.latestEventId, initialEventId);
 });
-
 test('permit records and events are append-only; state cannot be deleted or edited outside a valid event', async () => {
   const { db, initialEventId } = await createPermit();
   await assertFails(updateDoc(doc(db, 'safety_permits/permit_01'), { activityTitle: 'Alterada' }));
