@@ -88,7 +88,8 @@ Owner kinds:
 | purchasing_receipts | organizationId | `organizationId ==` | Recebimento físico; documento idempotente por NF-e/empresa. Atualiza OC, `stock_balances` e `stock_movements` na mesma transação; quantidade não conforme não entra no saldo. Financeiro: leitura somente para conciliar NF-e/recibo; sem escrita. |
 | purchasing_requisitions | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
 | purchasing_suppliers | organizationId | `organizationId ==` | Estoque: nível 1 lê; nível 2 grava. |
-| recurring_orders | orgId | `orgId ==` | |
+| recurring_order_runs | orgId (server-only, append-only) | `orgId ==` | Execuções idempotentes de OS recorrentes (`recrun_{orgId}_{recurringId}_{periodDate}`) gravadas exclusivamente por `/api/recurring-orders/*`; leitura por Operações (`A_OPS()` nível 1). |
+| recurring_orders | orgId | `orgId ==` | Planos de OS periódicas com calendário de exceções, pausa/retomada/encerramento e execução idempotente via `/api/recurring-orders/:id/run` que avança `nextRunDate` atomicamente e registra `lastRunError` em caso de bloqueio. |
 | rh_batches | orgId | `orgId ==` | |
 | rh_calculations | orgId | `orgId ==` | |
 | rh_directory | orgId | `orgId ==` | Diretório sem salários publicado pelo RH; é a fonte oficial de pessoas para a equipe PT e movimentações de EPI. Os registros guardam `rhEmployeeId` para ligar a equipe operacional sem duplicar o colaborador. |
@@ -96,6 +97,7 @@ Owner kinds:
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
 | stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas e saídas persistem snapshot de `unitCost`, `totalCost` e `projectId` (quando informado) para apropriação de custo por obra. |
+| stock_reservations | orgId (server-only) | `orgId ==` | Reservas de material por OS/Projeto (`sres_{orgId}_{key}`) gerenciadas exclusivamente via `/api/stock-reservations/*`, separando saldo físico, reservado e disponível e gerando RC automática (`purchasing_requisitions`) em caso de falta. Leitura por Estoque ou Operações (nível 1+). |
 | support_tickets | orgId | `orgId ==` | |
 | teams | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |

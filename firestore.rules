@@ -1427,5 +1427,21 @@ service cloud.firestore {
       allow create, update: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2) && orgOf(request.resource.data) == orgId);
       allow delete: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2));
     }
+
+    // ---- Execuções idempotentes de OS recorrentes (escrita exclusiva do servidor) ----
+    match /recurring_order_runs/{runId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+
+    // ---- Reservas de estoque por OS/Projeto (escrita exclusiva do servidor) ---------
+    match /stock_reservations/{resId} {
+      function sresCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_STOCK(), 1) || areaOk(o, A_OPS(), 1);
+      }
+      allow read: if canRead(resource) && (resource == null || sresCanRead(resource.data));
+      allow create, update, delete: if false;
+    }
   }
 }
