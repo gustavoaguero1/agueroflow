@@ -70,8 +70,9 @@ function mockAdmin(seed: Record<string, unknown>) {
                 }));
               return { docs: matching, size: matching.length, empty: matching.length === 0 };
             }
-            const data = docs.get(ref.path);
-            return { id: ref.id, exists: data !== undefined, data: () => data };
+            const docRef = ref as DocRef;
+            const data = docs.get(docRef.path);
+            return { id: docRef.id, exists: data !== undefined, data: () => data };
           },
           create: (ref: DocRef, data: unknown) => { creates.push({ ref, data }); },
           update: (ref: DocRef, data: Record<string, unknown>) => { updates.push({ ref, data }); },
