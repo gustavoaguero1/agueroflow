@@ -378,8 +378,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
         catch (cleanupError) { console.error('Não foi possível remover arquivo de certificado sem registro:', cleanupError); }
       }
       setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.');
-    } finally { setSaving(false); } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.'); }
-    finally { setSaving(false); }
+    } finally { setSaving(false); }
   };
 
   const inputClass = 'mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500';
@@ -502,7 +501,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
             </tbody></table></div>
 
           <div className="border-t border-slate-800 pt-4"><h4 className="text-xs font-bold text-white">Certificados individuais</h4>
-            {canEdit && <form onSubmit={createTrainingRecord} className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
+            {canManageCatalog && <form onSubmit={createTrainingRecord} className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
               <label className="text-[10px] text-slate-400">Colaborador do RH<select value={trainingEmployeeId} onChange={(e) => setTrainingEmployeeId(e.target.value)} required className={inputClass}><option value="">Selecione</option>{activeEmployees.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role || 'Colaborador'}</option>)}</select></label>
               <label className="text-[10px] text-slate-400">Treinamento<select value={trainingRecordCode} onChange={(e) => setTrainingRecordCode(e.target.value)} required className={inputClass}><option value="">Selecione</option>{trainingOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.title}</option>)}</select></label>
               <label className="text-[10px] text-slate-400">Data de emissão<input type="date" value={trainingIssueDate} onChange={(e) => setTrainingIssueDate(e.target.value)} required className={inputClass} /></label>
