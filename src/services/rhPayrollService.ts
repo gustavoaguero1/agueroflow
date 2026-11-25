@@ -688,6 +688,7 @@ export async function syncRhEmployeeToFieldWorker(employee: RhEmployee): Promise
   const workerData: FieldWorker = {
     id: targetId,
     orgId: employee.orgId,
+    rhEmployeeId: employee.id,
     name: employee.name.trim(),
     cpf: existingData?.cpf || '',
     role: employee.role || existingData?.role || 'Colaborador',
