@@ -58,10 +58,9 @@ service firebase.storage {
       }
       allow read: if engineeringCanRead(orgId);
       allow create: if engineeringCanWrite(orgId)
-        && resource == null
         && request.resource.size > 0
         && request.resource.size <= 15 * 1024 * 1024
-        && allowedOperationsFileType();
+        && (legacyJsonBackup() || (resource == null && allowedOperationsFileType()));
       allow update: if legacyJsonBackup()
         && engineeringCanWrite(orgId)
         && resource != null
