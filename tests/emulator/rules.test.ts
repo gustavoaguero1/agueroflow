@@ -28,6 +28,10 @@ beforeEach(async () => {
     await setDoc(doc(db, 'checklist_runs/run_a'), { orgId: 'org_a', templateId: 'tpl_a', status: 'concluido' });
     await setDoc(doc(db, 'checklist_run_events/evt_run_a'), { orgId: 'org_a', runId: 'run_a' });
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
+    await setDoc(doc(db, 'items/item_a'), { id: 'item_a', orgId: 'org_a', sku: 'INOX-304', name: 'Chapa inox 304' });
+    await setDoc(doc(db, 'item_categories/cat_a'), { id: 'cat_a', orgId: 'org_a', name: 'Chapas' });
+    await setDoc(doc(db, 'stock_balances/bal_a'), { id: 'bal_a', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', currentBalance: 10 });
+    await setDoc(doc(db, 'stock_movements/mov_a'), { id: 'mov_a', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 2 });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
     await setDoc(doc(db, 'purchasing_quotations/q_a'), { organizationId: 'org_a', total: 1 });
@@ -132,6 +136,49 @@ test('Operations area controls work orders, status config and timeline reads/wri
     id: 'custom', orgId: 'org_a', name: 'Em análise',
   }));
   await assertSucceeds(setDoc(doc(editor, 'order_events/ops_event'), { orgId: 'org_a', orderId: 'wo_a' }));
+});
+
+test('catalog is readable by Operations/Commercial but editable only by Stock', async () => {
+  const operations = member(); // Operações editar, Estoque apenas leitura
+  await assertSucceeds(getDoc(doc(operations, 'items/item_a')));
+  await assertSucceeds(getDoc(doc(operations, 'item_categories/cat_a')));
+  await assertFails(setDoc(doc(operations, 'items/item_ops_create'), {
+    id: 'item_ops_create', orgId: 'org_a', sku: 'NEW-01', name: 'Item criado por Operações',
+  }));
+  await assertFails(updateDoc(doc(operations, 'items/item_a'), { name: 'Tentativa de editar catálogo' }));
+  await assertFails(deleteDoc(doc(operations, 'items/item_a')));
+
+  const commercial = as('commercial_viewer', { org_a: 'Operacional' }, false, { org_a: '12120000011' });
+  await assertSucceeds(getDoc(doc(commercial, 'items/item_a')));
+  await assertFails(updateDoc(doc(commercial, 'items/item_a'), { name: 'Tentativa Comercial' }));
+
+  const stockEditor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12200000011' });
+  await assertSucceeds(setDoc(doc(stockEditor, 'items/item_stock_create'), {
+    id: 'item_stock_create', orgId: 'org_a', sku: 'NEW-02', name: 'Item cadastrado pelo Estoque',
+  }));
+  await assertSucceeds(updateDoc(doc(stockEditor, 'items/item_a'), { name: 'Chapa inox revisada' }));
+});
+
+test('inventory balances and immutable movements support Operations execution and Stock management', async () => {
+  const operations = member();
+  await assertSucceeds(getDoc(doc(operations, 'stock_balances/bal_a')));
+  await assertSucceeds(getDoc(doc(operations, 'stock_movements/mov_a')));
+  await assertSucceeds(updateDoc(doc(operations, 'stock_balances/bal_a'), { currentBalance: 8 }));
+  await assertSucceeds(setDoc(doc(operations, 'stock_movements/mov_ops'), {
+    id: 'mov_ops', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 2,
+  }));
+  await assertFails(updateDoc(doc(operations, 'stock_movements/mov_a'), { quantity: 999 }));
+  await assertFails(deleteDoc(doc(operations, 'stock_movements/mov_a')));
+
+  const viewer = as('stock_viewer', { org_a: 'Visualizador' });
+  await assertSucceeds(getDoc(doc(viewer, 'stock_balances/bal_a')));
+  await assertFails(updateDoc(doc(viewer, 'stock_balances/bal_a'), { currentBalance: 999 }));
+
+  const stockEditor = as('stock_editor', { org_a: 'Operacional' }, false, { org_a: '12200000011' });
+  await assertSucceeds(updateDoc(doc(stockEditor, 'stock_balances/bal_a'), { currentBalance: 12 }));
+  await assertSucceeds(setDoc(doc(stockEditor, 'stock_movements/mov_stock'), {
+    id: 'mov_stock', orgId: 'org_a', unitId: 'unit_a', itemId: 'item_a', quantity: 3,
+  }));
 });
 
 test('organizationId-only docs readable by member; writes require Stock edit', async () => {
