@@ -28,6 +28,7 @@ import { calculateProgressiveInss } from './inss';
 import { directoryChanges, toDirectoryEntry } from './rhDirectory';
 import { PAY_COLLECTION } from './fieldWorkerPay';
 import { saveFieldWorker } from './fieldWorkerPayStore';
+import { buildFieldWorkerProjection } from './fieldWorkerProjection';
 export * from './inss';
 
 /**
@@ -644,78 +645,27 @@ export function cleanFirestoreData<T>(obj: T): T {
  * Preserva NRs, certificações e histórico caso o colaborador já exista em campo.
  */
 export async function syncRhEmployeeToFieldWorker(employee: RhEmployee): Promise<void> {
-  if (!employee || !employee.orgId) return;
-
+  if (!employee || !employee.orgId || !employee.id) return;
   const fwId = `fw_${employee.id.replace(/^emp_/, '')}`;
-  const ref = doc(db, 'field_workers', fwId);
-
-  let existingData: Partial<FieldWorker> | null = null;
-  try {
-    const existingSnap = await getDoc(ref);
-    if (existingSnap.exists()) {
-      existingData = existingSnap.data() as Partial<FieldWorker>;
-    } else {
-      // Tenta localizar por nome no mesmo orgId para evitar duplicações
-      const qName = query(
-        collection(db, 'field_workers'),
-        where('orgId', '==', employee.orgId),
-        where('name', '==', employee.name.trim())
-      );
-      const snapName = await getDocs(qName);
-      if (!snapName.empty) {
-        existingData = snapName.docs[0].data() as Partial<FieldWorker>;
-      }
+  const canonicalRef = doc(db, 'field_workers', fwId);
+  const canonicalSnap = await getDoc(canonicalRef);
+  let targetId = fwId;
+  let existingData: Partial<FieldWorker> | null = canonicalSnap.exists()
+    ? ({ id: canonicalSnap.id, ...canonicalSnap.data() } as Partial<FieldWorker>)
+    : null;
+  // Legacy migration may match only a stable RH id, never a person's name.
+  if (!existingData) {
+    const linked = await getDocs(query(collection(db, 'field_workers'), where('orgId', '==', employee.orgId), where('rhEmployeeId', '==', employee.id)));
+    if (linked.size > 1) throw new Error('Mais de um registro de campo está vinculado ao mesmo colaborador RH. Concilie pelo ID antes de sincronizar.');
+    if (linked.size === 1) {
+      targetId = linked.docs[0].id;
+      existingData = { id: targetId, ...linked.docs[0].data() } as Partial<FieldWorker>;
     }
-  } catch (err) {
-    console.warn('Erro ao consultar field_worker existente:', err);
   }
-
-  const totalBaseSalary = roundCurrency(
-    (employee.baseSalaryCarteira || 0) + (employee.baseSalaryPorFora || 0)
-  );
-  const totalHourlyRate = roundCurrency(
-    (employee.hourlyRateCarteira || 0) + (employee.hourlyRatePorFora || 0)
-  );
-  const obraCode = employee.codigoObra || employee.registrationNumber || '198';
-  const siteName = `Obra ${obraCode}`;
-
-  const targetId = existingData?.id || fwId;
-  // Histórico de salário mora em field_worker_pay (só RH lê); field_workers antigos ainda podem tê-lo.
-  const existingPay = await getDoc(doc(db, PAY_COLLECTION, targetId))
-    .then((s) => (s.exists() ? (s.data() as Partial<FieldWorker>) : null))
-    .catch(() => null);
-  if (existingData && existingPay?.salaryHistory) existingData = { ...existingData, salaryHistory: existingPay.salaryHistory };
-  const workerData: FieldWorker = {
-    id: targetId,
-    orgId: employee.orgId,
-    rhEmployeeId: employee.id,
-    name: employee.name.trim(),
-    cpf: existingData?.cpf || '',
-    role: employee.role || existingData?.role || 'Colaborador',
-    baseSalary: totalBaseSalary > 0 ? totalBaseSalary : existingData?.baseSalary || 3500,
-    hourlyRate: totalHourlyRate > 0 ? totalHourlyRate : existingData?.hourlyRate || 15.91,
-    currentSite: existingData?.currentSite || siteName,
-    status: employee.active ? 'ativo' : 'desligado',
-    admissionDate: employee.admissionDate || existingData?.admissionDate || '2024-01-01',
-    certifications: existingData?.certifications || [],
-    nrCertifications: existingData?.nrCertifications || [],
-    salaryHistory: existingData?.salaryHistory || [
-      {
-        date: employee.admissionDate || '2024-01-01',
-        previousSalary: 0,
-        newSalary: totalBaseSalary > 0 ? totalBaseSalary : 3500,
-        previousRole: 'Admissão',
-        newRole: employee.role || 'Colaborador',
-        reason: 'Cadastro integrado via Módulo RH / Salários',
-      },
-    ],
-    shiftId: existingData?.shiftId,
-    shiftName: existingData?.shiftName,
-    customCalculationRules: existingData?.customCalculationRules,
-    createdAt: existingData?.createdAt || employee.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
+  const paySnap = await getDoc(doc(db, PAY_COLLECTION, targetId));
+  const existingPay = paySnap.exists() ? (paySnap.data() as Partial<FieldWorker>) : null;
+  const workerData = buildFieldWorkerProjection(employee, existingData, existingPay?.salaryHistory || existingData?.salaryHistory || []);
+  workerData.id = targetId;
   await saveFieldWorker(cleanFirestoreData(workerData) as unknown as FieldWorker & Record<string, unknown>);
 }
 
