@@ -74,8 +74,7 @@ export async function markProposalWon(db: Firestore, proposal: CommercialProposa
   const orgId = proposal.organizationId;
   const sts = await getDocs(query(collection(db, 'work_order_statuses'), where('orgId', '==', orgId)));
   const first = pickInitialStatus(sts.docs.map((d) => d.data() as { id?: string; order?: number; isInitial?: boolean }));
-  if (!first?.id) throw new Error('Configure ao menos um estado inicial de OS antes de converter uma proposta ganha.');
-  const status = first.id;
+  const status = first?.id;
   const existing = await getDocs(query(collection(db, 'work_orders'), where('orgId', '==', orgId)));
   const seed = maxOrderSeq(existing.docs.map((d) => d.data() as { orderNumber?: string }));
   const orderId = `os_prop_${proposal.id}`;
@@ -87,6 +86,7 @@ export async function markProposalWon(db: Firestore, proposal: CommercialProposa
     const cur = proposalSnap.data() as CommercialProposal;
     if (cur.workOrderId) return cur.workOrderId;
     if (cur.status === 'perdida' || cur.status === 'rejeitada') throw new Error('Proposta perdida/rejeitada não pode gerar OS.');
+    if (!status) throw new Error('Configure ao menos um estado inicial de OS antes de converter uma proposta ganha.');
     if (!cur.unitId?.trim()) throw new Error('Vincule uma unidade válida à proposta antes de convertê-la em OS.');
 
     const unitSnap = await tx.get(doc(db, 'units', cur.unitId));
