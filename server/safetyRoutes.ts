@@ -65,24 +65,25 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         if (managerEvents.has(eventType) && !canManagePermits(req, orgId)) {
           throw new SafetyRouteError(403, 'Perfil não autorizado para esta movimentação.');
         }
-        if (eventType === 'approved') {
-          if (permit.createdByUid === actor.uid) throw new SafetyRouteError(403, 'Quem criou a APR/PT não pode aprovar a própria permissão.');
-          if (!permit.validUntil || new Date(permit.validUntil).getTime() <= Date.now()) {
-            throw new SafetyRouteError(409, 'A validade da permissão terminou ou é inválida.');
-          }
-          if (permit.documentType === 'pt') {
-            const aprId = permit.relatedAprId;
-            if (!validId(aprId)) throw new SafetyRouteError(409, 'A PT não está vinculada a uma APR aprovada.');
-            const aprRef = h.db.collection('safety_permits').doc(aprId);
-            const aprStateRef = h.db.collection('safety_permit_states').doc(aprId);
-            const [aprSnap, aprStateSnap] = await Promise.all([tx.get(aprRef), tx.get(aprStateRef)]);
-            if (!aprSnap.exists || !aprStateSnap.exists) throw new SafetyRouteError(409, 'APR de referência não localizada.');
-            const apr = aprSnap.data() || {};
-            const aprState = aprStateSnap.data() || {};
-            if (apr.orgId !== orgId || apr.unitId !== permit.unitId || apr.contractId !== permit.contractId
-              || apr.documentType !== 'apr' || aprState.status !== 'approved') {
-              throw new SafetyRouteError(409, 'A PT precisa estar vinculada a uma APR aprovada da mesma empresa, unidade e contrato.');
-            }
+        if (['submitted_for_approval', 'approved'].includes(eventType)
+          && (!permit.validUntil || new Date(permit.validUntil).getTime() <= Date.now())) {
+          throw new SafetyRouteError(409, 'A validade da permissão terminou ou é inválida.');
+        }
+        if (eventType === 'approved' && permit.createdByUid === actor.uid) {
+          throw new SafetyRouteError(403, 'Quem criou a APR/PT não pode aprovar a própria permissão.');
+        }
+        if (permit.documentType === 'pt' && ['submitted_for_approval', 'approved'].includes(eventType)) {
+          const aprId = permit.relatedAprId;
+          if (!validId(aprId)) throw new SafetyRouteError(409, 'A PT não está vinculada a uma APR aprovada.');
+          const aprRef = h.db.collection('safety_permits').doc(aprId);
+          const aprStateRef = h.db.collection('safety_permit_states').doc(aprId);
+          const [aprSnap, aprStateSnap] = await Promise.all([tx.get(aprRef), tx.get(aprStateRef)]);
+          if (!aprSnap.exists || !aprStateSnap.exists) throw new SafetyRouteError(409, 'APR de referência não localizada.');
+          const apr = aprSnap.data() || {};
+          const aprState = aprStateSnap.data() || {};
+          if (apr.orgId !== orgId || apr.unitId !== permit.unitId || apr.contractId !== permit.contractId
+            || apr.documentType !== 'apr' || aprState.status !== 'approved') {
+            throw new SafetyRouteError(409, 'A PT precisa estar vinculada a uma APR aprovada da mesma empresa, unidade e contrato.');
           }
         }
         if (permit.documentType === 'pt' && ['submitted_for_approval', 'approved'].includes(eventType)) {
