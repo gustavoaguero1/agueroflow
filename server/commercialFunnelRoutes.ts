@@ -132,8 +132,8 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
           tx.get(orderRef),
           tx.get(eventRef),
         ]);
-        const initialStatuses = statusesSnap.docs
-          .map((item: any) => ({ id: item.id, ...(item.data() as Record<string, any>) }))
+        const initialStatuses: Array<Record<string, any>> = statusesSnap.docs
+          .map((item: any) => item.data() as Record<string, any>)
           .filter((status: Record<string, any>) => status.isInitial === true)
           .sort((a: Record<string, any>, b: Record<string, any>) => (a.order ?? 0) - (b.order ?? 0));
         const initial = initialStatuses[0];
