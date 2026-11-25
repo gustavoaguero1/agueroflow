@@ -170,5 +170,169 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
+  const validDate = (value: unknown): value is string => {
+    if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  };
+  const dateToday = () => new Date().toISOString().slice(0, 10);
+  const movementTime = (movement: Record<string, any>) => {
+    const value = movement.createdAt;
+    if (value instanceof Date) return value.getTime();
+    if (value && typeof value.toMillis === 'function') return value.toMillis();
+    return typeof movement.movementDate === 'string' ? Date.parse(movement.movementDate) : 0;
+  };
+  const activeIssue = (rows: Array<Record<string, any>>) => rows
+    .slice().sort((a, b) => movementTime(a) - movementTime(b)
+      || String(a.movementDate || '').localeCompare(String(b.movementDate || '')))
+    .at(-1);
+
+  router.post('/ppe-movements', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const { employeeId, ppeId, eventType, movementDate, referenceMovementId } = req.body || {};
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+    if (!orgId || req.body?.orgId !== orgId || !actor?.uid || !validId(employeeId) || !validId(ppeId)
+      || !['entregue', 'devolvido'].includes(eventType) || !validDate(movementDate)
+      || movementDate > dateToday() || notes.length > 500) {
+      return res.status(400).json({ ok: false, error: 'Dados da movimentação de EPI inválidos.' });
+    }
+    if (eventType === 'devolvido' && !validId(referenceMovementId)) {
+      return res.status(400).json({ ok: false, error: 'A devolução precisa referenciar a entrega original.' });
+    }
+    const h = getH();
+    if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
+    try {
+      const result = await h.db.runTransaction(async (tx) => {
+        const employeeRef = h.db.collection('rh_directory').doc(employeeId);
+        const ppeRef = h.db.collection('safety_ppe_catalog').doc(ppeId);
+        const [employeeSnap, ppeSnap, movementSnap] = await Promise.all([
+          tx.get(employeeRef), tx.get(ppeRef),
+          tx.get(h.db.collection('safety_ppe_movements')
+            .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', ppeId)),
+        ]);
+        if (!employeeSnap.exists || employeeSnap.data()?.orgId !== orgId) {
+          throw new SafetyRouteError(404, 'Colaborador não localizado no diretório do RH desta empresa.');
+        }
+        if (!ppeSnap.exists || ppeSnap.data()?.orgId !== orgId) {
+          throw new SafetyRouteError(404, 'EPI não localizado no catálogo desta empresa.');
+        }
+        const employee = employeeSnap.data() || {};
+        const ppe = ppeSnap.data() || {};
+        const latest = activeIssue(toRows<Record<string, any>>(movementSnap));
+        if (eventType === 'entregue') {
+          if (employee.active !== true) throw new SafetyRouteError(409, 'Não é possível entregar EPI a colaborador inativo no RH.');
+          if (ppe.active !== true) throw new SafetyRouteError(409, 'Este EPI está inativo no catálogo.');
+          if (typeof ppe.caNumber !== 'string' || !ppe.caNumber.trim()
+            || typeof ppe.caExpiresAt !== 'string' || ppe.caExpiresAt < dateToday()) {
+            throw new SafetyRouteError(409, 'Entrega bloqueada: o EPI está sem CA válido ou com CA vencido.');
+          }
+          if (latest?.eventType === 'entregue') {
+            throw new SafetyRouteError(409, 'Este EPI já consta como entregue a este colaborador. Registre a devolução ou substituição antes de uma nova entrega.');
+          }
+        } else {
+          if (!latest || latest.eventType !== 'entregue' || latest.id !== referenceMovementId) {
+            throw new SafetyRouteError(409, 'Devolução recusada: não existe uma entrega ativa correspondente a este EPI.');
+          }
+        }
+        const movementRef = h.db.collection('safety_ppe_movements').doc();
+        const actorName = (actor.email || actor.uid).slice(0, 160);
+        tx.create(movementRef, {
+          id: movementRef.id, orgId, employeeId, employeeName: String(employee.name || '').slice(0, 180),
+          ppeId, ppeName: String(ppe.name || '').slice(0, 120), eventType, movementDate,
+          ...(eventType === 'devolvido' ? { referenceMovementId } : {}),
+          ...(notes ? { notes } : {}),
+          createdByUid: actor.uid, createdByName: actorName, createdAt: FieldValue.serverTimestamp(),
+        });
+        return { movementId: movementRef.id, eventType };
+      });
+      return res.status(201).json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof SafetyRouteError) return res.status(error.status).json({ ok: false, error: error.message });
+      console.error('[safety PPE movement] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível registrar a movimentação do EPI.' });
+    }
+  });
+
+  router.post('/ppe-movements/replace', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const { employeeId, oldMovementId, newPpeId, movementDate } = req.body || {};
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+    if (!orgId || req.body?.orgId !== orgId || !actor?.uid || !validId(employeeId)
+      || !validId(oldMovementId) || !validId(newPpeId) || !validDate(movementDate)
+      || movementDate > dateToday() || notes.length > 500) {
+      return res.status(400).json({ ok: false, error: 'Dados da substituição de EPI inválidos.' });
+    }
+    const h = getH();
+    if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco de dados.' });
+    try {
+      const result = await h.db.runTransaction(async (tx) => {
+        const oldMovementRef = h.db.collection('safety_ppe_movements').doc(oldMovementId);
+        const newPpeRef = h.db.collection('safety_ppe_catalog').doc(newPpeId);
+        const employeeRef = h.db.collection('rh_directory').doc(employeeId);
+        const [oldMovementSnap, newPpeSnap, employeeSnap] = await Promise.all([
+          tx.get(oldMovementRef), tx.get(newPpeRef), tx.get(employeeRef),
+        ]);
+        if (!oldMovementSnap.exists || !newPpeSnap.exists || !employeeSnap.exists) {
+          throw new SafetyRouteError(404, 'Entrega, colaborador ou novo EPI não localizado.');
+        }
+        const oldMovement = oldMovementSnap.data() || {};
+        const employee = employeeSnap.data() || {};
+        const newPpe = newPpeSnap.data() || {};
+        if (oldMovement.orgId !== orgId || oldMovement.employeeId !== employeeId || oldMovement.eventType !== 'entregue') {
+          throw new SafetyRouteError(409, 'A entrega original não pertence ao colaborador ou não está válida.');
+        }
+        if (employee.orgId !== orgId || employee.active !== true) {
+          throw new SafetyRouteError(409, 'O colaborador está inativo ou não pertence à empresa.');
+        }
+        if (newPpe.orgId !== orgId || newPpe.active !== true || newPpeId === oldMovement.ppeId) {
+          throw new SafetyRouteError(409, 'Selecione um EPI ativo e diferente do item atual.');
+        }
+        if (typeof newPpe.caNumber !== 'string' || !newPpe.caNumber.trim()
+          || typeof newPpe.caExpiresAt !== 'string' || newPpe.caExpiresAt < dateToday()) {
+          throw new SafetyRouteError(409, 'Substituição bloqueada: o novo EPI está sem CA válido ou com CA vencido.');
+        }
+        const oldHistoryQuery = h.db.collection('safety_ppe_movements')
+          .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', oldMovement.ppeId);
+        const newHistoryQuery = h.db.collection('safety_ppe_movements')
+          .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', newPpeId);
+        const [oldHistory, newHistory] = await Promise.all([tx.get(oldHistoryQuery), tx.get(newHistoryQuery)]);
+        const latestOld = activeIssue(toRows<Record<string, any>>(oldHistory));
+        const latestNew = activeIssue(toRows<Record<string, any>>(newHistory));
+        if (!latestOld || latestOld.id !== oldMovementId || latestOld.eventType !== 'entregue') {
+          throw new SafetyRouteError(409, 'O EPI atual já foi devolvido ou substituído. Atualize a tela.');
+        }
+        if (latestNew?.eventType === 'entregue') {
+          throw new SafetyRouteError(409, 'O novo EPI já consta como entregue a este colaborador.');
+        }
+        const actorName = (actor.email || actor.uid).slice(0, 160);
+        const returnRef = h.db.collection('safety_ppe_movements').doc();
+        const deliveryRef = h.db.collection('safety_ppe_movements').doc();
+        tx.create(returnRef, {
+          id: returnRef.id, orgId, employeeId, employeeName: String(employee.name || '').slice(0, 180),
+          ppeId: String(oldMovement.ppeId), ppeName: String(oldMovement.ppeName || '').slice(0, 120),
+          eventType: 'devolvido', movementDate, referenceMovementId: oldMovementId,
+          notes: notes || 'Devolução registrada durante substituição de EPI.',
+          createdByUid: actor.uid, createdByName: actorName, createdAt: FieldValue.serverTimestamp(),
+        });
+        tx.create(deliveryRef, {
+          id: deliveryRef.id, orgId, employeeId, employeeName: String(employee.name || '').slice(0, 180),
+          ppeId: newPpeId, ppeName: String(newPpe.name || '').slice(0, 120),
+          eventType: 'entregue', movementDate,
+          notes: 'Substituição do EPI ' + String(oldMovement.ppeName || oldMovement.ppeId) + '. ' + notes,
+          createdByUid: actor.uid, createdByName: actorName, createdAt: FieldValue.serverTimestamp(),
+        });
+        return { returnMovementId: returnRef.id, deliveryMovementId: deliveryRef.id };
+      });
+      return res.status(201).json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof SafetyRouteError) return res.status(error.status).json({ ok: false, error: error.message });
+      console.error('[safety PPE replacement] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível substituir o EPI.' });
+    }
+  });
+
   return router;
 }
