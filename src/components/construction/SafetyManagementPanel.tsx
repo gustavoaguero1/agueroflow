@@ -350,11 +350,11 @@ export const SafetyManagementPanel: React.FC = () => {
           },
         },
       );
-      if (!response.ok || !response.permitId) {
+      if (!response.ok || !response.data?.ok || !response.data.permitId) {
         throw new Error(response.error || 'O servidor recusou o cadastro da APR/PT.');
       }
-      const permitId = response.permitId;
-      const permitCode = response.permitCode || 'APR/PT ' + permitId;
+      const permitId = response.data.permitId;
+      const permitCode = response.data.permitCode || 'APR/PT ' + permitId;
 
       setShowPermitForm(false);
       setSelectedPermitId(permitId);
