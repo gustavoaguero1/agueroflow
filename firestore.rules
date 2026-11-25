@@ -609,6 +609,11 @@ service cloud.firestore {
           && d.get('teamMembers', null) is list && d.get('teamMembers', []).size() >= 1 && d.get('teamMembers', []).size() <= 30
           && d.get('teamMembers', [])[0] is string
           && validSafetyRiskList(d)
+          && (documentType != 'pt' || (d.get('teamMemberIds', null) is list
+            && d.get('teamMemberIds', []).size() >= 1
+            && d.get('teamMemberIds', []).size() <= 30
+            && d.get('teamMemberIds', [])[0] is string
+            && d.get('teamMemberIds', [])[0].size() > 0))
           && controls is map
           && controls.get('teamBriefed', false) == true
           && controls.get('ppeInspected', false) == true
@@ -639,7 +644,8 @@ service cloud.firestore {
           && request.resource.data.get('orgId', '') == orgOf(permit)
           && request.resource.data.get('unitId', '') == permit.get('unitId', '')
           && request.resource.data.get('contractId', '') == permit.get('contractId', '')
-          && eventType in ['created', 'submitted_for_approval', 'approved', 'rejected', 'closed', 'cancelled', 'note_added']
+          // Manager transitions are server-only (Admin SDK); clients may only create initial/submission/note events.
+          && eventType in ['created', 'submitted_for_approval', 'note_added']
           && request.resource.data.get('actorUid', '') == request.auth.uid
           && request.resource.data.get('actorName', '') is string
           && request.resource.data.get('actorName', '').size() > 0
@@ -735,8 +741,7 @@ service cloud.firestore {
         let employee = employeeExists ? get(employeePath).data : {};
         return employeeExists
           && employee.get('orgId', '') == d.get('orgId', '')
-          && employee.get('active', false) == true
-          && employee.get('dismissalDate', null) == null;
+          && employee.get('active', false) == true;
       }
       function validSafetyPpeCatalogCreate() {
         let types = request.resource.data.get('requiredForPermitTypes', []);
@@ -833,11 +838,8 @@ service cloud.firestore {
                 ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
                 : (areaWrite(resource.data) || rhAllocation())))));
       allow delete: if orgScoped()
-        && !(coll in ['quality_record_states', 'safety_permit_states'])
-        && !immutable() && canDelete()
-        && (coll in ['safety_ppe_catalog', 'safety_training_catalog']
-          ? (areaOk(orgOf(resource.data), A_OPS(), 2) && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
-          : areaWrite(resource.data))
+        && !(coll in ['quality_record_states', 'safety_permit_states', 'safety_ppe_catalog', 'safety_training_catalog'])
+        && !immutable() && canDelete() && areaWrite(resource.data)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
@@ -1310,7 +1312,11 @@ service cloud.firestore {
           && (request.resource.data.get('eventType', '') != 'devolvido'
             || (request.resource.data.get('referenceMovementId', '') is string
               && request.resource.data.get('referenceMovementId', '').size() > 0
-              && exists(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', '')))));
+              && exists(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', '')))
+              && get(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', ''))).data.get('eventType', '') == 'entregue'
+              && get(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', ''))).data.get('orgId', '') == request.resource.data.get('orgId', '')
+              && get(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', ''))).data.get('employeeId', '') == request.resource.data.get('employeeId', '')
+              && get(/databases/$(database)/documents/safety_ppe_movements/$(request.resource.data.get('referenceMovementId', ''))).data.get('ppeId', '') == request.resource.data.get('ppeId', '')));
       }
       function validSafetyTrainingCatalogCreate() {
         let types = request.resource.data.get('requiredForPermitTypes', []);
