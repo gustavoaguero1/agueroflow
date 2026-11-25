@@ -35,7 +35,7 @@ const ppeCatalog = (id: string, orgId = 'org_a') => ({
   createdByUid: 'admin_1', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
 });
 
-test('only management can create the PPE and training catalog; operational users can record delivery and certificates', async () => {
+test('only management can create catalogs; PPE and training history are server-only and immutable', async () => {
   await seedEmployee('employee_01');
   const admin = dbFor('admin_1', 'Admin');
   const operator = dbFor('operator_1', 'Operacional');
@@ -56,12 +56,26 @@ test('only management can create the PPE and training catalog; operational users
     createdAt: serverTimestamp(),
   }));
 
-  await assertSucceeds(setDoc(doc(operator, 'safety_training_records/record_01'), {
+  await assertFails(setDoc(doc(operator, 'safety_training_records/record_01'), {
     id: 'record_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
     trainingCode: 'NR-35', title: 'Trabalho em Altura', issueDate: '2026-01-01',
     expirationDate: '2027-01-01', createdByUid: 'operator_1', createdByName: 'Operador',
     recordedAt: serverTimestamp(),
   }));
+
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'safety_ppe_movements/movement_01'), {
+      id: 'movement_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
+      ppeId: 'ppe_01', ppeName: 'Cinto paraquedista', eventType: 'entregue',
+      movementDate: '2026-11-25', createdByUid: 'operator_1', createdAt: serverTimestamp(),
+    });
+    await setDoc(doc(context.firestore(), 'safety_training_records/record_01'), {
+      id: 'record_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Colaborador SMS',
+      trainingCode: 'NR-35', title: 'Trabalho em Altura', issueDate: '2026-01-01',
+      expirationDate: '2027-01-01', createdByUid: 'operator_1', createdByName: 'Operador',
+      recordedAt: serverTimestamp(),
+    });
+  });
 
   await assertFails(updateDoc(doc(operator, 'safety_ppe_movements/movement_01'), { eventType: 'devolvido' }));
   await assertFails(deleteDoc(doc(operator, 'safety_ppe_movements/movement_01')));
