@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { QualityCommissioningPanel } from '../components/quality/QualityCommissioningPanel';
+import { SafetyManagementPanel } from '../components/safety/SafetyManagementPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -26,7 +27,7 @@ import {
 
 export const InspectionsModule: React.FC = () => {
   const { user, organization, logAudit, contracts, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
-  const [activeTab, setActiveTab] = useState<'inspecoes' | 'qualidade'>('inspecoes');
+  const [activeTab, setActiveTab] = useState<'inspecoes' | 'qualidade' | 'seguranca'>('inspecoes');
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -153,6 +154,13 @@ export const InspectionsModule: React.FC = () => {
         >
           Qualidade & Comissionamento
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('seguranca')}
+          className={`rounded-lg px-4 py-2 text-xs font-semibold transition-all ${activeTab === 'seguranca' ? 'bg-amber-500 text-slate-950' : 'border border-slate-800 bg-[#121826] text-slate-400 hover:text-white'}`}
+        >
+          Segurança & SMS
+        </button>
       </div>
       {activeTab === 'qualidade' ? (
         organization && (
@@ -165,6 +173,18 @@ export const InspectionsModule: React.FC = () => {
             canEdit={areaLevel('operacoes') >= 2}
             canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
             logAudit={logAudit}
+          />
+        )
+      ) : activeTab === 'seguranca' ? (
+        organization && (
+          <SafetyManagementPanel
+            organizationId={organization.id}
+            units={units}
+            contracts={contracts}
+            currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
+            currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Responsável de Campo'}
+            canEdit={areaLevel('operacoes') >= 2}
+            canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
           />
         )
       ) : (
