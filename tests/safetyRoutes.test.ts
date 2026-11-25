@@ -153,7 +153,7 @@ function ptSeed(): Seed {
     'safety_training_records/nr35_01': {
       id: 'nr35_01', orgId: 'org_a', employeeId: 'employee_01', employeeName: 'Profissional de Altura',
       trainingCode: 'NR-35', title: 'Trabalho em Altura', issueDate: '2026-01-01',
-      expirationDate: '2027-01-01',
+      expirationDate: '2028-01-01',
     },
   };
 }
