@@ -131,6 +131,10 @@ test('Operations editor creates an APR, initial event and state in sequence', as
   assert.equal(savedPermit.data()?.permitCode, 'APR-2026-ABC12345');
   assert.equal(savedPermit.data()?.documentType, 'apr');
   assert.equal(savedEvent.data()?.eventType, 'created');
+  await assertFails(setDoc(
+    doc(db, 'safety_permit_events/duplicate_created'),
+    eventData('operator_1', 'permit_01', 'created'),
+  ));
   assert.equal(savedState.data()?.status, 'draft');
   assert.ok(db);
 });
