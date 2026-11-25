@@ -39,7 +39,8 @@ function validPermit(uid: string, id = 'permit_01', overrides: Overrides = {}) {
     orgId: 'org_a',
     unitId: 'unit_a',
     contractId: 'contract_a',
-    permitCode: 'PT-2026-ABC12345',
+    permitCode: overrides.documentType === 'pt' ? 'PT-2026-ABC12345' : 'APR-2026-ABC12345',
+    documentType: 'apr',
     permitDate: '2026-11-25',
     permitType: 'trabalho_a_quente',
     activityTitle: 'Soldagem TIG em tubulação inox',
@@ -145,15 +146,74 @@ async function transitionPermit(
   return db;
 }
 
-test('Operations editor creates APR/PT, initial event and state in sequence', async () => {
+test('Operations editor creates an APR, initial event and state in sequence', async () => {
   const { db, initialEventId } = await createPermit();
   const savedPermit = await assertSucceeds(getDoc(doc(db, 'safety_permits/permit_01')));
   const savedEvent = await assertSucceeds(getDoc(doc(db, 'safety_permit_events', initialEventId)));
   const savedState = await assertSucceeds(getDoc(doc(db, 'safety_permit_states/permit_01')));
-  assert.equal(savedPermit.data()?.permitCode, 'PT-2026-ABC12345');
+  assert.equal(savedPermit.data()?.permitCode, 'APR-2026-ABC12345');
+  assert.equal(savedPermit.data()?.documentType, 'apr');
   assert.equal(savedEvent.data()?.eventType, 'created');
   assert.equal(savedState.data()?.status, 'draft');
   assert.ok(db);
+});
+
+
+test('PT must reference an approved APR from the same organization, unit and contract', async () => {
+  const { initialEventId } = await createPermit();
+  await transitionPermit(
+    'operator_1',
+    'Operacional',
+    'permit_01',
+    initialEventId,
+    'apr_submit',
+    'submitted_for_approval',
+    'awaiting_approval',
+  );
+  await transitionPermit(
+    'supervisor_1',
+    'Supervisor',
+    'permit_01',
+    'apr_submit',
+    'apr_approve',
+    'approved',
+    'approved',
+  );
+
+  const operator = dbFor('operator_1', 'Operacional');
+  const ptData = validPermit('operator_1', 'pt_01', {
+    documentType: 'pt',
+    permitCode: 'PT-2026-ABC12345',
+    relatedAprId: 'permit_01',
+  });
+  await assertSucceeds(setDoc(doc(operator, 'safety_permits/pt_01'), ptData));
+
+  await assertFails(setDoc(
+    doc(operator, 'safety_permits/pt_without_apr'),
+    validPermit('operator_1', 'pt_without_apr', {
+      documentType: 'pt',
+      permitCode: 'PT-2026-ABC12346',
+    }),
+  ));
+  await assertFails(setDoc(
+    doc(operator, 'safety_permits/pt_wrong_unit'),
+    validPermit('operator_1', 'pt_wrong_unit', {
+      documentType: 'pt',
+      permitCode: 'PT-2026-ABC12347',
+      relatedAprId: 'permit_01',
+      unitId: 'unit_other',
+    }),
+  ));
+
+  await createPermit('operator_1', 'Operacional', 'apr_draft_02');
+  await assertFails(setDoc(
+    doc(operator, 'safety_permits/pt_against_draft_apr'),
+    validPermit('operator_1', 'pt_against_draft_apr', {
+      documentType: 'pt',
+      permitCode: 'PT-2026-ABC12348',
+      relatedAprId: 'apr_draft_02',
+    }),
+  ));
 });
 
 test('APR/PT requires controls specific to the selected work and a valid risk reduction', async () => {
