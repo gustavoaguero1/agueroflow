@@ -169,6 +169,17 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
       ? 'Supervisor'
       : 'Responsavel';
 
+  const canReviewDiscussion = ['Admin', 'Gerente', 'Supervisor'].includes(currentUserRole);
+  const allowedSenderRoles: OrderMessageRole[] = currentUserRole === 'Admin' || currentUserRole === 'Gerente'
+    ? ['Responsavel', 'Superior', 'Tecnico']
+    : currentUserRole === 'Supervisor'
+      ? ['Responsavel', 'Supervisor', 'Tecnico']
+      : ['Responsavel', 'Tecnico'];
+  const visibleQuickPrompts = QUICK_PROMPTS.filter((prompt) =>
+    allowedSenderRoles.includes(prompt.role)
+    && (!['resposta', 'orientacao', 'liberacao'].includes(prompt.type) || canReviewDiscussion)
+  );
+
   const [activeRole, setActiveRole] = useState<OrderMessageRole>(defaultRole);
   const [activeType, setActiveType] = useState<OrderMessageType>('pergunta');
   const [replyingTo, setReplyingTo] = useState<OrderMessage | null>(null);
@@ -178,13 +189,14 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
 
   // Sync role defaults if type changes
   const handleTypeSelect = (type: OrderMessageType) => {
+    if (['resposta', 'orientacao', 'liberacao'].includes(type) && !canReviewDiscussion) {
+      alert('Respostas oficiais, orientações e liberações exigem perfil de Admin, Gerente ou Supervisor.');
+      return;
+    }
     setActiveType(type);
-    if (type === 'resposta' || type === 'orientacao' || type === 'liberacao') {
-      if (activeRole !== 'Superior' && activeRole !== 'Supervisor') {
-        setActiveRole('Superior');
-      }
-    } else if (type === 'pergunta' && (activeRole === 'Superior' || activeRole === 'Supervisor')) {
-      // Keep as superior if superior asking, or switch if replying
+    if (['resposta', 'orientacao', 'liberacao'].includes(type)
+      && activeRole !== 'Superior' && activeRole !== 'Supervisor') {
+      setActiveRole(defaultRole);
     }
   };
 
@@ -217,6 +229,14 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
     if (!content.trim() || isSending) return;
     if (content.trim().length > 4000) {
       alert('A mensagem deve ter no máximo 4.000 caracteres.');
+      return;
+    }
+    if (!allowedSenderRoles.includes(activeRole)) {
+      alert('O papel selecionado não está disponível para o seu perfil.');
+      return;
+    }
+    if (['resposta', 'orientacao', 'liberacao'].includes(activeType) && !canReviewDiscussion) {
+      alert('Seu perfil não possui alçada para enviar este tipo de mensagem.');
       return;
     }
 
@@ -440,7 +460,7 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
               O responsável pode relatar o status da execução ou enviar perguntas para que um superior responda e oriente as etapas.
             </p>
             <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-              {QUICK_PROMPTS.slice(0, 3).map((qp, i) => (
+              {visibleQuickPrompts.slice(0, 3).map((qp, i) => (
                 <button
                   key={i}
                   type="button"
@@ -551,10 +571,10 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
                       type="button"
                       onClick={() => {
                         setReplyingTo(msg);
-                        // If technician asked, superior responds
                         if (msg.messageType === 'pergunta') {
-                          setActiveType('resposta');
-                          setActiveRole('Superior');
+                          // Management can issue an official response; other profiles can add a technical note.
+                          setActiveType(canReviewDiscussion ? 'resposta' : 'apontamento');
+                          setActiveRole(defaultRole);
                         }
                       }}
                       className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -599,7 +619,7 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
           <div className="flex items-center space-x-1.5">
             <span className="text-[10px] text-slate-400 font-medium">Você é:</span>
             <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800">
-              {(['Responsavel', 'Superior', 'Supervisor', 'Tecnico'] as OrderMessageRole[]).map((r) => {
+              {allowedSenderRoles.map((r) => {
                 const isSelected = activeRole === r;
                 const cfg = ROLE_CONFIGS[r];
                 return (
@@ -672,7 +692,7 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
         {/* Quick Suggestion Pills */}
         <div className="flex items-center space-x-1 overflow-x-auto pb-0.5 custom-scrollbar text-[10px] text-slate-400">
           <span className="shrink-0 text-slate-500 text-[9px]">Sugestões:</span>
-          {QUICK_PROMPTS.map((qp, idx) => (
+          {visibleQuickPrompts.map((qp, idx) => (
             <button
               key={idx}
               type="button"
