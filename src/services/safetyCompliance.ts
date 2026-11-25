@@ -128,16 +128,21 @@ function latestPpeMovement(movements: SafetyPpeMovement[], employeeId: string, p
       || b.movementDate.localeCompare(a.movementDate))[0];
 }
 
-function trainingIsCurrent(record: { issueDate?: string; expirationDate?: string }, today: string): boolean {
+function trainingIsCurrent(
+  record: { issueDate?: string; expirationDate?: string },
+  activityStart: string,
+  activityEnd: string,
+): boolean {
   return Boolean(record.issueDate && record.expirationDate
-    && record.issueDate <= today && record.expirationDate >= today);
+    && record.issueDate <= activityStart && record.expirationDate >= activityEnd);
 }
 
 export function evaluateEmployeeSafetyCompliance(
   snapshot: SafetyComplianceSnapshot,
   employeeId: string,
   permitType: SafetyPermitType,
-  today = new Date().toISOString().slice(0, 10),
+  activityStart = new Date().toISOString().slice(0, 10),
+  activityEnd = activityStart,
 ): SafetyComplianceBlocker[] {
   const employee = snapshot.employees.find((item) => item.id === employeeId);
   if (!employee) {
@@ -163,7 +168,7 @@ export function evaluateEmployeeSafetyCompliance(
     const currentRecord = [
       ...snapshot.trainingRecords.filter((item) => item.employeeId === employeeId && item.trainingCode.toUpperCase() === code),
       ...snapshot.legacyTrainingRecords.filter((item) => item.employeeId === employeeId && item.code.toUpperCase() === code),
-    ].some((item) => trainingIsCurrent(item, today));
+    ] .some((item) => trainingIsCurrent(item, activityStart, activityEnd));
     if (!currentRecord) {
       blockers.push({ employeeId, employeeName: employee.name, category: 'treinamento',
         message: `${code} ausente ou vencido para ${employee.name}.` });
@@ -179,7 +184,7 @@ export function evaluateEmployeeSafetyCompliance(
   }
 
   for (const ppe of requiredPpe) {
-    if (!ppe.caNumber.trim() || !ppe.caExpiresAt || ppe.caExpiresAt < today) {
+    if (!ppe.caNumber.trim() || !ppe.caExpiresAt || ppe.caExpiresAt < activityEnd) {
       blockers.push({ employeeId, employeeName: employee.name, category: 'epi',
         message: `${ppe.name}: CA ausente ou vencido.` });
       continue;
@@ -198,7 +203,8 @@ export function evaluateSafetyCrewCompliance(
   snapshot: SafetyComplianceSnapshot,
   employeeIds: string[],
   permitType: SafetyPermitType,
-  today?: string,
+  activityStart?: string,
+  activityEnd?: string,
 ): SafetyComplianceBlocker[] {
   const uniqueIds = [...new Set(employeeIds)];
   if (!uniqueIds.length) {
@@ -209,7 +215,9 @@ export function evaluateSafetyCrewCompliance(
     return [{ employeeId: '', employeeName: 'Dados de conformidade', category: 'cadastro',
       message: 'Aguarde a sincronização dos cadastros de EPIs e treinamentos antes de liberar a PT.' }];
   }
-  return uniqueIds.flatMap((id) => evaluateEmployeeSafetyCompliance(snapshot, id, permitType, today));
+  const start = activityStart || new Date().toISOString().slice(0, 10);
+  const end = activityEnd || start;
+  return uniqueIds.flatMap((id) => evaluateEmployeeSafetyCompliance(snapshot, id, permitType, start, end));
 }
 
 export function legacyFieldWorkerIdForEmployee(employeeId: string): string {
