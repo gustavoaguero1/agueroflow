@@ -178,7 +178,11 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     const date = new Date(year, month - 1, day);
     return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
   };
-  const dateToday = () => new Date().toISOString().slice(0, 10);
+  const dateToday = () => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
+    return part('year') + '-' + part('month') + '-' + part('day');
+  };
   const movementTime = (movement: Record<string, any>) => {
     const value = movement.createdAt;
     if (value instanceof Date) return value.getTime();
