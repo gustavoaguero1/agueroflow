@@ -400,13 +400,13 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                         <div className="flex items-center space-x-3">
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
                               setValidationMessage('');
                               setCurrentAnswers({
                                 ...currentAnswers,
                                 [it.id]: { ...ans, value: 'sim', conforme: true },
-                              })
-                            }
+                              });
+                            }}
                             className={`px-4 py-1.5 rounded-lg font-semibold transition-all ${
                               ans?.value === 'sim'
                                 ? 'bg-emerald-600 text-white shadow-md'
@@ -417,13 +417,13 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
                               setValidationMessage('');
                               setCurrentAnswers({
                                 ...currentAnswers,
                                 [it.id]: { ...ans, value: 'nao', conforme: false },
-                              })
-                            }
+                              });
+                            }}
                             className={`px-4 py-1.5 rounded-lg font-semibold transition-all ${
                               ans?.value === 'nao'
                                 ? 'bg-red-600 text-white shadow-md'
@@ -440,13 +440,13 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           type="number"
                           step="any"
                           value={ans?.value ?? ''}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
                               [it.id]: { ...ans, value: e.target.value },
-                            })
-                          }
+                            });
+                          }}
                           placeholder="Digite o valor medido..."
                           className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
