@@ -1443,5 +1443,31 @@ service cloud.firestore {
       allow read: if canRead(resource) && (resource == null || sresCanRead(resource.data));
       allow create, update, delete: if false;
     }
+
+    // ---- Soldagem, END, Lotes/Corridas e ITP/PIT (escrita exclusiva /api/industrial-quality) ----
+    match /welding_procedures/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /welder_qualifications/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_RH(), 1));
+      allow create, update, delete: if false;
+    }
+    match /material_lots/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_STOCK(), 1));
+      allow create, update, delete: if false;
+    }
+    match /weld_joints/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /ndt_reports/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /quality_itp_matrices/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
   }
 }

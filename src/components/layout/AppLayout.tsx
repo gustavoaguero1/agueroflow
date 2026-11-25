@@ -67,6 +67,7 @@ export type NavSection =
   | 'auditoria'
   | 'obras'
   | 'obras-medicoes'
+  | 'obras-qualidade-industrial'
   | 'operacoes'
   | 'ops-inicio'
   | 'ops-direcionar'
@@ -336,6 +337,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'ops-direcionar' as NavSection, label: 'Gerenciamento de operações' },
         { id: 'obras' as NavSection, label: 'Obras e RDO' },
         { id: 'obras-medicoes' as NavSection, label: 'Medições & Boletins (BM)' },
+        { id: 'obras-qualidade-industrial' as NavSection, label: 'Solda, END & Data Book' },
         { id: 'ops-diario' as NavSection, label: 'Diário de obras' },
         { id: 'ops-viagem' as NavSection, label: 'Hora viagem' },
         { id: 'viagens-painel' as NavSection, label: 'Passagens e solicitações' },
@@ -501,6 +503,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Operações — Obras e RDO';
       case 'obras-medicoes':
         return 'Operações — Medições & Boletim de Medição (BM)';
+      case 'obras-qualidade-industrial':
+        return 'Operações — Soldagem, END & Data Book';
       case 'operacoes':
       case 'ops-inicio':
         return 'Operações — Painel';
