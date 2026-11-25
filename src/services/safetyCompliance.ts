@@ -37,6 +37,7 @@ export interface SafetyPpeMovement {
   referenceMovementId?: string;
   notes?: string;
   createdByUid: string;
+  createdByName?: string;
   createdAt?: unknown;
 }
 
@@ -67,6 +68,7 @@ export interface SafetyTrainingRecord {
   certificateName?: string;
   notes?: string;
   createdByUid: string;
+  createdByName?: string;
   recordedAt?: unknown;
 }
 
