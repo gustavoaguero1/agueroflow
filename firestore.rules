@@ -1014,7 +1014,7 @@ service cloud.firestore {
         // Inspection lifecycle is server-only; OS status transitions are server-only and atomic with timeline.
         && !(coll in ['inspections', 'checklist_templates', 'checklist_runs'])
         && (coll != 'work_orders' || request.resource.data.get('status', '') == resource.data.get('status', ''))
-        && workOrderUpdateReferencesValid()
+        && (coll == 'work_orders' ? workOrderUpdateReferencesValid() : true)
         && (coll == 'order_messages'
           ? (areaWrite(resource.data) && validOrderMessageUpdate())
           : (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
