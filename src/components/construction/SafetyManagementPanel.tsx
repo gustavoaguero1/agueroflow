@@ -625,7 +625,7 @@ export const SafetyManagementPanel: React.FC = () => {
       </div>
 
       <div className={activeView === 'conformidade' ? 'block' : 'hidden'}>
-        <SafetyCompliancePanel organizationId={organizationId} canEdit={canEdit} canManageCatalog={canManageSafetyCatalog} userId={user?.uid || ''} actorName={user?.displayName || user?.email || 'Responsável de campo'} onSnapshotChange={onComplianceSnapshotChange} logAudit={logAudit} />
+        <SafetyCompliancePanel organizationId={organizationId} canEdit={canEdit} canManageCatalog={canEdit && canManageSafetyCatalog} userId={user?.uid || ''} actorName={user?.displayName || user?.email || 'Responsável de campo'} onSnapshotChange={onComplianceSnapshotChange} logAudit={logAudit} />
       </div>
 
       {activeView === 'permissoes' ? (
