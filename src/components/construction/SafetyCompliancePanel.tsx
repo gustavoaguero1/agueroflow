@@ -101,11 +101,14 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const [trainingNotes, setTrainingNotes] = useState('');
 
   useEffect(() => {
-    if (!organizationId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+    setEmployees([]);
+    setPpeCatalog([]);
+    setPpeMovements([]);
+    setTrainingCatalog([]);
+    setTrainingRecords([]);
+    setLegacyWorkers([]);
+    setLoading(Boolean(organizationId));
+    if (!organizationId) return;
     const pendingSources = new Set(['rh', 'ppe', 'ppeMovements', 'trainingCatalog', 'trainingRecords', 'legacy']);
     const markLoaded = (source: string) => {
       pendingSources.delete(source);
