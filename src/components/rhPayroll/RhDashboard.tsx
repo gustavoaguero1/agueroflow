@@ -53,7 +53,7 @@ export const RhDashboard: React.FC<RhDashboardProps> = ({
   onNavigateTab,
   canViewFinancials,
   onQuickRecalculate,
-  orgName = 'Aguero Inox',
+  orgName = '',
   onSyncWithConstruction,
   isSyncingWithConstruction = false,
 }) => {
@@ -106,8 +106,8 @@ export const RhDashboard: React.FC<RhDashboardProps> = ({
   const departmentTotals: { [dept: string]: { carteira: number; porFora: number; count: number } } = {};
   calculations.forEach((c) => {
     const emp = employees.find((e) => e.id === c.employeeId);
-    const obraCode = c.codigoObra || emp?.codigoObra || c.registrationNumber || '198';
-    const dept = `Obra ${obraCode}`;
+    const obraCode = (c.codigoObra || emp?.codigoObra || c.registrationNumber || '').trim();
+    const dept = obraCode ? `Obra ${obraCode}` : 'Sem código de obra';
     if (!departmentTotals[dept]) {
       departmentTotals[dept] = { carteira: 0, porFora: 0, count: 0 };
     }
@@ -184,9 +184,11 @@ export const RhDashboard: React.FC<RhDashboardProps> = ({
               <h3 className="text-base font-bold text-white">
                 Painel Gerencial & Apuração de 13º Salário {referenceYear}
               </h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 font-semibold border border-blue-700/50">
-                Oficial Aguero Inox
-              </span>
+              {orgName && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900 text-blue-300 font-semibold border border-blue-700/50">
+                  {orgName}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-300 mt-0.5">
               Pré-cálculo para conferência do RH/contabilidade. Não constitui folha de pagamento.

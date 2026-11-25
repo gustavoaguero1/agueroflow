@@ -117,7 +117,8 @@ export async function submitOnboardingForm(
   return data;
 }
 
-export async function listOnboardings(orgId: string = 'org_aguero_default'): Promise<EmployeeOnboarding[]> {
+export async function listOnboardings(orgId: string): Promise<EmployeeOnboarding[]> {
+  if (!orgId) return [];
   const byId = new Map<string, EmployeeOnboarding>();
 
   // 1. Load from server gateway (includes public candidate submissions)

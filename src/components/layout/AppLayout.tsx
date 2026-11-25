@@ -88,6 +88,7 @@ export type NavSection =
   | 'rh-salarios'
   | 'rh-painel'
   | 'rh-funcionarios'
+  | 'rh-pendencias'
   | 'rh-admissoes'
   | 'rh-importacao'
   | 'rh-calculo'
@@ -368,6 +369,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       subItems: [
         { id: 'rh-painel' as NavSection, label: 'Painel RH/Salários' },
         { id: 'rh-funcionarios' as NavSection, label: 'Funcionários' },
+        { id: 'rh-pendencias' as NavSection, label: 'Pendências Legadas' },
         { id: 'rh-admissoes' as NavSection, label: 'Admissão Digital (Links)' },
         { id: 'rh-importacao' as NavSection, label: 'Importação de Planilha' },
         { id: 'rh-calculo' as NavSection, label: 'Cálculo do 13º' },
@@ -536,6 +538,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'RH / Salários';
       case 'rh-funcionarios':
         return 'Funcionários';
+      case 'rh-pendencias':
+        return 'Pendências Legadas de RH';
       case 'rh-admissoes':
         return 'Admissão Digital';
       case 'rh-importacao':
