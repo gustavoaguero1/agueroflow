@@ -463,6 +463,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 setAssetUnitId(units[0]?.id || '');
                 setShowAssetModal(true);
               }}
+              disabled={units.length === 0}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -954,6 +955,18 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                   placeholder="Ex: Prensa Hidráulica 100T"
                   className="w-full px-3 py-2 rounded bg-slate-900 border border-slate-700 text-white"
                 />
+              </div>
+              <div>
+                <label className="block text-slate-300 mb-1">Unidade vinculada *</label>
+                <select
+                  required
+                  value={assetUnitId}
+                  onChange={(e) => setAssetUnitId(e.target.value)}
+                  className="w-full px-3 py-2 rounded bg-slate-900 border border-slate-700 text-white"
+                >
+                  <option value="" disabled>Selecione a unidade</option>
+                  {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                </select>
               </div>
               <div className="pt-2 flex justify-end space-x-2">
                 <button type="button" onClick={() => setShowAssetModal(false)} className="px-3 py-1.5 rounded bg-slate-800 text-slate-300">
