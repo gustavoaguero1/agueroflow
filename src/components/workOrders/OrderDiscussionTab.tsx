@@ -309,7 +309,8 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
           tx.update(replyRef, {
             resolved: true,
             resolvedAt: now,
-            resolvedBy: senderName,
+            resolvedBy: currentUser.uid,
+            resolvedByName: senderName,
           });
         }
         return orderUpdates;
@@ -341,7 +342,8 @@ export const OrderDiscussionTab: React.FC<OrderDiscussionTabProps> = ({
       await updateDoc(doc(db, 'order_messages', msg.id), {
         resolved: nextResolved,
         resolvedAt: nextResolved ? new Date().toISOString() : null,
-        resolvedBy: nextResolved ? (currentUser.displayName || currentUser.email) : null,
+        resolvedBy: nextResolved ? currentUser.uid : null,
+        resolvedByName: nextResolved ? (currentUser.displayName || currentUser.email || 'Usuário') : null,
       });
     } catch (err) {
       console.error('Erro ao atualizar status da dúvida:', err);
