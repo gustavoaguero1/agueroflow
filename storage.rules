@@ -60,7 +60,7 @@ service firebase.storage {
     // A revisão publicada é imutável; uma nova revisão usa novo caminho.
     match /engineering-documents/{orgId}/{documentId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
-      allow create: if safetyCertificateCanWrite(orgId)
+      allow create: if engineeringCanWrite(orgId)
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
