@@ -54,6 +54,7 @@ interface TravelComparisonResultsProps {
   isSavingSearch?: boolean;
   consolidatedTrips?: TravelConsolidatedTrip[];
   verificationMetrics?: TravelVerificationMetrics;
+  sourceLinks?: Array<{ sourceName: string; url: string }>;
 }
 
 export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = ({
@@ -66,6 +67,7 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
   isSavingSearch = false,
   consolidatedTrips: propConsolidatedTrips,
   verificationMetrics: propMetrics,
+  sourceLinks = [],
 }) => {
   // Main view mode: 'consolidado' (Verification Layer) vs 'detalhado' (Individual Offers)
   const [viewMode, setViewMode] = useState<'consolidado' | 'detalhado'>('consolidado');
@@ -317,7 +319,7 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
         <div className="flex flex-wrap items-center justify-between pt-3 gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-slate-400 font-medium">Fontes consultadas ({sourcesQueried.length}):</span>
-            {sourcesQueried.map((src) => (
+            {sourcesQueried.filter((src) => !sourcesUnavailable.includes(src)).map((src) => (
               <span
                 key={src}
                 className="px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-slate-700 font-mono text-[11px] flex items-center gap-1"
@@ -332,7 +334,7 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
                 className="px-2 py-0.5 rounded-full bg-rose-950/40 text-rose-300 border border-rose-800/40 font-mono text-[11px] flex items-center gap-1"
               >
                 <AlertTriangle className="w-3 h-3 text-rose-400" />
-                {src} (indisponível)
+                {src} (sem oferta confirmada)
               </span>
             ))}
           </div>
@@ -343,6 +345,36 @@ export const TravelComparisonResults: React.FC<TravelComparisonResultsProps> = (
           </div>
         </div>
       </div>
+
+      {offers.length === 0 && (
+        <div role="status" className="rounded-xl border border-amber-700/60 bg-amber-950/30 p-4 text-sm text-amber-100">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+            <div className="space-y-2">
+              <p className="font-semibold">Nenhuma tarifa confirmada foi retornada.</p>
+              <p className="text-xs text-amber-200/90">
+                Não exibimos preços ou horários estimados como se fossem passagens disponíveis. Consulte os sites oficiais abaixo para verificar estoque, horários e valores atuais.
+              </p>
+              {sourceLinks.length > 0 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                  {sourceLinks.map((source) => (
+                    <a
+                      key={source.sourceName}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+                    >
+                      Consultar {source.sourceName}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Best Offer Highlight Banner */}
       {bestOffer && (

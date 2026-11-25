@@ -425,6 +425,9 @@ export interface ChecklistRun {
   inspectorId: string;
   inspectorName: string;
   progressPercent: number;
+  /** Number of explicitly negative/non-conforming answers captured at completion. */
+  nonConformityCount?: number;
+  hasNonConformities?: boolean;
   answers: Record<string, ChecklistItemAnswer>;
   status: 'em_andamento' | 'concluido' | 'cancelado';
   completedAt?: string;

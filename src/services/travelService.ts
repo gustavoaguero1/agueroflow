@@ -795,7 +795,7 @@ export interface ITravelConnector {
 
 /**
  * 1. QUEROPASSAGEM CONNECTOR (Primary Corporate Partner)
- * Generates 6 to 8 realistic, multi-departure offerings across verified top carriers.
+ * Returns only offers actually returned by the partner integration; otherwise it exposes a search link.
  */
 export class QueroPassagemConnector implements ITravelConnector {
   config: TravelSourceConfig = {
@@ -889,7 +889,7 @@ export class QueroPassagemConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -957,7 +957,7 @@ export class ClickBusConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1028,7 +1028,7 @@ export class BuserConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1096,7 +1096,7 @@ export class DeOnibusConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1180,7 +1180,7 @@ export class AnttDadosAbertosConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1253,7 +1253,7 @@ export class EmbarcaAiConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1325,7 +1325,7 @@ export class GuicheVirtualConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1395,7 +1395,7 @@ export class MobiFacilConnector implements ITravelConnector {
     return {
       sourceId: this.config.id,
       sourceName: this.config.name,
-      status: 'sucesso',
+      status: 'link_apenas',
       offers,
       searchUrl,
       queriedAt,
@@ -1408,12 +1408,12 @@ export class MobiFacilConnector implements ITravelConnector {
 // ---------------------------------------------------------------------------
 
 function generatePartnerBenchmarkOffers(
-  sourceId: string,
-  sourceName: string,
-  criteria: TravelSearchCriteria,
-  searchUrl: string,
-  priceStatus: TravelPriceStatus | 'a_confirmar',
-  schedules: Array<{
+  _sourceId: string,
+  _sourceName: string,
+  _criteria: TravelSearchCriteria,
+  _searchUrl: string,
+  _priceStatus: TravelPriceStatus | 'a_confirmar',
+  _schedules: Array<{
     carrier: string;
     service: 'Convencional' | 'Executivo' | 'Semi-Leito' | 'Leito' | 'Cama / Leito Cama';
     baseFare: number;
@@ -1422,90 +1422,8 @@ function generatePartnerBenchmarkOffers(
     durationMins: number;
   }>
 ): TravelOffer[] {
-  const totalPax = Math.max(1, (criteria.passengers.adults || 1) + (criteria.passengers.children || 0) + (criteria.passengers.seniors || 0));
-  const offers: TravelOffer[] = [];
-
-  const originHub = BRAZILIAN_TERMINAL_HUBS.find(h => h.city.toLowerCase() === criteria.originCity.toLowerCase()) || {
-    terminalName: criteria.originTerminal || `Terminal Rodoviário de ${criteria.originCity}`,
-  };
-  const destHub = BRAZILIAN_TERMINAL_HUBS.find(h => h.city.toLowerCase() === criteria.destinationCity.toLowerCase()) || {
-    terminalName: criteria.destinationTerminal || `Terminal Rodoviário de ${criteria.destinationCity}`,
-  };
-
-  schedules.forEach((sch, idx) => {
-    // Apply filters if defined
-    if (criteria.carrierFilter && !sch.carrier.toLowerCase().includes(criteria.carrierFilter.toLowerCase())) {
-      return;
-    }
-
-    if (criteria.seatClassFilter && criteria.seatClassFilter !== 'todos') {
-      const seatNorm = sch.service.toLowerCase().replace(/[^a-z]/g, '');
-      const filterNorm = criteria.seatClassFilter.replace(/_/g, '');
-      if (!seatNorm.includes(filterNorm) && !filterNorm.includes(seatNorm)) {
-        return;
-      }
-    }
-
-    const [depHours, depMins] = sch.departs.split(':').map(Number);
-    if (criteria.timeOfDayFilter && criteria.timeOfDayFilter !== 'todos') {
-      if (criteria.timeOfDayFilter === 'madrugada' && (depHours < 0 || depHours >= 6)) return;
-      if (criteria.timeOfDayFilter === 'manha' && (depHours < 6 || depHours >= 12)) return;
-      if (criteria.timeOfDayFilter === 'tarde' && (depHours < 12 || depHours >= 18)) return;
-      if (criteria.timeOfDayFilter === 'noite' && (depHours < 18 || depHours >= 24)) return;
-    }
-
-    // Calculate arrival time
-    const totalMinutes = depHours * 60 + depMins + sch.durationMins;
-    const arrHours = Math.floor((totalMinutes % 1440) / 60);
-    const arrMins = totalMinutes % 60;
-    const arrTimeStr = `${String(arrHours).padStart(2, '0')}:${String(arrMins).padStart(2, '0')}`;
-    const hoursFormatted = Math.floor(sch.durationMins / 60);
-    const minsFormatted = sch.durationMins % 60;
-    const durationFormatted = hoursFormatted > 0 ? `${hoursFormatted}h ${minsFormatted > 0 ? `${minsFormatted}min` : ''}` : `${minsFormatted}min`;
-
-    const totalPassengerFare = Math.round(sch.baseFare * totalPax * 100) / 100;
-    const totalTaxes = Math.round(sch.tax * totalPax * 100) / 100;
-    const totalAmount = Math.round((totalPassengerFare + totalTaxes) * 100) / 100;
-
-    if (criteria.maxPriceLimit && criteria.maxPriceLimit > 0 && totalAmount > criteria.maxPriceLimit) {
-      return;
-    }
-
-    offers.push({
-      id: `off_${sourceId}_${idx + 1}_${Date.now().toString().slice(-4)}`,
-      sourceId,
-      sourceName,
-      sourceType: 'rodoviario',
-      carrierName: sch.carrier,
-      originCity: criteria.originCity,
-      originTerminal: originHub.terminalName,
-      destinationCity: criteria.destinationCity,
-      destinationTerminal: destHub.terminalName,
-      departureDate: criteria.departureDate,
-      departureTime: sch.departs,
-      arrivalDate: criteria.departureDate,
-      arrivalTime: arrTimeStr,
-      durationMinutes: sch.durationMins,
-      durationFormatted,
-      stopsCount: 0,
-      serviceClass: sch.service,
-      seatType: sch.service === 'Convencional' ? 'Poltrona Reclinável Padrão' : sch.service === 'Executivo' ? 'Poltrona Acolchoada com Apoio' : sch.service === 'Semi-Leito' ? 'Reclinação 150º com Apoio de Pernas' : 'Reclinação 180º / Cortina de Privacidade',
-      passengerCount: totalPax,
-      baseFarePerPassenger: sch.baseFare,
-      mandatoryTaxesAndFees: sch.tax,
-      totalAmount,
-      currency: 'BRL',
-      baggageAllowance: 'Bagagem de mão até 5kg + 1 volume no bagageiro até 30kg',
-      changeAndCancelPolicy: 'Remarcação sem multa até 3h antes do embarque conforme resolução ANTT 4.282/14',
-      deepLink: searchUrl,
-      queriedAt: new Date().toISOString(),
-      priceStatus,
-      isCombinedTrip: criteria.isRoundTrip,
-      isDemoData: false,
-    });
-  });
-
-  return offers;
+  // Corridor reference values are not provider inventory. Never expose them as ticket offers.
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -4251,8 +4169,10 @@ export async function executeMultiSourceTravelSearch(
     const connector = activeConnectors[index];
     if (res.status === 'fulfilled') {
       const val = res.value;
-      if (val.offers && val.offers.length > 0) {
+      if (val.offers && val.offers.length > 0 && val.status === 'sucesso') {
         allOffers = allOffers.concat(val.offers);
+      } else {
+        sourcesUnavailable.push(connector.config.name);
       }
     } else {
       sourcesUnavailable.push(connector.config.name);

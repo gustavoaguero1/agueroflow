@@ -26,6 +26,22 @@ test('org member writes/reads own org photos only', async () => {
   await assertFails(getBytes(ref(st({ orgs: { org_b: 'Admin' } }), 'work-orders/org_a/wo1/antes_1.jpg')));
 });
 
+test('work-order evidence and Operations attachments require Operations area access', async () => {
+  const editor = st({ orgs: { org_a: 'Operacional' } }, 'operations-editor');
+  const viewer = st({ orgs: { org_a: 'Visualizador' } }, 'viewer');
+
+  const workOrderPath = 'work-orders/org_a/wo1/area_access.jpg';
+  await assertSucceeds(uploadBytes(ref(editor, workOrderPath), jpg, { contentType: 'image/jpeg' }));
+  await assertSucceeds(getBytes(ref(viewer, workOrderPath)));
+  await assertFails(uploadBytes(ref(viewer, 'work-orders/org_a/wo1/viewer_blocked.jpg'), jpg, { contentType: 'image/jpeg' }));
+
+  const operationsPath = 'operacoes/org_a/receipt_area_access.pdf';
+  await assertSucceeds(uploadBytes(ref(editor, operationsPath), pdf, { contentType: 'application/pdf' }));
+  await assertSucceeds(getBytes(ref(viewer, operationsPath)));
+  await assertFails(uploadBytes(ref(viewer, 'operacoes/org_a/viewer_blocked.pdf'), pdf, { contentType: 'application/pdf' }));
+  await assertFails(getBytes(ref(st({ orgs: { org_b: 'Admin' } }), operationsPath)));
+});
+
 test('non-image, anonymous and other paths are denied; master allowed', async () => {
   const s = st({ orgs: { org_a: 'Admin' } });
   await assertFails(uploadBytes(ref(s, 'work-orders/org_a/wo1/x.svg'), jpg, { contentType: 'image/svg+xml' }));

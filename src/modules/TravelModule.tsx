@@ -565,6 +565,9 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
               isSavingSearch={isSavingSearch}
               consolidatedTrips={consolidatedTrips}
               verificationMetrics={verificationMetrics}
+              sourceLinks={sources
+                .filter((source) => sourcesUnavailable.includes(source.name) && !!source.officialDocumentationUrl)
+                .map((source) => ({ sourceName: source.name, url: source.officialDocumentationUrl as string }))}
             />
           ) : (
             <div className="max-w-md mx-auto p-8 bg-[#111827] border border-slate-800 rounded-2xl text-center space-y-3">

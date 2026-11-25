@@ -35,25 +35,23 @@ service firebase.storage {
         && role in ['Admin', 'Gerente', 'Supervisor']);
     }
 
-    // Photos of work orders: org members (custom claims set by the server) or master.
+    // Evidence for work orders is protected by the Operations area claim (view=1, edit=2).
     match /work-orders/{orgId}/{allPaths=**} {
-      function member() {
-        return request.auth != null &&
-          (request.auth.token.get('master', false) == true || orgId in request.auth.token.get('orgs', {}));
-      }
-      allow read: if member();
-      allow write: if member() && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow read: if engineeringCanRead(orgId);
+      allow create, update: if engineeringCanWrite(orgId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if false;
     }
 
     // Anexos do módulo Operações (CTPS, notas de reembolso, prints de NF) e arquivos de apoio importados do Inox.
+    // Reads require Operations view; uploads and replacements require Operations edit.
     match /operacoes/{orgId}/{fileId} {
-      function opsMember() {
-        return request.auth != null &&
-          (request.auth.token.get('master', false) == true || orgId in request.auth.token.get('orgs', {}));
-      }
-      allow read: if opsMember();
-      allow create, update: if opsMember() && request.resource.size < 15 * 1024 * 1024
+      allow read: if engineeringCanRead(orgId);
+      allow create, update: if engineeringCanWrite(orgId)
+        && request.resource.size < 15 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf|application/json|application/octet-stream');
+      allow delete: if false;
     }
 
     // Desenhos, isométricos, P&IDs, certificados e documentos As Built.

@@ -23,6 +23,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'rh_directory/e1'), { orgId: 'org_a', name: 'Ana', unitId: null });
     await setDoc(doc(db, 'commercial_proposals/p1'), { organizationId: 'org_a', status: 'enviada' });
     await setDoc(doc(db, 'finance_payables/f1'), { orgId: 'org_a', status: 'aberto' });
+    await setDoc(doc(db, 'checklist_templates/tpl1'), { orgId: 'org_a', title: 'Checklist' });
+    await setDoc(doc(db, 'checklist_runs/run1'), { orgId: 'org_a', templateId: 'tpl1' });
+    await setDoc(doc(db, 'inspections/insp1'), { orgId: 'org_a', title: 'Inspeção' });
     await setDoc(doc(db, 'organizations/org_a'), { name: 'A' });
     await setDoc(doc(db, 'org_members/m1'), { orgId: 'org_a', role: 'Supervisor', userId: 'member_m1', active: true });
   });
@@ -77,6 +80,23 @@ test('Operações em "ver" lê e não grava a base de Operações', async () => 
   await assertFails(setDoc(doc(vis, 'ops_orgs/org_a/obras/o2'), { nome: 'B' }));
   // Supervisor sem Operações não lê
   await assertFails(getDoc(doc(as('member_s', 'Supervisor', withArea('Supervisor', { operacoes: 0 })), 'ops_orgs/org_a/obras/o1')));
+});
+
+test('Checklists e inspeções exigem acesso à área Operações', async () => {
+  const viewer = as('member_viewer', 'Visualizador');
+  await assertSucceeds(getDoc(doc(viewer, 'checklist_templates/tpl1')));
+  await assertSucceeds(getDoc(doc(viewer, 'checklist_runs/run1')));
+  await assertSucceeds(getDoc(doc(viewer, 'inspections/insp1')));
+  await assertFails(setDoc(doc(viewer, 'checklist_runs/viewer_create'), { orgId: 'org_a' }));
+  await assertFails(setDoc(doc(viewer, 'inspections/viewer_create'), { orgId: 'org_a' }));
+
+  const operationsEditor = as('member_ops', 'Operacional');
+  await assertSucceeds(setDoc(doc(operationsEditor, 'checklist_runs/ops_create'), { orgId: 'org_a' }));
+  await assertSucceeds(setDoc(doc(operationsEditor, 'inspections/ops_create'), { orgId: 'org_a' }));
+
+  const noOperations = as('member_no_ops', 'Supervisor', withArea('Supervisor', { operacoes: 0 }));
+  await assertFails(getDoc(doc(noOperations, 'checklist_templates/tpl1')));
+  await assertFails(getDoc(doc(noOperations, 'inspections/insp1')));
 });
 
 test('acesso por área só muda pelo servidor', async () => {
