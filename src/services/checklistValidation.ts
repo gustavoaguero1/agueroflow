@@ -87,13 +87,13 @@ export function validateChecklistSubmission(
   let nonConformityCount = 0;
 
   if (items.length === 0) errors.push('O template não possui itens para execução.');
+  const answersInput: Record<string, unknown> = isPlainRecord(rawAnswers) ? rawAnswers : {};
   if (!isPlainRecord(rawAnswers)) {
     errors.push('As respostas do checklist estão em formato inválido.');
-    rawAnswers = {};
   }
 
   const itemIds = new Set(items.map((item) => item.id));
-  for (const answerId of Object.keys(rawAnswers)) {
+  for (const answerId of Object.keys(answersInput)) {
     if (!itemIds.has(answerId)) errors.push(`Resposta sem item correspondente: ${answerId}.`);
   }
 
@@ -106,7 +106,7 @@ export function validateChecklistSubmission(
       errors.push('O template contém um item sem identificação, título ou tipo válido.');
       continue;
     }
-    const source = rawAnswers[item.id];
+    const source = answersInput[item.id];
     const sourceRecord = isPlainRecord(source) ? source : undefined;
     const rawValue = sourceRecord?.value;
 
