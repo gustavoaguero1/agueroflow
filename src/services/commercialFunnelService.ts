@@ -67,13 +67,6 @@ export async function moveProposalStage(
   });
 }
 
-/** Returns the stored `motivoPerda` ("Motivo: detalhe") or throws. */
-export function validateLoss(reason: string, detail: string): string {
-  const text = detail.trim();
-  if (!LOSS_REASONS.includes(reason) || (reason + text).length < 3) throw new Error('Informe o motivo da perda.');
-  return text ? `${reason}: ${text}` : reason;
-}
-
 export async function markProposalLost(
   _db: unknown,
   proposal: CommercialProposal,
