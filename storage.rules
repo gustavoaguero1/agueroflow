@@ -51,7 +51,7 @@ service firebase.storage {
       function allowedOperationsFileType() {
         return request.resource.contentType.matches('^(image/jpeg|image/png|image/webp|application/pdf|application/json|application/octet-stream)$');
       }
-      function legacyJsonBackup() { return fileId.matches('^arquivos_[A-Za-z0-9_.-]+[.]json; }
+      function legacyJsonBackup() { return fileId.matches('^arquivos_[A-Za-z0-9_.-]+[.]json$'); }
       allow read: if engineeringCanRead(orgId);
       // Novos anexos são imutáveis e limitados a tipos controlados.
       allow create: if engineeringCanWrite(orgId)
