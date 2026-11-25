@@ -72,7 +72,7 @@ service firebase.storage {
     // Novos arquivos são imutáveis e acessíveis apenas a membros da empresa na área Operações.
     match /safety-certificates/{orgId}/{employeeId}/{fileId} {
       allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow create: if safetyCertificateCanWrite(orgId)
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
