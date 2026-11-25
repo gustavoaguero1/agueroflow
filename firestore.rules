@@ -705,6 +705,19 @@ service cloud.firestore {
         return permitId == '' || (permitExists && orgOf(permit) == orgOf(d)
           && permit.get('unitId', '') == d.get('unitId', ''));
       }
+      function validSafetyOccurrenceUpdate() {
+        return !resource.data.keys().hasAny(['safetyCategory']) || (
+          request.resource.data.get('id', '') == resource.data.get('id', '')
+          && request.resource.data.get('orgId', '') == resource.data.get('orgId', '')
+          && request.resource.data.get('unitId', '') == resource.data.get('unitId', '')
+          && request.resource.data.get('type', '') == 'seguranca'
+          && request.resource.data.get('safetyCategory', '') == resource.data.get('safetyCategory', '')
+          && request.resource.data.get('incidentDate', '') == resource.data.get('incidentDate', '')
+          && request.resource.data.get('relatedPermitId', '') == resource.data.get('relatedPermitId', '')
+          && request.resource.data.get('reportedByUid', '') == resource.data.get('reportedByUid', '')
+          && request.resource.data.get('createdAt', '') == resource.data.get('createdAt', '')
+        );
+      }
       function validSafetyOccurrenceCreate() {
         return coll != 'occurrences' || !request.resource.data.keys().hasAny(['safetyCategory']) || (
           signedIn()
@@ -738,8 +751,12 @@ service cloud.firestore {
           ? (areaWrite(resource.data) && validQualityStateUpdate())
           : (coll == 'safety_permit_states'
             ? (areaWrite(resource.data) && validSafetyPermitStateUpdate())
-            : (areaWrite(resource.data) || rhAllocation())));
-      allow delete: if orgScoped() && coll not in ['quality_record_states', 'safety_permit_states'] && !immutable() && canDelete() && areaWrite(resource.data);
+            : (coll == 'occurrences'
+              ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
+              : (areaWrite(resource.data) || rhAllocation()))));
+      allow delete: if orgScoped() && coll not in ['quality_record_states', 'safety_permit_states'] && !immutable()
+        && canDelete() && areaWrite(resource.data)
+        && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
