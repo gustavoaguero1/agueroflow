@@ -190,7 +190,7 @@ export const RecurringOrdersModule: React.FC = () => {
 
         <button
           onClick={() => {
-            setUnitId(units[0]?.id || '');
+            setUnitId('');
             setAssetId(assets[0]?.id || '');
             setAssignedTeam(teams[0]?.name || '');
             setShowCreateModal(true);
