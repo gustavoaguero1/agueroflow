@@ -18,8 +18,12 @@ after(async () => { await env?.cleanup(); });
 beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'units/unit_a'), { id: 'unit_a', orgId: 'org_a', name: 'Unidade A' });
+    await setDoc(doc(ctx.firestore(), 'work_order_statuses/org_a_aberto'), {
+      id: 'aberto', orgId: 'org_a', name: 'Aberto', order: 1, isInitial: true,
+    });
     await setDoc(doc(ctx.firestore(), 'commercial_proposals/p1'), {
-      id: 'p1', organizationId: 'org_a', code: 'PROP-1', title: 'Skid', clientName: 'ACME', scopeDescription: 'Montar skid',
+      id: 'p1', organizationId: 'org_a', unitId: 'unit_a', code: 'PROP-1', title: 'Skid', clientName: 'ACME', scopeDescription: 'Montar skid',
       status: 'negociacao', proposedTotal: 1000, totalBaseCost: 600, totalFreightCost: 20, totalTaxCost: 30,
     });
   });
@@ -50,6 +54,38 @@ test('markProposalLost requires motivo and stores it', async () => {
   await markProposalLost(db(), prop, 'Preço', user, 'caro');
   const p = (await getDoc(doc(db(), 'commercial_proposals', 'p1'))).data() as any;
   assert.deepEqual([p.status, p.motivoPerda], ['perdida', 'Preço: caro']);
+});
+
+test('won proposal requires a valid company unit and configured initial status', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'commercial_proposals/p1'), {
+      id: 'p1', organizationId: 'org_a', code: 'PROP-1', title: 'Skid', clientName: 'ACME',
+      status: 'negociacao',
+    });
+  });
+  await assert.rejects(markProposalWon(db(), prop, user), /unidade válida/i);
+
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'commercial_proposals/p1'), {
+      id: 'p1', organizationId: 'org_a', unitId: 'unit_a', code: 'PROP-1', title: 'Skid', clientName: 'ACME',
+      status: 'negociacao',
+    });
+    await setDoc(doc(ctx.firestore(), 'work_order_statuses/org_a_aberto'), {
+      id: 'aberto', orgId: 'org_a', name: 'Aberto', order: 1, isInitial: false,
+    });
+  });
+  await assert.rejects(markProposalWon(db(), prop, user), /estado inicial/i);
+});
+
+test('won proposal rejects a unit belonging to another organization', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'units/unit_b'), { id: 'unit_b', orgId: 'org_b', name: 'Unidade B' });
+    await setDoc(doc(ctx.firestore(), 'commercial_proposals/p1'), {
+      id: 'p1', organizationId: 'org_a', unitId: 'unit_b', code: 'PROP-1', title: 'Skid',
+      status: 'negociacao',
+    });
+  });
+  await assert.rejects(markProposalWon(db(), prop, user), /não pertence à empresa/i);
 });
 
 test('counter seeds from existing max number and never restarts', async () => {
