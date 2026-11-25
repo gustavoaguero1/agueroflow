@@ -24,6 +24,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'work_orders/wo_a'), { orgId: 'org_a', title: 'A', status: 'aberto' });
     await setDoc(doc(db, 'inspections/insp_a'), { orgId: 'org_a', unitId: 'unit_a', status: 'agendada' });
     await setDoc(doc(db, 'inspection_events/evt_a'), { orgId: 'org_a', inspectionId: 'insp_a' });
+    await setDoc(doc(db, 'checklist_templates/tpl_a'), { orgId: 'org_a', title: 'Checklist A', version: 1 });
+    await setDoc(doc(db, 'checklist_runs/run_a'), { orgId: 'org_a', templateId: 'tpl_a', status: 'concluido' });
+    await setDoc(doc(db, 'checklist_run_events/evt_run_a'), { orgId: 'org_a', runId: 'run_a' });
     await setDoc(doc(db, 'work_orders/wo_b'), { orgId: 'org_b', title: 'B' });
     await setDoc(doc(db, 'purchasing_orders/po_a'), { organizationId: 'org_a', total: 1 });
     await setDoc(doc(db, 'purchasing_orders/po_b'), { organizationId: 'org_b', total: 2 });
@@ -100,6 +103,21 @@ test('inspection lifecycle and immutable inspection events are server-only write
     orgId: 'org_a', inspectionId: 'insp_a',
   }));
   await assertFails(getDoc(doc(editor, 'inspection_transition_ops/op_a')));
+});
+
+test('checklist templates are server-versioned and completed runs/events are immutable', async () => {
+  const editor = member();
+  await assertSucceeds(getDoc(doc(editor, 'checklist_templates/tpl_a')));
+  await assertSucceeds(getDoc(doc(editor, 'checklist_runs/run_a')));
+  await assertSucceeds(getDoc(doc(editor, 'checklist_run_events/evt_run_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_templates/client_tpl'), { orgId: 'org_a', title: 'Fake' }));
+  await assertFails(updateDoc(doc(editor, 'checklist_templates/tpl_a'), { version: 99 }));
+  await assertFails(deleteDoc(doc(editor, 'checklist_templates/tpl_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_runs/client_run'), { orgId: 'org_a', status: 'concluido' }));
+  await assertFails(updateDoc(doc(editor, 'checklist_runs/run_a'), { progressPercent: 100 }));
+  await assertFails(deleteDoc(doc(editor, 'checklist_runs/run_a')));
+  await assertFails(setDoc(doc(editor, 'checklist_run_events/client_evt'), { orgId: 'org_a', runId: 'run_a' }));
+  await assertFails(getDoc(doc(editor, 'checklist_run_ops/operation_a')));
 });
 
 test('Operations area controls work orders, status config and timeline reads/writes', async () => {
