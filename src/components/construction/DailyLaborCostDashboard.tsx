@@ -376,6 +376,18 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
         </div>
       </div>
 
+      {totals.missingRateCount > 0 && (
+        <div className="rounded-xl border border-amber-800/60 bg-amber-950/20 px-4 py-3 text-xs text-amber-100 space-y-1">
+          <strong>{totals.missingRateCount} apontamento(s) sem taxa horária válida.</strong>
+          <p>
+            {totals.unpricedHours.toFixed(1)}h não foram custeadas por falta de valor-hora.
+            {totals.unclassifiedRecordedCost > 0
+              ? ` R$ ${totals.unclassifiedRecordedCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} têm valor total registrado, mas não possuem composição por taxa.`
+              : ' Os totais não incluem essas horas como custo salarial.'}
+          </p>
+        </div>
+      )}
+
       {/* KPI Cards: Big Totals */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Total Custo Força de Trabalho */}
@@ -571,6 +583,9 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                     <span className="text-[10px] text-slate-400">
                       {p.workersCount} profissionais • {p.totalHours.toFixed(1)}h totais
                     </span>
+                    {p.unpricedHours > 0 && (
+                      <span className="text-[10px] text-amber-300 block">{p.unpricedHours.toFixed(1)}h sem taxa horária</span>
+                    )}
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
                     {sharePercent.toFixed(1)}% do dia
@@ -655,13 +670,7 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                 </tr>
               ) : (
                 filteredLogs.map((log) => {
-                  const rate = log.hourlyRate || 19.09;
-                  const baseC = log.normalHours * rate;
-                  const ot50C = log.overtime50Hours * rate * 1.5;
-                  const ot100C = log.overtime100Hours * rate * 2.0;
-                  const travC = log.travelHours * rate;
-                  const allowC = (log.mealAllowance || 0) + (log.lodgingAllowance || 0);
-                  const total = log.totalLaborCost || (baseC + ot50C + ot100C + travC + allowC);
+                  const cost = calculateLogCost(log);
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-800/40 transition-colors">
@@ -675,37 +684,37 @@ export const DailyLaborCostDashboard: React.FC<DailyLaborCostDashboardProps> = (
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-emerald-400">
-                        {canViewFinancials ? `R$ ${rate.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? 'Sem taxa' : `R$ ${cost.hourlyRate.toFixed(2)}`) : 'R$ ••'}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-slate-200">
-                        {canViewFinancials ? `R$ ${baseC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.baseSalaryCost.toFixed(2)}`) : 'R$ ••'}
                         <span className="text-[9px] text-slate-500 block">({log.normalHours}h)</span>
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-amber-300">
-                        {canViewFinancials ? `R$ ${ot50C.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.overtime50Cost.toFixed(2)}`) : 'R$ ••'}
                         {log.overtime50Hours > 0 && (
                           <span className="text-[9px] text-amber-500 block">({log.overtime50Hours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-red-300">
-                        {canViewFinancials ? `R$ ${ot100C.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.overtime100Cost.toFixed(2)}`) : 'R$ ••'}
                         {log.overtime100Hours > 0 && (
                           <span className="text-[9px] text-red-500 block">({log.overtime100Hours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-blue-300">
-                        {canViewFinancials ? `R$ ${travC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? (cost.hourlyRate === null ? '—' : `R$ ${cost.travelCost.toFixed(2)}`) : 'R$ ••'}
                         {log.travelHours > 0 && (
                           <span className="text-[9px] text-blue-500 block">({log.travelHours}h)</span>
                         )}
                       </td>
 
                       <td className="py-2.5 px-2 text-right font-mono text-purple-300">
-                        {canViewFinancials ? `R$ ${allowC.toFixed(2)}` : 'R$ ••'}
+                        {canViewFinancials ? `R$ ${cost.allowancesCost.toFixed(2)}` : 'R$ ••'}
                       </td>
 
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
