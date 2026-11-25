@@ -565,7 +565,12 @@ service cloud.firestore {
           && d.get('senderName', '').size() > 0
           && d.get('senderName', '').size() <= 180
           && d.get('senderRole', '') in ['Superior', 'Responsavel', 'Tecnico', 'Supervisor', 'Solicitante']
+          && (d.get('senderRole', '') != 'Superior' || hasRole(orgOf(d), ['Admin', 'Gerente']))
+          && (d.get('senderRole', '') != 'Supervisor' || hasRole(orgOf(d), ['Supervisor']))
           && d.get('messageType', '') in ['pergunta', 'resposta', 'orientacao', 'apontamento', 'liberacao']
+          && (d.get('messageType', '') in ['resposta', 'orientacao', 'liberacao']
+            ? d.get('senderRole', '') in ['Superior', 'Supervisor']
+            : true)
           && d.get('content', '') is string
           && d.get('content', '').size() > 0
           && d.get('content', '').size() <= 4000
@@ -597,7 +602,8 @@ service cloud.firestore {
           && d.diff(resource.data).affectedKeys().hasOnly(['resolved', 'resolvedAt', 'resolvedBy', 'resolvedByName'])
           && resolved is bool
           && (resolved
-            ? (d.get('resolvedBy', '') == request.auth.uid
+            ? (hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
+              && d.get('resolvedBy', '') == request.auth.uid
               && d.get('resolvedAt', '') is string
               && d.get('resolvedAt', '').size() >= 10
               && d.get('resolvedByName', '') is string
