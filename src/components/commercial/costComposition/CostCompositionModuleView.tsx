@@ -55,6 +55,7 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
 }) => {
   const [compositions, setCompositions] = useState<CostComposition[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [editingComposition, setEditingComposition] = useState<CostComposition | null>(null);
@@ -72,11 +73,13 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
   // Load compositions
   const loadCompositions = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await CostCompositionService.listCompositions(organizationId);
       setCompositions(data);
     } catch (e) {
       console.error('Error loading compositions', e);
+      setLoadError(e instanceof Error ? e.message : 'Não foi possível consultar o banco de dados.');
     } finally {
       setLoading(false);
     }
@@ -253,24 +256,38 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
       updatedAt: new Date().toISOString(),
     };
 
-    const saved = await CostCompositionService.saveComposition(newComp);
-    setCompositions((prev) => [saved, ...prev]);
-    setIsNewModalOpen(false);
-    setEditingComposition(saved);
+    try {
+      const saved = await CostCompositionService.saveComposition(newComp);
+      setCompositions((prev) => [saved, ...prev]);
+      setIsNewModalOpen(false);
+      setEditingComposition(saved);
+    } catch (error) {
+      console.error('Erro ao salvar composição no Firestore:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível salvar a composição no banco de dados. Nenhum dado foi salvo localmente.');
+    }
   };
 
   // Duplicate
   const handleDuplicate = async (comp: CostComposition) => {
-    const duplicated = await CostCompositionService.duplicateComposition(comp, true);
-    setCompositions((prev) => [duplicated, ...prev]);
-    setEditingComposition(duplicated);
+    try {
+      const duplicated = await CostCompositionService.duplicateComposition(comp, true);
+      setCompositions((prev) => [duplicated, ...prev]);
+      setEditingComposition(duplicated);
+    } catch (error) {
+      console.error('Erro ao duplicar composição:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível duplicar a composição no banco de dados.');
+    }
   };
 
   // Delete
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir esta composição de custos?')) {
+    if (!confirm('Tem certeza que deseja excluir esta composição de custos?')) return;
+    try {
       await CostCompositionService.deleteComposition(id, organizationId);
       setCompositions((prev) => prev.filter((c) => c.id !== id));
+    } catch (error) {
+      console.error('Erro ao excluir composição:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível excluir a composição no banco de dados.');
     }
   };
 
@@ -296,6 +313,12 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
 
   return (
     <div className="space-y-6">
+      {loadError && (
+        <div role="alert" className="rounded-xl border border-red-800 bg-red-950/40 p-3 text-xs text-red-200">
+          Falha ao consultar o Firestore: {loadError}. Os dados locais e composições de demonstração não serão usados como substitutos.
+          <button onClick={loadCompositions} className="ml-2 underline font-semibold">Tentar novamente</button>
+        </div>
+      )}
       {/* Header with Title & Action */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl border border-slate-800 bg-gradient-to-r from-[#0B132B] via-slate-900 to-[#0B132B] shadow-xl">
         <div className="space-y-1">
