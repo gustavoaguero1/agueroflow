@@ -29,6 +29,8 @@ import { directoryChanges, toDirectoryEntry } from './rhDirectory';
 import { PAY_COLLECTION } from './fieldWorkerPay';
 import { saveFieldWorker } from './fieldWorkerPayStore';
 import { buildFieldWorkerProjection } from './fieldWorkerProjection';
+import { calculateThirteenthAvos } from './rhPayrollRules';
+export { calculateThirteenthAvos } from './rhPayrollRules';
 export * from './inss';
 
 /**
@@ -36,74 +38,6 @@ export * from './inss';
  * Regra CLT: A fração igual ou superior a 15 dias de trabalho dentro do mês
  * confere ao empregado o direito a 1/12 (um avo).
  */
-export function calculateThirteenthAvos(
-  admissionDateStr: string,
-  referenceYear = new Date().getFullYear(),
-  dismissalDateStr?: string | null
-): number {
-  // Missing/invalid admission dates do not grant assumed 12/12 avos.
-  if (typeof admissionDateStr !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(admissionDateStr)) return 0;
-
-  const admissionDate = new Date(admissionDateStr + 'T00:00:00');
-  if (Number.isNaN(admissionDate.getTime()) || admissionDate.toISOString().slice(0, 10) !== admissionDateStr) return 0;
-  const admYear = admissionDate.getFullYear();
-  const admMonth = admissionDate.getMonth(); // 0-11
-  const admDay = admissionDate.getDate();
-
-  // Se admitido em ano posterior ao ano de referência
-  if (admYear > referenceYear) {
-    return 0;
-  }
-
-  let cutOffMonth = 11; // Dezembro (0-11)
-  let cutOffDay = 31;
-
-  if (dismissalDateStr) {
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dismissalDateStr)) return 0;
-    const disDate = new Date(dismissalDateStr + 'T00:00:00');
-    if (Number.isNaN(disDate.getTime()) || disDate.toISOString().slice(0, 10) !== dismissalDateStr) return 0;
-    if (disDate.getFullYear() === referenceYear) {
-      cutOffMonth = disDate.getMonth();
-      cutOffDay = disDate.getDate();
-    } else if (disDate.getFullYear() < referenceYear) {
-      return 0; // Já desligado antes do ano
-    }
-  }
-
-  // Admitido em anos anteriores: conta de Janeiro (0) até cutOffMonth
-  if (admYear < referenceYear) {
-    let avos = cutOffMonth + 1;
-    if (dismissalDateStr && cutOffDay < 15) {
-      avos -= 1; // Último mês trabalhou menos de 15 dias
-    }
-    return Math.max(0, Math.min(12, avos));
-  }
-
-  // Admitido no próprio ano de referência
-  let avos = 0;
-  for (let m = admMonth; m <= cutOffMonth; m++) {
-    if (m === admMonth && m === cutOffMonth && dismissalDateStr) {
-      // Admission and dismissal in the same month: count only the actual inclusive interval.
-      const workedDays = cutOffDay - admDay + 1;
-      if (workedDays >= 15) avos += 1;
-    } else if (m === admMonth) {
-      // In the admission month, count from the admission day to month end.
-      const daysInMonth = new Date(referenceYear, m + 1, 0).getDate();
-      const workedDays = daysInMonth - admDay + 1;
-      if (workedDays >= 15) avos += 1;
-    } else if (m === cutOffMonth && dismissalDateStr) {
-      // No mês de demissão
-      if (cutOffDay >= 15) {
-        avos += 1;
-      }
-    } else {
-      // Meses intermediários completos
-      avos += 1;
-    }
-  }
-
-  return Math.max(0, Math.min(12, avos));
-}
 
 /**
  * Arredondamento monetário preciso para 2 casas decimais.
