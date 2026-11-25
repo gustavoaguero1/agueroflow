@@ -37,8 +37,12 @@ Owner kinds:
 | quality_record_events | orgId (append-only) | `orgId ==` | Trilha imutável de envio para aprovação, abertura de apontamento, aprovação/reprovação, ação corretiva, verificação, encerramento, reabertura e observações. Aprovação/reprovação/verificação/encerramento exigem Supervisor/Gerente/Admin com Operações nível 2; eventos são vinculados a registro, unidade e contrato da mesma empresa. |
 | quality_record_states | orgId | `orgId ==` | Estado atual por registro, separado da trilha de eventos. A criação ocorre no mesmo batch do registro e do evento inicial. Atualizações só são aceitas junto com um novo evento append-only, com `previousEventId` igual ao último evento e transição válida; exclusão pelo cliente é bloqueada. |
 | safety_permits | orgId (append-only) | `orgId ==` | APR/PT com unidade, contrato, atividade, validade, equipe, perigos, consequências, risco inicial/residual, controles e plano de emergência. O cadastro original não pode ser editado/excluído pelo cliente; Operações nível 2 cria. |
-| safety_permit_events | orgId (append-only) | `orgId ==` | Histórico imutável de criação, envio para aprovação, aprovação/reprovação, encerramento, cancelamento e observações. Cada evento aponta para a permissão e para a movimentação anterior; decisões exigem Supervisor/Gerente/Admin com Operações nível 2. |
-| safety_permit_states | orgId | `orgId ==` | Estado atual da APR/PT separado do histórico. Só avança com evento persistido, ponteiro `previousEventId` atualizado e transição válida; aprovação pelo próprio criador e exclusão do estado são bloqueadas. |
+| safety_permit_events | orgId (append-only) | `orgId ==` | Evento inicial é criado pelo cliente junto da APR/PT; todas as movimentações posteriores (envio, aprovação/reprovação, encerramento, cancelamento e observações) são gravadas exclusivamente pelo backend autenticado. Eventos não podem ser alterados ou excluídos. |
+| safety_permit_states | orgId (server-updated) | `orgId ==` | Estado atual da APR/PT separado do histórico. Criação inicial acompanha o evento de abertura; qualquer mudança posterior é exclusiva do backend e confere o ponteiro anterior, transição permitida, autoria e segregação entre criador/aprovador. Clientes não atualizam nem excluem o estado. |
+| safety_ppe_catalog | orgId | `orgId ==` | Catálogo por empresa com categoria, número e validade do CA e tipos de atividade que exigem o EPI. Supervisor/Gerente/Admin com Operações nível 2 podem cadastrar/atualizar/inativar; exclusão é bloqueada para preservar histórico. |
+| safety_ppe_movements | orgId (server-only, append-only) | `orgId ==` | Entrega, devolução e substituição individual de EPI, sempre vinculadas ao `rh_directory/{employeeId}` e ao catálogo da mesma empresa. Backend valida colaborador ativo, CA vigente, duplicidade de entrega e devolução da entrega ativa; substituição grava devolução + nova entrega na mesma transação. Cliente não cria/altera/exclui movimentações. |
+| safety_training_catalog | orgId | `orgId ==` | Matriz de NRs/qualificações por tipo de atividade. Supervisor/Gerente/Admin com Operações nível 2 podem cadastrar/atualizar/inativar; exclusão é bloqueada. NR-35, NR-33 e NR-10 são requisitos base para altura, espaço confinado e atividade elétrica, respectivamente. |
+| safety_training_records | orgId (server-only, append-only) | `orgId ==` | Certificados individuais vinculados ao diretório oficial do RH. Backend confere colaborador ativo, código de treinamento autorizado, datas e evidência HTTPS ou arquivo PDF/JPEG/PNG/WebP (até 20 MB) no Storage privado. Clientes não criam/alteram/excluem registros. |
 | constructions | orgId | `orgId ==` | |
 | contracts | orgId | `orgId ==` | |
 | cost_centers | orgId | `orgId ==` | |
@@ -76,6 +80,7 @@ Owner kinds:
 | recurring_orders | orgId | `orgId ==` | |
 | rh_batches | orgId | `orgId ==` | |
 | rh_calculations | orgId | `orgId ==` | |
+| rh_directory | orgId | `orgId ==` | Diretório sem salários publicado pelo RH; é a fonte oficial de pessoas para a equipe PT e movimentações de EPI. Os registros guardam `rhEmployeeId` para ligar a equipe operacional sem duplicar o colaborador. |
 | rh_employees | orgId | `orgId ==` | |
 | rh_imports | orgId | `orgId ==` | |
 | stock_balances | orgId | `orgId ==` | |
@@ -102,6 +107,10 @@ Owner kinds:
 
 Server-only (denied to every client, master included): `member_credentials` (master doc `_master_`),
 `first_access_tokens`, `system_security` (old master-password doc), `users` (unused).
+
+## Segurança do Trabalho & SMS
+
+Os certificados anexados ficam no Storage em `safety-certificates/{orgId}/{employeeId}/{recordId}_{filename}`. Somente Supervisor/Gerente/Admin com Operações nível 2 podem enviar; membros com Operações nível 1 podem ler na mesma empresa. Arquivos são imutáveis, até 20 MB, apenas PDF/JPEG/PNG/WebP. A referência ao arquivo só é registrada pelo endpoint autenticado depois que o servidor confirma existência, MIME e tamanho no bucket.
 
 ## Compras → Financeiro / NF-e
 A autorização documental de Contas a Pagar (`finance_payable_authorizations`) é criada pelo backend autenticado com Admin SDK, por título, vinculada a uma ocorrência aprovada e a uma parcela NF-e em aberto da mesma empresa, OC, fornecedor e chave de acesso. O ID determinístico impede autorizações duplicadas para a mesma parcela. Clientes apenas leem a coleção; gravação direta via Firestore é negada. O registro preserva o valor e vencimento no momento, o gerente que aprovou a divergência e o usuário que registrou o vínculo. É imutável e não altera o estado do título, não gera pagamento e não substitui comprovante bancário.
