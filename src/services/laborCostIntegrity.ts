@@ -43,6 +43,10 @@ function hours(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
+function multiplier(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return value !== undefined && value !== null && Number.isFinite(parsed) ? parsed : fallback;
+}
 
 /** Uses only a recorded hourly rate, a valid employee rate, or a saved cost snapshot. */
 export function calculateLaborCost(input: LaborCostCalculationInput): LaborCostCalculation {
@@ -75,10 +79,10 @@ export function calculateLaborCost(input: LaborCostCalculationInput): LaborCostC
   }
 
   const baseSalaryCost = normalHours * hourlyRate;
-  const overtime50Cost = overtime50Hours * hourlyRate * (Number(input.overtime50Multiplier) || 1.5);
-  const overtime100Cost = overtime100Hours * hourlyRate * (Number(input.overtime100Multiplier) || 2);
-  const travelCost = travelHours * hourlyRate * (Number(input.travelHourMultiplier) || 1);
-  const nightShiftCost = nightShiftHours * hourlyRate * ((Number(input.nightShiftBonusPercent) || 20) / 100);
+  const overtime50Cost = overtime50Hours * hourlyRate * multiplier(input.overtime50Multiplier, 1.5);
+  const overtime100Cost = overtime100Hours * hourlyRate * multiplier(input.overtime100Multiplier, 2);
+  const travelCost = travelHours * hourlyRate * multiplier(input.travelHourMultiplier, 1);
+  const nightShiftCost = nightShiftHours * hourlyRate * (multiplier(input.nightShiftBonusPercent, 20) / 100);
   const calculatedTotal = baseSalaryCost + overtime50Cost + overtime100Cost + travelCost + nightShiftCost + allowancesCost;
 
   return {
