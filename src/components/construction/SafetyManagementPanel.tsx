@@ -4,7 +4,6 @@ import {
   doc,
   onSnapshot,
   query,
-  serverTimestamp,
   setDoc,
   where,
 } from 'firebase/firestore';
