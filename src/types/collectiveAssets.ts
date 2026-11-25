@@ -125,6 +125,8 @@ export interface CollectiveAsset {
 export interface CollectiveAssetWorker {
   id: string;
   orgId: string;
+  /** Vínculo estável com a identidade mestre em rh_employees / rh_directory. */
+  rhEmployeeId?: string;
   registrationNumber: string; // Matrícula única na org
   registration?: string; // alias
   name: string;
@@ -145,11 +147,13 @@ export interface CollectiveAssetMovement {
   id: string;
   orgId: string;
   unitId?: string;
+  projectId?: string;
   contractId?: string;
   assetId: string;
   assetCode: string;
   assetDescription: string;
   workerId: string;
+  rhEmployeeId?: string;
   workerName: string;
   workerRegistration: string;
   checkoutDate: string; // ISO string DD/MM/AAAA HH:mm
