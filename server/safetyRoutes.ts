@@ -94,10 +94,12 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         }
 
         if (input.documentType === 'pt') {
+          const relatedAprId = input.relatedAprId || '';
+          if (!validId(relatedAprId)) throw new SafetyRouteError(400, 'Vincule uma APR válida à PT.');
           const [employeeSnap, aprSnap, aprStateSnap] = await Promise.all([
             tx.get(h.db.collection('rh_directory').where('orgId', '==', orgId)),
-            tx.get(h.db.collection('safety_permits').doc(input.relatedAprId)),
-            tx.get(h.db.collection('safety_permit_states').doc(input.relatedAprId)),
+            tx.get(h.db.collection('safety_permits').doc(relatedAprId)),
+            tx.get(h.db.collection('safety_permit_states').doc(relatedAprId)),
           ]);
           const employees = toRows<Record<string, any>>(employeeSnap);
           const linked = employeeIds.map((id) => employees.find((employee) => employee.id === id));
