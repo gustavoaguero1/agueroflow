@@ -1343,5 +1343,41 @@ service cloud.firestore {
       allow update: if waCanUpdate() && validWaNdRecordPayload();
       allow delete: if false;
     }
+
+    // ---- Livro de custos realizados por Projeto/Obra (append-only) -----------
+    match /project_cost_facts/{factId} {
+      function factProjectValid(d) {
+        let projectId = d.get('projectId', '');
+        let pPath = /databases/$(database)/documents/projects/$(projectId);
+        return projectId is string && projectId.size() > 0 && projectId.size() <= 180
+          && projectId.matches('[A-Za-z0-9_-]+')
+          && exists(pPath) && orgOf(get(pPath).data) == orgOf(d);
+      }
+      function factPayloadValid(d) {
+        return d.get('id', '') == factId
+          && d.get('source', '') in ['labor_hh', 'stock_consumption', 'purchasing_order', 'purchasing_receipt', 'finance_payable', 'field_expense', 'manual_adjustment']
+          && d.get('stage', '') in ['comprometido', 'realizado']
+          && d.get('sourceId', '') is string && d.get('sourceId', '').size() > 0 && d.get('sourceId', '').size() <= 180
+          && d.get('idempotencyKey', '') is string && d.get('idempotencyKey', '').size() > 0 && d.get('idempotencyKey', '').size() <= 240
+          && d.get('description', '') is string && d.get('description', '').size() >= 3 && d.get('description', '').size() <= 300
+          && d.get('amount', 0) is number && d.get('amount', 0) != 0 && d.get('amount', 0) >= -1000000000 && d.get('amount', 0) <= 1000000000
+          && (d.get('amount', 0) > 0 || d.get('isReversal', false) == true)
+          && d.get('createdByUid', '') == request.auth.uid;
+      }
+      function factCanRead(d) {
+        let o = orgOf(d);
+        return areaOk(o, A_FIN(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_STOCK(), 1);
+      }
+      function factCanCreate(d) {
+        let o = orgOf(d);
+        return (isMaster() || hasRole(o, ['Admin', 'Gerente', 'Supervisor']))
+          && (areaOk(o, A_FIN(), 2) || areaOk(o, A_OPS(), 2));
+      }
+      allow read: if canRead(resource) && (resource == null || factCanRead(resource.data));
+      allow create: if canCreate() && factCanCreate(request.resource.data)
+        && factProjectValid(request.resource.data)
+        && factPayloadValid(request.resource.data);
+      allow update, delete: if false;
+    }
   }
 }
