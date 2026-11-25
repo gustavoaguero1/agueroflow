@@ -255,6 +255,94 @@ test('PPE replacement writes the return and new delivery atomically after rechec
   });
 });
 
+test('official training records require a trusted role, active RH employee and allowed NR', async () => {
+  const seed: Seed = {
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+    'safety_training_catalog/rigger_01': {
+      id: 'rigger_01', orgId: 'org_a', code: 'RIGGER', title: 'Sinaleiro e Amarrador',
+      active: true, requiredForPermitTypes: ['icamento'],
+    },
+  };
+  await withApi('Operacional', seed, async (base, docs) => {
+    const denied = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_denied', employeeId: 'employee_01',
+        trainingCode: 'NR-35', issueDate: '2026-01-01', expirationDate: '2027-01-01',
+        certificateUrl: 'https://certificados.exemplo.com/arquivo.pdf',
+      }),
+    });
+    assert.equal(denied.status, 403);
+    assert.equal(docs.has('safety_training_records/record_denied'), false);
+  });
+
+  await withApi('Supervisor', seed, async (base, docs) => {
+    const invalidCode = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_fake', employeeId: 'employee_01',
+        trainingCode: 'NR-99', issueDate: '2026-01-01', expirationDate: '2027-01-01',
+        certificateUrl: 'https://certificados.exemplo.com/arquivo.pdf',
+      }),
+    });
+    assert.equal(invalidCode.status, 409);
+    assert.equal(docs.has('safety_training_records/record_fake'), false);
+
+    const invalidUrl = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_bad_url', employeeId: 'employee_01',
+        trainingCode: 'NR-35', issueDate: '2026-01-01', expirationDate: '2027-01-01',
+        certificateUrl: 'javascript:alert(1)',
+      }),
+    });
+    assert.equal(invalidUrl.status, 400);
+
+    const saved = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_nr35', employeeId: 'employee_01',
+        trainingCode: 'nr-35', issueDate: '2026-01-01', expirationDate: '2028-01-01',
+        certificateUrl: 'https://certificados.exemplo.com/arquivo.pdf',
+        certificateNumber: 'CERT-2026-01', issuingEntity: 'Centro de Treinamento',
+      }),
+    });
+    assert.equal(saved.status, 201);
+    const record = docs.get('safety_training_records/record_nr35');
+    assert.equal(record?.trainingCode, 'NR-35');
+    assert.equal(record?.title, 'Trabalho em Altura');
+    assert.equal(record?.employeeId, 'employee_01');
+
+    const unknownEmployee = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_foreign', employeeId: 'employee_org_b',
+        trainingCode: 'NR-35', issueDate: '2026-01-01', expirationDate: '2028-01-01',
+        certificateUrl: 'https://certificados.exemplo.com/arquivo.pdf',
+      }),
+    });
+    assert.equal(unknownEmployee.status, 409);
+  });
+});
+
+test('training certificate storage paths must match company, employee and record', async () => {
+  const seed: Seed = {
+    'rh_directory/employee_01': { id: 'employee_01', orgId: 'org_a', name: 'Profissional SMS', active: true },
+  };
+  await withApi('Supervisor', seed, async (base, docs) => {
+    const response = await fetch(base + '/api/safety/training-records', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId: 'org_a', recordId: 'record_01', employeeId: 'employee_01',
+        trainingCode: 'NR-33', issueDate: '2026-01-01', expirationDate: '2027-01-01',
+        certificatePath: 'safety-certificates/org_b/employee_01/record_01_certificate.pdf',
+      }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(docs.has('safety_training_records/record_01'), false);
+  });
+});
+
 test('backend rejects stale state pointers and non-member organization requests', async () => {
   await withApi('Supervisor', baseSeed(), async (base, docs) => {
     const stale = await post(base, 'apr_01', { eventType: 'submitted_for_approval', previousEventId: 'stale' });
