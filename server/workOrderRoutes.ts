@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireArea, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error {
@@ -167,6 +167,147 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
       }
       console.error('[work order transition] failed:', error);
       return res.status(500).json({ ok: false, error: 'Não foi possível atualizar a OS no servidor.' });
+    }
+  });
+
+  router.post('/:orderId/reservation-approval', requireArea('operacoes', 2), requireRole('Admin', 'Gerente', 'Supervisor'), async (req: Request, res: Response) => {
+    const orgId = req.orgId;
+    const actor = req.user;
+    const orderId = req.params.orderId;
+    const body = req.body ?? {};
+    const idempotencyKey = body.idempotencyKey;
+    const expectedStatus = body.expectedStatus;
+
+    if (!orgId || body.orgId !== orgId || !validId(orderId) || !validId(expectedStatus)
+      || typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({ ok: false, error: 'Informe os dados válidos para aprovar a reserva da OS.' });
+    }
+    if (!actor?.uid) return res.status(401).json({ ok: false, error: 'Usuário não autenticado.' });
+    const admin = getH();
+    if (!admin) return res.status(503).json({ ok: false, error: 'Serviço de dados indisponível.' });
+
+    const opId = createHash('sha256')
+      .update(`${orgId}:${orderId}:reservation-approval:${idempotencyKey}`)
+      .digest('hex');
+    const opRef = admin.db.collection('work_order_transition_ops').doc(opId);
+    const orderRef = admin.db.collection('work_orders').doc(orderId);
+    const statusRef = admin.db.collection('work_order_statuses').doc(`${orgId}_em_execucao`);
+    const eventId = `os_evt_reservation_${opId}`;
+    const eventRef = admin.db.collection('order_events').doc(eventId);
+    const messageId = `os_msg_reservation_${opId}`;
+    const messageRef = admin.db.collection('order_messages').doc(messageId);
+
+    try {
+      const result = await admin.db.runTransaction(async (tx) => {
+        const opSnap = await tx.get(opRef);
+        if (opSnap.exists) {
+          const previous = opSnap.data() as Record<string, any>;
+          if (previous.orgId !== orgId || previous.orderId !== orderId
+            || previous.actorUid !== actor.uid || previous.expectedStatus !== expectedStatus
+            || previous.action !== 'reservation_approval') {
+            throw new RouteError(409, 'Esta chave de operação já foi usada em outra ação.');
+          }
+          return { replayed: true, orderUpdates: previous.orderUpdates, eventId: previous.eventId, messageId: previous.messageId };
+        }
+
+        const [orderSnap, statusSnap] = await Promise.all([tx.get(orderRef), tx.get(statusRef)]);
+        if (!orderSnap.exists || orderSnap.data()?.orgId !== orgId) {
+          throw new RouteError(404, 'Ordem de serviço não encontrada.');
+        }
+        const order = orderSnap.data() as Record<string, any>;
+        if (order.status !== expectedStatus) {
+          throw new RouteError(409, 'A OS foi alterada por outra pessoa. Atualize os dados antes de aprovar a reserva.');
+        }
+        const hasBlockedParts = Array.isArray(order.plannedParts)
+          && order.plannedParts.some((part: any) => ['solicitado', 'aguardando_compra'].includes(part?.status));
+        const approvalPending = order.isBlockedByReservation === true
+          || order.reservationApprovalStatus === 'pendente'
+          || order.status === 'em_aprovacao'
+          || hasBlockedParts;
+        if (!approvalPending) {
+          throw new RouteError(409, 'Esta OS não possui uma reserva pendente de aprovação.');
+        }
+        if (!statusSnap.exists || statusSnap.data()?.orgId !== orgId || statusSnap.data()?.id !== 'em_execucao') {
+          throw new RouteError(400, 'O estado "Em Execução" não está configurado para esta empresa.');
+        }
+
+        const now = new Date().toISOString();
+        const today = now.slice(0, 10);
+        const userName = actor.email || actor.uid;
+        // Esta ação representa a confirmação explícita do gestor de que os itens reservados podem ser liberados.
+        const updatedParts = (Array.isArray(order.plannedParts) ? order.plannedParts : []).map((part: any) => ({
+          ...part,
+          status: ['solicitado', 'aguardando_compra'].includes(part?.status) ? 'disponivel' : part.status,
+        }));
+        const orderUpdates = {
+          status: 'em_execucao',
+          isBlockedByReservation: false,
+          reservationApprovalStatus: 'aprovado',
+          reservationApprovedBy: userName,
+          reservationApprovedAt: now,
+          plannedParts: updatedParts,
+          actualStartDate: order.actualStartDate || today,
+          updatedAt: now,
+        };
+        const event = {
+          id: eventId,
+          orgId,
+          orderId,
+          userId: actor.uid,
+          userName,
+          eventType: 'aprovacao',
+          description: 'Reserva de peças aprovada pela gestão. Itens reservados liberados para execução.',
+          previousStatus: expectedStatus,
+          newStatus: 'em_execucao',
+          timestamp: now,
+          meta: { idempotencyKey },
+        };
+        const message = {
+          id: messageId,
+          orgId,
+          orderId,
+          senderId: actor.uid,
+          senderName: userName,
+          senderRole: 'Superior',
+          messageType: 'liberacao',
+          content: 'Reserva de peças aprovada pela gestão. Os itens reservados foram liberados para execução.',
+          createdAt: now,
+          resolved: true,
+          resolvedAt: now,
+          resolvedBy: actor.uid,
+          resolvedByName: userName,
+        };
+
+        tx.update(orderRef, orderUpdates);
+        tx.create(eventRef, event);
+        tx.create(messageRef, message);
+        tx.create(opRef, {
+          id: opId,
+          orgId,
+          orderId,
+          actorUid: actor.uid,
+          expectedStatus,
+          action: 'reservation_approval',
+          idempotencyKey,
+          eventId,
+          messageId,
+          orderUpdates,
+          createdAt: now,
+        });
+        return { replayed: false, orderUpdates, eventId, messageId };
+      });
+
+      return res.status(200).json({ ok: true, ...result });
+    } catch (error) {
+      if (error instanceof RouteError) {
+        return res.status(error.status).json({ ok: false, error: error.message });
+      }
+      const code = (error as { code?: number | string })?.code;
+      if (code === 6 || code === 'already-exists' || code === 10 || code === 'aborted') {
+        return res.status(409).json({ ok: false, error: 'A reserva da OS foi alterada em paralelo. Atualize os dados antes de tentar novamente.' });
+      }
+      console.error('[work order reservation approval] failed:', error);
+      return res.status(500).json({ ok: false, error: 'Não foi possível aprovar a reserva da OS no servidor.' });
     }
   });
 
