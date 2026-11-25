@@ -545,7 +545,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     setFormPriority('media');
     const initialSt = statuses.find((s) => s.isInitial)?.id || statuses[0]?.id || 'aberto';
     setFormStatus(initialSt);
-    setFormUnitId(units[0]?.id || '');
+    setFormUnitId('');
     setFormContractId(contracts[0]?.id || '');
     setFormCostCenterId(costCenters[0]?.id || '');
     setFormAssetId(assets[0]?.id || '');
@@ -1735,10 +1735,12 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Unidade</label>
                   <select
+                    required
                     value={formUnitId}
                     onChange={(e) => setFormUnitId(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                   >
+                    <option value="" disabled>Selecione a unidade</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
