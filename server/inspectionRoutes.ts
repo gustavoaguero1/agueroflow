@@ -207,7 +207,7 @@ export function createInspectionRouter(getH: () => AdminHandles | null = getAdmi
           if (!complete) throw new InspectionRouteError(400, 'A inspeção está incompleta e não pode ser revisada.');
         }
 
-        const next = { ...current, updatedAt: new Date().toISOString() };
+        const next: Record<string, any> = { ...current, updatedAt: new Date().toISOString() };
         if (action === 'start' && expectedStatus === 'agendada') {
           next.status = 'em_campo';
           next.startedAt = next.updatedAt;
