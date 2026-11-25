@@ -276,6 +276,17 @@ test('org_members create with foreign userId denied', async () => {
   await assertFails(updateDoc(doc(admin(), 'org_members/m_b'), { userId: 'x' }));
 });
 
+test('work order status changes and transition events are server-only', async () => {
+  const db = member();
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { status: 'concluido' }));
+  await assertFails(updateDoc(doc(db, 'work_orders/wo_a'), { actualEndDate: '2026-11-25' }));
+  await assertSucceeds(updateDoc(doc(db, 'work_orders/wo_a'), { title: 'Descrição revisada' }));
+  await assertFails(setDoc(doc(db, 'order_events/forged_transition'), {
+    orgId: 'org_a', orderId: 'wo_a', eventType: 'mudanca_status',
+    previousStatus: 'aberto', newStatus: 'concluido',
+  }));
+});
+
 test('order_events/stock_movements/audit_logs not updatable', async () => {
   const db = member();
   for (const c of ['order_events', 'stock_movements', 'audit_logs']) {

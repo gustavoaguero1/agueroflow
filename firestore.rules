@@ -845,14 +845,23 @@ service cloud.firestore {
           && validQualityEventCreateForDoc()
         );
       }
+      // Status da OS e eventos de transição são exclusivos da transação do backend.
+      function validWorkOrderUpdate() {
+        return coll != 'work_orders'
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'actualStartDate', 'actualEndDate']);
+      }
+      function validOrderEventCreate() {
+        return coll != 'order_events' || request.resource.data.get('eventType', '') != 'mudanca_status';
+      }
       function genericCreate() {
         return (orgScoped() || immutable()) && canCreate() && nfeItemOk()
           && !(coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']))
           && validRdoCreate()
+          && validOrderEventCreate()
           && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
           && areaWrite(request.resource.data);
       }
-      allow update: if orgScoped() && !immutable() && canUpdate()
+      allow update: if orgScoped() && !immutable() && canUpdate() && validWorkOrderUpdate()
         && (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
           ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
           : (coll == 'quality_record_states'

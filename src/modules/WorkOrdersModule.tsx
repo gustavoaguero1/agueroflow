@@ -11,10 +11,9 @@ import {
   deleteDoc,
   addDoc,
   getDocs,
-  runTransaction,
 } from 'firebase/firestore';
-import { maxOrderSeq, nextOrderNumber } from '../services/workOrderNumbering';
 import { db } from '../firebase';
+import { postJson } from '../apiAuthFetch';
 import {
   WorkOrder,
   WorkOrderStatus,
@@ -567,16 +566,13 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     e.preventDefault();
     if (!organization || !user) return;
     setIsSubmitting(true);
-
     try {
-      const orderId = `os_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const targetStatus = formStatus || statuses.find((s) => s.isInitial)?.id || 'aberto';
       const statusCfg = getStatusConfig(targetStatus, statuses);
-
       const newOrder: WorkOrder = {
-        id: orderId,
+        id: '',
         orgId: organization.id,
-        unitId: formUnitId || (units[0]?.id ?? 'default_unit'),
+        unitId: formUnitId,
         contractId: formContractId || undefined,
         costCenterId: formCostCenterId || undefined,
         assetId: formAssetId || undefined,
@@ -600,36 +596,24 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-
-      // Untouched preview -> allocate the real number from the org counter, atomically with the OS.
-      const autoNumber = formNumber.trim() === previewNumber;
-      await runTransaction(db, async (tx) => {
-        if (autoNumber) newOrder.orderNumber = await nextOrderNumber(tx, db, organization.id, maxOrderSeq(orders));
-        tx.set(doc(db, 'work_orders', orderId), JSON.parse(JSON.stringify(newOrder))); // Firestore rejects undefined fields
-      });
-
-      // Record creation event in timeline
-      await addDoc(collection(db, 'order_events'), {
+      const response = await postJson('/api/work-orders', {
         orgId: organization.id,
-        orderId,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Usuário',
-        eventType: 'criacao',
-        description: `Demanda / OS ${newOrder.orderNumber} cadastrada no estado "${statusCfg.name}".`,
-        newStatus: targetStatus,
-        timestamp: new Date().toISOString(),
+        workOrder: newOrder,
+        autoNumber: formNumber.trim() === previewNumber,
+        idempotencyKey: crypto.randomUUID(),
       });
-
-      await logAudit(
-        'Ordens de Serviço',
-        'Criar OS',
-        `Criação da OS ${newOrder.orderNumber} - ${newOrder.title} no status "${statusCfg.name}"`,
-        orderId
-      );
-
+      if (!response.ok || !response.data?.orderId) throw new Error(response.error || response.data?.error || 'Não foi possível criar a OS.');
+      const createdOrderId = String(response.data.orderId);
+      try {
+        await logAudit('Ordens de Serviço', 'Criar OS', `Criação da OS ${response.data.orderNumber} - ${newOrder.title} no status "${statusCfg.name}"`, createdOrderId);
+      } catch (auditError) {
+        console.warn('OS criada, mas o registro complementar de auditoria não pôde ser gravado:', auditError);
+      }
       setShowCreateModal(false);
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido ao criar OS.';
       console.error('Erro ao criar OS:', err);
+      alert(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -644,56 +628,29 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     if (!organization || !user) return;
     const currentKey = resolveStatusKey(order.status, statuses);
     if (currentKey === targetStatusId) return;
-
     const currentCfg = getStatusConfig(order.status, statuses);
     const targetCfg = getStatusConfig(targetStatusId, statuses);
-
     try {
-      const orderRef = doc(db, 'work_orders', order.id);
-      const updates: Partial<WorkOrder> = {
-        status: targetStatusId,
-        updatedAt: new Date().toISOString(),
-      };
-
-      const today = new Date().toISOString().split('T')[0];
-      if (targetStatusId === 'em_execucao' && !order.actualStartDate) {
-        updates.actualStartDate = today;
-      }
-      if (targetCfg.isCompleted && !order.actualEndDate) {
-        updates.actualEndDate = today;
-      }
-
-      await updateDoc(orderRef, updates);
-
-      const eventDesc = transitionNotes?.trim()
-        ? `Transição de estado: ${currentCfg.name} → ${targetCfg.name}. Motivo/Apontamento: ${transitionNotes.trim()}`
-        : `Transição de estado operacional: ${currentCfg.name} → ${targetCfg.name}`;
-
-      await addDoc(collection(db, 'order_events'), {
+      const response = await postJson(`/api/work-orders/${encodeURIComponent(order.id)}/transition`, {
         orgId: organization.id,
-        orderId: order.id,
-        userId: user.uid,
-        userName: user.displayName || user.email || 'Operador',
-        eventType: 'mudanca_status',
-        description: eventDesc,
-        previousStatus: order.status,
-        newStatus: targetStatusId,
-        timestamp: new Date().toISOString(),
+        expectedStatus: order.status,
+        targetStatusId,
+        notes: transitionNotes || '',
+        idempotencyKey: crypto.randomUUID(),
       });
-
-      await logAudit(
-        'Ordens de Serviço',
-        'Transição de Status',
-        `OS ${order.orderNumber} alterada de "${currentCfg.name}" para "${targetCfg.name}"`,
-        order.id
-      );
-
-      if (selectedOrder && selectedOrder.id === order.id) {
-        setSelectedOrder({ ...selectedOrder, ...updates });
-        setStatusChangeNote('');
+      if (!response.ok || response.data?.ok !== true) throw new Error(response.error || response.data?.error || 'Não foi possível alterar o status da OS.');
+      if (response.data.order && selectedOrder?.id === order.id) setSelectedOrder(response.data.order as WorkOrder);
+      else if (selectedOrder?.id === order.id) setSelectedOrder({ ...selectedOrder, status: targetStatusId, updatedAt: new Date().toISOString() });
+      setStatusChangeNote('');
+      try {
+        await logAudit('Ordens de Serviço', 'Transição de Status', `OS ${order.orderNumber} alterada de "${currentCfg.name}" para "${targetCfg.name}"`, order.id);
+      } catch (auditError) {
+        console.warn('Status atualizado, mas o registro complementar de auditoria não pôde ser gravado:', auditError);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido ao atualizar a OS.';
       console.error('Erro ao atualizar status da OS:', err);
+      alert(message);
     }
   };
 
