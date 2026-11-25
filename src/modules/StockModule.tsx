@@ -236,7 +236,7 @@ export const StockModule: React.FC = () => {
           <button
             onClick={() => {
               setMovItemId(items[0]?.id || '');
-              setMovUnitId(units[0]?.id || '');
+              setMovUnitId('');
               setMovType('entrada');
               setMovToUnitId('');
               setMovError(null);
