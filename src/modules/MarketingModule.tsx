@@ -37,26 +37,44 @@ interface MarketingModuleProps {
 }
 
 export const MarketingModule: React.FC<MarketingModuleProps> = ({
-  currentOrgId = 'org_aguero_default',
+  currentOrgId = '',
   currentSubSection = 'marketing-painel',
   onNavigateSubSection,
 }) => {
   const [activeTab, setActiveTab] = useState<MarketingSubSection>(currentSubSection);
-  const [campaigns, setCampaigns] = useState<MarketingCampaign[]>(() =>
-    MarketingService.listCampaigns(currentOrgId)
-  );
-  const [events, setEvents] = useState<CorporateEvent[]>(() =>
-    MarketingService.listEvents(currentOrgId)
-  );
-  const [assets, setAssets] = useState<CreativeAsset[]>(() =>
-    MarketingService.listAssets(currentOrgId)
-  );
+  const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
+  const [events, setEvents] = useState<CorporateEvent[]>([]);
+  const [assets, setAssets] = useState<CreativeAsset[]>([]);
   const [brand, setBrand] = useState<BrandIdentityConfig>(() =>
-    MarketingService.getBrandIdentity(currentOrgId)
+    MarketingService.getDefaultBrandIdentity(currentOrgId)
   );
-  const [radar, setRadar] = useState<RadarOpportunity[]>(() =>
+  const [radar] = useState<RadarOpportunity[]>(() =>
     generateOpportunitiesRadar(new Date().getFullYear())
   );
+
+  useEffect(() => {
+    if (!currentOrgId) return;
+    let active = true;
+    Promise.all([
+      MarketingService.fetchCampaigns(currentOrgId),
+      MarketingService.fetchEvents(currentOrgId),
+      MarketingService.fetchAssets(currentOrgId),
+      MarketingService.fetchBrandIdentity(currentOrgId),
+    ])
+      .then(([c, e, a, b]) => {
+        if (!active) return;
+        setCampaigns(c);
+        setEvents(e);
+        setAssets(a);
+        setBrand(b);
+      })
+      .catch((err) => {
+        console.error('Erro ao carregar dados de Marketing no Firestore:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentOrgId]);
 
   // Sync prop changes
   useEffect(() => {
@@ -73,46 +91,47 @@ export const MarketingModule: React.FC<MarketingModuleProps> = ({
   };
 
   // Convert opportunity from Radar
-  const handleConvertOpportunity = (opp: RadarOpportunity, type: 'campaign' | 'event') => {
+  const handleConvertOpportunity = async (opp: RadarOpportunity, type: 'campaign' | 'event') => {
+    if (!currentOrgId) return;
     if (type === 'campaign') {
-      const created = MarketingService.convertOpportunityToCampaign(opp, currentOrgId);
-      setCampaigns(MarketingService.listCampaigns(currentOrgId));
+      const created = await MarketingService.convertOpportunityToCampaign(opp, currentOrgId);
+      setCampaigns((prev) => [created, ...prev.filter((c) => c.id !== created.id)]);
       handleTabChange('marketing-campanhas');
     } else {
-      const created = MarketingService.convertOpportunityToEvent(opp, currentOrgId);
-      setEvents(MarketingService.listEvents(currentOrgId));
+      const created = await MarketingService.convertOpportunityToEvent(opp, currentOrgId);
+      setEvents((prev) => [created, ...prev.filter((e) => e.id !== created.id)]);
       handleTabChange('marketing-eventos');
     }
   };
 
-  const handleSaveCampaign = (campaign: MarketingCampaign) => {
-    MarketingService.saveCampaign(campaign);
-    setCampaigns(MarketingService.listCampaigns(currentOrgId));
+  const handleSaveCampaign = async (campaign: MarketingCampaign) => {
+    const saved = await MarketingService.saveCampaign({ ...campaign, organizationId: currentOrgId || campaign.organizationId });
+    setCampaigns((prev) => [saved, ...prev.filter((c) => c.id !== saved.id)]);
   };
 
-  const handleDeleteCampaign = (id: string) => {
-    MarketingService.deleteCampaign(id, currentOrgId);
-    setCampaigns(MarketingService.listCampaigns(currentOrgId));
+  const handleDeleteCampaign = async (id: string) => {
+    await MarketingService.deleteCampaign(id, currentOrgId);
+    setCampaigns((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const handleSaveEvent = (event: CorporateEvent) => {
-    MarketingService.saveEvent(event);
-    setEvents(MarketingService.listEvents(currentOrgId));
+  const handleSaveEvent = async (event: CorporateEvent) => {
+    const saved = await MarketingService.saveEvent({ ...event, organizationId: currentOrgId || event.organizationId });
+    setEvents((prev) => [saved, ...prev.filter((e) => e.id !== saved.id)]);
   };
 
-  const handleDeleteEvent = (id: string) => {
-    MarketingService.deleteEvent(id, currentOrgId);
-    setEvents(MarketingService.listEvents(currentOrgId));
+  const handleDeleteEvent = async (id: string) => {
+    await MarketingService.deleteEvent(id, currentOrgId);
+    setEvents((prev) => prev.filter((e) => e.id !== id));
   };
 
-  const handleSaveAsset = (asset: CreativeAsset) => {
-    MarketingService.saveAsset(asset);
-    setAssets(MarketingService.listAssets(currentOrgId));
+  const handleSaveAsset = async (asset: CreativeAsset) => {
+    const saved = await MarketingService.saveAsset({ ...asset, organizationId: currentOrgId || asset.organizationId });
+    setAssets((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
   };
 
-  const handleSaveBrand = (updatedBrand: BrandIdentityConfig) => {
-    MarketingService.saveBrandIdentity(updatedBrand);
-    setBrand(updatedBrand);
+  const handleSaveBrand = async (updatedBrand: BrandIdentityConfig) => {
+    const saved = await MarketingService.saveBrandIdentity({ ...updatedBrand, organizationId: currentOrgId || updatedBrand.organizationId });
+    setBrand(saved);
   };
 
   const SUBSECTIONS = [

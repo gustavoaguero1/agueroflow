@@ -356,7 +356,7 @@ function MainRouter() {
               : (section as PurchasingSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
-          currentOrgId={organization?.id || 'org_aguero_default'}
+          currentOrgId={organization?.id || ''}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Comprador Industrial'}
         />
       )}
@@ -373,13 +373,13 @@ function MainRouter() {
               : (section as TravelSubSection)
           }
           onNavigateSubSection={(sec) => setCurrentNavSection(sec as NavSection)}
-          currentOrgId={organization?.id || 'org_aguero_default'}
+          currentOrgId={organization?.id || ''}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Gestor de Viagens'}
         />
       )}
       {(section.startsWith('marketing') || section === 'marketing') && (
         <MarketingModule
-          currentOrgId={organization?.id || 'org_aguero_default'}
+          currentOrgId={organization?.id || ''}
           currentSubSection={
             section === 'marketing'
               ? 'marketing-painel'

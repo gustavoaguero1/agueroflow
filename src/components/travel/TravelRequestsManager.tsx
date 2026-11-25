@@ -29,6 +29,7 @@ import { TechnicianSafetyDossierModal } from './TechnicianSafetyDossierModal';
 
 interface TravelRequestsManagerProps {
   requests: TravelRequest[];
+  currentOrgId: string;
   onSaveRequest: (request: TravelRequest) => Promise<void>;
   onUpdateStatus: (id: string, status: TravelRequestStatus, notes?: string) => Promise<void>;
   onLaunchSearchForRequest: (request: TravelRequest) => void;
@@ -45,6 +46,7 @@ interface TravelRequestsManagerProps {
 
 export const TravelRequestsManager: React.FC<TravelRequestsManagerProps> = ({
   requests,
+  currentOrgId,
   onSaveRequest,
   onUpdateStatus,
   onLaunchSearchForRequest,
@@ -63,13 +65,13 @@ export const TravelRequestsManager: React.FC<TravelRequestsManagerProps> = ({
   const [travelerRole, setTravelerRole] = useState('Técnico de Campo / Montador');
   const [travelReason, setTravelReason] = useState('');
   const [clientCompany, setClientCompany] = useState('');
-  const [origin, setOrigin] = useState('São Paulo, SP');
-  const [destination, setDestination] = useState('Campinas, SP');
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
   const [departureDate, setDepartureDate] = useState(new Date().toISOString().split('T')[0]);
   const [returnDate, setReturnDate] = useState('');
   const [workProjectId, setWorkProjectId] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
-  const [budgetLimit, setBudgetLimit] = useState<number | undefined>(350);
+  const [budgetLimit, setBudgetLimit] = useState<number | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -89,6 +91,11 @@ export const TravelRequestsManager: React.FC<TravelRequestsManagerProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
+    if (!currentOrgId?.trim()) {
+      setErrorMsg('Selecione uma empresa válida antes de criar uma solicitação de viagem.');
+      return;
+    }
+
     if (!travelReason.trim() || !origin.trim() || !destination.trim() || !departureDate) {
       setErrorMsg('Preencha os campos obrigatórios (Motivo, Origem, Destino e Data de Ida).');
       return;
@@ -101,7 +108,7 @@ export const TravelRequestsManager: React.FC<TravelRequestsManagerProps> = ({
 
       const newReq: TravelRequest = {
         id: `req_via_${Date.now()}`,
-        organizationId: 'org_aguero_default',
+        organizationId: currentOrgId,
         requestNumber: `VIAG-${Date.now().toString().slice(-5)}`,
         requesterId: currentUser.id,
         requesterName: requesterName.trim() || currentUser.name,

@@ -31,8 +31,8 @@ export const WhatsAppAutomationModule: React.FC<WhatsAppAutomationModuleProps> =
     onNavigateSubSection?.(next);
   };
 
-  const organizationId = organization?.id || 'org_aguero_default';
-  const organizationName = organization?.name || 'Aguero Inox';
+  const organizationId = organization?.id || '';
+  const organizationName = organization?.name || 'Empresa';
   const userName = user?.displayName || user?.email?.split('@')[0] || 'Gestor AgueroFlow';
 
   return (

@@ -12,8 +12,8 @@ Owner kinds:
 
 | Collection | Owner | Client queries | Notes |
 |---|---|---|---|
-| assets | orgId | `orgId ==` | |
-| audit_logs | orgId (immutable) | `orgId ==` | append-only |
+| assets | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
+| audit_logs | orgId (immutable) | `orgId ==` | Append-only; criação permitida para membros da empresa ao executar ações; leitura restrita à área Estrutura (`A_EST()` nível 1). |
 | checklist_runs | orgId | `orgId ==` | Conclusão somente por `/api/checklists/templates/:templateId/runs`; armazena versão e snapshot do template. Eventos append-only em `checklist_run_events`. |
 | checklist_run_events | orgId (immutable) | `orgId ==` + `runId ==` | Histórico append-only da execução do checklist. |
 | checklist_template_events | orgId (immutable) | `orgId ==` + `templateId ==` | Histórico de criação/versões do template, com snapshot. |
@@ -46,8 +46,8 @@ Owner kinds:
 | safety_training_catalog | orgId | `orgId ==` | Matriz de NRs/qualificações por tipo de atividade. Supervisor/Gerente/Admin com Operações nível 2 podem cadastrar/atualizar/inativar; exclusão é bloqueada. NR-35, NR-33 e NR-10 são requisitos base para altura, espaço confinado e atividade elétrica, respectivamente. |
 | safety_training_records | orgId (server-only, append-only) | `orgId ==` | Certificados individuais vinculados ao diretório oficial do RH. Backend confere colaborador ativo, código de treinamento autorizado, datas e evidência HTTPS ou arquivo PDF/JPEG/PNG/WebP (até 20 MB) no Storage privado. Clientes não criam/alteram/excluem registros. |
 | constructions | orgId | `orgId ==` | |
-| contracts | orgId | `orgId ==` | |
-| cost_centers | orgId | `orgId ==` | |
+| contracts | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
+| cost_centers | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | counters | orgId | getDoc | `{orgId}_work_orders` sequence for OS numbers (written in a transaction by `markProposalWon`) |
 | field_workers | orgId | `orgId ==` | |
 | finance_categories | orgId | `orgId ==` | Admin/Gerente/Supervisor create/update; Admin/Gerente delete; default chart ids `cat_{orgId}_{slug}` |
@@ -66,6 +66,10 @@ Owner kinds:
 | inspection_events | orgId (immutable) | `orgId ==` + `inspectionId ==` | Histórico append-only do ciclo de inspeção; gravação exclusiva do servidor. |
 | items | orgId | `orgId ==` | Stock editor administra o catálogo mestre; Operações e Comercial podem consultar. |
 | lpu_approvals | orgId | `orgId ==` | |
+| marketing_assets | organizationId | `organizationId ==` | Assets criativos e portfólio técnico multiusuário (substitui `localStorage`); área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
+| marketing_brand_configs | doc id (`organizationId`) | getDoc | Identidade visual corporativa por empresa; área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
+| marketing_campaigns | organizationId | `organizationId ==` | Campanhas de marketing multiusuário no Firestore (sem seed demo); área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
+| marketing_events | organizationId | `organizationId ==` | Eventos corporativos multiusuário no Firestore; área Comercial (`A_COM()` nível 1 lê, nível 2 grava). |
 | measurement_bulletins | orgId (server-only) | `orgId ==` | Boletins de Medição vinculados a contrato, unidade, projeto/obra (opcional) e aprovações LPU. Leitura por Operações, Comercial ou Financeiro (nível 1+); criação e transições exclusivamente via `/api/measurements/*`. Aprovação (`aprovado` / `aprovado_parcial`) gera atomicamente e de forma idempotente título em `finance_receivables` (`recv_{orgId}_bm_{bulletinId}`, `origem: 'medicao'`). |
 | measurement_events | orgId (server-only, append-only) | `orgId ==` + `bulletinId ==` | Trilha imutável de criação, envio, aprovação, glosa, devolução e cancelamento de Boletins de Medição. Leitura por Operações, Comercial ou Financeiro (nível 1+); escrita exclusiva do servidor. |
 | nfe_documents | orgId | `orgId ==` | created/deleted by the server only; Admin/Gerente/Supervisor may change only `status`/`classificacao`/`erroClassificacao`/`updatedAt`: start a run (→classificando, `classificacao.by` = caller), the run's owner ends it (→classificada\|erro_classificacao); Admin/Gerente may release a run older than 2 min (server time) |
@@ -93,12 +97,12 @@ Owner kinds:
 | stock_balances | orgId | `orgId ==` | Leitura por Estoque/Operações; escrita por Estoque ou Operações nível 2 via serviço transacional. |
 | stock_movements | orgId (immutable) | `orgId ==` | Append-only; Estoque ou Operações nível 2 podem criar movimentos via serviço transacional; entradas e saídas persistem snapshot de `unitCost`, `totalCost` e `projectId` (quando informado) para apropriação de custo por obra. |
 | support_tickets | orgId | `orgId ==` | |
-| teams | orgId | `orgId ==` | |
+| teams | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | test | none | getDoc `test/connection` | connectivity probe; `get` of that one doc for signed-in users |
-| travel_requests | organizationId | `organizationId ==` | |
-| travel_searches | organizationId | `organizationId ==` | |
+| travel_requests | organizationId | `organizationId ==` | Persistência autoritativa no Firestore (sem fallback silencioso em `localStorage`). |
+| travel_searches | organizationId | `organizationId ==` | Persistência autoritativa no Firestore (sem fallback silencioso em `localStorage`). |
 | trusted_devices | orgId + userId | `userId == && orgId ==`, `orgId ==` | read: org members. create: own `userId` only. update/delete: owner or Admin/Gerente; `userId`/org unchanged |
-| units | orgId | `orgId ==` | |
+| units | orgId | `orgId ==` | Área Estrutura (`A_EST()`): nível 1 lê; nível 2 cria/edita/exclui. |
 | whatsapp_ai_rules | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
 | whatsapp_ai_settings | orgId + organizationId | `orgId ==` | Doc id namespaced por empresa (`${orgId}_mention_trigger`); área WhatsApp (`A_WA()`). |
 | whatsapp_contacts | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()` nível 1 lê, nível 2 grava). |
@@ -108,7 +112,7 @@ Owner kinds:
 | whatsapp_quick_replies | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`). |
 | whatsapp_scheduled_jobs | orgId + organizationId | `orgId ==` | Isolamento estrito por empresa + área WhatsApp (`A_WA()`) + validação de campos. |
 | work_order_statuses | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita); doc id `${orgId}_${statusId}` |
-| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. Para OS de risco (`requiresSafetyPermit: true` ou `safetyPermitType` != `geral`), a transição para execução valida PT aprovada e dentro da validade + certificados/NRs e EPIs vigentes da equipe (via `rh_directory`), registrando `safetyGateVerified` no evento. |
+| work_orders | orgId | `orgId ==` | Operations (nível 1 para leitura, nível 2 para escrita). Criação atômica (OS + `order_events` inicial + numeração) via `POST /api/work-orders` validando `unitId != default_unit`, vínculos da empresa e status inicial (`isInitial: true`). Mudança de status somente por `POST /api/work-orders/:orderId/status`, que grava OS, evento e chave de idempotência atomicamente. Para OS de risco (`requiresSafetyPermit: true` ou `safetyPermitType` != `geral`), a transição para execução valida PT aprovada e dentro da validade + certificados/NRs e EPIs vigentes da equipe (via `rh_directory`), registrando `safetyGateVerified` no evento. |
 | work_shifts | orgId | `orgId ==` | |
 | worker_time_logs | orgId | `orgId ==` + `date` | |
 

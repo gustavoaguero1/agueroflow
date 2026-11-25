@@ -30,7 +30,6 @@ import {
   getCommercialPolicy,
   getImportBatches,
   deleteProposal,
-  seedCommercialDemoData,
 } from '../services/commercialService';
 import { CommercialDashboard } from '../components/commercial/CommercialDashboard';
 import { CommercialProposalWizard } from '../components/commercial/CommercialProposalWizard';
@@ -67,8 +66,8 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
   onNavigateSubSection,
 }) => {
   const { user, organization, role } = useAuth();
-  const organizationId = organization?.id || 'org_default';
-  const userId = user?.uid || 'user_default';
+  const organizationId = organization?.id || '';
+  const userId = user?.uid || '';
   const userName = user?.displayName || user?.email || 'Representante Comercial';
 
   const [currentTab, setCurrentTab] = useState<CommercialSubSection>(activeSubSection);

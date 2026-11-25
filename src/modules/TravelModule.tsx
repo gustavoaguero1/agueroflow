@@ -58,7 +58,7 @@ interface TravelModuleProps {
 export const TravelModule: React.FC<TravelModuleProps> = ({
   currentSubSection = 'viagens-painel',
   onNavigateSubSection,
-  currentOrgId = 'org_aguero_default',
+  currentOrgId = '',
   currentUserName = 'Gestor de Viagens',
 }) => {
   const { user, role } = useAuth();
@@ -602,6 +602,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
       {activeTab === 'viagens-solicitacoes' && (
         <TravelRequestsManager
           requests={travelRequests}
+          currentOrgId={currentOrgId}
           currentUser={{
             id: user?.uid || 'user_1',
             name: currentUserName,
