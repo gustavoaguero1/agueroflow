@@ -141,7 +141,7 @@ export function validateSafetyPermitInput(input: SafetyPermitInput): string[] {
   }
   const normalizedTeam = input.teamMembers.map((name) => name.trim().toLocaleLowerCase('pt-BR'));
   if (new Set(normalizedTeam).size !== normalizedTeam.length) errors.push('Remova nomes duplicados da equipe.');
-  if (input.risks.length < 1 || input.risks.length > 10) errors.push('Registre de 1 a 10 perigos/riscos da atividade.');
+  if (input.risks.length < 1 || input.risks.length > 5) errors.push('Registre de 1 a 5 perigos/riscos da atividade.');
 
   input.risks.forEach((risk, index) => {
     if (risk.hazard.trim().length < 3 || risk.hazard.trim().length > 180) errors.push('Perigo ' + (index + 1) + ': informe o perigo identificado.');
