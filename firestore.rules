@@ -597,11 +597,6 @@ service cloud.firestore {
         let linkedDocument = documentExists ? getAfter(documentPath).data : {};
         let orgId = orgOf(d);
         let eventType = d.get('eventType', '');
-        let isSubmission = eventType == 'submitted_internal';
-        let isInternalRejection = eventType == 'rejected_internal';
-        let isClientEvent = eventType in ['submitted_client', 'approved_client', 'rejected_client'];
-        let isClientRejection = eventType == 'rejected_client';
-        let managerApproval = hasRole(orgId, ['Admin', 'Gerente', 'Supervisor']);
         return coll != 'engineering_document_events' || (
           signedIn()
           && d.get('orgId', '') is string
@@ -617,17 +612,17 @@ service cloud.firestore {
           && d.get('recordedByName', '') is string
           && d.get('recordedByName', '').size() > 0
           && d.get('recordedAt', null) == request.time
-          && (isSubmission
+          && (eventType == 'submitted_internal'
             ? linkedDocument.get('createdAt', null) == request.time
-            : managerApproval)
-          && (!isInternalRejection
+            : hasRole(orgId, ['Admin', 'Gerente', 'Supervisor']))
+          && (eventType != 'rejected_internal'
             || (d.get('comment', '') is string && d.get('comment', '').size() > 0))
-          && (!isClientEvent
+          && (!(eventType in ['submitted_client', 'approved_client', 'rejected_client'])
             || (d.get('clientName', '') is string
               && d.get('clientName', '').size() > 0
               && d.get('clientReference', '') is string
               && d.get('clientReference', '').size() > 0))
-          && (!isClientRejection
+          && (eventType != 'rejected_client'
             || (d.get('comment', '') is string && d.get('comment', '').size() > 0))
         );
       }
