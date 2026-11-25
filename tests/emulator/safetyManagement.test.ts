@@ -161,25 +161,14 @@ test('Operations editor creates an APR, initial event and state in sequence', as
 
 
 test('PT must reference an approved APR from the same organization, unit and contract', async () => {
-  const { initialEventId } = await createPermit();
-  await transitionPermit(
-    'operator_1',
-    'Operacional',
-    'permit_01',
-    initialEventId,
-    'apr_submit',
-    'submitted_for_approval',
-    'awaiting_approval',
-  );
-  await transitionPermit(
-    'supervisor_1',
-    'Supervisor',
-    'permit_01',
-    'apr_submit',
-    'apr_approve',
-    'approved',
-    'approved',
-  );
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'safety_permits/permit_01'), validPermit('operator_1', 'permit_01'));
+    await setDoc(doc(context.firestore(), 'safety_permit_states/permit_01'), {
+      id: 'permit_01', orgId: 'org_a', unitId: 'unit_a', contractId: 'contract_a',
+      permitId: 'permit_01', status: 'approved', latestEventId: 'approved_by_server',
+      updatedByUid: 'supervisor_1', updatedByName: 'Supervisor', updatedAt: serverTimestamp(),
+    });
+  });
 
   const operator = dbFor('operator_1', 'Operacional');
   const ptData = validPermit('operator_1', 'pt_01', {
@@ -260,21 +249,20 @@ test('viewer reads APR/PT but cannot create or change it; another organization c
   await assertFails(getDoc(doc(otherOrg, 'safety_permit_states/permit_01')));
 });
 
-test('only Supervisor, Manager or Admin can approve; creator cannot approve their own permit', async () => {
+test('manager approval events are server-only and creator separation is enforced by the API', async () => {
   const { initialEventId } = await createPermit();
   const operator = dbFor('operator_1', 'Operacional');
   await assertFails(setDoc(
     doc(operator, 'safety_permit_events/operator_approval_orphan'),
     eventData('operator_1', 'permit_01', 'approved', { previousEventId: initialEventId }),
   ));
-  const unchanged = await assertSucceeds(getDoc(doc(operator, 'safety_permit_states/permit_01')));
-  assert.equal(unchanged.data()?.status, 'draft');
-  assert.equal(unchanged.data()?.latestEventId, initialEventId);
 
   await transitionPermit('supervisor_1', 'Supervisor', 'permit_01', initialEventId, 'send_for_approval', 'submitted_for_approval', 'awaiting_approval');
-  await transitionPermit('supervisor_2', 'Supervisor', 'permit_01', 'send_for_approval', 'approve_permit', 'approved', 'approved');
-  const approved = await assertSucceeds(getDoc(doc(dbFor('supervisor_2', 'Supervisor'), 'safety_permit_states/permit_01')));
-  assert.equal(approved.data()?.status, 'approved');
+  const supervisor = dbFor('supervisor_2', 'Supervisor');
+  await assertFails(setDoc(
+    doc(supervisor, 'safety_permit_events/supervisor_approval'),
+    eventData('supervisor_2', 'permit_01', 'approved', { previousEventId: 'send_for_approval' }),
+  ));
 
   const own = await createPermit('supervisor_owner', 'Supervisor', 'supervisor_own_permit');
   await assertFails(setDoc(
