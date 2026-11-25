@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { EngineeringDocumentsPanel } from '../components/construction/EngineeringDocumentsPanel';
-import { SafetyManagementPanel } from '../components/construction/SafetyManagementPanel';
+import { SafetyManagementPanel } from '../components/safety/SafetyManagementPanel';
 import { useAuth } from '../contexts/AuthContext';
 import {
   collection,
@@ -958,7 +958,17 @@ export const ConstructionModule: React.FC = () => {
       )}
 
       {/* TAB 7: APR, Permissões de Trabalho e Segurança/SMS */}
-      {activeTab === 'seguranca_sms' && organization && <SafetyManagementPanel />}
+      {activeTab === 'seguranca_sms' && organization && (
+        <SafetyManagementPanel
+          organizationId={organization.id}
+          units={units}
+          contracts={contracts}
+          currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
+          currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Responsável de Campo'}
+          canEdit={areaLevel('operacoes') >= 2}
+          canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
+        />
+      )}
 
       {/* TAB 8: Controle de desenhos, revisões e aprovações de engenharia */}
       {activeTab === 'documentos_engenharia' && organization && (
