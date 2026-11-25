@@ -70,10 +70,7 @@ service firebase.storage {
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
-        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp)
-  }
-}
-);
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png|image/webp)$');
       allow update, delete: if false;
     }
 
