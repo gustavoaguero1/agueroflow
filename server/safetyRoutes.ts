@@ -211,8 +211,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         const ppeRef = h.db.collection('safety_ppe_catalog').doc(ppeId);
         const [employeeSnap, ppeSnap, movementSnap] = await Promise.all([
           tx.get(employeeRef), tx.get(ppeRef),
-          tx.get(h.db.collection('safety_ppe_movements')
-            .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', ppeId)),
+          tx.get(h.db.collection('safety_ppe_movements').where('orgId', '==', orgId)),
         ]);
         if (!employeeSnap.exists || employeeSnap.data()?.orgId !== orgId) {
           throw new SafetyRouteError(404, 'Colaborador não localizado no diretório do RH desta empresa.');
@@ -222,7 +221,8 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         }
         const employee = employeeSnap.data() || {};
         const ppe = ppeSnap.data() || {};
-        const latest = activeIssue(toRows<Record<string, any>>(movementSnap));
+        const employeePpeHistory = toRows<Record<string, any>>(movementSnap).filter((item) => item.employeeId === employeeId && item.ppeId === ppeId);
+        const latest = activeIssue(employeePpeHistory);
         if (eventType === 'entregue') {
           if (employee.active !== true) throw new SafetyRouteError(409, 'Não é possível entregar EPI a colaborador inativo no RH.');
           if (ppe.active !== true) throw new SafetyRouteError(409, 'Este EPI está inativo no catálogo.');
@@ -296,13 +296,10 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
           || typeof newPpe.caExpiresAt !== 'string' || newPpe.caExpiresAt < dateToday()) {
           throw new SafetyRouteError(409, 'Substituição bloqueada: o novo EPI está sem CA válido ou com CA vencido.');
         }
-        const oldHistoryQuery = h.db.collection('safety_ppe_movements')
-          .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', oldMovement.ppeId);
-        const newHistoryQuery = h.db.collection('safety_ppe_movements')
-          .where('orgId', '==', orgId).where('employeeId', '==', employeeId).where('ppeId', '==', newPpeId);
-        const [oldHistory, newHistory] = await Promise.all([tx.get(oldHistoryQuery), tx.get(newHistoryQuery)]);
-        const latestOld = activeIssue(toRows<Record<string, any>>(oldHistory));
-        const latestNew = activeIssue(toRows<Record<string, any>>(newHistory));
+        const movementHistory = await tx.get(h.db.collection('safety_ppe_movements').where('orgId', '==', orgId));
+        const employeeMovements = toRows<Record<string, any>>(movementHistory).filter((item) => item.employeeId === employeeId);
+        const latestOld = activeIssue(employeeMovements.filter((item) => item.ppeId === oldMovement.ppeId));
+        const latestNew = activeIssue(employeeMovements.filter((item) => item.ppeId === newPpeId));
         if (!latestOld || latestOld.id !== oldMovementId || latestOld.eventType !== 'entregue') {
           throw new SafetyRouteError(409, 'O EPI atual já foi devolvido ou substituído. Atualize a tela.');
         }
