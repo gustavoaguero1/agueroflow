@@ -684,7 +684,7 @@ service cloud.firestore {
           && event.get('previousEventId', '') == resource.data.get('latestEventId', '')
           && event.get('actorUid', '') == request.auth.uid
           && event.get('actorName', '') is string && event.get('actorName', '').size() > 0
-          && event.get('recordedAt', null) == request.time
+          && event.get('recordedAt', null) is timestamp
           && request.resource.data.get('status', '') == safetyStatusAfter(resource.data.get('status', ''), eventType)
           && safetyStatusAfter(resource.data.get('status', ''), eventType) != ''
           && (!managerAction || hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor']))
