@@ -1318,7 +1318,8 @@ service cloud.firestore {
       }
       function validSafetyPermitEventCreate() {
         let permitId = request.resource.data.get('permitId', '');
-        let permitPath = /databases/$(database)/documents/safety_permits/$(permitId);
+        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
         let permitExists = exists(permitPath);
         let permit = permitExists ? get(permitPath).data : {};
         let eventType = request.resource.data.get('eventType', '');
@@ -1347,7 +1348,8 @@ service cloud.firestore {
       function safetyInitialStateValid() {
         let permitPath = /databases/$(database)/documents/safety_permits/$(docId);
         let eventId = request.resource.data.get('latestEventId', '');
-        let eventPath = /databases/$(database)/documents/safety_permit_events/$(eventId);
+        let safeEventId = eventId is string && eventId.size() > 0 ? eventId : '__missing_event__';
+        let eventPath = /databases/$(database)/documents/safety_permit_events/$(safeEventId);
         let permitExists = exists(permitPath);
         let permit = permitExists ? get(permitPath).data : {};
         let eventExists = exists(eventPath);
@@ -1383,11 +1385,13 @@ service cloud.firestore {
       }
       function validSafetyPermitStateUpdate() {
         let permitId = resource.data.get('permitId', '');
-        let permitPath = /databases/$(database)/documents/safety_permits/$(permitId);
+        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
         let permitExists = exists(permitPath);
         let permit = permitExists ? get(permitPath).data : {};
         let eventId = request.resource.data.get('latestEventId', '');
-        let eventPath = /databases/$(database)/documents/safety_permit_events/$(eventId);
+        let safeEventId = eventId is string && eventId.size() > 0 ? eventId : '__missing_event__';
+        let eventPath = /databases/$(database)/documents/safety_permit_events/$(safeEventId);
         let eventExists = exists(eventPath);
         let event = eventExists ? get(eventPath).data : {};
         let eventType = event.get('eventType', '');
@@ -1415,7 +1419,8 @@ service cloud.firestore {
       }
       function validSafetyOccurrencePermit(d) {
         let permitId = d.get('relatedPermitId', '');
-        let permitPath = /databases/$(database)/documents/safety_permits/$(permitId);
+        let safePermitId = permitId is string && permitId.size() > 0 ? permitId : '__missing_permit__';
+        let permitPath = /databases/$(database)/documents/safety_permits/$(safePermitId);
         let permitExists = exists(permitPath);
         let permit = permitExists ? get(permitPath).data : {};
         return permitId == '' || (permitExists
@@ -1429,7 +1434,20 @@ service cloud.firestore {
           && request.resource.data.get('type', '') == 'seguranca'
           && request.resource.data.get('safetyCategory', '') in ['quase_acidente', 'condicao_insegura', 'ato_inseguro', 'incidente_sem_lesao', 'acidente_com_lesao', 'incidente_ambiental']
           && request.resource.data.get('incidentDate', '') is string
-          && request.resource.data.get('incidentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}
+          && request.resource.data.get('incidentDate', '').matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() >= 3
+          && request.resource.data.get('title', '').size() <= 150
+          && request.resource.data.get('description', '') is string
+          && request.resource.data.get('description', '').size() >= 10
+          && request.resource.data.get('description', '').size() <= 2000
+          && request.resource.data.get('immediateAction', '') is string
+          && request.resource.data.get('immediateAction', '').size() <= 1000
+          && request.resource.data.get('reportedByUid', '') == request.auth.uid
+          && request.resource.data.get('status', '') == 'aberta'
+          && validSafetyOccurrencePermit(request.resource.data)
+        );
+      }
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
       function finance() { return coll in ['finance_payables', 'finance_receivables', 'finance_receivable_receipts', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations']; }
