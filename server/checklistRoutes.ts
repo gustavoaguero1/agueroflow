@@ -15,7 +15,7 @@ const idOk = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= 180 && !value.includes('/');
 const itemTypes: ChecklistItemType[] = ['sim_nao', 'multipla_escolha', 'texto', 'numerico', 'foto', 'assinatura'];
 const actorName = (req: Request) => req.user?.email || req.user?.uid || 'Usuário';
-const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex');
 
 function parseTemplatePayload(body: any): { title: string; description: string; category: string; items: ChecklistItemDef[] } {
   const title = typeof body?.title === 'string' ? body.title.trim() : '';
