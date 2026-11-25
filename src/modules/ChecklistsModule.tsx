@@ -10,6 +10,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { assessChecklistCompletion, createInitialChecklistAnswers } from '../services/checklistValidation';
 import {
   ChecklistTemplate,
   ChecklistItemDef,
@@ -56,6 +57,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   const [activeRunTemplate, setActiveRunTemplate] = useState<ChecklistTemplate | null>(null);
   const [currentAnswers, setCurrentAnswers] = useState<Record<string, ChecklistItemAnswer>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationMessage, setValidationMessage] = useState('');
 
   useEffect(() => {
     if (initialSearchQuery) {
@@ -140,30 +142,30 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
 
   const startChecklistRun = (tpl: ChecklistTemplate) => {
     setActiveRunTemplate(tpl);
-    const initialAnswers: Record<string, ChecklistItemAnswer> = {};
-    tpl.items.forEach((it) => {
-      initialAnswers[it.id] = {
-        itemId: it.id,
-        itemTitle: it.title,
-        type: it.type,
-        value: it.type === 'sim_nao' ? 'sim' : '',
-        conforme: true,
-      };
-    });
-    setCurrentAnswers(initialAnswers);
+    setCurrentAnswers(createInitialChecklistAnswers(tpl));
+    setValidationMessage('');
   };
 
   const calculateProgress = () => {
-    if (!activeRunTemplate || activeRunTemplate.items.length === 0) return 0;
-    const answeredCount = activeRunTemplate.items.filter((it) => {
-      const ans = currentAnswers[it.id];
-      return ans && ans.value !== '' && ans.value !== undefined;
-    }).length;
-    return Math.round((answeredCount / activeRunTemplate.items.length) * 100);
+    if (!activeRunTemplate) return 0;
+    return assessChecklistCompletion(activeRunTemplate, currentAnswers).progressPercent;
   };
 
   const handleCompleteRun = async () => {
     if (!activeRunTemplate || !organization || !user) return;
+
+    const assessment = assessChecklistCompletion(activeRunTemplate, currentAnswers);
+    if (!assessment.canComplete) {
+      const missing = assessment.missingRequired;
+      setValidationMessage(
+        missing.length > 0
+          ? `Preencha os itens obrigatórios antes de concluir: ${missing.join('; ')}.`
+          : 'Este template não possui itens para execução. Inclua ao menos um item antes de concluir.'
+      );
+      return;
+    }
+
+    setValidationMessage('');
     setIsSubmitting(true);
 
     try {
@@ -175,7 +177,9 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
         templateTitle: activeRunTemplate.title,
         inspectorId: user.uid,
         inspectorName: user.displayName || user.email || 'Inspetor',
-        progressPercent: 100,
+        progressPercent: assessment.progressPercent,
+        nonConformityCount: assessment.nonConformityCount,
+        hasNonConformities: assessment.nonConformityCount > 0,
         answers: currentAnswers,
         status: 'concluido',
         completedAt: new Date().toISOString(),
@@ -184,9 +188,15 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
       };
 
       await setDoc(doc(db, 'checklist_runs', runId), newRun);
-      await logAudit('Checklists', 'Executar Checklist', `Checklist concluído: ${activeRunTemplate.title}`, runId);
+      await logAudit(
+        'Checklists',
+        'Executar Checklist',
+        `Checklist concluído: ${activeRunTemplate.title} | Não conformidades: ${assessment.nonConformityCount}`,
+        runId
+      );
 
       setActiveRunTemplate(null);
+      setValidationMessage('');
     } catch (err) {
       console.error('Erro ao finalizar execução de checklist:', err);
     } finally {
@@ -324,8 +334,16 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">
-                          {r.status}
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            (r.nonConformityCount ?? (r.hasNonConformities ? 1 : 0)) > 0
+                              ? 'bg-red-950/70 text-red-400 border-red-800/50'
+                              : 'bg-emerald-950/70 text-emerald-400 border-emerald-800/50'
+                          }`}
+                        >
+                          {r.status === 'concluido' && (r.nonConformityCount ?? (r.hasNonConformities ? 1 : 0)) > 0
+                            ? `Concluído · ${r.nonConformityCount ?? 1} NC`
+                            : r.status}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-slate-400">
@@ -383,6 +401,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           <button
                             type="button"
                             onClick={() =>
+                              setValidationMessage('');
                               setCurrentAnswers({
                                 ...currentAnswers,
                                 [it.id]: { ...ans, value: 'sim', conforme: true },
@@ -399,6 +418,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           <button
                             type="button"
                             onClick={() =>
+                              setValidationMessage('');
                               setCurrentAnswers({
                                 ...currentAnswers,
                                 [it.id]: { ...ans, value: 'nao', conforme: false },
@@ -421,6 +441,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           step="any"
                           value={ans?.value ?? ''}
                           onChange={(e) =>
+                            setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
                               [it.id]: { ...ans, value: e.target.value },
@@ -436,6 +457,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                           rows={2}
                           value={ans?.value ?? ''}
                           onChange={(e) =>
+                            setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
                               [it.id]: { ...ans, value: e.target.value },
@@ -451,6 +473,11 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
               </div>
             </div>
 
+            {validationMessage && (
+              <div role="alert" className="mb-3 rounded-lg border border-amber-800/70 bg-amber-950/50 px-3 py-2 text-xs text-amber-200">
+                {validationMessage}
+              </div>
+            )}
             <div className="pt-4 border-t border-slate-800 flex justify-end space-x-2 mt-4">
               <button
                 type="button"

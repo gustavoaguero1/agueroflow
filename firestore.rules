@@ -479,7 +479,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
+          : (coll in ['checklist_runs', 'checklist_templates', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'quality_records', 'quality_record_events', 'quality_record_states'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
