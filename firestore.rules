@@ -798,30 +798,45 @@ service cloud.firestore {
       }
 
 
-      // A single create grant avoids repeated evaluation of expensive Firestore validators.
-      allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
-          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records']
-        ? (signedIn()
-          && isMemberOf(request.resource.data.get('orgId', ''))
-          && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2)
-          && (coll == 'safety_permit_events' || request.resource.data.get('id', '') == docId)
-          && (coll == 'safety_permits' ? validSafetyPermitCreate()
-            : (coll == 'safety_permit_events' ? validSafetyPermitEventCreate()
-              : (coll == 'safety_permit_states' ? validSafetyPermitStateCreate()
-                : (coll == 'safety_ppe_catalog'
-                  ? (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyPpeCatalogCreate())
-                  : (coll == 'safety_training_catalog'
-                    ? (hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor']) && validSafetyTrainingCatalogCreate())
-                    : false)))))
-        : (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory'])
-          ? (signedIn() && isMemberOf(request.resource.data.get('orgId', ''))
-            && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2) && validSafetyOccurrenceCreate())
-          : (finance() ? financeCreate()
-            : (perOrgDoc() ? perOrgCreate()
-              : ((orgScoped() || immutable()) && canCreate() && nfeItemOk()
-                && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
-                && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
-                && areaWrite(request.resource.data)))));
+      function isSafetyCollection() {
+        return coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'];
+      }
+      function isSafetyOccurrence() {
+        return coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory']);
+      }
+      function safetyWriteBase() {
+        let org = request.resource.data.get('orgId', '');
+        return signedIn() && isMemberOf(org) && areaOk(org, A_OPS(), 2);
+      }
+      function safetyCreate() {
+        return (coll == 'safety_permits' && safetyWriteBase() && validSafetyPermitCreate())
+          || (coll == 'safety_permit_events' && safetyWriteBase() && validSafetyPermitEventCreate())
+          || (coll == 'safety_permit_states' && safetyWriteBase() && validSafetyPermitStateCreate())
+          || (coll == 'safety_ppe_catalog' && safetyWriteBase()
+            && request.resource.data.get('id', '') == docId
+            && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+            && validSafetyPpeCatalogCreate())
+          || (coll == 'safety_training_catalog' && safetyWriteBase()
+            && request.resource.data.get('id', '') == docId
+            && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
+            && validSafetyTrainingCatalogCreate());
+      }
+      function safetyOccurrenceCreate() {
+        return safetyWriteBase() && validSafetyOccurrenceCreate();
+      }
+
+      // All document creation is authorized through one grant in this wildcard match.
+      // Official EPI movements and training certificates are backend-only.
+      allow create: if safetyCreate()
+        || (isSafetyOccurrence() && safetyOccurrenceCreate())
+        || financeCreate()
+        || perOrgCreate()
+        || (!isSafetyCollection() && !isSafetyOccurrence()
+          && (orgScoped() || immutable()) && canCreate() && nfeItemOk()
+          && validRdoCreate() && validEngineeringDocumentCreate() && validEngineeringEventCreate()
+          && validQualityRecordCreate() && validQualityEventCreate() && validQualityStateCreate()
+          && areaWrite(request.resource.data));
       allow update: if orgScoped() && !immutable() && canUpdate()
         && (coll == 'quality_record_states'
           ? (areaWrite(resource.data) && validQualityStateUpdate())
