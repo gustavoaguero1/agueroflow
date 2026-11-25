@@ -24,6 +24,9 @@ Owner kinds:
 | collective_asset_services | orgId | `orgId ==` | |
 | collective_asset_workers | orgId | `orgId ==` | Projeção operacional de colaboradores para bens coletivos. Quando `rhEmployeeId` é informado, a regra valida existência e pertencimento em `rh_directory/{rhEmployeeId}` da mesma empresa; vínculos legados sem `rhEmployeeId` seguem legíveis para saneamento manual. |
 | collective_assets | orgId (+ optional `organizationId` alias) | `orgId ==` | AiAssistantModule fixed as above |
+| cmms_plans | orgId (server-only) | `orgId ==` | Planos preventivos CMMS (calendário/horímetro/ciclos) sobre ativos existentes (`assets`); leitura por Operações (`A_OPS()` nível 1); geração idempotente de OS preventiva via `/api/cmms/plans/:planId/trigger`. |
+| cmms_records | orgId (server-only, append-only) | `orgId ==` | Histórico de manutenções, falhas, paradas e calibrações CMMS via `/api/cmms/records` para cálculo real de MTBF/MTTR/Disponibilidade; leitura por Operações (`A_OPS()` nível 1). |
+| fabrication_orders | orgId (server-only) | `orgId ==` | Ordens de Fabricação de oficina vinculadas a Projeto/Obra, documento de engenharia liberado, corridas metalúrgicas e roteiro de operações com pontos de parada; leitura por Operações (`A_OPS()` nível 1); escrita exclusiva via `/api/manufacturing/*`. |
 | commercial_clients | organizationId | `organizationId ==` | |
 | commercial_cost_compositions | organizationId | `organizationId ==`, getDoc | |
 | commercial_imports | organizationId | `organizationId ==` | |

@@ -1487,5 +1487,19 @@ service cloud.firestore {
       allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
       allow create, update, delete: if false;
     }
+
+    // ---- Produção/Fabricação (Oficina) e CMMS (escrita exclusiva do servidor) ----
+    match /fabrication_orders/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /cmms_plans/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
+    match /cmms_records/{docId} {
+      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow create, update, delete: if false;
+    }
   }
 }
