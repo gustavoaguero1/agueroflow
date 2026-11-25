@@ -50,6 +50,7 @@ function validPermit(uid: string, id = 'permit_01', overrides: Overrides = {}) {
     validUntil: '2026-11-25T17:00',
     supervisorName: 'Encarregado de montagem',
     teamMembers: ['Soldador TIG', 'Ajudante'],
+    ...(overrides.documentType === 'pt' ? { teamMemberIds: ['employee_01'] } : {}),
     risks: [
       {
         id: 'risk_1',
@@ -262,17 +263,10 @@ test('viewer reads APR/PT but cannot create or change it; another organization c
 test('only Supervisor, Manager or Admin can approve; creator cannot approve their own permit', async () => {
   const { initialEventId } = await createPermit();
   const operator = dbFor('operator_1', 'Operacional');
-  await assertSucceeds(setDoc(
+  await assertFails(setDoc(
     doc(operator, 'safety_permit_events/operator_approval_orphan'),
     eventData('operator_1', 'permit_01', 'approved', { previousEventId: initialEventId }),
   ));
-  await assertFails(updateDoc(doc(operator, 'safety_permit_states/permit_01'), {
-    status: 'approved',
-    latestEventId: 'operator_approval_orphan',
-    updatedByUid: 'operator_1',
-    updatedByName: 'Operador de Campo',
-    updatedAt: serverTimestamp(),
-  }));
   const unchanged = await assertSucceeds(getDoc(doc(operator, 'safety_permit_states/permit_01')));
   assert.equal(unchanged.data()?.status, 'draft');
   assert.equal(unchanged.data()?.latestEventId, initialEventId);
@@ -283,17 +277,10 @@ test('only Supervisor, Manager or Admin can approve; creator cannot approve thei
   assert.equal(approved.data()?.status, 'approved');
 
   const own = await createPermit('supervisor_owner', 'Supervisor', 'supervisor_own_permit');
-  await assertSucceeds(setDoc(
+  await assertFails(setDoc(
     doc(own.db, 'safety_permit_events/own_approval'),
     eventData('supervisor_owner', 'supervisor_own_permit', 'approved', { previousEventId: 'supervisor_own_permit_created' }),
   ));
-  await assertFails(updateDoc(doc(own.db, 'safety_permit_states/supervisor_own_permit'), {
-    status: 'approved',
-    latestEventId: 'own_approval',
-    updatedByUid: 'supervisor_owner',
-    updatedByName: 'Supervisor SMS',
-    updatedAt: serverTimestamp(),
-  }));
 });
 
 test('state transitions require the latest event pointer and correct sequence', async () => {
