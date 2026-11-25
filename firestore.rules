@@ -167,6 +167,7 @@ service cloud.firestore {
           'collective_assets', 'construction_milestones', 'construction_reports', 'constructions',
           'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states',
           'safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records',
           'contracts', 'cost_centers', 'field_workers', 'inspections', 'item_categories', 'items',
           'lpu_approvals', 'occurrences', 'order_messages', 'recurring_orders', 'rh_batches',
           'rh_calculations', 'rh_employees', 'rh_imports', 'stock_balances', 'support_tickets',
@@ -180,7 +181,7 @@ service cloud.firestore {
       }
       // Append-only history.
       // Field RDOs are append-only: a correction must be a new, separately identified report.
-      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'safety_permits', 'safety_permit_events']; }
+      function immutable() { return coll in ['order_events', 'stock_movements', 'audit_logs', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'safety_permits', 'safety_permit_events', 'safety_ppe_movements', 'safety_training_records']; }
       // Doc id is the orgId.
       function perOrgDoc() { return coll in ['overtime_rules', 'collective_asset_policies', 'commercial_policies']; }
 
@@ -188,7 +189,7 @@ service cloud.firestore {
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
         return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'safety_permits', 'safety_permit_events', 'safety_permit_states', 'occurrences'] ? A_OPS()
+          : (coll in ['construction_reports', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'safety_permits', 'safety_permit_events', 'safety_permit_states', 'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records', 'occurrences'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK() : -1)));
       }
@@ -775,13 +776,21 @@ service cloud.firestore {
       // for each collection can exceed the 1,000-expression budget.
       // One create grant per wildcard match: Firestore OR-evaluates separate allow-create
       // statements and can exhaust the 1,000-expression budget even when their guards are false.
-      allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states']
-        ? ((orgScoped() || immutable()) && canCreate() && areaWrite(request.resource.data)
+      allow create: if coll in ['safety_permits', 'safety_permit_events', 'safety_permit_states',
+          'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records']
+        ? (signedIn()
+          && request.resource.data.get('id', '') == docId
+          && isMemberOf(request.resource.data.get('orgId', ''))
+          && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2)
           && (coll == 'safety_permits' ? validSafetyPermitCreate()
             : (coll == 'safety_permit_events' ? validSafetyPermitEventCreate()
-              : validSafetyPermitStateCreate())))
+              : (coll == 'safety_permit_states' ? validSafetyPermitStateCreate()
+                : (coll in ['safety_ppe_catalog', 'safety_training_catalog']
+                  ? hasRole(request.resource.data.get('orgId', ''), ['Admin', 'Gerente', 'Supervisor'])
+                  : true))))
         : (coll == 'occurrences' && request.resource.data.keys().hasAny(['safetyCategory'])
-          ? (orgScoped() && canCreate() && areaWrite(request.resource.data) && validSafetyOccurrenceCreate())
+          ? (signedIn() && isMemberOf(request.resource.data.get('orgId', ''))
+            && areaOk(request.resource.data.get('orgId', ''), A_OPS(), 2) && validSafetyOccurrenceCreate())
           : (finance() ? financeCreate()
             : (perOrgDoc() ? perOrgCreate()
               : ((orgScoped() || immutable()) && canCreate() && nfeItemOk()
