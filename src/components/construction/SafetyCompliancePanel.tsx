@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
 } from 'firebase/firestore';
-import { AlertTriangle, Award, CheckCircle2, ClipboardList, HardHat, PackageCheck, Plus, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Award, ClipboardList, PackageCheck, Plus, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { db } from '../../firebase';
 import type { SafetyPermitType } from '../../types/safety';
 import {
@@ -19,11 +19,18 @@ import {
 interface SafetyCompliancePanelProps {
   organizationId: string;
   canEdit: boolean;
+  canManageCatalog: boolean;
   userId: string;
   actorName: string;
   onSnapshotChange: (snapshot: SafetyComplianceSnapshot) => void;
   logAudit?: (module: string, action: string, details: string, targetId?: string) => Promise<void>;
 }
+
+const BUILT_IN_TRAININGS = [
+  { code: 'NR-35', title: 'Trabalho em Altura' },
+  { code: 'NR-33', title: 'Espaço Confinado' },
+  { code: 'NR-10', title: 'Segurança em Instalações Elétricas' },
+];
 
 const ACTIVITY_OPTIONS: Array<{ value: SafetyPermitType; label: string }> = [
   { value: 'trabalho_a_quente', label: 'Trabalho a quente' },
@@ -39,7 +46,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const dateIsExpired = (value: string) => !value || value < today();
 
 export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
-  organizationId, canEdit, userId, actorName, onSnapshotChange, logAudit,
+  organizationId, canEdit, canManageCatalog, userId, actorName, onSnapshotChange, logAudit,
 }) => {
   const [employees, setEmployees] = useState<SafetyEmployee[]>([]);
   const [ppeCatalog, setPpeCatalog] = useState<SafetyPpeCatalogItem[]>([]);
@@ -143,6 +150,11 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const activeEmployees = employees.filter((item) => item.active && !item.dismissalDate);
   const activePpe = ppeCatalog.filter((item) => item.active);
   const activeTraining = trainingCatalog.filter((item) => item.active);
+  const trainingOptions = [...BUILT_IN_TRAININGS, ...activeTraining]
+    .reduce<Array<{ code: string; title: string }>>((items, item) => {
+      if (!items.some((entry) => entry.code.toUpperCase() === item.code.toUpperCase())) items.push({ code: item.code, title: item.title });
+      return items;
+    }, []);
 
   const latestMovements = useMemo(() => {
     const latest = new Map<string, SafetyPpeMovement>();
@@ -176,7 +188,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
 
   const createPpe = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canEdit || !userId || !organizationId) return;
+    if (!canManageCatalog || !userId || !organizationId) return;
     if (ppeName.trim().length < 2 || !ppeCa.trim() || !ppeCaExpiresAt || ppeActivities.length === 0) {
       setError('Informe nome, número e validade do CA e pelo menos uma atividade aplicável.');
       return;
@@ -198,7 +210,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   };
 
   const toggleCatalogActive = async (kind: 'ppe' | 'training', id: string, active: boolean) => {
-    if (!canEdit) return;
+    if (!canManageCatalog) return;
     setSaving(true); setError('');
     try {
       const collectionName = kind === 'ppe' ? 'safety_ppe_catalog' : 'safety_training_catalog';
@@ -254,7 +266,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
 
   const createTrainingCatalog = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canEdit || !userId || !organizationId) return;
+    if (!canManageCatalog || !userId || !organizationId) return;
     if (trainingCode.trim().length < 2 || trainingTitle.trim().length < 3 || trainingActivities.length === 0) {
       setError('Informe código, título e atividades que exigem esse treinamento.');
       return;
@@ -277,7 +289,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     event.preventDefault();
     if (!canEdit || !userId || !organizationId) return;
     const employee = employees.find((item) => item.id === trainingEmployeeId);
-    const course = activeTraining.find((item) => item.code === trainingCode);
+    const course = trainingOptions.find((item) => item.code === trainingCode);
     if (!employee || !course || !trainingIssueDate || !trainingExpirationDate
       || trainingExpirationDate < trainingIssueDate) {
       setError('Selecione o colaborador e o treinamento e informe emissão/vencimento válidos.');
@@ -343,7 +355,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
         <div className="space-y-4">
           <div className="flex flex-wrap justify-between gap-2">
             <div><h4 className="text-xs font-bold text-white">Catálogo de EPIs</h4><p className="text-[10px] text-slate-500">Cada item exige CA e validade informados; a atividade define a obrigatoriedade.</p></div>
-            {canEdit && <button type="button" onClick={() => setShowPpeForm((value) => !value)} className="rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-bold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Cadastrar EPI</button>}
+            {canManageCatalog && <button type="button" onClick={() => setShowPpeForm((value) => !value)} className="rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-bold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Cadastrar EPI</button>}
           </div>
 
           {showPpeForm && (
@@ -362,7 +374,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
             <table className="w-full min-w-[680px] text-left text-xs">
               <thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">EPI / categoria</th><th className="px-3 py-2">CA</th><th className="px-3 py-2">Validade</th><th className="px-3 py-2">Obrigatório para</th><th className="px-3 py-2">Cadastro</th><th className="px-3 py-2">Ação</th></tr></thead>
               <tbody className="divide-y divide-slate-800">
-                {ppeCatalog.map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2"><p className="font-semibold text-white">{item.name}</p><p className="text-[10px] text-slate-500">{item.category}</p></td><td className="px-3 py-2">{item.caNumber || '—'}</td><td className="px-3 py-2"><span className={dateIsExpired(item.caExpiresAt) ? 'font-bold text-rose-300' : 'text-slate-300'}>{item.caExpiresAt || 'Sem data'}</span></td><td className="px-3 py-2">{item.requiredForPermitTypes.map((type) => ACTIVITY_OPTIONS.find((o) => o.value === type)?.label || type).join(', ')}</td><td className="px-3 py-2">{item.active ? <span className="text-emerald-300">Ativo</span> : <span className="text-slate-500">Inativo</span>}</td><td className="px-3 py-2">{canEdit && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('ppe', item.id, item.active)} className="text-[10px] text-rose-300">{item.active ? 'Inativar' : 'Ativar'}</button>}</td></tr>)}
+                {ppeCatalog.map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2"><p className="font-semibold text-white">{item.name}</p><p className="text-[10px] text-slate-500">{item.category}</p></td><td className="px-3 py-2">{item.caNumber || '—'}</td><td className="px-3 py-2"><span className={dateIsExpired(item.caExpiresAt) ? 'font-bold text-rose-300' : 'text-slate-300'}>{item.caExpiresAt || 'Sem data'}</span></td><td className="px-3 py-2">{item.requiredForPermitTypes.map((type) => ACTIVITY_OPTIONS.find((o) => o.value === type)?.label || type).join(', ')}</td><td className="px-3 py-2">{item.active ? <span className="text-emerald-300">Ativo</span> : <span className="text-slate-500">Inativo</span>}</td><td className="px-3 py-2">{canManageCatalog && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('ppe', item.id, item.active)} className="text-[10px] text-rose-300">{item.active ? 'Inativar' : 'Ativar'}</button>}</td></tr>)}
                 {ppeCatalog.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-[11px] text-slate-500">Nenhum EPI cadastrado para esta empresa.</td></tr>}
               </tbody>
             </table>
@@ -396,7 +408,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
       {!loading && activeTab === 'treinamentos' && (
         <div className="space-y-4">
           <div className="flex flex-wrap justify-between gap-2"><div><h4 className="text-xs font-bold text-white">Matriz de treinamentos exigidos</h4><p className="text-[10px] text-slate-500">NR-35, NR-33 e NR-10 são exigidos automaticamente nas atividades correspondentes; os requisitos adicionais são configuráveis.</p></div>
-            {canEdit && <button type="button" onClick={() => setShowTrainingForm((value) => !value)} className="rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-bold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Novo requisito</button>}
+            {canManageCatalog && <button type="button" onClick={() => setShowTrainingForm((value) => !value)} className="rounded-lg bg-rose-600 px-3 py-2 text-[10px] font-bold text-white"><Plus className="mr-1 inline h-3.5 w-3.5" /> Novo requisito</button>}
           </div>
           {showTrainingForm && <form onSubmit={createTrainingCatalog} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
             <label className="text-[10px] text-slate-400">Código (NR/qualificação)<input value={trainingCode} onChange={(e) => setTrainingCode(e.target.value)} required maxLength={40} placeholder="Ex.: NR-11 / RIGGER" className={inputClass} /></label>
@@ -407,15 +419,15 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
 
           <div className="overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[640px] text-left text-xs">
             <thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Código</th><th className="px-3 py-2">Treinamento / qualificação</th><th className="px-3 py-2">Obrigatório para</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Ação</th></tr></thead>
-            <tbody className="divide-y divide-slate-800">{activeTraining.map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-bold text-amber-300">{item.code}</td><td className="px-3 py-2 text-white">{item.title}</td><td className="px-3 py-2">{item.requiredForPermitTypes.map((type) => ACTIVITY_OPTIONS.find((o) => o.value === type)?.label || type).join(', ')}</td><td className="px-3 py-2 text-emerald-300">Ativo</td><td className="px-3 py-2">{canEdit && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('training', item.id, item.active)} className="text-[10px] text-rose-300">Inativar</button>}</td></tr>)}
-            {trainingCatalog.filter((item) => !item.active).map((item) => <tr key={item.id} className="text-slate-500"><td className="px-3 py-2 font-bold">{item.code}</td><td className="px-3 py-2">{item.title}</td><td className="px-3 py-2">{item.requiredForPermitTypes.join(', ')}</td><td className="px-3 py-2">Inativo</td><td className="px-3 py-2">{canEdit && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('training', item.id, item.active)} className="text-[10px] text-emerald-300">Ativar</button>}</td></tr>)}
+            <tbody className="divide-y divide-slate-800">{activeTraining.map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-bold text-amber-300">{item.code}</td><td className="px-3 py-2 text-white">{item.title}</td><td className="px-3 py-2">{item.requiredForPermitTypes.map((type) => ACTIVITY_OPTIONS.find((o) => o.value === type)?.label || type).join(', ')}</td><td className="px-3 py-2 text-emerald-300">Ativo</td><td className="px-3 py-2">{canManageCatalog && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('training', item.id, item.active)} className="text-[10px] text-rose-300">Inativar</button>}</td></tr>)}
+            {trainingCatalog.filter((item) => !item.active).map((item) => <tr key={item.id} className="text-slate-500"><td className="px-3 py-2 font-bold">{item.code}</td><td className="px-3 py-2">{item.title}</td><td className="px-3 py-2">{item.requiredForPermitTypes.join(', ')}</td><td className="px-3 py-2">Inativo</td><td className="px-3 py-2">{canManageCatalog && <button type="button" disabled={saving} onClick={() => toggleCatalogActive('training', item.id, item.active)} className="text-[10px] text-emerald-300">Ativar</button>}</td></tr>)}
             {trainingCatalog.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-[11px] text-slate-500">Nenhum requisito adicional configurado. NR-35, NR-33 e NR-10 já são aplicados às atividades correspondentes.</td></tr>}
             </tbody></table></div>
 
           <div className="border-t border-slate-800 pt-4"><h4 className="text-xs font-bold text-white">Certificados individuais</h4>
             {canEdit && <form onSubmit={createTrainingRecord} className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:grid-cols-2">
               <label className="text-[10px] text-slate-400">Colaborador do RH<select value={trainingEmployeeId} onChange={(e) => setTrainingEmployeeId(e.target.value)} required className={inputClass}><option value="">Selecione</option>{activeEmployees.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role || 'Colaborador'}</option>)}</select></label>
-              <label className="text-[10px] text-slate-400">Treinamento<select value={trainingCode} onChange={(e) => setTrainingCode(e.target.value)} required className={inputClass}><option value="">Selecione</option>{activeTraining.map((item) => <option key={item.id} value={item.code}>{item.code} · {item.title}</option>)}</select></label>
+              <label className="text-[10px] text-slate-400">Treinamento<select value={trainingCode} onChange={(e) => setTrainingCode(e.target.value)} required className={inputClass}><option value="">Selecione</option>{trainingOptions.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.title}</option>)}</select></label>
               <label className="text-[10px] text-slate-400">Data de emissão<input type="date" value={trainingIssueDate} onChange={(e) => setTrainingIssueDate(e.target.value)} required className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Data de vencimento<input type="date" value={trainingExpirationDate} onChange={(e) => setTrainingExpirationDate(e.target.value)} required className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Entidade / instrutor<input value={trainingEntity} onChange={(e) => setTrainingEntity(e.target.value)} maxLength={160} className={inputClass} /></label>
@@ -423,7 +435,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
               <label className="text-[10px] text-slate-400">Link do certificado (PDF/arquivo)<input type="url" value={trainingCertificateUrl} onChange={(e) => setTrainingCertificateUrl(e.target.value)} maxLength={1000} placeholder="https://..." className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Nome do arquivo<input value={trainingCertificateName} onChange={(e) => setTrainingCertificateName(e.target.value)} maxLength={180} className={inputClass} /></label>
               <label className="text-[10px] text-slate-400 sm:col-span-2">Observações<input value={trainingNotes} onChange={(e) => setTrainingNotes(e.target.value)} maxLength={700} className={inputClass} /></label>
-              <div className="flex justify-end sm:col-span-2"><button disabled={saving || activeTraining.length === 0} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-50">Registrar certificado</button></div>
+              <div className="flex justify-end sm:col-span-2"><button disabled={saving || trainingOptions.length === 0} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-50">Registrar certificado</button></div>
             </form>}
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">NR / qualificação</th><th className="px-3 py-2">Emissão</th><th className="px-3 py-2">Validade</th><th className="px-3 py-2">Documento</th><th className="px-3 py-2">Origem</th></tr></thead>
               <tbody className="divide-y divide-slate-800">{[...trainingRecords.map((item) => ({...item, sourceLabel:'SMS'})), ...legacyTrainingRecords.map((item, index) => ({id:'legacy_'+item.employeeId+'_'+index, employeeName:employees.find((e) => e.id === item.employeeId)?.name || item.employeeId, trainingCode:item.code, title:item.title, issueDate:item.issueDate || '', expirationDate:item.expirationDate || '', certificateUrl:item.documentUrl || '', certificateName:item.documentName || '', sourceLabel:'RH / Obras'}))].map((item) => <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-semibold text-white">{item.employeeName}</td><td className="px-3 py-2"><p className="font-bold text-amber-300">{item.trainingCode}</p><p className="text-[10px] text-slate-500">{item.title}</p></td><td className="px-3 py-2">{item.issueDate || '—'}</td><td className="px-3 py-2"><span className={dateIsExpired(item.expirationDate) ? 'font-bold text-rose-300' : 'text-emerald-300'}>{item.expirationDate || 'Sem validade'}</span></td><td className="px-3 py-2">{item.certificateUrl ? <a href={item.certificateUrl} target="_blank" rel="noreferrer" className="text-cyan-300 hover:underline">{item.certificateName || 'Abrir certificado'}</a> : '—'}</td><td className="px-3 py-2 text-[10px] text-slate-500">{item.sourceLabel}</td></tr>)}
@@ -442,7 +454,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
         </div>
       )}
 
-      {!canEdit && <p className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-[10px] text-slate-400">Consulta liberada. Para cadastrar requisitos, registrar entregas e certificados, é necessário Operações nível 2 e perfil de Supervisor, Gerente ou Admin para alterar os catálogos.</p>}
+      {!canEdit && <p className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-[10px] text-slate-400">Consulta liberada. Para registrar entregas e certificados, é necessário Operações nível 2. Para alterar os catálogos de requisitos, é necessário perfil de Supervisor, Gerente ou Admin.</p>}
       <p className="border-t border-slate-800 pt-3 text-[10px] text-slate-500">Dados de treinamento legados são consultados do cadastro de Obras; novos certificados e movimentações SMS ficam em histórico próprio e imutável. A validade e a exigência devem ser conferidas pelo responsável de Segurança antes da autorização na planta.</p>
     </div>
   );
