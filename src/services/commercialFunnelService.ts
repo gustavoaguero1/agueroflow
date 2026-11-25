@@ -1,11 +1,10 @@
 import { apiFetch } from '../apiAuthFetch';
-import type { CommercialProposal, CommercialProposalStatus } from '../types/commercial';
+import type { CommercialProposal } from '../types/commercial';
 
 export const FUNNEL_STATUSES = ['enviada', 'negociacao', 'ganha', 'perdida'] as const;
 export const LOSS_REASONS = ['Preço', 'Prazo', 'Escopo', 'Concorrente', 'Cliente desistiu', 'Outro'];
 const DEFAULT_PROB: Record<string, number> = { enviada: 30, negociacao: 60 };
 
-type Actor = { uid: string; name: string };
 const lastChange = (p: CommercialProposal) => p.statusHistory?.at(-1)?.at || p.updatedAt || p.createdAt;
 
 export function funnelSummary(proposals: CommercialProposal[], period?: { from?: string; to?: string }) {
