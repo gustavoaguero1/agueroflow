@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where,
+  collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { AlertTriangle, Award, ClipboardList, PackageCheck, Plus, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { db } from '../../firebase';
+import { db, storage } from '../../firebase';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import type { SafetyPermitType } from '../../types/safety';
 import {
   legacyFieldWorkerIdForEmployee,
@@ -64,6 +65,10 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const [showPpeForm, setShowPpeForm] = useState(false);
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [replacementIssue, setReplacementIssue] = useState<SafetyPpeMovement | null>(null);
+  const [replacementPpeId, setReplacementPpeId] = useState('');
+  const [replacementNotes, setReplacementNotes] = useState('');
+  const [replacementDate, setReplacementDate] = useState(today());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -89,6 +94,7 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
   const [trainingCertificateNumber, setTrainingCertificateNumber] = useState('');
   const [trainingCertificateUrl, setTrainingCertificateUrl] = useState('');
   const [trainingCertificateName, setTrainingCertificateName] = useState('');
+  const [trainingCertificateFile, setTrainingCertificateFile] = useState<File | null>(null);
   const [trainingNotes, setTrainingNotes] = useState('');
 
   useEffect(() => {
@@ -264,6 +270,45 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
     finally { setSaving(false); }
   };
 
+  const replacePpe = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canEdit || !userId || !replacementIssue || !organizationId) return;
+    const newPpe = activePpe.find((item) => item.id === replacementPpeId);
+    if (!newPpe || newPpe.id === replacementIssue.ppeId) {
+      setError('Selecione um EPI ativo diferente do item atual.');
+      return;
+    }
+    if (dateIsExpired(newPpe.caExpiresAt) || !newPpe.caNumber.trim()) {
+      setError('O novo EPI não pode ser entregue com CA ausente ou vencido.');
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      const batch = writeBatch(db);
+      const returnRef = doc(collection(db, 'safety_ppe_movements'));
+      const deliveryRef = doc(collection(db, 'safety_ppe_movements'));
+      batch.set(returnRef, {
+        id: returnRef.id, orgId: organizationId, employeeId: replacementIssue.employeeId,
+        employeeName: replacementIssue.employeeName, ppeId: replacementIssue.ppeId,
+        ppeName: replacementIssue.ppeName, eventType: 'devolvido', movementDate: replacementDate,
+        referenceMovementId: replacementIssue.id, notes: replacementNotes.trim(),
+        createdByUid: userId, createdByName: actorName, createdAt: serverTimestamp(),
+      });
+      batch.set(deliveryRef, {
+        id: deliveryRef.id, orgId: organizationId, employeeId: replacementIssue.employeeId,
+        employeeName: replacementIssue.employeeName, ppeId: newPpe.id, ppeName: newPpe.name,
+        eventType: 'entregue', movementDate: replacementDate,
+        notes: 'Substituição do EPI ' + replacementIssue.ppeName + '. ' + replacementNotes.trim(),
+        createdByUid: userId, createdByName: actorName, createdAt: serverTimestamp(),
+      });
+      await batch.commit();
+      await audit('Substituir EPI', replacementIssue.ppeName + ' por ' + newPpe.name + ' · ' + replacementIssue.employeeName, deliveryRef.id);
+      setReplacementIssue(null); setReplacementPpeId(''); setReplacementNotes('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível concluir a substituição do EPI.');
+    } finally { setSaving(false); }
+  };
+
   const createTrainingCatalog = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canManageCatalog || !userId || !organizationId) return;
@@ -295,21 +340,37 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
       setError('Selecione o colaborador e o treinamento e informe emissão/vencimento válidos.');
       return;
     }
+    if (trainingCertificateFile && (
+      !['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(trainingCertificateFile.type)
+      || trainingCertificateFile.size <= 0 || trainingCertificateFile.size > 20 * 1024 * 1024
+    )) {
+      setError('Anexe um PDF ou imagem JPG/PNG/WebP de até 20 MB.');
+      return;
+    }
     setSaving(true); setError('');
     try {
       const ref = doc(collection(db, 'safety_training_records'));
+      let certificateUrl = trainingCertificateUrl.trim();
+      let certificateName = trainingCertificateName.trim();
+      if (trainingCertificateFile) {
+        const safeName = trainingCertificateFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileRef = storageRef(storage, 'safety-certificates/' + organizationId + '/' + employee.id + '/' + ref.id + '_' + safeName);
+        const uploaded = await uploadBytes(fileRef, trainingCertificateFile, { contentType: trainingCertificateFile.type });
+        certificateUrl = await getDownloadURL(uploaded.ref);
+        certificateName = trainingCertificateFile.name;
+      }
       await setDoc(ref, {
         id: ref.id, orgId: organizationId, employeeId: employee.id, employeeName: employee.name,
         trainingCode: course.code, title: course.title, issueDate: trainingIssueDate,
         expirationDate: trainingExpirationDate, issuingEntity: trainingEntity.trim(),
-        certificateNumber: trainingCertificateNumber.trim(), certificateUrl: trainingCertificateUrl.trim(),
-        certificateName: trainingCertificateName.trim(), notes: trainingNotes.trim(),
+        certificateNumber: trainingCertificateNumber.trim(), certificateUrl,
+        certificateName, notes: trainingNotes.trim(),
         createdByUid: userId, createdByName: actorName, recordedAt: serverTimestamp(),
       });
       await audit('Registrar certificado', course.code + ' para ' + employee.name, ref.id);
       setTrainingEmployeeId(''); setTrainingIssueDate(today()); setTrainingExpirationDate('');
       setTrainingEntity(''); setTrainingCertificateNumber(''); setTrainingCertificateUrl('');
-      setTrainingCertificateName(''); setTrainingNotes('');
+      setTrainingCertificateName(''); setTrainingCertificateFile(null); setTrainingNotes('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível registrar o certificado.'); }
     finally { setSaving(false); }
   };
@@ -393,12 +454,21 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
               <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setShowDeliveryForm(false)} className={buttonClass}>Cancelar</button><button disabled={saving} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white">Confirmar entrega</button></div>
             </form>
           )}
+          {replacementIssue && (
+            <form onSubmit={replacePpe} className="grid grid-cols-1 gap-3 rounded-xl border border-cyan-900/60 bg-cyan-950/10 p-4 sm:grid-cols-2">
+              <div className="text-[10px] text-slate-300 sm:col-span-2"><p className="font-semibold text-white">Substituir {replacementIssue.ppeName}</p><p className="mt-1 text-slate-500">{replacementIssue.employeeName} · a devolução do item atual e a entrega do novo serão gravadas juntas.</p></div>
+              <label className="text-[10px] text-slate-400">Novo EPI<select value={replacementPpeId} onChange={(e) => setReplacementPpeId(e.target.value)} required className={inputClass}><option value="">Selecione</option>{activePpe.filter((item) => item.id !== replacementIssue.ppeId).map((item) => <option key={item.id} value={item.id}>{item.name} · CA {item.caNumber}</option>)}</select></label>
+              <label className="text-[10px] text-slate-400">Data da substituição<input type="date" value={replacementDate} onChange={(e) => setReplacementDate(e.target.value)} required className={inputClass} /></label>
+              <label className="text-[10px] text-slate-400 sm:col-span-2">Motivo / observação<input value={replacementNotes} onChange={(e) => setReplacementNotes(e.target.value)} maxLength={500} className={inputClass} placeholder="Desgaste, dano, troca de tamanho..." /></label>
+              <div className="flex justify-end gap-2 sm:col-span-2"><button type="button" onClick={() => setReplacementIssue(null)} className={buttonClass}>Cancelar</button><button disabled={saving} className="rounded-lg bg-cyan-700 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-50">Confirmar substituição</button></div>
+            </form>
+          )}
           <div className="overflow-x-auto rounded-lg border border-slate-800">
             <table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">EPI</th><th className="px-3 py-2">Data</th><th className="px-3 py-2">Situação</th><th className="px-3 py-2">Ação</th></tr></thead>
               <tbody className="divide-y divide-slate-800">{activeIssues.map((item) => {
                 const ca = ppeCatalog.find((entry) => entry.id === item.ppeId);
                 const caExpired = !ca || dateIsExpired(ca.caExpiresAt);
-                return <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-semibold text-white">{item.employeeName}</td><td className="px-3 py-2">{item.ppeName}</td><td className="px-3 py-2">{item.movementDate}</td><td className="px-3 py-2">{caExpired ? <span className="text-rose-300">CA vencido / ausente</span> : <span className="text-emerald-300">Em uso · CA válido</span>}</td><td className="px-3 py-2">{canEdit && <button type="button" disabled={saving} onClick={() => returnPpe(item)} className="text-[10px] text-amber-300"><RotateCcw className="mr-1 inline h-3 w-3" /> Devolver</button>}</td></tr>;
+                return <tr key={item.id} className="text-slate-300"><td className="px-3 py-2 font-semibold text-white">{item.employeeName}</td><td className="px-3 py-2">{item.ppeName}</td><td className="px-3 py-2">{item.movementDate}</td><td className="px-3 py-2">{caExpired ? <span className="text-rose-300">CA vencido / ausente</span> : <span className="text-emerald-300">Em uso · CA válido</span>}</td><td className="px-3 py-2">{canEdit && <div className="flex gap-2"><button type="button" disabled={saving} onClick={() => returnPpe(item)} className="text-[10px] text-amber-300"><RotateCcw className="mr-1 inline h-3 w-3" /> Devolver</button><button type="button" disabled={saving} onClick={() => { setReplacementIssue(item); setReplacementPpeId(''); setReplacementNotes(''); }} className="text-[10px] text-cyan-300">Substituir</button></div>}</td></tr>;
               })}{activeIssues.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-[11px] text-slate-500">Nenhum EPI atualmente entregue.</td></tr>}</tbody>
             </table>
           </div>
@@ -435,6 +505,10 @@ export const SafetyCompliancePanel: React.FC<SafetyCompliancePanelProps> = ({
               <label className="text-[10px] text-slate-400">Link do certificado (PDF/arquivo)<input type="url" value={trainingCertificateUrl} onChange={(e) => setTrainingCertificateUrl(e.target.value)} maxLength={1000} placeholder="https://..." className={inputClass} /></label>
               <label className="text-[10px] text-slate-400">Nome do arquivo<input value={trainingCertificateName} onChange={(e) => setTrainingCertificateName(e.target.value)} maxLength={180} className={inputClass} /></label>
               <label className="text-[10px] text-slate-400 sm:col-span-2">Observações<input value={trainingNotes} onChange={(e) => setTrainingNotes(e.target.value)} maxLength={700} className={inputClass} /></label>
+              <label className="text-[10px] text-slate-400 sm:col-span-2">Anexar certificado (PDF ou imagem, até 20 MB)
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => setTrainingCertificateFile(e.target.files?.[0] || null)} className={inputClass} />
+                {trainingCertificateFile && <span className="mt-1 block text-[10px] text-cyan-300">{trainingCertificateFile.name}</span>}
+              </label>
               <div className="flex justify-end sm:col-span-2"><button disabled={saving || trainingOptions.length === 0} className="rounded-lg bg-rose-600 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-50">Registrar certificado</button></div>
             </form>}
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-slate-900 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Colaborador</th><th className="px-3 py-2">NR / qualificação</th><th className="px-3 py-2">Emissão</th><th className="px-3 py-2">Validade</th><th className="px-3 py-2">Documento</th><th className="px-3 py-2">Origem</th></tr></thead>
