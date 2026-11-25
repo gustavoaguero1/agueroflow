@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   FileBarChart,
   FileText,
   ShieldCheck,
+  ShieldAlert,
   Lock,
   Sparkles,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
   HardHat,
   Link2,
 } from 'lucide-react';
+import type { FieldWorker } from '../types';
 import {
   RhEmployee,
   RhThirteenthCalculation,
@@ -26,6 +28,7 @@ import {
 } from '../types/rhPayroll';
 import {
   subscribeRhEmployees,
+  subscribeRhFieldWorkers,
   subscribeRhCalculations,
   subscribeRhBatches,
   subscribeRhImports,
@@ -36,6 +39,7 @@ import {
   syncAllRhEmployeesToFieldWorkers,
   syncRhDirectory,
 } from '../services/rhPayrollService';
+import { buildRhLegacyAuditReport } from '../services/rhLegacyAudit';
 import { RhDashboard } from '../components/rhPayroll/RhDashboard';
 import { RhEmployeesManager } from '../components/rhPayroll/RhEmployeesManager';
 import { RhSpreadsheetImport } from '../components/rhPayroll/RhSpreadsheetImport';
@@ -44,10 +48,12 @@ import { RhCalculationHistory } from '../components/rhPayroll/RhCalculationHisto
 import { RhReportsManager } from '../components/rhPayroll/RhReportsManager';
 import { RhDemonstrativoModal } from '../components/rhPayroll/RhDemonstrativoModal';
 import { RhOnboardingManager } from '../components/rhPayroll/RhOnboardingManager';
+import { RhLegacyPendenciesPanel } from '../components/rhPayroll/RhLegacyPendenciesPanel';
 
 export type RhSubSection =
   | 'rh-painel'
   | 'rh-funcionarios'
+  | 'rh-pendencias'
   | 'rh-admissoes'
   | 'rh-importacao'
   | 'rh-calculo'
@@ -82,9 +88,11 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   // Tab State
   const [currentTab, setCurrentTab] = useState<RhSubSection>(activeSubSection);
   const [referenceYear, setReferenceYear] = useState<number>(new Date().getFullYear());
+  const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
 
   // Data State
   const [employees, setEmployees] = useState<RhEmployee[]>([]);
+  const [fieldWorkers, setFieldWorkers] = useState<FieldWorker[]>([]);
   const [calculations, setCalculations] = useState<RhThirteenthCalculation[]>([]);
   const [batches, setBatches] = useState<RhCalculationBatch[]>([]);
   const [imports, setImports] = useState<RhImportBatch[]>([]);
@@ -158,6 +166,10 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
       setEmployees(data);
     });
 
+    const unsubFieldWorkers = subscribeRhFieldWorkers(organization.id, (data) => {
+      setFieldWorkers(data);
+    });
+
     const unsubCalculations = subscribeRhCalculations(organization.id, referenceYear, (data) => {
       setCalculations(data);
       setLoading(false);
@@ -173,11 +185,22 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
     return () => {
       unsubEmployees();
+      unsubFieldWorkers();
       unsubCalculations();
       unsubBatches();
       unsubImports();
     };
   }, [organization?.id, referenceYear, isAuthorized, canEdit]);
+
+  const legacyAuditReport = useMemo(
+    () =>
+      buildRhLegacyAuditReport({
+        orgId: organization?.id || '',
+        employees,
+        fieldWorkers,
+      }),
+    [organization?.id, employees, fieldWorkers]
+  );
 
   // Save Employee
   const handleSaveEmployee = async (employee: RhEmployee) => {
@@ -272,9 +295,15 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     );
   }
 
-  const tabs: { id: RhSubSection; label: string; icon: any }[] = [
+  const tabs: { id: RhSubSection; label: string; icon: any; badge?: number }[] = [
     { id: 'rh-painel', label: 'Painel RH/Salários', icon: LayoutDashboard },
     { id: 'rh-funcionarios', label: 'Funcionários', icon: Users },
+    {
+      id: 'rh-pendencias',
+      label: 'Pendências Legadas',
+      icon: ShieldAlert,
+      badge: legacyAuditReport.summary.totalIssues,
+    },
     { id: 'rh-admissoes', label: 'Admissão Digital (Links)', icon: Link2 },
     { id: 'rh-importacao', label: 'Importação de Planilha', icon: FileSpreadsheet },
     { id: 'rh-calculo', label: 'Cálculo do 13º', icon: Calculator },
@@ -321,7 +350,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
           </span>
         </div>
 
-        {/* 7 Sub-Navigation Tabs */}
+        {/* Sub-Navigation Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 custom-scrollbar border-t border-slate-800/80">
           {tabs.map((t) => {
             const Icon = t.icon;
@@ -338,6 +367,15 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               >
                 <Icon className="w-4 h-4 shrink-0" />
                 <span>{t.label}</span>
+                {typeof t.badge === 'number' && t.badge > 0 && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                    }`}
+                  >
+                    {t.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -377,7 +415,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               onNavigateTab={(tab) => handleTabChange(`rh-${tab}` as RhSubSection)}
               canViewFinancials={canViewFinancials}
               onQuickRecalculate={() => handleTabChange('rh-calculo')}
-              orgName={organization?.name || 'Aguero Inox'}
+              orgName={organization?.name || ''}
               onSyncWithConstruction={handleSyncWithObras}
               isSyncingWithConstruction={isSyncingWithObras}
             />
@@ -389,6 +427,9 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               employees={filteredEmployees}
               units={units}
               contracts={contracts}
+              orgName={organization?.name || ''}
+              focusEmployeeId={focusEmployeeId}
+              onFocusHandled={() => setFocusEmployeeId(null)}
               onSaveEmployee={handleSaveEmployee}
               onDeleteEmployee={handleDeleteEmployee}
               canEdit={canEdit}
@@ -398,11 +439,24 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
             />
           )}
 
+          {/* 2.0 Auditoria de Pendências Legadas */}
+          {currentTab === 'rh-pendencias' && (
+            <RhLegacyPendenciesPanel
+              report={legacyAuditReport}
+              orgName={organization?.name || ''}
+              onReviewEmployee={(empId) => {
+                setFocusEmployeeId(empId);
+                handleTabChange('rh-funcionarios');
+              }}
+            />
+          )}
+
           {/* 2.1 Admissão Digital & Links de Cadastro Único */}
           {currentTab === 'rh-admissoes' && (
             <RhOnboardingManager
-              currentOrgId={organization?.id || 'org_aguero_default'}
-              userEmail={user?.email || 'rh@agueroinox.com.br'}
+              currentOrgId={organization?.id || ''}
+              orgName={organization?.name || ''}
+              userEmail={user?.email || ''}
               userName={user?.displayName || 'Recursos Humanos'}
               units={units}
               contracts={contracts}
@@ -417,6 +471,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
             <RhSpreadsheetImport
               existingEmployees={employees}
               currentOrgId={organization?.id || ''}
+              orgName={organization?.name || ''}
               userEmail={user?.email || ''}
               userName={user?.displayName || 'Gestor RH'}
               onImportCompleted={() => handleTabChange('rh-calculo')}
@@ -458,7 +513,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               contracts={contracts}
               referenceYear={referenceYear}
               canViewFinancials={canViewFinancials}
-              orgName={organization?.name || 'Aguero Inox'}
+              orgName={organization?.name || ''}
             />
           )}
 
@@ -501,7 +556,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
             }
           }}
           canViewFinancials={canViewFinancials}
-          orgName={organization?.name || 'Aguero Inox'}
+          orgName={organization?.name || ''}
         />
       )}
     </div>

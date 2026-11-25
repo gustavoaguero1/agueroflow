@@ -182,8 +182,9 @@ export const RhVisualSummary: React.FC<RhVisualSummaryProps> = ({
 
     // Group calculations by Obra
     calculations.forEach((c) => {
-      const code = c.codigoObra || c.registrationNumber || '198';
-      const label = `Obra ${code}`;
+      const rawCode = (c.codigoObra || c.registrationNumber || '').trim();
+      const code = rawCode || 'SEM_CODIGO';
+      const label = rawCode ? `Obra ${rawCode}` : 'Sem código de obra';
 
       if (!map[code]) {
         map[code] = {
@@ -217,8 +218,9 @@ export const RhVisualSummary: React.FC<RhVisualSummaryProps> = ({
 
     // Also account for employees without calculations yet
     employees.forEach((emp) => {
-      const code = emp.codigoObra || emp.registrationNumber || '198';
-      const label = `Obra ${code}`;
+      const rawCode = (emp.codigoObra || emp.registrationNumber || '').trim();
+      const code = rawCode || 'SEM_CODIGO';
+      const label = rawCode ? `Obra ${rawCode}` : 'Sem código de obra';
       if (!map[code]) {
         map[code] = {
           obraCode: code,

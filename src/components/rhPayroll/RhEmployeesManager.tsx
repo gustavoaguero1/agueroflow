@@ -25,6 +25,9 @@ interface RhEmployeesManagerProps {
   employees: RhEmployee[];
   units: Unit[];
   contracts: Contract[];
+  orgName?: string;
+  focusEmployeeId?: string | null;
+  onFocusHandled?: () => void;
   onSaveEmployee: (employee: RhEmployee) => Promise<void>;
   onDeleteEmployee: (id: string) => Promise<void>;
   canEdit: boolean;
@@ -37,6 +40,9 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
   employees,
   units,
   contracts,
+  orgName = '',
+  focusEmployeeId,
+  onFocusHandled,
   onSaveEmployee,
   onDeleteEmployee,
   canEdit,
@@ -57,10 +63,10 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
   const [dismissalDate, setDismissalDate] = useState('');
   const [department, setDepartment] = useState('');
   const [role, setRole] = useState('');
-  const [companyName, setCompanyName] = useState('Aguero Inox');
+  const [companyName, setCompanyName] = useState(orgName);
   const [unitId, setUnitId] = useState('');
   const [contractId, setContractId] = useState('');
-  const [hourlyRateCarteira, setHourlyRateCarteira] = useState<string>('0');
+  const [hourlyRateCarteira, setHourlyRateCarteira] = useState<string>('');
   const [hourlyRatePorFora, setHourlyRatePorFora] = useState<string>('0');
   const [monthlyHours, setMonthlyHours] = useState<string>('220');
   const [dependentsCount, setDependentsCount] = useState<string>('0');
@@ -75,20 +81,20 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
 
   const handleOpenAdd = () => {
     setEditingEmployee(null);
-    setRegistrationNumber('198');
+    setRegistrationNumber('');
     setName('');
-    setAdmissionDate(new Date().toISOString().split('T')[0]);
+    setAdmissionDate('');
     setDismissalDate('');
-    setDepartment('Produção & Montagem');
-    setRole('Auxiliar de Operações');
-    setCompanyName('Aguero Inox');
+    setDepartment('');
+    setRole('');
+    setCompanyName(orgName);
     setUnitId('');
     setContractId('');
-    setHourlyRateCarteira('18.50');
+    setHourlyRateCarteira('');
     setHourlyRatePorFora('0');
     setMonthlyHours('220');
     setDependentsCount('0');
-    setPorForaEligible(true);
+    setPorForaEligible(false);
     setActive(true);
     setNotes('');
     setFormError(null);
@@ -97,25 +103,34 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
 
   const handleOpenEdit = (emp: RhEmployee) => {
     setEditingEmployee(emp);
-    setRegistrationNumber(emp.registrationNumber || '');
+    setRegistrationNumber(emp.codigoObra || emp.registrationNumber || '');
     setName(emp.name || '');
     setAdmissionDate(emp.admissionDate || '');
     setDismissalDate(emp.dismissalDate || '');
     setDepartment(emp.department || '');
     setRole(emp.role || '');
-    setCompanyName(emp.companyName || 'Aguero Inox');
+    setCompanyName(emp.companyName || orgName);
     setUnitId(emp.unitId || '');
     setContractId(emp.contractId || '');
-    setHourlyRateCarteira(String(emp.hourlyRateCarteira || 0));
+    setHourlyRateCarteira(emp.hourlyRateCarteira ? String(emp.hourlyRateCarteira) : '');
     setHourlyRatePorFora(String(emp.hourlyRatePorFora || 0));
     setMonthlyHours(String(emp.monthlyHours || 220));
     setDependentsCount(String(emp.dependentsCount || 0));
-    setPorForaEligible(emp.porForaEligible ?? true);
+    setPorForaEligible(emp.porForaEligible ?? false);
     setActive(emp.active);
     setNotes(emp.notes || '');
     setFormError(null);
     setIsModalOpen(true);
   };
+
+  React.useEffect(() => {
+    if (!focusEmployeeId) return;
+    const target = employees.find((e) => e.id === focusEmployeeId);
+    if (target) {
+      handleOpenEdit(target);
+      onFocusHandled?.();
+    }
+  }, [focusEmployeeId, employees]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +140,7 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
     const cleanName = name.trim();
 
     if (!cleanReg) {
-      setFormError('O código da obra alocada é obrigatório (ex: 198).');
+      setFormError('O código da obra / matrícula é obrigatório.');
       return;
     }
     if (!cleanName) {
@@ -167,9 +182,9 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
         admissionDate,
         dismissalDate: dismissalDate || null,
         active,
-        department: department.trim() || 'Geral',
-        role: role.trim() || 'Colaborador',
-        companyName: companyName.trim() || 'Aguero Inox',
+        department: department.trim(),
+        role: role.trim(),
+        companyName: companyName.trim() || orgName,
         unitId: unitId || undefined,
         contractId: contractId || undefined,
         hourlyRateCarteira: hrCarteira,
@@ -481,14 +496,14 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                    Código da Obra Alocada (ex: 198) *
+                    Código da Obra / Matrícula *
                   </label>
                   <input
                     type="text"
                     required
                     value={registrationNumber}
                     onChange={(e) => setRegistrationNumber(e.target.value)}
-                    placeholder="Ex: 198"
+                    placeholder="Ex: OBRA-001"
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
@@ -540,7 +555,7 @@ export const RhEmployeesManager: React.FC<RhEmployeesManagerProps> = ({
                     type="text"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Aguero Inox"
+                    placeholder="Razão social / unidade empregadora"
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>

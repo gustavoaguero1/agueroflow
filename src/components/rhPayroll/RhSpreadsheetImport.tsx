@@ -49,6 +49,7 @@ import { RhEmployee, RhSpreadsheetRowData, RhImportBatch } from '../../types/rhP
 interface RhSpreadsheetImportProps {
   existingEmployees: RhEmployee[];
   currentOrgId: string;
+  orgName?: string;
   userEmail: string;
   userName?: string;
   onImportCompleted: () => void;
@@ -58,6 +59,7 @@ interface RhSpreadsheetImportProps {
 export const RhSpreadsheetImport: React.FC<RhSpreadsheetImportProps> = ({
   existingEmployees,
   currentOrgId,
+  orgName = '',
   userEmail,
   userName = 'Gestor de RH',
   onImportCompleted,
@@ -147,9 +149,9 @@ export const RhSpreadsheetImport: React.FC<RhSpreadsheetImportProps> = ({
       3025.0,
       485.25,
       2539.75,
-      'Aguero Inox',
+      orgName || 'Empresa',
       '',
-      '198',
+      'OBRA-001',
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
@@ -205,19 +207,24 @@ export const RhSpreadsheetImport: React.FC<RhSpreadsheetImportProps> = ({
             ? row.valorTotalPorFora
             : roundCurrency(row.valorHoraPorFora * 220);
 
-        const codigoObra = row.codigoObra || row.codigoMatricula || '198';
+        const codigoObra =
+          row.codigoObra ||
+          row.codigoMatricula ||
+          existing?.codigoObra ||
+          existing?.registrationNumber ||
+          '';
 
         const employeeToSave: RhEmployee = {
           id: empId,
           orgId: currentOrgId,
-          codigoObra,
+          codigoObra: codigoObra || undefined,
           registrationNumber: codigoObra,
           name: row.nome.trim(),
-          admissionDate: row.admissao || '2024-01-01',
+          admissionDate: row.admissao || existing?.admissionDate || '',
           active: true,
-          department: existing?.department || 'Operações & Montagem',
-          role: existing?.role || 'Colaborador',
-          companyName: row.empresa || 'Aguero Inox',
+          department: existing?.department || '',
+          role: existing?.role || '',
+          companyName: row.empresa || existing?.companyName || orgName,
           unitId: existing?.unitId || null,
           contractId: existing?.contractId || null,
           hourlyRateCarteira: row.valorHoraCarteira,
@@ -226,7 +233,7 @@ export const RhSpreadsheetImport: React.FC<RhSpreadsheetImportProps> = ({
           baseSalaryCarteira: baseCarteira,
           baseSalaryPorFora: basePorFora,
           porForaEligible: row.valorHoraPorFora > 0,
-          notes: `Alocado na Obra ${codigoObra}. Importado via planilha '${file?.name}' em ${new Date().toLocaleDateString('pt-BR')}.`,
+          notes: `${codigoObra ? `Alocado na Obra ${codigoObra}. ` : ''}Importado via planilha '${file?.name}' em ${new Date().toLocaleDateString('pt-BR')}.`,
           createdAt: existing?.createdAt || now,
           updatedAt: now,
         };
@@ -311,18 +318,18 @@ export const RhSpreadsheetImport: React.FC<RhSpreadsheetImportProps> = ({
 
   // Simula cálculos AgueroFlow em memória para comparação imediata no gráfico
   const simulatedCalcs = validRows.map((r, idx) => {
-    const codObra = r.codigoObra || r.codigoMatricula || '198';
+    const codObra = r.codigoObra || r.codigoMatricula || '';
     const dummyEmp: RhEmployee = {
       id: `temp_${idx}_${r.nome.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
       orgId: currentOrgId,
-      codigoObra: codObra,
+      codigoObra: codObra || undefined,
       registrationNumber: codObra,
       name: r.nome,
-      admissionDate: r.admissao || '2024-01-01',
+      admissionDate: r.admissao || '',
       active: true,
-      department: 'Geral',
-      role: 'Colaborador',
-      companyName: r.empresa || 'Aguero Inox',
+      department: '',
+      role: '',
+      companyName: r.empresa || orgName,
       unitId: null as any,
       contractId: null as any,
       hourlyRateCarteira: r.valorHoraCarteira,
