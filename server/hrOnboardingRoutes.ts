@@ -97,7 +97,7 @@ export function createHrOnboardingRouter(deps: HrOnboardingRouterDeps = {}): Rou
   };
 
   // 1. Generate one-time registration link
-  router.post('/generate-link', requireArea('rh', 2), async (req: Request, res: Response) => {
+  router.post('/generate-link', requireModuleAccess('rh-admissoes', 2), async (req: Request, res: Response) => {
     try {
       const handles = requireAdminHandles(res);
       if (!handles) return;
@@ -374,7 +374,7 @@ export function createHrOnboardingRouter(deps: HrOnboardingRouterDeps = {}): Rou
   });
 
   // 4. List all onboarding invitations for HR
-  router.get('/list', requireArea('rh', 1), async (req: Request, res: Response) => {
+  router.get('/list', requireModuleAccess('rh-admissoes', 1), async (req: Request, res: Response) => {
     try {
       const handles = requireAdminHandles(res);
       if (!handles) return;
@@ -395,7 +395,7 @@ export function createHrOnboardingRouter(deps: HrOnboardingRouterDeps = {}): Rou
   });
 
   // 5. Secure RH-only document download from Firebase Storage
-  router.get('/:id/document/:docKey', requireArea('rh', 1), async (req: Request, res: Response) => {
+  router.get('/:id/document/:docKey', requireModuleAccess('rh-admissoes', 1), async (req: Request, res: Response) => {
     try {
       const handles = requireAdminHandles(res);
       if (!handles) return;
@@ -452,7 +452,7 @@ export function createHrOnboardingRouter(deps: HrOnboardingRouterDeps = {}): Rou
   });
 
   // 6. Update status (Approve / Reject / Efetivar)
-  router.post('/:id/status', requireArea('rh', 2), async (req: Request, res: Response) => {
+  router.post('/:id/status', requireModuleAccess('rh-admissoes', 2), async (req: Request, res: Response) => {
     try {
       const handles = requireAdminHandles(res);
       if (!handles) return;
@@ -494,7 +494,7 @@ export function createHrOnboardingRouter(deps: HrOnboardingRouterDeps = {}): Rou
   });
 
   // 7. Delete onboarding link record (and best-effort remove private Storage files)
-  router.delete('/:id', requireArea('rh', 2), async (req: Request, res: Response) => {
+  router.delete('/:id', requireModuleAccess('rh-admissoes', 2), async (req: Request, res: Response) => {
     try {
       const handles = requireAdminHandles(res);
       if (!handles) return;
