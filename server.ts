@@ -111,7 +111,7 @@ import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
 import { getAdmin, adminStatus, runtimeServiceAccount } from './server/firebaseAdmin';
 import { mirrorReceiptsToOps } from './server/opsReimbursements';
 import { effectiveOrg } from './server/orgDefaults';
-import { answerWithTools, canUseErpTools, canQueryErp, ERP_QUESTION } from './server/agentTools';
+import { answerWithTools, canUseErpTools, ERP_QUESTION } from './server/agentTools';
 import type {
   WhatsAppNdRecord,
   WhatsAppNdRule,
@@ -741,9 +741,23 @@ async function main() {
       // ERP tools: no client context supplied (or explicit flag) -> answer from live org data.
       const toolOrg = req.orgId ?? (req.user?.orgs && Object.keys(req.user.orgs).length === 1 ? Object.keys(req.user.orgs)[0] : undefined);
       const h = getAdmin();
-      if (h && toolOrg && (useTools === true || !context) && canQueryErp(req.user, toolOrg)) {
+      if (h && toolOrg && (useTools === true || !context) && req.user) {
         try {
-          const text = await answerWithTools(h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [], async (p) => (await generateContentWithFallback(p)).response);
+          const toolPermissions = [
+            ['contas_a_pagar', 'financeiro-pagar'],
+            ['notas_pendentes', 'financeiro-notas'],
+            ['estoque_critico', 'estoque'],
+            ['os_abertas', 'ordens'],
+            ['nr_vencendo', 'rh-funcionarios'],
+            ['funil_comercial', 'comercial-funil'],
+          ] as const;
+          const levels = await Promise.all(toolPermissions.map(([, section]) => moduleLevelOf(req.user, toolOrg, section)));
+          const allowedTools = new Set(toolPermissions.filter((_, i) => levels[i] >= 1).map(([name]) => name));
+          const text = await answerWithTools(
+            h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [],
+            async (p) => (await generateContentWithFallback(p)).response,
+            allowedTools,
+          );
           if (text) return res.json({ reply: text, timestamp: new Date().toISOString() });
         } catch (e) {
           console.warn('[AI chat tools] fallback para chat normal:', e);
