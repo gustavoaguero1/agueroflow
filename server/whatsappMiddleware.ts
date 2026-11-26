@@ -6,6 +6,7 @@
  */
 import type { NextFunction, Request, Response } from 'express';
 import { memberOrgOf, moduleLevelOf } from './authMiddleware';
+import type { AdminHandles } from './firebaseAdmin.ts';
 import { sessionForRequest } from './whatsappRouting';
 import { effectiveOrg } from './orgDefaults';
 import type { SessionContext } from './whatsappContext';
@@ -16,6 +17,7 @@ const OWN_SESSION_PATHS = ['/status', '/connect', '/disconnect', '/sessions', '/
 export function createWhatsAppMiddlewares(deps: {
   runInSession: <T>(ctx: SessionContext, fn: () => T) => T;
   runAsOrgSender: <T>(orgId: string, fn: () => T) => T;
+  getAdminHandles?: () => AdminHandles | null;
 }) {
   return {
     async companyContext(req: Request, res: Response, next: NextFunction) {
@@ -34,7 +36,7 @@ export function createWhatsAppMiddlewares(deps: {
           ? 'whatsapp-nds'
           : /\/(commands|scheduled|jobs)\b/i.test(req.path) ? 'whatsapp-comandos' : 'whatsapp-central';
         try {
-          if (await moduleLevelOf(req.user, org, section) < 1) {
+          if (await moduleLevelOf(req.user, org, section, deps.getAdminHandles) < 1) {
             return res.status(403).json({ success: false, error: 'Sem permissão para este submódulo do WhatsApp.' });
           }
         } catch {
