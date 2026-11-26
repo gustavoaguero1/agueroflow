@@ -248,16 +248,20 @@ export function canAccessPermission(
   master = false,
 ): boolean {
   if (master) return true;
-  const decoded = decodePermissionMatrix(encoded);
-  if (decoded) return decoded[section as AccessSectionId]?.[action] === true;
+  if (encoded !== undefined) {
+    const decoded = decodePermissionMatrix(encoded);
+    return decoded?.[section as AccessSectionId]?.[action] === true;
+  }
   const area = areaOfSection(section);
   const level = area ? areas[area] : 0;
   return action === 'view' ? level >= 1 : level >= 2;
 }
 
 export function scopeOfPermission(section: string, areas: AreaLevels, encoded?: unknown): DataScope {
-  const decoded = decodePermissionMatrix(encoded);
-  if (decoded) return decoded[section as AccessSectionId]?.scope || 'all';
+  if (encoded !== undefined) {
+    const decoded = decodePermissionMatrix(encoded);
+    return decoded?.[section as AccessSectionId]?.scope || 'own';
+  }
   const area = areaOfSection(section);
   return area && areas[area] > 0 ? 'all' : 'own';
 }
@@ -276,4 +280,29 @@ export function visibleNavWithPermissions<T extends { id: string; hasSubmenu?: b
     }
   }
   return visible;
+}
+
+
+/** Confere escopos de registros em handlers/API. Campos de atribuição aceitos são explícitos. */
+export function recordInDataScope(
+  uid: string,
+  scope: DataScope,
+  record: Record<string, unknown>,
+): boolean {
+  if (scope === 'all') return true;
+  const ownFields = ['createdByUid', 'ownerUid', 'userId', 'requestedByUid'];
+  if (scope === 'own') return ownFields.some((field) => record[field] === uid);
+  const assignedFields = ['assignedToUid', 'assigneeUid', 'responsibleUid', 'supervisorUid', 'ownerUid'];
+  if (assignedFields.some((field) => record[field] === uid)) return true;
+  return ['assignedUserIds', 'assigneeUids', 'memberUids'].some((field) =>
+    Array.isArray(record[field]) && (record[field] as unknown[]).includes(uid),
+  );
+}
+
+export function filterRecordsByDataScope<T extends Record<string, unknown>>(
+  uid: string,
+  scope: DataScope,
+  records: T[],
+): T[] {
+  return scope === 'all' ? records : records.filter((record) => recordInDataScope(uid, scope, record));
 }
