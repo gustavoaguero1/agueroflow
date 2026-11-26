@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   buildReceivableFromApprovedBulletin,
@@ -31,7 +31,7 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
   const router = Router();
 
   // 1. Create a new Measurement Bulletin (BM) in 'rascunho' + initial immutable event
-  router.post('/bulletins', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/bulletins', requireModuleAccess('obras-medicoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const body = req.body ?? {};
@@ -187,7 +187,7 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
   });
 
   // 2. Transition bulletin status atomically; approving creates linked FinanceReceivable (idempotent)
-  router.post('/bulletins/:bulletinId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/bulletins/:bulletinId/transition', requireModuleAccess('obras-medicoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const bulletinId = req.params.bulletinId;
@@ -353,7 +353,7 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
   });
 
   // 3. Create versioned LPU Price Table per contract (altering LPU never mutates historical BMs)
-  router.post('/lpu-tables', requireArea('comercial', 2), async (req: Request, res: Response) => {
+  router.post('/lpu-tables', requireModuleAccess('comercial-composicao', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -423,7 +423,7 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
   });
 
   // 4. Revise a returned/glosado Measurement Bulletin preserving immutable prior revision
-  router.post('/bulletins/:bulletinId/revise', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/bulletins/:bulletinId/revise', requireModuleAccess('obras-medicoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const sourceId = req.params.bulletinId;
