@@ -41,6 +41,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed, isToggleSidebarShortcut } 
 import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { NotificationsBell } from './NotificationsBell';
+import { OfflineSyncIndicator } from './OfflineSyncIndicator';
 import { useTheme } from '../../contexts/ThemeContext';
 import { areaOfSection, visibleNav } from '../../permissions/areas';
 
@@ -1091,6 +1092,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 </select>
               </div>
             )}
+
+            {/* Modo Offline / Fila de Sincronização */}
+            <OfflineSyncIndicator />
 
             {/* Central de Pendências Acionáveis */}
             <NotificationsBell onNavigate={onNavigate} />

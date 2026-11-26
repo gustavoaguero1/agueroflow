@@ -29,7 +29,9 @@ import {
   ChevronRight,
   Clock,
   User,
+  QrCode,
 } from 'lucide-react';
+import { QrLabelModal, type QrLabelTarget } from '../common/QrLabelModal';
 import {
   validateAssetCodeUnique,
 } from '../../services/collectiveAssetsService';
@@ -73,6 +75,7 @@ export const CollectiveAssetsList: React.FC<CollectiveAssetsListProps> = ({
   const itemsPerPage = 12;
 
   // Create / Edit Modal State
+  const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CollectiveAsset | null>(null);
   const [formCode, setFormCode] = useState('');
@@ -463,6 +466,27 @@ export const CollectiveAssetsList: React.FC<CollectiveAssetsListProps> = ({
                       <td className="py-2.5 px-3 text-right">
                         <div className="flex items-center justify-end space-x-1">
                           <button
+                            onClick={() =>
+                              setQrTarget({
+                                entityType: 'asset',
+                                entityId: a.id,
+                                orgId: organizationId,
+                                code: a.code,
+                                title: a.description,
+                                subtitle: a.storageLocation || a.brandModel || undefined,
+                                metaLines: [
+                                  `Situação: ${a.situation}`,
+                                  ...(a.nextDueDate ? [`Próx. calibração/manut.: ${a.nextDueDate}`] : []),
+                                ],
+                              })
+                            }
+                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer"
+                            title="Etiqueta QR do Bem"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
                             onClick={() => onOpenAssetDetail(a)}
                             className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 cursor-pointer"
                             title="Ver ficha completa do bem"
@@ -755,6 +779,7 @@ export const CollectiveAssetsList: React.FC<CollectiveAssetsListProps> = ({
           </div>
         </div>
       )}
+      <QrLabelModal target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   );
 };
