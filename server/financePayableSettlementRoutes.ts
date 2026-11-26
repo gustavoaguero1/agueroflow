@@ -21,7 +21,7 @@ const money = (value: number) => cents(value) / 100;
 
 export function createFinancePayableSettlementRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireModuleAccess('financeiro-pagar', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-pagar', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const payableId = req.body?.payableId;
     const actor = req.user;
