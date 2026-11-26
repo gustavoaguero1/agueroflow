@@ -59,7 +59,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     areaLevel,
   } = useAuth();
   // Lista de acessos: Admin, Gerente ou quem edita Configurações (todo mundo abre a tela por tema e dispositivos).
-  const canSeeAreaAccess = isMaster || role === 'Admin' || role === 'Gerente' || areaLevel('configuracoes') === 2;
+  const canSeeAreaAccess = isMaster || areaLevel('configuracoes') === 2;
   const { theme, setTheme } = useTheme();
 
   const [slaHours, setSlaHours] = useState('24');
