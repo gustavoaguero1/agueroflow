@@ -11,6 +11,8 @@ export interface Organization {
   updatedAt: string;
   /** Acesso por área ajustado pela empresa, por perfil (ver src/permissions/areas.ts). */
   areaDefaults?: Partial<Record<UserRole, Partial<Record<string, 0 | 1 | 2>>>>;
+  /** Modelos de acesso reutilizáveis; os grants são resolvidos pelo servidor. */
+  accessProfiles?: unknown[];
 }
 
 export interface OrgMember {
@@ -27,6 +29,10 @@ export interface OrgMember {
   initialPasswordSetByAdmin?: boolean;
   /** Ajuste de acesso só desta pessoa, por cima do padrão do perfil. */
   areaOverrides?: Partial<Record<string, 0 | 1 | 2>>;
+  /** Modelo reutilizável atribuído a esta pessoa (sem dependência do cargo legado). */
+  accessProfileId?: string;
+  /** Exceções individuais por submódulo; propriedades ausentes herdam o modelo. */
+  permissionOverrides?: Record<string, unknown>;
   /** Muda quando o acesso da pessoa muda; o navegador renova o login ao ver a mudança. */
   areasUpdatedAt?: string;
   createdAt: string;
