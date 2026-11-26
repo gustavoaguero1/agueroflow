@@ -177,7 +177,7 @@ export function ModuleAccessPanel() {
                   const isProfile = mode === 'profile';
                   const draft = isProfile ? draftRole : draftPerson;
                   const inherited = isProfile
-                    ? resolveModuleLevel(item.id, role, baseForRole, data?.roleDefaults, {})
+                    ? resolveModuleLevel(item.id, role, baseForRole, null, {})
                     : (person && baseForPerson
                       ? resolveModuleLevel(item.id, person.role, baseForPerson, data?.roleDefaults, {})
                       : 0);
