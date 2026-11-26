@@ -4,10 +4,12 @@ import type { Auth } from 'firebase-admin/auth';
 import { getAdmin } from './firebaseAdmin.ts';
 import type { Role } from './authService.ts';
 import { decodeAreas, resolveAreas, type AreaId, type AreaLevel } from '../src/permissions/areas.ts';
+import { canAccessPermission, scopeOfPermission, type AccessAction, type DataScope, recordInDataScope } from '../src/permissions/granular.ts';
 
 export type AuthUser = {
   uid: string; email?: string; emailVerified?: boolean; master: boolean; orgs: Record<string, Role>;
   areas?: Record<string, string>;
+  sectionPermissions?: Record<string, string>;
 };
 
 declare global {
@@ -60,6 +62,7 @@ export function verifyToken(getAuth: () => Verifier | null = () => getAdmin()?.a
         uid: d.uid, email: d.email, emailVerified: d.email_verified === true,
         master: d.master === true, orgs: d.orgs && typeof d.orgs === 'object' ? d.orgs : {},
         ...(d.areas && typeof d.areas === 'object' ? { areas: d.areas } : {}),
+        ...(d.sectionPermissions && typeof d.sectionPermissions === 'object' ? { sectionPermissions: d.sectionPermissions } : {}),
       };
     } catch (e) {
       // Distinct from "no token" so a host misconfiguration (e.g. missing IAM role) is diagnosable.
@@ -122,12 +125,96 @@ export function areaLevelOf(u: AuthUser | undefined, org: string | undefined | n
 }
 
 /** Passa quem tem pelo menos `level` na área da empresa da requisição; marca req.orgId. */
+/** Permissão granular da pessoa em um submódulo; token antigo usa a herança por área. */
+export function sectionPermissionOf(
+  u: AuthUser | undefined,
+  org: string | undefined | null,
+  section: string,
+  action: AccessAction,
+): boolean {
+  if (!u || !org || (!u.master && !u.orgs?.[org])) return false;
+  const role = u.orgs?.[org];
+  const areas = role ? (decodeAreas(u.areas?.[org]) ?? resolveAreas(role)) : resolveAreas('Visualizador');
+  return canAccessPermission(section, action, areas, u.sectionPermissions?.[org], u.master);
+}
+
+export function sectionScopeOf(
+  u: AuthUser | undefined,
+  org: string | undefined | null,
+  section: string,
+): DataScope {
+  if (!u || !org || (!u.master && !u.orgs?.[org])) return 'own';
+  const role = u.orgs?.[org];
+  const areas = role ? (decodeAreas(u.areas?.[org]) ?? resolveAreas(role)) : resolveAreas('Visualizador');
+  return scopeOfPermission(section, areas, u.sectionPermissions?.[org]);
+}
+
+export function recordScopeAllowed(
+  u: AuthUser | undefined,
+  org: string | undefined | null,
+  section: string,
+  record: Record<string, unknown>,
+): boolean {
+  if (!u || !org || (!u.master && !u.orgs?.[org])) return false;
+  if (u.master) return true;
+  return recordInDataScope(u.uid, sectionScopeOf(u, org, section), record);
+}
+
+function requestSection(url: string): string | null {
+  const path = url.split('?')[0].toLowerCase();
+  if (/^\/api\/work-orders(?:\/|$)/.test(path)) return 'ordens';
+  if (/^\/api\/checklists(?:\/|$)/.test(path)) return 'checklists';
+  if (/^\/api\/inspections(?:\/|$)/.test(path)) return 'inspecoes';
+  if (/^\/api\/measurements(?:\/|$)/.test(path)) return 'obras-medicoes';
+  if (/^\/api\/recurring-orders(?:\/|$)/.test(path)) return 'ordens-recorrencias';
+  if (/^\/api\/stock-reservations(?:\/|$)/.test(path)) return 'estoque';
+  if (/^\/api\/safety(?:\/|$)/.test(path)) return 'ops-config';
+  if (/^\/api\/industrial-quality(?:\/|$)/.test(path)) return 'inspecoes';
+  if (/^\/api\/manufacturing(?:\/|$)/.test(path)) return 'obras';
+  if (/^\/api\/cmms(?:\/|$)/.test(path)) return 'bens-manutencoes';
+  if (/^\/api\/commercial\/proposals(?:\/|$)/.test(path)) return 'comercial-funil';
+  if (/^\/api\/purchasing\/approvals(?:\/|$)/.test(path)) return 'compras-cotacoes';
+  if (/^\/api\/purchasing\/orders(?:\/|$)/.test(path)) return 'compras-pedidos';
+  if (/^\/api\/purchasing\/receipts(?:\/|$)/.test(path)) return 'compras-recebimento';
+  if (/^\/api\/purchasing\/suppliers(?:\/|$)/.test(path)) return 'compras-fornecedores';
+  if (/^\/api\/purchasing(?:\/|$)/.test(path)) return 'compras-requisicoes';
+  if (/^\/api\/finance\/payable(?:-authorizations|-settlements)?(?:\/|$)/.test(path)) return 'financeiro-pagar';
+  if (/^\/api\/finance\/receivable-receipts(?:\/|$)/.test(path)) return 'financeiro-receber';
+  if (/^\/api\/finance(?:\/|$)/.test(path)) return 'financeiro';
+  if (/^\/api\/travel(?:\/|$)/.test(path)) return 'viagens-busca';
+  if (/^\/api\/nfe(?:\/|$)/.test(path)) return 'financeiro-notas';
+  if (/^\/api\/whatsapp(?:\/|$)/.test(path)) return 'whatsapp-central';
+  if (/^\/api\/ai-actions(?:\/|$)/.test(path)) return 'ia';
+  if (/^\/api\/client-portal(?:\/|$)/.test(path)) return 'obras';
+  if (/^\/api\/protheus-sync(?:\/|$)/.test(path)) return 'financeiro-notas';
+  if (/^\/api\/marketing(?:\/|$)/.test(path)) return 'marketing-campanhas';
+  return null;
+}
+
+function requestAction(method: string, url: string): AccessAction {
+  const path = url.split('?')[0].toLowerCase();
+  if (/(approve|approval|authorize|reject|reprove|aprovar|aprovacao|reprovar)/.test(path)) return 'approve';
+  if (/(settings|config|parameters|rules|configuracoes)/.test(path)) return 'manage';
+  if (method === 'GET' || method === 'HEAD') return 'view';
+  if (method === 'POST') return 'create';
+  if (method === 'DELETE') return 'delete';
+  return 'edit';
+}
+
 export function requireArea(area: AreaId, level: 1 | 2): RequestHandler {
   return (req, res, next) => {
     const u = req.user;
     if (!u) return res.status(401).json({ error: 'unauthenticated' });
     const org = orgIdOf(req);
-    if (org === null || (!u.master && areaLevelOf(u, org, area) < level)) {
+    if (org === null) return res.status(403).json({ error: 'forbidden' });
+    const section = requestSection(req.originalUrl);
+    // Rotas mapeadas usam a matriz granular quando ela existe; tokens antigos mantêm a regra por área.
+    if (section && u.sectionPermissions?.[org]) {
+      const action = requestAction(req.method, req.originalUrl);
+      if (!sectionPermissionOf(u, org, section, action)) {
+        return res.status(403).json({ error: 'permission_denied', section, action });
+      }
+    } else if (!u.master && areaLevelOf(u, org, area) < level) {
       return res.status(403).json({ error: 'forbidden' });
     }
     req.orgId = org;
