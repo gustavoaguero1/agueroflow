@@ -102,8 +102,10 @@ export function createModuleAccessRouter(): Router {
       return responseError(res, 403, 'Somente um Admin pode alterar as permissões granulares de outro Admin.');
     }
     const overrides = sanitizeModuleOverrides(req.body?.overrides);
-    await ref.update({ moduleAccessOverrides: overrides, areasUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    await ref.update({ moduleAccessOverrides: overrides, updatedAt: new Date().toISOString() });
     await syncModuleAccessForMember(getAdmin()!, memberId);
+    // Publica a marca somente depois de gravar o grant, para o listener do usuário nunca ler dados antigos.
+    await ref.update({ areasUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     return res.json({ ok: true });
   }));
 
