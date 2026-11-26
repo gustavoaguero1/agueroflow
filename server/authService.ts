@@ -26,11 +26,10 @@ export function claimsFromMembers(
     orgs[m.orgId] = m.role;
     const roleDefaults = sanitizeOrgDefaults(orgDefaults[m.orgId]);
     const areaOverrides = sanitizeOverrides(m.areaOverrides);
-    const overrides = sanitizeOverrides(m.areaOverrides);
     // Sem nenhum ajuste (empresa nem pessoa): fica fora do token, quem lê cai no padrão do perfil.
     // Com ajuste, entra mesmo se igual ao padrão de hoje: se o padrão do sistema mudar, o ajuste vale.
     const customized = Object.keys(roleDefaults[m.role] || {}).length > 0 || Object.keys(areaOverrides).length > 0;
-    if (customized) areas[m.orgId] = encodeAreas(resolveAreas(m.role, roleDefaults, overrides));
+    if (customized) areas[m.orgId] = encodeAreas(resolveAreas(m.role, roleDefaults, areaOverrides));
 
     const profiles = sanitizeAccessProfiles(orgProfiles[m.orgId]);
     const profile = profiles.find((p) => p.id === m.accessProfileId) || null;
