@@ -13,7 +13,7 @@ import { ReceivablesView } from '../components/finance/ReceivablesView';
 export type FinanceSubSection = 'financeiro-notas' | 'financeiro-pagar' | 'financeiro-receber' | 'financeiro-plano';
 
 export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> = ({ currentSubSection }) => {
-  const { organization, isSupervisorOrAbove } = useAuth();
+  const { organization, moduleLevel } = useAuth();
   const orgId = organization?.id;
   const [categories, setCategories] = useState<FinanceCategory[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
@@ -34,8 +34,8 @@ export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> =
 
   // The chart is configuration: created once, when the org has none (needed by every finance screen).
   useEffect(() => {
-    if (orgId && isSupervisorOrAbove) ensureDefaultCategories(db, orgId).catch((e) => setError(`Falha ao criar o plano de contas padrão: ${e.message}`));
-  }, [orgId, isSupervisorOrAbove]);
+    if (orgId && moduleLevel('financeiro-plano') >= 2) ensureDefaultCategories(db, orgId).catch((e) => setError(`Falha ao criar o plano de contas padrão: ${e.message}`));
+  }, [orgId, moduleLevel]);
 
   if (!orgId) return null;
   return (
