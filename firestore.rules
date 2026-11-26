@@ -462,7 +462,7 @@ service cloud.firestore {
                       : (coll in ['base', 'cadastros'] ? 'ops-base'
                         : (coll in ['membros', 'config'] ? 'ops-config' : 'ops-inicio'))))))));
       }
-      allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : moduleOk(orgId, opsSection(), A_OPS(), 1);
+      allow read: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 1) : moduleOk(orgId, opsSection(), A_OPS(), 1);
       allow write: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 2)
         : (managerOnlyWrite() ? opsConfigCanWrite() : moduleOk(orgId, opsSection(), A_OPS(), 2));
     }
