@@ -16,7 +16,7 @@ const orgOf = (d: Record<string, any> | undefined): string =>
 export function createPurchasingApprovalRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/rules', requireModuleAccess('compras-cotacoes', 4), async (req: Request, res: Response) => {
+  router.post('/rules', requireModuleAccess('compras-cotacoes', 4, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -43,7 +43,7 @@ export function createPurchasingApprovalRouter(getH: () => AdminHandles | null =
     return res.status(201).json({ ok: true, rule });
   });
 
-  router.post('/orders/:orderId/approve', requireModuleAccess('compras-cotacoes', 3), async (req: Request, res: Response) => {
+  router.post('/orders/:orderId/approve', requireModuleAccess('compras-cotacoes', 3, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const orderId = req.params.orderId;
