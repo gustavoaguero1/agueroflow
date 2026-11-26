@@ -182,22 +182,22 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Module Title & Tab Navigation */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-md">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-800/80">
+      <div className="af-card rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-600/20">
-                <ShoppingCart size={24} />
+              <div className="p-2.5 rounded-xl bg-[#0071E3]/10 dark:bg-[#0A84FF]/15 text-[#0071E3] dark:text-[#409CFF]">
+                <ShoppingCart size={22} />
               </div>
               <div>
-                <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                  Compras & Suprimentos Industriais
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                    Módulo de Suprimentos
+                <h1 className="text-xl font-bold text-[#1D1D1F] dark:text-white tracking-tight flex flex-wrap items-center gap-2">
+                  Compras &amp; Suprimentos Industriais
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#0071E3]/10 text-[#0071E3] dark:text-[#409CFF]">
+                    Suprimentos
                   </span>
                 </h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Workflow completo: RCs de obra, equalização técnica 3-Bid, emissão de OC formal com PDF e controle de Corrida Metalúrgica.
+                <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
+                  Workflow completo: RCs de obra, equalização técnica 3-Bid, alçadas server-side, emissão de OC e Corrida Metalúrgica.
                 </p>
               </div>
             </div>
@@ -207,22 +207,22 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
             <button
               onClick={handleManualRefresh}
               disabled={refreshing}
-              className="p-2 text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-xl transition border border-slate-700/60"
+              className="p-2 af-btn-glass rounded-xl cursor-pointer"
               title="Atualizar dados de compras"
             >
-              <RefreshCw size={16} className={refreshing ? 'animate-spin text-cyan-400' : ''} />
+              <RefreshCw size={16} className={refreshing ? 'animate-spin text-[#0071E3]' : ''} />
             </button>
             <button
               onClick={() => setIsNewOrderModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-600/20 transition"
+              className="flex items-center gap-2 px-4 py-2 af-btn-primary rounded-xl text-xs font-semibold cursor-pointer apple-solid-btn"
             >
               <Plus size={15} /> Emitir OC
             </button>
           </div>
         </div>
 
-        {/* Tab Strip */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-3 pb-1.5">
+        {/* Tab Strip — Apple Segmented Control */}
+        <div className="mt-3 af-seg rounded-xl p-1 flex items-center gap-1 overflow-x-auto custom-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -231,18 +231,18 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-                  isActive
-                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-600/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap cursor-pointer ${
+                  isActive ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
                 }`}
               >
-                <Icon size={15} />
+                <Icon size={14} className="opacity-80" />
                 <span>{tab.label}</span>
                 {typeof tab.count === 'number' && tab.count > 0 && (
                   <span
-                    className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300'
+                    className={`ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full font-bold tabular-nums ${
+                      isActive
+                        ? 'bg-[#0071E3]/12 text-[#0071E3] dark:text-[#409CFF]'
+                        : 'bg-black/[0.06] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#98989D]'
                     }`}
                   >
                     {tab.count}

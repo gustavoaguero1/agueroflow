@@ -226,21 +226,21 @@ export const StockModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Controle de Estoque & Saldos</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Saldos em tempo real por localidade com validação de saldo e bloqueio de saídas a descoberto.
+          <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Controle de Estoque &amp; Saldos</h2>
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
+            Saldos em tempo real por localidade com validação de saldo, reservas por OS e etiquetas QR.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex items-center space-x-2.5">
+          <div className="flex items-center space-x-2 af-btn-glass px-3 py-2 rounded-xl">
+            <Filter className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#98989D]" />
             <select
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+              className="apple-inline-select bg-transparent text-xs font-medium text-[#1D1D1F] dark:text-[#F5F5F7] focus:outline-none cursor-pointer"
             >
               <option value="todas">Todas as Unidades</option>
               {units.map((u) => (
@@ -260,7 +260,7 @@ export const StockModule: React.FC = () => {
               setMovError(null);
               setShowMoveModal(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Nova Movimentação</span>

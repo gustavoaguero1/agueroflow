@@ -453,7 +453,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight">Estrutura Organizacional & Governança</h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -465,7 +465,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           {activeTab === 'unidades' && (
             <button
               onClick={() => setShowUnitModal(true)}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Nova Unidade</span>
@@ -478,7 +478,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 setShowAssetModal(true);
               }}
               disabled={units.length === 0}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Novo Ativo</span>
@@ -487,7 +487,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           {activeTab === 'contratos' && (
             <button
               onClick={() => setShowContractModal(true)}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Novo Contrato</span>
@@ -496,7 +496,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           {activeTab === 'usuarios' && (
             <button
               onClick={() => setShowMemberModal(true)}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Convidar Usuário</span>
@@ -506,7 +506,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
+      <div className="af-seg rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto custom-scrollbar">
         {[
           { id: 'organizacao' as const, label: 'Organização Ativa', icon: Building },
           { id: 'projetos' as const, label: `Projetos / Obras (${projects.length})`, icon: FolderKanban },
@@ -522,10 +522,8 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer ${
+                isActive ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />

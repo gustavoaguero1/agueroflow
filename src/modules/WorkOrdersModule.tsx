@@ -964,7 +964,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight">Ordens de Serviço & Demandas</h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -974,11 +974,11 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}
-          <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+          <div className="flex items-center af-seg p-1 rounded-xl gap-0.5">
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
-                viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center space-x-1 cursor-pointer ${
+                viewMode === 'table' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <List className="w-3.5 h-3.5" />
@@ -986,8 +986,8 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
             </button>
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
-                viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center space-x-1 cursor-pointer ${
+                viewMode === 'kanban' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Kanban className="w-3.5 h-3.5" />
@@ -998,7 +998,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           {/* Configurar Estados button */}
           <button
             onClick={() => setShowStatusConfigModal(true)}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl af-btn-glass text-xs font-medium cursor-pointer"
             title="Personalizar estados do fluxo operacional (Ex: Aberto, Em Aprovação, Em Execução, Aguardando Peças, Concluído, Validado)"
           >
             <Sliders className="w-3.5 h-3.5 text-blue-400" />
@@ -1007,7 +1007,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Nova OS</span>
