@@ -421,7 +421,7 @@ export const InspectionsModule: React.FC = () => {
                         {moduleLevel('inspecoes') >= 2 && insp.status === 'em_campo' && (
                           <button type="button" disabled={isSubmitting} onClick={() => { setInspectionToComplete(insp); setResult('pendente'); setFindings(''); }} className="rounded bg-cyan-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Registrar resultado</button>
                         )}
-                        {(isMaster || isSupervisorOrAbove) && moduleLevel('inspecoes') >= 2 && insp.status === 'aguardando_revisao' && (
+                        {moduleLevel('inspecoes') >= 3 && insp.status === 'aguardando_revisao' && (
                           <>
                             <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'approve')} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Aprovar</button>
                             <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'reject')} className="rounded bg-red-800 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Devolver</button>
