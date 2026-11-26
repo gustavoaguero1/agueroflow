@@ -108,6 +108,7 @@ test('submódulo bloqueado para uma pessoa não afeta os outros submódulos da m
       orgId: 'org_a',
       uid: 'member_op',
       modules: { ordens: 0 },
+      explicitModules: ['ordens'],
     });
   });
 
