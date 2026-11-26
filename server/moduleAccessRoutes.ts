@@ -62,7 +62,7 @@ export function createModuleAccessRouter(): Router {
         levels: resolveModuleLevels(role, areaLevels, roleDefaults, overrides),
       };
     }).sort((x, y) => x.userName.localeCompare(y.userName, 'pt-BR'));
-    return res.json({ ok: true, catalog: MODULE_PERMISSION_DETAILS, roleDefaults, members: people, canEdit: canManage(req, orgId) });
+    return res.json({ ok: true, catalog: MODULE_PERMISSION_DETAILS, areaDefaults: org.areaDefaults || {}, roleDefaults, members: people, canEdit: canManage(req, orgId) });
   }));
 
   router.put('/module-access/roles', wrap(async (req, res) => {
