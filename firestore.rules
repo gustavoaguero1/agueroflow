@@ -405,7 +405,7 @@ service cloud.firestore {
       }
       // A Gerente may not create, change or remove an Admin.
       function roleOk(org, d) { return isMaster() || orgClaims()[org] == 'Admin' || d.get('role', '') != 'Admin'; }
-      function manages(org) { return isMaster() || hasRole(org, ['Admin', 'Gerente']); }
+      function manages(org) { return isMaster() || moduleOk(org, 'estrutura', A_EST(), 4); }
 
       allow read: if isMaster() || (resource == null && signedIn())
         || isMemberOf(resource.data.get('orgId', ''))
