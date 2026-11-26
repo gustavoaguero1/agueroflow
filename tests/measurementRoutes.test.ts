@@ -9,7 +9,13 @@ function createFakeAdmin(seed: Record<string, any>) {
   const docs = new Map<string, any>(Object.entries(seed));
   const db: any = {
     collection: (name: string) => ({
-      doc: (id: string) => ({ path: `${name}/${id}`, id }),
+      doc: (id: string) => ({
+        path: `${name}/${id}`, id,
+        get: async () => {
+          const data = docs.get(`${name}/${id}`);
+          return { id, exists: data !== undefined, data: () => data };
+        },
+      }),
     }),
     runTransaction: async (fn: (tx: any) => Promise<any>) => {
       const creates: Array<{ path: string; data: any }> = [];
@@ -123,7 +129,7 @@ test('full BM lifecycle: create -> submit -> approve atomically generates linked
     });
     assert.equal(submitRes.status, 200);
 
-    // 3. Supervisor cannot approve (Admin/Gerente required)
+    // 3. Supervisor cannot approve without an explicit level-3 grant
     const deniedApprove = await fetch(`${srv.base}/bulletins/${bulletin.id}/transition`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -131,8 +137,9 @@ test('full BM lifecycle: create -> submit -> approve atomically generates linked
     });
     assert.equal(deniedApprove.status, 403);
 
-    // 4. Gerente approves -> FinanceReceivable is created atomically
+    // 4. Gerente with an explicit level-3 grant approves -> FinanceReceivable is created atomically
     userRef.current = { uid: 'ger_1', email: 'gerente@alfa.test', master: false, orgs: { org_a: 'Gerente' } };
+    srv.docs.set('org_module_access/org_a__ger_1', { orgId: 'org_a', uid: 'ger_1', modules: { 'obras-medicoes': 3 } });
     const approveRes = await fetch(`${srv.base}/bulletins/${bulletin.id}/transition`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
