@@ -201,7 +201,7 @@ test('authorization changes still require explicit acknowledgement before any pa
   });
 });
 
-test('Admin/Gerente require Financeiro level 2; Supervisor may pay partial with level 1', async () => {
+test('payment settlement requires Operar or higher in Contas a Pagar', async () => {
   await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base) => {
     assert.equal((await post(base, request)).status, 403);
   }, { org_a: '22221222222' });
@@ -209,6 +209,6 @@ test('Admin/Gerente require Financeiro level 2; Supervisor may pay partial with 
     assert.equal((await post(base, request)).status, 201);
   });
   await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base) => {
-    assert.equal((await post(base, request)).status, 201);
+    assert.equal((await post(base, request)).status, 403);
   }, { org_a: '12211021112' });
 });
