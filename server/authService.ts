@@ -4,28 +4,50 @@ import type { AdminHandles } from './firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import type { OrgMember, Organization, UserRole } from '../src/types/index.ts';
 import { AREA_IDS, decodeAreas, encodeAreas, resolveAreas, sanitizeOrgDefaults, sanitizeOverrides, type AreaLevels } from '../src/permissions/areas.ts';
+import { encodePermissionMatrix, resolvePermissionMatrix, sanitizeAccessProfiles, sanitizePermissionOverrides } from '../src/permissions/granular.ts';
 
 export type Role = UserRole;
 /** `areas`: níveis por área em cada empresa, codificados por encodeAreas (um dígito por área). */
-export type Claims = { master: boolean; orgs: { [orgId: string]: Role }; areas?: { [orgId: string]: string } };
+export type Claims = { master: boolean; orgs: { [orgId: string]: Role }; areas?: { [orgId: string]: string }; sectionPermissions?: { [orgId: string]: string } };
 
-type MemberAccess = { orgId: string; role: Role; areaOverrides?: unknown };
+type MemberAccess = { orgId: string; role: Role; areaOverrides?: unknown; accessProfileId?: string; permissionOverrides?: unknown };
 
 /** Perfil e áreas de cada empresa da pessoa: padrão do perfil → padrão da empresa → ajuste da pessoa. */
-export function claimsFromMembers(members: MemberAccess[], orgDefaults: Record<string, unknown>): Claims {
+export function claimsFromMembers(
+  members: MemberAccess[],
+  orgDefaults: Record<string, unknown>,
+  orgProfiles: Record<string, unknown> = {},
+): Claims {
   const orgs: Claims['orgs'] = {};
   const areas: NonNullable<Claims['areas']> = {};
+  const sectionPermissions: NonNullable<Claims['sectionPermissions']> = {};
   for (const m of members) {
     if (!m.orgId) continue;
     orgs[m.orgId] = m.role;
     const roleDefaults = sanitizeOrgDefaults(orgDefaults[m.orgId]);
+    const areaOverrides = sanitizeOverrides(m.areaOverrides);
     const overrides = sanitizeOverrides(m.areaOverrides);
     // Sem nenhum ajuste (empresa nem pessoa): fica fora do token, quem lê cai no padrão do perfil.
     // Com ajuste, entra mesmo se igual ao padrão de hoje: se o padrão do sistema mudar, o ajuste vale.
-    const customized = Object.keys(roleDefaults[m.role] || {}).length > 0 || Object.keys(overrides).length > 0;
+    const customized = Object.keys(roleDefaults[m.role] || {}).length > 0 || Object.keys(areaOverrides).length > 0;
     if (customized) areas[m.orgId] = encodeAreas(resolveAreas(m.role, roleDefaults, overrides));
+
+    const profiles = sanitizeAccessProfiles(orgProfiles[m.orgId]);
+    const profile = profiles.find((p) => p.id === m.accessProfileId) || null;
+    const permissionOverrides = sanitizePermissionOverrides(m.permissionOverrides);
+    if (profile || Object.keys(permissionOverrides).length > 0) {
+      const resolvedAreas = resolveAreas(m.role, roleDefaults, areaOverrides);
+      sectionPermissions[m.orgId] = encodePermissionMatrix(
+        resolvePermissionMatrix(resolvedAreas, profile, permissionOverrides),
+      );
+    }
   }
-  return fitClaims(Object.keys(areas).length ? { master: false, orgs, areas } : { master: false, orgs });
+  return fitClaims({
+    master: false,
+    orgs,
+    ...(Object.keys(areas).length ? { areas } : {}),
+    ...(Object.keys(sectionPermissions).length ? { sectionPermissions } : {}),
+  });
 }
 
 /** Limite do Firebase para claims (1000 bytes), com folga. */
@@ -37,7 +59,13 @@ export const ERR_CLAIMS_TOO_BIG = 'Esta pessoa está em empresas demais com aces
  * dá acesso a mais do que o ajuste); restrições ficam. Se nem assim couber, erro claro.
  */
 function fitClaims(c: Claims): Claims {
-  if (JSON.stringify(c).length <= CLAIMS_MAX || !c.areas) return c;
+  if (JSON.stringify(c).length <= CLAIMS_MAX) return c;
+  if (c.sectionPermissions) {
+    // Direitos granulares nunca são descartados silenciosamente: isso poderia reabrir telas.
+    // A configuração precisa caber no limite do Firebase; quando não couber, o salvamento/login falha.
+    throw new Error(ERR_CLAIMS_TOO_BIG);
+  }
+  if (!c.areas) return c;
   const areas: NonNullable<Claims['areas']> = {};
   for (const [org, code] of Object.entries(c.areas)) {
     const custom = decodeAreas(code);
@@ -46,7 +74,7 @@ function fitClaims(c: Claims): Claims {
     const safe = Object.fromEntries(AREA_IDS.map((a) => [a, Math.min(custom[a], base[a])])) as AreaLevels;
     if (encodeAreas(safe) !== encodeAreas(base)) areas[org] = encodeAreas(safe);
   }
-  const out: Claims = Object.keys(areas).length ? { ...c, areas } : { master: false, orgs: c.orgs };
+  const out: Claims = Object.keys(areas).length ? { master: false, orgs: c.orgs, areas } : { master: false, orgs: c.orgs };
   if (JSON.stringify(out).length > CLAIMS_MAX) throw new Error(ERR_CLAIMS_TOO_BIG);
   console.warn('[acesso] token grande demais: liberações extras ficaram de fora para uma pessoa');
   return out;
@@ -276,11 +304,17 @@ async function claimsFor(h: AdminHandles, uid: string, email: string | null, doc
 }
 
 async function orgClaims(h: AdminHandles, docs: DocumentSnapshot[]): Promise<Claims> {
-  const members = docs.map((d) => ({ ...toMember(d), areaOverrides: d.get('areaOverrides') }));
+  const members = docs.map((d) => ({
+    ...toMember(d),
+    areaOverrides: d.get('areaOverrides'),
+    accessProfileId: d.get('accessProfileId'),
+    permissionOverrides: d.get('permissionOverrides'),
+  }));
   const orgIds = [...new Set(members.map((m) => m.orgId).filter((o) => o && !o.includes('/')))];
   const orgDocs = await Promise.all(orgIds.map((o) => h.db.doc(`organizations/${o}`).get()));
   const defaults = Object.fromEntries(orgDocs.map((d, i) => [orgIds[i], d.exists ? d.get('areaDefaults') : undefined]));
-  return claimsFromMembers(members, defaults);
+  const profiles = Object.fromEntries(orgDocs.map((d, i) => [orgIds[i], d.exists ? d.get('accessProfiles') : undefined]));
+  return claimsFromMembers(members, defaults, profiles);
 }
 
 // Password users (uid member_<id>) carry exactly their own active doc; no email lookup, no binding.
