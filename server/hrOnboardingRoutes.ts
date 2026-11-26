@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import express, { type Request, type Response, type Router } from 'express';
 import { getAdmin, type AdminHandles } from './firebaseAdmin';
-import { requireArea } from './authMiddleware';
+import { requireModuleAccess } from './authMiddleware.ts';
 
 const COLLECTION = 'hr_onboardings';
 const ALLOWED_DOC_KEYS = new Set([
