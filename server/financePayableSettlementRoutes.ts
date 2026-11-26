@@ -10,7 +10,7 @@ import {
   validateFinancePayableSettlementRequest,
   settlementRequestMatches,
 } from '../src/services/financePayableSettlementRules.ts';
-import { areaLevelOf, requireArea, requireRole } from './authMiddleware.ts';
+import { areaLevelOf, requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -32,7 +32,7 @@ const settlementPermission: RequestHandler = (req, res, next) => {
 
 export function createFinancePayableSettlementRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireArea('financeiro', 1), settlementPermission, async (req: Request, res: Response) => {
+  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireModuleAccess('financeiro-pagar', 1), settlementPermission, async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const payableId = req.body?.payableId;
     const actor = req.user;
