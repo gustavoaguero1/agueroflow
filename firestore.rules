@@ -535,19 +535,24 @@ service cloud.firestore {
                   : (coll in ['collective_assets', 'collective_asset_categories', 'collective_asset_workers'] ? 'bens-lista'
                     : (coll in ['collective_asset_movements'] ? 'bens-movimentacoes'
                       : (coll in ['collective_asset_services'] ? 'bens-manutencoes'
-                        : (coll.matches('commercial_.*') ? 'comercial-funil'
-                          : (coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? 'rh-funcionarios'
-                            : (coll in ['field_worker_pay'] ? 'rh-holerites'
-                              : (coll in ['items', 'item_categories'] ? 'pecas-catalogo'
-                                : (coll in ['stock_balances', 'stock_movements'] ? 'estoque'
-                                  : (coll in ['purchasing_orders'] ? 'compras-pedidos'
-                                    : (coll in ['purchasing_quotations'] ? 'compras-cotacoes'
-                                      : (coll in ['purchasing_requisitions'] ? 'compras-requisicoes'
-                                        : (coll in ['purchasing_receipts'] ? 'compras-recebimento'
-                                          : (coll in ['purchasing_suppliers'] ? 'compras-fornecedores'
-                                            : (coll in ['travel_requests'] ? 'viagens-solicitacoes'
-                                              : (coll in ['travel_searches'] ? 'viagens-busca'
-                                                : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? 'estrutura' : ''))))))))))))))));
+                        : (coll == 'commercial_proposals' ? 'comercial-funil'
+                          : (coll in ['commercial_proposal_items', 'commercial_cost_compositions'] ? 'comercial-composicao'
+                            : (coll == 'commercial_materials' ? 'comercial-materiais'
+                              : (coll == 'commercial_clients' ? 'comercial-painel'
+                                : (coll == 'commercial_imports' ? 'comercial-importacoes'
+                                  : (coll.matches('commercial_.*') ? 'comercial-funil'
+                                    : (coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? 'rh-funcionarios'
+                                      : (coll in ['field_worker_pay'] ? 'rh-holerites'
+                                        : (coll in ['items', 'item_categories'] ? 'pecas-catalogo'
+                                          : (coll in ['stock_balances', 'stock_movements'] ? 'estoque'
+                                            : (coll in ['purchasing_orders'] ? 'compras-pedidos'
+                                              : (coll in ['purchasing_quotations'] ? 'compras-cotacoes'
+                                                : (coll in ['purchasing_requisitions'] ? 'compras-requisicoes'
+                                                  : (coll in ['purchasing_receipts'] ? 'compras-recebimento'
+                                                    : (coll in ['purchasing_suppliers'] ? 'compras-fornecedores'
+                                                      : (coll in ['travel_requests'] ? 'viagens-solicitacoes'
+                                                        : (coll in ['travel_searches'] ? 'viagens-busca'
+                                                          : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? 'estrutura' : ''))))))))))))))))))))))));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
@@ -565,12 +570,18 @@ service cloud.firestore {
                   : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 1))))));
       }
       function areaWrite(d) {
-        return coll == 'projects'
-          ? (moduleOk(orgOf(d), 'obras', A_OPS(), 2) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 2))
-          : (coll in ['items', 'item_categories'] ? moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 2)
-            : (coll in ['stock_balances', 'stock_movements']
-              ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 2) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 2))
-              : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 2))));
+        let approvedNow = coll == 'commercial_proposals'
+          && d.get('status', '') == 'aprovada'
+          && resource.data.get('status', '') != 'aprovada';
+        return approvedNow
+          ? moduleOk(orgOf(resource.data), 'comercial-revisao', A_COM(), 3)
+          : (coll == 'projects'
+            ? (moduleOk(orgOf(d), 'obras', A_OPS(), 2) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 2))
+            : (coll in ['items', 'item_categories']
+              ? (moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 2) || moduleOk(orgOf(d), 'comercial-materiais', A_COM(), 2))
+              : (coll in ['stock_balances', 'stock_movements']
+                ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 2) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 2))
+                : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 2)))));
       }
       function projectUnitValid(d) {
         let unitId = d.get('unitId', '');
@@ -1251,10 +1262,11 @@ service cloud.firestore {
       allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
       function perOrgArea(lvl) { return coll != 'commercial_policies' || moduleOk(docId, 'comercial-configuracoes', A_COM(), lvl); }
-      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgWriteArea() { return coll != 'commercial_policies' || moduleOk(docId, 'comercial-configuracoes', A_COM(), 4); }
+      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgWriteArea()
         && request.resource.data.get('orgId', docId) == docId
         && request.resource.data.get('organizationId', docId) == docId; }
-      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgWriteArea()
         && (request.method == 'delete'
           || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
