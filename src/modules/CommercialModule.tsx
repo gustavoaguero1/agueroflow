@@ -145,7 +145,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     setSelectedProposal(proposal);
     const items = await getProposalItems(proposal.id);
     setSelectedProposalItems(items);
-    setTab('comercial-revisao');
+    setTab(moduleLevel('comercial-revisao') >= 1 ? 'comercial-revisao' : 'comercial-painel');
   };
 
   // Handle Open Detail Modal
@@ -187,12 +187,16 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     { id: 'comercial-configuracoes' as CommercialSubSection, label: 'Configurações Comerciais', icon: Settings },
     { id: 'comercial-relatorios' as CommercialSubSection, label: 'Relatórios', icon: FileBarChart },
   ];
+  const visibleNavTabs = useMemo(() => navTabs.filter((tab) => moduleLevel(tab.id) >= 1), [moduleLevel]);
+  useEffect(() => {
+    if (visibleNavTabs.length && !visibleNavTabs.some((tab) => tab.id === currentTab)) setTab(visibleNavTabs[0].id);
+  }, [visibleNavTabs, currentTab]);
 
   return (
     <div className="space-y-6">
       {/* Submenu Tabs Bar */}
       <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-1.5 shadow-xl flex items-center overflow-x-auto gap-1">
-        {navTabs.map((tab) => {
+        {visibleNavTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
           return (
