@@ -40,6 +40,7 @@ import {
 import { readSidebarCollapsed, writeSidebarCollapsed, isToggleSidebarShortcut } from './sidebarPref';
 import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
+import { NotificationsBell } from './NotificationsBell';
 import { useTheme } from '../../contexts/ThemeContext';
 import { areaOfSection, visibleNav } from '../../permissions/areas';
 
@@ -1090,6 +1091,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 </select>
               </div>
             )}
+
+            {/* Central de Pendências Acionáveis */}
+            <NotificationsBell onNavigate={onNavigate} />
 
             {/* Theme Toggle (strictly Claro / Escuro) */}
             <button

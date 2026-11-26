@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { NavSection } from '../components/layout/AppLayout';
 import { PendingCenter } from '../components/dashboard/PendingCenter';
+import { AdaptivePersonaBanner } from '../components/dashboard/AdaptivePersonaBanner';
 import { todaySaoPaulo } from '../services/pendingService';
 import { computeDashboardDataCoverage } from '../services/dashboardCoverageRules';
 import type { Project } from '../types/project';
@@ -570,6 +571,15 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
           </label>
         </div>
       </div>
+
+      {/* Painel Contextual por Perfil / Permissão */}
+      <AdaptivePersonaBanner
+        onNavigate={onNavigate}
+        delayedOrdersCount={delayedOrdersCount}
+        inProgressOrdersCount={inProgressOrders}
+        pendingChecklistsCount={pendingChecklistsCount}
+        criticalItemsCount={criticalItemsCount}
+      />
 
       {/* Primary Operational KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">

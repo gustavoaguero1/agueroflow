@@ -20,10 +20,11 @@ import {
 import { PredictiveAnalysisView } from '../components/reports/PredictiveAnalysisView';
 import { OperationalExportModal } from '../components/reports/OperationalExportModal';
 import { ProjectResultReportView } from '../components/reports/ProjectResultReportView';
+import { AssemblyProductivityView } from '../components/reports/AssemblyProductivityView';
 
 export const ReportsModule: React.FC = () => {
   const { organization, units } = useAuth();
-  const [activeTab, setActiveTab] = useState<'preditiva' | 'resultado-obra' | 'geral'>('preditiva');
+  const [activeTab, setActiveTab] = useState<'preditiva' | 'resultado-obra' | 'produtividade' | 'geral'>('preditiva');
   const [showExportModal, setShowExportModal] = useState(false);
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
@@ -100,54 +101,59 @@ export const ReportsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Header & Tab Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-4 rounded-2xl">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Inteligência Operacional & Relatórios</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Confiabilidade preditiva, análise de falhas (MTBF/MTTR) e indicadores executivos em tempo real.
+          <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Inteligência Operacional & Relatórios</h2>
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
+            Confiabilidade preditiva, Resultado por Obra (EAC/Curva S), produtividade real (HH/un) e indicadores executivos.
           </p>
         </div>
 
         {/* Right Action Bar */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Tab Switcher */}
-          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center af-seg p-1 rounded-xl gap-0.5 overflow-x-auto custom-scrollbar">
             <button
               type="button"
               onClick={() => setActiveTab('preditiva')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-                activeTab === 'preditiva'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'preditiva' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <Zap className="w-3.5 h-3.5 opacity-80" />
               <span>Análise Preditiva (MTBF)</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('resultado-obra')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-                activeTab === 'resultado-obra'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'resultado-obra' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5 text-cyan-300" />
+              <Building2 className="w-3.5 h-3.5 opacity-80" />
               <span>Resultado por Obra</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setActiveTab('geral')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-                activeTab === 'geral'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
+              onClick={() => setActiveTab('produtividade')}
+              className={`px-3 py-1.5 rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'produtividade' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
-              <FileBarChart className="w-3.5 h-3.5" />
+              <TrendingUp className="w-3.5 h-3.5 opacity-80" />
+              <span>Produtividade (HH/un)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('geral')}
+              className={`px-3 py-1.5 rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'geral' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
+              }`}
+            >
+              <FileBarChart className="w-3.5 h-3.5 opacity-80" />
               <span>Indicadores Gerais</span>
             </button>
           </div>
@@ -156,7 +162,7 @@ export const ReportsModule: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
             title="Exportar relatórios em PDF ou Excel com filtros e colunas personalizadas"
           >
             <Download className="w-3.5 h-3.5" />
@@ -176,9 +182,14 @@ export const ReportsModule: React.FC = () => {
         />
       )}
 
-      {/* Tab 2: Resultado por Obra (Previsto x Comprometido x Realizado) */}
+      {/* Tab 2: Resultado por Obra (Previsto x Comprometido x Realizado + Curva S) */}
       {activeTab === 'resultado-obra' && organization && (
         <ProjectResultReportView orgId={organization.id} orgSlug={organization.slug} />
+      )}
+
+      {/* Tab 3: Produtividade Real de Montagem (HH/junta, HH/peça) */}
+      {activeTab === 'produtividade' && organization && (
+        <AssemblyProductivityView orgId={organization.id} />
       )}
 
       {/* Tab 2: General KPIs and Breakdowns */}
