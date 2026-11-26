@@ -227,7 +227,7 @@ test('non-conforming or pending results require findings before submission', asy
 test('incomplete legacy inspection cannot be approved even with explicit approval permission', async () => {
   await withApi('Supervisor', {
     ...seed('aguardando_revisao'),
-    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { inspecoes: 3 } },
+    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { inspecoes: 3 }, explicitModules: ['inspecoes'] },
     ['inspections/' + inspection.id]: { ...inspection, status: 'aguardando_revisao', completedAt: undefined },
   }, async (base, docs) => {
     const response = await postTransition(base, {
