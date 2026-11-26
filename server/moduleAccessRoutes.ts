@@ -26,11 +26,11 @@ export function createModuleAccessRouter(): Router {
     if (!validId(orgId) || (!req.user?.master && !req.user?.orgs?.[orgId])) {
       return responseError(res, 403, 'Empresa não autorizada.');
     }
-    if (req.user?.master) return res.json({ ok: true, modules: {} });
+    if (req.user?.master) return res.json({ ok: true, modules: {}, explicitModules: [] });
     const store = db();
     if (!store) return responseError(res, 503, 'Serviço de autenticação indisponível.');
     const snap = await store.doc(`org_module_access/${moduleAccessDocId(orgId, req.user!.uid)}`).get();
-    return res.json({ ok: true, modules: snap.exists ? snap.get('modules') || {} : {} });
+    return res.json({ ok: true, modules: snap.exists ? snap.get('modules') || {} : {}, explicitModules: snap.exists ? snap.get('explicitModules') || [] : [] });
   }));
 
   router.get('/module-access', wrap(async (req, res) => {
