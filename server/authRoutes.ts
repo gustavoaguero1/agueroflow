@@ -1,6 +1,6 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
-import { verifyToken } from './authMiddleware.ts';
+import { moduleLevelOf, verifyToken } from './authMiddleware.ts';
 import {
   credentialLogin, syncSession, setPassword, verifyMemberPassword, issueFirstAccessToken,
   checkFirstAccessToken, completeFirstAccess, refreshMemberClaims, ERR_SHORT_NEW, ERR_NO_MEMBER,
@@ -32,8 +32,10 @@ async function canManage(h: AdminHandles, req: Request, memberId: string): Promi
   const snap = await h.db.doc(`org_members/${memberId}`).get();
   const org = snap.get('orgId') || snap.get('organizationId');
   const role = typeof org === 'string' ? u.orgs[org] : undefined;
-  // A Gerente must not take over an Admin account (password or first-access link).
-  return role === 'Admin' || (role === 'Gerente' && snap.get('role') !== 'Admin');
+  if (typeof org !== 'string' || !role) return false;
+  // User administration is an explicit capability. A non-Admin can never manage an Admin account.
+  if (snap.get('role') === 'Admin' && role !== 'Admin') return false;
+  return await moduleLevelOf(u, org, 'estrutura', () => h) >= 4;
 }
 
 const BUSINESS_ERRORS = new Set([ERR_SHORT_NEW, ERR_NO_MEMBER]);
