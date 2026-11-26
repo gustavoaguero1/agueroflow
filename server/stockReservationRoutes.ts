@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   buildShortageRequisition,
@@ -29,7 +29,7 @@ export function createStockReservationRouter(getH: () => AdminHandles | null = g
    * Reserves available stock for a Work Order / Project and automatically generates
    * a Purchase Requisition (RC) for any shortage when autoCreateRequisition !== false.
    */
-  router.post('/reserve', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/reserve', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const body = req.body ?? {};
@@ -175,7 +175,7 @@ export function createStockReservationRouter(getH: () => AdminHandles | null = g
     }
   });
 
-  router.post('/:reservationId/release', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:reservationId/release', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const reservationId = req.params.reservationId;
     if (!orgId || !validId(reservationId)) {
@@ -209,7 +209,7 @@ export function createStockReservationRouter(getH: () => AdminHandles | null = g
     }
   });
 
-  router.post('/:reservationId/consume', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:reservationId/consume', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const reservationId = req.params.reservationId;
