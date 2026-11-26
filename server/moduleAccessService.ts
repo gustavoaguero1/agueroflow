@@ -57,8 +57,15 @@ export async function syncModuleAccessForOrganization(h: AdminHandles, orgId: st
     members.where('organizationId', '==', orgId).where('active', '==', true).get(),
   ]);
   const docs = new Map([...byOrg.docs, ...byLegacyOrg.docs].map((d) => [d.id, d]));
-  const results = await Promise.allSettled([...docs.keys()].map((id) => syncModuleAccessForMember(h, id)));
-  return results.filter((r) => r.status === 'rejected').length;
+  const ids = [...docs.keys()];
+  const results = await Promise.allSettled(ids.map((id) => syncModuleAccessForMember(h, id)));
+  // Notifica os clientes conectados para que leiam o grant atualizado sem novo login.
+  const stamp = new Date().toISOString();
+  const stamps = await Promise.allSettled(ids.map((id) =>
+    members.doc(id).update({ areasUpdatedAt: stamp, updatedAt: stamp }),
+  ));
+  return results.filter((r) => r.status === 'rejected').length
+    + stamps.filter((r) => r.status === 'rejected').length;
 }
 
 export function resolvedMemberModuleAccess(
