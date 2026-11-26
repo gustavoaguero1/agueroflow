@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireModuleAccess } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   buildReceivableFromApprovedBulletin,
@@ -213,11 +213,10 @@ export function createMeasurementRouter(getH: () => AdminHandles | null = getAdm
     }
 
     const isDecision = ['aprovado', 'aprovado_parcial', 'glosado', 'devolvido'].includes(targetStatus);
-    const callerRole = actor.orgs?.[orgId];
-    if (isDecision && !actor.master && !['Admin', 'Gerente'].includes(String(callerRole || ''))) {
+    if (isDecision && await moduleLevelOf(actor, orgId, 'obras-medicoes') < 3) {
       return res.status(403).json({
         ok: false,
-        error: 'Aprovação, aprovação parcial, glosa ou devolução de medição exigem perfil Admin ou Gerente.',
+        error: 'Aprovação, glosa ou devolução de medição exigem nível Aprovar em Medições & Boletins.',
       });
     }
 
