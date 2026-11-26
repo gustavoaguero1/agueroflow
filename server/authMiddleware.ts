@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
 import type { Auth } from 'firebase-admin/auth';
-import { getAdmin } from './firebaseAdmin.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import type { Role } from './authService.ts';
 import { areaOfSection, decodeAreas, resolveAreas, type AreaId, type AreaLevel } from '../src/permissions/areas.ts';
 
@@ -127,13 +127,16 @@ export async function moduleLevelOf(
   u: AuthUser | undefined,
   org: string | undefined | null,
   section: string,
+  getH: () => AdminHandles | null = getAdmin,
 ): Promise<number> {
   if (!u || !org || (!u.master && !u.orgs?.[org])) return 0;
   if (u.master) return 4;
-  const db = getAdmin()?.db;
+  const db = getH()?.db;
   if (!db) return 0; // falha fechada
-  const snap = await db.doc(`org_module_access/${org}__${u.uid}`).get();
-  const configured = snap.exists ? snap.get(`modules.${section}`) : undefined;
+  const snap = await db.collection('org_module_access').doc(`${org}__${u.uid}`).get();
+  const grant = snap.exists ? snap.data() : undefined;
+  const modules = grant?.modules && typeof grant.modules === 'object' ? grant.modules as Record<string, unknown> : {};
+  const configured = modules[section];
   if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) {
     return configured;
   }
@@ -142,14 +145,18 @@ export async function moduleLevelOf(
 }
 
 /** Autoriza acesso a uma tela/ação usando os cinco níveis cumulativos (0–4). */
-export function requireModuleAccess(section: string, level: 1 | 2 | 3 | 4): RequestHandler {
+export function requireModuleAccess(
+  section: string,
+  level: 1 | 2 | 3 | 4,
+  getH: () => AdminHandles | null = getAdmin,
+): RequestHandler {
   return async (req, res, next) => {
     const u = req.user;
     if (!u) return res.status(401).json({ error: 'unauthenticated' });
     const org = orgIdOf(req);
     if (!org || (!u.master && !u.orgs?.[org])) return res.status(403).json({ error: 'forbidden' });
     try {
-      if (await moduleLevelOf(u, org, section) < level) {
+      if (await moduleLevelOf(u, org, section, getH) < level) {
         return res.status(403).json({ error: 'forbidden', permission: section, requiredLevel: level });
       }
       req.orgId = org;
