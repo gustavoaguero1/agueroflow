@@ -46,12 +46,13 @@ async function withApi(
   seed: Record<string, unknown>,
   action: (base: string, docs: Map<string, unknown>) => Promise<void>,
   areas?: Record<string, string>,
+  uid = 'settler1',
 ) {
   const mocked = mockAdmin(seed);
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).user = { uid: 'settler1', email: 'settler@empresa.com', master: false, orgs: { org_a: role }, ...(areas ? { areas } : {}) };
+    (req as any).user = { uid, email: 'settler@empresa.com', master: false, orgs: { org_a: role }, ...(areas ? { areas } : {}) };
     next();
   });
   app.use('/api/finance/payable-settlements', createFinancePayableSettlementRouter(() => mocked.handles));
@@ -121,13 +122,13 @@ test('multiple partial payments reduce the balance and only the final payment ma
   });
 });
 
-test('approved discount requires a reason and is allowed only to Admin/Gerente Financeiro level 2', async () => {
+test('approved discount requires a reason and an explicit Financeiro approval grant', async () => {
   const discountRequest = { ...request, paymentAmount: 1000, discountAmount: 100, discountReason: 'Crédito negociado com fornecedor.' };
   await withApi('Supervisor', { ['finance_payables/' + payable.id]: payable }, async (base) => {
     const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0001' });
     assert.equal(response.status, 403);
   });
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable, 'org_module_access/org_a__settler1': { orgId: 'org_a', uid: 'settler1', modules: { 'financeiro-pagar': 3 } } }, async (base, docs) => {
     const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0002' });
     assert.equal(response.status, 201);
     const eventId = financePayableSettlementId('org_a', payable.id, 'discount_0002');
@@ -141,9 +142,9 @@ test('approved discount requires a reason and is allowed only to Admin/Gerente F
   });
 });
 
-test('discount-only settlement can close the balance without inventing a bank payment', async () => {
+test('discount-only settlement can close the balance with explicit approval permission', async () => {
   const discountOnly = { ...request, idempotencyKey: 'writeoff_0001', paymentAmount: 0, discountAmount: 5400, paymentMethod: undefined, discountReason: 'Crédito integral aprovado pela gerência.' };
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable }, async (base, docs) => {
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable, 'org_module_access/org_a__settler1': { orgId: 'org_a', uid: 'settler1', modules: { 'financeiro-pagar': 3 } } }, async (base, docs) => {
     const response = await post(base, discountOnly);
     assert.equal(response.status, 201);
     const event = docs.get('finance_payable_settlements/' + financePayableSettlementId('org_a', payable.id, 'writeoff_0001')) as Record<string, any>;
