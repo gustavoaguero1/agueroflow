@@ -45,6 +45,7 @@ interface AuthContextType {
   areaLevel: (area: AreaId) => AreaLevel;
   canSeeSection: (section: string) => boolean;
   moduleAccess: Record<string, number>;
+  moduleAccessExplicit: string[];
   moduleLevel: (section: string) => number;
 
   // Global Context Multiempresa (Hierarchy: Org -> Contract -> Unit)
@@ -1053,6 +1054,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Acesso por área: vem do token (o servidor grava); sem áreas no token, padrão do perfil.
   const [tokenAreas, setTokenAreas] = useState<Record<string, string>>({});
   const [moduleAccess, setModuleAccess] = useState<Record<string, number>>({});
+  const [moduleAccessExplicit, setModuleAccessExplicit] = useState<string[]>([]);
   const tokenIssuedAt = useRef<string>('');
   const lastAreasStamp = useRef<unknown>(undefined); // último areasUpdatedAt visto no cadastro da pessoa
   const readModuleAccess = useCallback(async (u: User, orgId: string): Promise<void> => {
@@ -1061,12 +1063,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const j = await r.json().catch(() => ({}));
       if (r.ok && j?.ok && j.modules && typeof j.modules === 'object') {
         setModuleAccess(j.modules as Record<string, number>);
+        setModuleAccessExplicit(Array.isArray(j.explicitModules) ? j.explicitModules.filter((x: unknown): x is string => typeof x === 'string') : []);
       } else {
         setModuleAccess({});
+        setModuleAccessExplicit([]);
       }
     } catch (err) {
       console.warn('Não foi possível carregar as permissões por submódulo:', err);
       setModuleAccess({});
+      setModuleAccessExplicit([]);
     }
   }, []);
   const readTokenAreas = useCallback(async (u: User, force = false): Promise<void> => {
@@ -1089,9 +1094,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user || !organization?.id) {
       setModuleAccess({});
+      setModuleAccessExplicit([]);
       return;
     }
     setModuleAccess({});
+    setModuleAccessExplicit([]);
     readModuleAccess(user, organization.id);
   }, [user?.uid, organization?.id, readModuleAccess]);
   // Quando o Admin muda o acesso da pessoa, o servidor marca areasUpdatedAt: renova o login aqui.
@@ -1111,7 +1118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const areaLevel = (area: AreaId): AreaLevel => areaLevels[area];
   const moduleLevel = (section: string): number => {
     const configured = moduleAccess[section];
-    if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured;
+    if (moduleAccessExplicit.includes(section) && typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured;
     const area = areaOfSection(section);
     return area ? areaLevels[area] : 1;
   };
@@ -1140,6 +1147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         areaLevel,
         canSeeSection: canSeeSectionFn,
         moduleAccess,
+        moduleAccessExplicit,
         moduleLevel,
         selectedUnitId,
         setSelectedUnitId,
