@@ -100,6 +100,23 @@ test('Checklists e inspeções exigem acesso à área Operações', async () => 
   await assertFails(getDoc(doc(noOperations, 'inspections/insp1')));
 });
 
+test('submódulo bloqueado para uma pessoa não afeta os outros submódulos da mesma área', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'work_orders/wo_granular'), { orgId: 'org_a', title: 'OS restrita' });
+    await setDoc(doc(db, 'org_module_access/org_a__member_op'), {
+      orgId: 'org_a',
+      uid: 'member_op',
+      modules: { ordens: 0 },
+    });
+  });
+
+  const op = as('member_op', 'Operacional'); // Operações geral = 2
+  await assertFails(getDoc(doc(op, 'work_orders/wo_granular'))); // Ordens revogada individualmente
+  await assertSucceeds(getDoc(doc(op, 'checklist_templates/tpl1'))); // Checklists continuam herdando a área
+  await assertFails(getDoc(doc(op, 'org_module_access/org_a__member_op'))); // Grant nunca é lido pelo cliente
+});
+
 test('acesso por área só muda pelo servidor', async () => {
   const admin = as('member_a', 'Admin');
   await assertFails(updateDoc(doc(admin, 'organizations/org_a'), { areaDefaults: { Supervisor: { rh: 2 } } }));
