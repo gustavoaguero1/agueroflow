@@ -25,8 +25,12 @@ service firebase.storage {
     }
     function moduleLevel(orgId, section, areaIndex) {
       let p = /databases/(default)/documents/org_module_access/$(orgId + '__' + request.auth.uid);
-      let modules = firestore.exists(p) ? firestore.get(p).data.get('modules', {}) : {};
-      return modules.keys().hasAny([section]) ? int(modules[section]) : int(areaCode(orgId)[areaIndex:areaIndex + 1]);
+      let grant = firestore.exists(p) ? firestore.get(p).data : {};
+      let modules = grant.get('modules', {});
+      let explicitModules = grant.get('explicitModules', []);
+      return explicitModules.hasAny([section])
+        ? int(modules[section])
+        : int(areaCode(orgId)[areaIndex:areaIndex + 1]);
     }
     function engineeringCanRead(orgId, section) {
       return isMaster() || (isMember(orgId) && moduleLevel(orgId, section, 1) >= 1);
