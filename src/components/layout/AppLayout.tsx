@@ -41,7 +41,8 @@ import { readSidebarCollapsed, writeSidebarCollapsed, isToggleSidebarShortcut } 
 import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { useTheme } from '../../contexts/ThemeContext';
-import { areaOfSection, visibleNav } from '../../permissions/areas';
+import { areaOfSection } from '../../permissions/areas';
+import { visibleNavWithPermissions } from '../../permissions/granular';
 
 export type NavSection =
   | 'painel'
@@ -176,6 +177,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     isManagerOrAbove,
     canViewFinancials,
     areaLevels,
+    canSeeSection,
     selectedUnitId,
     setSelectedUnitId,
     selectedContractId,
@@ -468,8 +470,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       ],
     },
   ];
-  // Só o que a pessoa pode ver (acesso por área; Configurações → Acessos por área).
-  const navItems = visibleNav(allNavItems, areaLevels);
+  // Cada submódulo aparece de acordo com a permissão individual ou modelo atribuído.
+  const navItems = visibleNavWithPermissions(allNavItems, canSeeSection);
   const currentArea = areaOfSection(currentSection);
 
   const getSectionTitle = (id: NavSection) => {
