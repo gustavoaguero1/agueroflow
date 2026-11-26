@@ -1266,8 +1266,10 @@ service cloud.firestore {
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
     match /org_module_access/{id} {
-      // Grants de submódulos contêm permissões privadas; leitura e escrita são exclusivas do Admin SDK.
-      allow read, write: if false;
+      // Cada usuário pode ler somente o próprio grant. Escritas continuam exclusivas do Admin SDK.
+      allow read: if signedIn() && resource.data.get('uid', '') == request.auth.uid
+        && isMemberOf(resource.data.get('orgId', ''));
+      allow write: if false;
     }
 
     match /nfe_documents/{id} {
