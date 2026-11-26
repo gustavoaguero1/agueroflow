@@ -4,7 +4,7 @@ import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
 import { safetyPermitCode, validateSafetyPermitInput } from '../src/services/safetyManagement.ts';
 import type { SafetyPermitEventType } from '../src/types/safety.ts';
-import { requireModuleAccess } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class SafetyRouteError extends Error {
@@ -16,12 +16,6 @@ const validId = (value: unknown): value is string =>
 
 const managerEvents = new Set(['approved', 'rejected', 'closed', 'cancelled']);
 const supportedEvents = new Set(['submitted_for_approval', ...managerEvents, 'note_added']);
-
-function canManagePermits(req: Request, orgId: string): boolean {
-  const actor = req.user;
-  if (!actor) return false;
-  return actor.master || ['Admin', 'Gerente', 'Supervisor'].includes(actor.orgs?.[orgId] || '');
-}
 
 function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): T[] {
   return snap.docs.map((item) => ({ ...item.data(), id: item.id }) as unknown as T);
@@ -173,8 +167,8 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     if (typeof eventType !== 'string' || !supportedEvents.has(eventType)) {
       return res.status(400).json({ ok: false, error: 'Movimentação de APR/PT inválida.' });
     }
-    if (managerEvents.has(eventType) && !canManagePermits(req, orgId)) {
-      return res.status(403).json({ ok: false, error: 'Somente Supervisor, Gerente ou Admin podem concluir esta movimentação.' });
+    if (managerEvents.has(eventType) && await moduleLevelOf(actor, orgId, 'ordens') < 3) {
+      return res.status(403).json({ ok: false, error: 'Esta movimentação exige nível Aprovar em Ordens de Serviço.' });
     }
     const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
     if (['rejected', 'closed', 'cancelled'].includes(eventType) && comment.length < 5) {
@@ -194,9 +188,6 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         const state = { ...(stateSnap.data() || {}), id: stateSnap.id } as Record<string, any>;
         if (permit.orgId !== orgId || state.orgId !== orgId || state.permitId !== permitId) {
           throw new SafetyRouteError(403, 'APR/PT não pertence à empresa selecionada.');
-        }
-        if (managerEvents.has(eventType) && !canManagePermits(req, orgId)) {
-          throw new SafetyRouteError(403, 'Perfil não autorizado para esta movimentação.');
         }
         if (['submitted_for_approval', 'approved'].includes(eventType)
           && (!permit.validUntil || new Date(permit.validUntil).getTime() <= Date.now())) {
