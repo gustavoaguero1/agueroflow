@@ -439,6 +439,14 @@ service cloud.firestore {
     // Demais coleções: área Operações (ver lê, editar grava).
     match /ops_orgs/{orgId}/{coll}/{docId} {
       function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
+      function opsConfigCanWrite() {
+        let modules = moduleMap(orgId);
+        // Mantém os Admin/Gerentes legados quando não há personalização; um grant explícito
+        // substitui essa herança e permite delegar/restringir a administração a qualquer pessoa.
+        return isMaster() || (modules.keys().hasAny(['ops-config'])
+          ? moduleOk(orgId, 'ops-config', A_OPS(), 4)
+          : hasRole(orgId, ['Admin', 'Gerente']));
+      }
       function opsSection() {
         return coll == 'obras' ? 'obras'
           : (coll in ['diarios', 'diario', 'rdo'] ? 'ops-diario'
@@ -452,7 +460,7 @@ service cloud.firestore {
       }
       allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : moduleOk(orgId, opsSection(), A_OPS(), 1);
       allow write: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 2)
-        : (managerOnlyWrite() ? moduleOk(orgId, 'ops-config', A_OPS(), 4) : moduleOk(orgId, opsSection(), A_OPS(), 2));
+        : (managerOnlyWrite() ? opsConfigCanWrite() : moduleOk(orgId, opsSection(), A_OPS(), 2));
     }
 
     // ---- Salário da equipe de campo (fora de field_workers, que toda a Operação lê) ----
