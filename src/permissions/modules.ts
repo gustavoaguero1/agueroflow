@@ -1,4 +1,4 @@
-import { areaOfSection, type AreaId, type AreaLevels } from './areas';
+import { areaOfSection, type AreaLevels } from './areas';
 import type { UserRole } from '../types';
 
 export type ModuleAccessLevel = 0 | 1 | 2 | 3 | 4;
