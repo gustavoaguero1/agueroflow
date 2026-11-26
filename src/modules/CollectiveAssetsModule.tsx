@@ -398,14 +398,14 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
 
         {internalSubSection === 'bens-manutencoes' && (
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl af-seg">
               <button
                 type="button"
                 onClick={() => setMaintenanceSubTab('servicos')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs cursor-pointer ${
                   maintenanceSubTab === 'servicos'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'af-seg-btn-active font-semibold'
+                    : 'af-seg-btn font-medium'
                 }`}
               >
                 Serviços &amp; Calibração
@@ -413,10 +413,10 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setMaintenanceSubTab('cmms')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs cursor-pointer ${
                   maintenanceSubTab === 'cmms'
-                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'af-seg-btn-active font-semibold'
+                    : 'af-seg-btn font-medium'
                 }`}
               >
                 CMMS, Preventivas &amp; Confiabilidade (MTBF/MTTR)

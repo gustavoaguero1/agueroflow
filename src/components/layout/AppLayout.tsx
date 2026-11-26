@@ -667,7 +667,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10] text-[#1D1D1F] dark:text-[#F5F5F7] flex font-sans">
+    <div className="min-h-screen af-canvas text-[#1D1D1F] dark:text-[#F5F5F7] flex font-sans">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
@@ -676,9 +676,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         />
       )}
 
-      {/* Apple Translucent Sidebar */}
+      {/* Apple Liquid Glass Translucent Sidebar */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-[264px] shrink-0 bg-[#FBFBFD]/95 dark:bg-[#161618]/95 backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 ease-out ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-[264px] shrink-0 af-glass border-r flex flex-col justify-between transition-transform duration-200 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${sidebarCollapsed ? 'lg:hidden' : ''}`}
       >
@@ -751,7 +751,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <button
                 type="button"
                 onClick={onOpenMasterPanel}
-                className="mt-2.5 w-full py-1.5 px-2.5 rounded-lg bg-black/[0.045] hover:bg-black/[0.08] dark:bg-white/[0.07] dark:hover:bg-white/[0.12] text-[11px] font-medium text-[#1D1D1F] dark:text-[#F5F5F7] flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+                className="mt-2.5 w-full py-1.5 px-2.5 rounded-lg af-btn-glass text-[11px] font-medium flex items-center justify-center space-x-1.5 cursor-pointer"
               >
                 <LayoutGrid className="w-3.5 h-3.5 text-[#0071E3] dark:text-[#409CFF]" />
                 <span>Painel de Empresas</span>
@@ -767,7 +767,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
             {/* Master Organization Quick Dropdown */}
             {isMaster && showOrgDropdown && organizations.length > 1 && (
-              <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-white dark:bg-[#2C2C2E] border border-black/[0.10] dark:border-white/[0.14] rounded-xl p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.14)] space-y-0.5 text-xs">
+              <div className="absolute left-3 right-3 top-full mt-1.5 z-50 af-glass-strong rounded-2xl p-1.5 space-y-0.5 text-xs">
                 {organizations.map((org) => (
                   <button
                     key={org.id}
@@ -776,9 +776,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                       selectOrganization(org.id);
                       setShowOrgDropdown(false);
                     }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs truncate cursor-pointer transition-colors ${
+                    className={`w-full text-left px-2.5 py-2 rounded-xl text-xs truncate cursor-pointer transition-colors ${
                       organization?.id === org.id
-                        ? 'bg-[#0071E3] text-white font-semibold apple-solid-btn'
+                        ? 'af-btn-primary font-semibold apple-solid-btn'
                         : 'text-[#1D1D1F] dark:text-[#F5F5F7] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'
                     }`}
                   >
@@ -893,9 +893,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                         setSidebarOpen(false);
                       }
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] transition-colors cursor-pointer ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-[10px] text-[13px] transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-[#0071E3] text-white font-semibold shadow-[0_1px_3px_rgba(0,113,227,0.28)] apple-solid-btn'
+                        ? 'af-btn-primary font-semibold apple-solid-btn'
                         : item.highlight
                         ? 'text-[#0071E3] dark:text-[#409CFF] font-medium hover:bg-[#0071E3]/[0.08] dark:hover:bg-[#0A84FF]/15'
                         : 'text-[#424245] dark:text-[#D1D1D6] font-medium hover:bg-black/[0.045] dark:hover:bg-white/[0.07] hover:text-[#1D1D1F] dark:hover:text-white'
@@ -983,8 +983,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Frosted Apple Top Header */}
-        <header className="h-16 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl border-b border-black/[0.08] dark:border-white/[0.08] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 gap-3">
+        {/* Frosted Liquid Glass Top Header */}
+        <header className="h-16 af-glass border-b px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 gap-3">
           <div className="flex items-center space-x-3 min-w-0 shrink-0">
             <button
               type="button"
@@ -1023,12 +1023,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           <button
             type="button"
             onClick={() => setGlobalSearchOpen(true)}
-            className="flex items-center space-x-2.5 bg-black/[0.045] hover:bg-black/[0.07] dark:bg-white/[0.08] dark:hover:bg-white/[0.12] px-3.5 py-2 rounded-xl text-xs text-[#6E6E73] dark:text-[#98989D] hover:text-[#1D1D1F] dark:hover:text-white transition-all cursor-pointer flex-1 max-w-[220px] sm:max-w-xs md:max-w-sm mx-1"
+            className="flex items-center space-x-2.5 af-btn-glass px-3.5 py-2 rounded-xl text-xs text-[#6E6E73] dark:text-[#98989D] cursor-pointer flex-1 max-w-[220px] sm:max-w-xs md:max-w-sm mx-1"
             title="Buscar no sistema (⌘K)"
           >
-            <Search className="w-3.5 h-3.5 shrink-0" />
+            <Search className="w-3.5 h-3.5 shrink-0 text-[#0071E3] dark:text-[#409CFF]" />
             <span className="truncate flex-1 text-left">Buscar OS, peças, checklists...</span>
-            <kbd className="hidden sm:inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-md bg-white dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.10] text-[10px] text-[#6E6E73] dark:text-[#AEAEB2] font-mono shrink-0">
+            <kbd className="hidden sm:inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.10] text-[10px] text-[#6E6E73] dark:text-[#AEAEB2] font-mono shrink-0">
               <span>⌘K</span>
             </kbd>
           </button>
@@ -1037,7 +1037,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           <div className="flex items-center space-x-2 shrink-0">
             {/* Master-only Organization Selector */}
             {isMaster && organizations.length > 1 && (
-              <div className="hidden xl:flex items-center space-x-1.5 bg-black/[0.045] dark:bg-white/[0.08] px-2.5 py-1.5 rounded-xl text-xs">
+              <div className="hidden xl:flex items-center space-x-1.5 af-btn-glass px-2.5 py-1.5 rounded-xl text-xs">
                 <Building className="w-3.5 h-3.5 text-[#0071E3] dark:text-[#409CFF] shrink-0" />
                 <select
                   value={organization?.id || ''}
@@ -1055,7 +1055,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             )}
 
             {/* Unit Selector */}
-            <div className="hidden sm:flex items-center space-x-1.5 bg-black/[0.045] dark:bg-white/[0.08] px-2.5 py-1.5 rounded-xl text-xs">
+            <div className="hidden sm:flex items-center space-x-1.5 af-btn-glass px-2.5 py-1.5 rounded-xl text-xs">
               <Building2 className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#98989D] shrink-0" />
               <select
                 value={selectedUnitId}
@@ -1074,7 +1074,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
             {/* Contract Selector */}
             {contracts.length > 0 && (
-              <div className="hidden lg:flex items-center space-x-1.5 bg-black/[0.045] dark:bg-white/[0.08] px-2.5 py-1.5 rounded-xl text-xs">
+              <div className="hidden lg:flex items-center space-x-1.5 af-btn-glass px-2.5 py-1.5 rounded-xl text-xs">
                 <FileText className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#98989D] shrink-0" />
                 <select
                   value={selectedContractId}
@@ -1091,12 +1091,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               </div>
             )}
 
-            {/* Theme Toggle */}
+            {/* Theme Toggle (strictly Claro / Escuro) */}
             <button
               type="button"
               onClick={toggleTheme}
-              title={theme === 'light' ? 'Alternar para Modo Escuro' : 'Alternar para Modo Claro'}
-              className="inline-flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-xl bg-black/[0.045] hover:bg-black/[0.08] dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-[#1D1D1F] dark:text-[#F5F5F7] font-medium transition-colors cursor-pointer whitespace-nowrap"
+              title={theme === 'light' ? 'Alternar para Escuro' : 'Alternar para Claro'}
+              className="inline-flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-xl af-btn-glass font-medium cursor-pointer whitespace-nowrap"
             >
               {theme === 'light' ? (
                 <>
