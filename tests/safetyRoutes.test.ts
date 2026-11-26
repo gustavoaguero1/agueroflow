@@ -209,6 +209,7 @@ test('manager cannot approve a permit they created', async () => {
   const seed = baseSeed();
   seed['safety_permits/apr_01'] = { ...aprPermit, createdByUid: 'supervisor_2' };
   seed['safety_permit_states/apr_01'] = { ...aprState, status: 'awaiting_approval', latestEventId: 'submitted' };
+  seed['org_module_access/org_a__supervisor_2'] = { orgId: 'org_a', uid: 'supervisor_2', modules: { ordens: 3 } };
   await withApi('Supervisor', seed, async (base, docs) => {
     const response = await post(base, 'apr_01', { eventType: 'approved', previousEventId: 'submitted' });
     assert.equal(response.status, 403);
@@ -256,6 +257,7 @@ function ptSeed(): Seed {
 
 test('PT approval is blocked by missing training even when an employee exists and PPE is issued', async () => {
   const seed = ptSeed();
+  seed['org_module_access/org_a__supervisor_2'] = { orgId: 'org_a', uid: 'supervisor_2', modules: { ordens: 3 } };
   delete seed['safety_training_records/nr35_01'];
   await withApi('Supervisor', seed, async (base, docs) => {
     const response = await post(base, 'pt_01', { eventType: 'approved', previousEventId: 'pt_submitted' });
@@ -267,7 +269,9 @@ test('PT approval is blocked by missing training even when an employee exists an
 });
 
 test('PT approval passes only when RH, required NR, PPE delivery, CA and linked APR are valid', async () => {
-  await withApi('Supervisor', ptSeed(), async (base, docs) => {
+  const seed = ptSeed();
+  seed['org_module_access/org_a__supervisor_2'] = { orgId: 'org_a', uid: 'supervisor_2', modules: { ordens: 3 } };
+  await withApi('Supervisor', seed, async (base, docs) => {
     const response = await post(base, 'pt_01', { eventType: 'approved', previousEventId: 'pt_submitted' });
     assert.equal(response.status, 200);
     assert.equal(docs.get('safety_permit_states/pt_01')?.status, 'approved');
