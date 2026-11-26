@@ -221,9 +221,10 @@ test('non-conforming or pending results require findings before submission', asy
   });
 });
 
-test('incomplete legacy inspection cannot be approved even by a reviewer', async () => {
+test('incomplete legacy inspection cannot be approved even with explicit approval permission', async () => {
   await withApi('Supervisor', {
     ...seed('aguardando_revisao'),
+    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { inspecoes: 3 } },
     ['inspections/' + inspection.id]: { ...inspection, status: 'aguardando_revisao', completedAt: undefined },
   }, async (base, docs) => {
     const response = await postTransition(base, {
@@ -235,7 +236,7 @@ test('incomplete legacy inspection cannot be approved even by a reviewer', async
   });
 });
 
-test('only Admin/Gerente/Supervisor can approve or reject an inspection', async () => {
+test('inspection review is controlled by the configured approval level', async () => {
   await withApi('Operacional', seed('aguardando_revisao'), async (base, docs) => {
     const response = await postTransition(base, {
       orgId: 'org_a', expectedStatus: 'aguardando_revisao', action: 'approve',
@@ -245,7 +246,7 @@ test('only Admin/Gerente/Supervisor can approve or reject an inspection', async 
     assert.equal((docs.get('inspections/' + inspection.id) as Record<string, unknown>).status, 'aguardando_revisao');
   });
 
-  await withApi('Supervisor', seed('aguardando_revisao'), async (base, docs) => {
+  await withApi('Supervisor', { ...seed('aguardando_revisao'), 'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { inspecoes: 3 } } }, async (base, docs) => {
     const response = await postTransition(base, {
       orgId: 'org_a', expectedStatus: 'aguardando_revisao', action: 'approve',
       idempotencyKey: 'inspection_approve_0002',
@@ -259,7 +260,7 @@ test('only Admin/Gerente/Supervisor can approve or reject an inspection', async 
 });
 
 test('rejection requires a reason and a returned inspection can be reopened with a reason', async () => {
-  await withApi('Supervisor', seed('aguardando_revisao'), async (base, docs) => {
+  await withApi('Supervisor', { ...seed('aguardando_revisao'), 'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { inspecoes: 3 } } }, async (base, docs) => {
     const rejected = await postTransition(base, {
       orgId: 'org_a', expectedStatus: 'aguardando_revisao', action: 'reject',
       comment: '   ', idempotencyKey: 'inspection_reject_0001',
