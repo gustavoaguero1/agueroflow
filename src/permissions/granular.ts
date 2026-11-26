@@ -219,7 +219,11 @@ export function encodePermissionMatrix(matrix: Record<AccessSectionId, Permissio
 
 export function decodePermissionMatrix(raw: unknown): Record<AccessSectionId, PermissionGrant> | null {
   const expected = ACCESS_SECTIONS.length * 7;
-  if (typeof raw !== 'string' || raw.length !== expected || !/^[01]{6}[012]+$/.test(raw)) return null;
+  if (typeof raw !== 'string' || raw.length !== expected) return null;
+  for (let i = 0; i < ACCESS_SECTIONS.length; i += 1) {
+    const block = raw.slice(i * 7, i * 7 + 7);
+    if (!/^[01]{6}[012]$/.test(block)) return null;
+  }
   const result = {} as Record<AccessSectionId, PermissionGrant>;
   ACCESS_SECTIONS.forEach((item, index) => {
     const offset = index * 7;
