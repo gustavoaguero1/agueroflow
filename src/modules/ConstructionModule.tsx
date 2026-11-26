@@ -521,145 +521,115 @@ export const ConstructionModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-800 pb-3 overflow-x-auto custom-scrollbar">
+      {/* Tabs — Apple Segmented Control */}
+      <div className="af-seg rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveTab('rdo')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'rdo'
-              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'rdo' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <FileText className="w-4 h-4" />
-          <span>1. Diário de Obra (RDO) ({reports.length})</span>
+          <FileText className="w-3.5 h-3.5 opacity-80" />
+          <span>1. Diário (RDO) ({reports.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('avanco')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'avanco'
-              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'avanco' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <BarChart3 className="w-4 h-4" />
-          <span>2. Avanço Físico & Cronograma ({overallProgress}%)</span>
+          <BarChart3 className="w-3.5 h-3.5 opacity-80" />
+          <span>2. Cronograma ({overallProgress}%)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('equipe_rh')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'equipe_rh'
-              ? 'bg-amber-600 text-slate-950 font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'equipe_rh' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <Users className="w-4 h-4" />
-          <span>3. Equipe & Histórico Salarial</span>
+          <Users className="w-3.5 h-3.5 opacity-80" />
+          <span>3. Equipe & Salários</span>
         </button>
 
         <button
           onClick={() => setActiveTab('apontamento_jornada')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'apontamento_jornada'
-              ? 'bg-emerald-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'apontamento_jornada' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          <span>4. Grade de Horas & Diário de Campo</span>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-            Substituto Excel
-          </span>
+          <FileSpreadsheet className="w-3.5 h-3.5 opacity-80" />
+          <span>4. Grade de Horas</span>
         </button>
 
         <button
           onClick={() => setActiveTab('dashboard_custo')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'dashboard_custo'
-              ? 'bg-emerald-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'dashboard_custo' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <DollarSign className="w-4 h-4 text-emerald-400" />
-          <span>5. Dashboard de Custo Diário</span>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-            Mão de Obra & HE
-          </span>
+          <DollarSign className="w-3.5 h-3.5 opacity-80" />
+          <span>5. Custo Diário</span>
         </button>
 
         <button
           onClick={() => setActiveTab('painel_nrs')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'painel_nrs'
-              ? 'bg-rose-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'painel_nrs' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <Award className="w-4 h-4 text-rose-400" />
-          <span>6. Painel de NRs & Vencimentos</span>
-          <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-950 text-rose-300 border border-rose-800 font-bold">
-            Alertas & Certificados
-          </span>
+          <Award className="w-3.5 h-3.5 opacity-80" />
+          <span>6. Painel NRs</span>
         </button>
+
         <button
           onClick={() => setActiveTab('seguranca_sms')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'seguranca_sms'
-              ? 'bg-rose-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'seguranca_sms' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <ShieldCheck className="w-4 h-4 text-rose-400" />
+          <ShieldCheck className="w-3.5 h-3.5 opacity-80" />
           <span>7. Segurança & SMS</span>
         </button>
 
         <button
           onClick={() => setActiveTab('documentos_engenharia')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'documentos_engenharia'
-              ? 'bg-cyan-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'documentos_engenharia' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <FileText className="w-4 h-4 text-cyan-400" />
-          <span>8. Engenharia & Documentos</span>
+          <FileText className="w-3.5 h-3.5 opacity-80" />
+          <span>8. Engenharia</span>
         </button>
 
         <button
           onClick={() => setActiveTab('qualidade_industrial')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'qualidade_industrial'
-              ? 'bg-orange-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'qualidade_industrial' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <Flame className="w-4 h-4 text-orange-400" />
+          <Flame className="w-3.5 h-3.5 opacity-80" />
           <span>9. Solda, END & Data Book</span>
         </button>
 
         <button
           onClick={() => setActiveTab('fabricacao')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'fabricacao'
-              ? 'bg-indigo-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'fabricacao' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <Factory className="w-4 h-4 text-indigo-400" />
+          <Factory className="w-3.5 h-3.5 opacity-80" />
           <span>10. Fabricação / Oficina</span>
         </button>
 
         <button
           onClick={() => setActiveTab('portal_cliente')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'portal_cliente'
-              ? 'bg-sky-600 text-white font-bold shadow-md'
-              : 'bg-[#121826] text-slate-400 hover:text-white border border-slate-800'
+          className={`px-3.5 py-2 rounded-xl text-xs flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'portal_cliente' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
           }`}
         >
-          <KeyRound className="w-4 h-4 text-sky-400" />
+          <KeyRound className="w-3.5 h-3.5 opacity-80" />
           <span>11. Portal do Cliente</span>
         </button>
       </div>

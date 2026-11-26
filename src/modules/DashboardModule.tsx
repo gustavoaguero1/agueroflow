@@ -386,7 +386,7 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
             <button
               type="button"
               onClick={handleClearFilters}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-black/[0.045] hover:bg-black/[0.08] dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-[#424245] dark:text-[#D1D1D6] text-xs font-medium cursor-pointer transition-colors whitespace-nowrap"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl af-btn-glass text-xs font-medium cursor-pointer whitespace-nowrap"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Limpar Filtros</span>
@@ -395,7 +395,7 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
             <button
               type="button"
               onClick={() => onNavigate('ordens')}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-xs font-semibold shadow-[0_1px_3px_rgba(0,113,227,0.28)] transition-all cursor-pointer whitespace-nowrap apple-solid-btn"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer whitespace-nowrap apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Nova Demanda / OS</span>
@@ -860,7 +860,7 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
 
                     <div className="sm:shrink-0">
                       <span
-                        className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-semibold capitalize ${
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize ${
                           wo.status === 'em_execucao'
                             ? 'bg-[#EBF5FF] dark:bg-[#0A84FF]/15 text-[#0066CC] dark:text-[#409CFF]'
                             : wo.status === 'concluida' || wo.status === 'encerrada'
@@ -868,6 +868,9 @@ export const DashboardModule: React.FC<DashboardModuleProps> = ({ onNavigate }) 
                             : 'bg-[#F5F5F7] dark:bg-[#2C2C2E] text-[#424245] dark:text-[#D1D1D6]'
                         }`}
                       >
+                        {wo.status === 'em_execucao' && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#0071E3] dark:bg-[#409CFF] af-live-dot" />
+                        )}
                         {wo.status.replace('_', ' ')}
                       </span>
                     </div>

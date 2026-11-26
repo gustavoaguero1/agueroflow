@@ -21,18 +21,170 @@ html.light {
   color-scheme: light;
   background-color: #F5F5F7;
   color: #1D1D1F;
+  --af-bg: #F5F5F7;
+  --af-bg-glow-1: rgba(0, 113, 227, 0.065);
+  --af-bg-glow-2: rgba(14, 165, 233, 0.05);
+  --af-surface: #FFFFFF;
+  --af-surface-2: #F5F5F7;
+  --af-glass: rgba(255, 255, 255, 0.74);
+  --af-glass-strong: rgba(255, 255, 255, 0.88);
+  --af-border: rgba(15, 23, 42, 0.08);
+  --af-border-strong: rgba(15, 23, 42, 0.14);
+  --af-specular: rgba(255, 255, 255, 0.88);
+  --af-ink: #1D1D1F;
+  --af-muted: #6E6E73;
+  --af-accent: #0071E3;
+  --af-accent-hover: #0077ED;
+  --af-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(15, 23, 42, 0.045);
+  --af-glass-shadow: 0 10px 32px rgba(15, 23, 42, 0.075), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --af-grid: rgba(15, 23, 42, 0.07);
 }
 
 html.dark {
   color-scheme: dark;
   background-color: #0B0C10;
   color: #F5F5F7;
+  --af-bg: #0B0C10;
+  --af-bg-glow-1: rgba(10, 132, 255, 0.14);
+  --af-bg-glow-2: rgba(56, 189, 248, 0.085);
+  --af-surface: #14161B;
+  --af-surface-2: #1C1F26;
+  --af-glass: rgba(20, 22, 27, 0.72);
+  --af-glass-strong: rgba(26, 29, 36, 0.86);
+  --af-border: rgba(255, 255, 255, 0.085);
+  --af-border-strong: rgba(255, 255, 255, 0.15);
+  --af-specular: rgba(255, 255, 255, 0.12);
+  --af-ink: #F5F5F7;
+  --af-muted: #98989F;
+  --af-accent: #0A84FF;
+  --af-accent-hover: #2E96FF;
+  --af-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --af-glass-shadow: 0 14px 40px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --af-grid: rgba(255, 255, 255, 0.07);
 }
 
 body {
   margin: 0;
   background-color: inherit;
   color: inherit;
+}
+
+/* Subtle ambient tech lighting on main app canvas */
+.af-canvas {
+  background-color: var(--af-bg);
+  background-image:
+    radial-gradient(920px 440px at 14% -6%, var(--af-bg-glow-1), transparent 62%),
+    radial-gradient(760px 380px at 92% 4%, var(--af-bg-glow-2), transparent 62%);
+}
+
+/* Liquid Glass chrome layer (navigation, sticky headers, modals, tooltips) */
+.af-glass {
+  background: var(--af-glass);
+  backdrop-filter: blur(20px) saturate(165%);
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
+  border-color: var(--af-border);
+  box-shadow: var(--af-glass-shadow);
+}
+
+.af-glass-strong {
+  background: var(--af-glass-strong);
+  backdrop-filter: blur(24px) saturate(175%);
+  -webkit-backdrop-filter: blur(24px) saturate(175%);
+  border: 1px solid var(--af-border-strong);
+  box-shadow: var(--af-glass-shadow);
+}
+
+/* Solid high-contrast Apple card for operational & financial data */
+.af-card {
+  background: var(--af-surface);
+  border: 1px solid var(--af-border);
+  box-shadow: var(--af-shadow);
+}
+
+/* Standardized button roles */
+.af-btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--af-accent) 92%, #FFFFFF 8%), var(--af-accent)) !important;
+  color: #FFFFFF !important;
+  border: 1px solid color-mix(in srgb, var(--af-accent) 85%, #000000 15%) !important;
+  box-shadow: 0 1px 2px rgba(0, 113, 227, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.26) !important;
+  transition: transform 120ms ease, filter 150ms ease, box-shadow 150ms ease;
+}
+.af-btn-primary:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.32) !important;
+}
+.af-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.af-btn-glass {
+  background: var(--af-glass-strong) !important;
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  color: var(--af-ink) !important;
+  border: 1px solid var(--af-border-strong) !important;
+  box-shadow: inset 0 1px 0 var(--af-specular), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 120ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+.af-btn-glass:hover {
+  border-color: color-mix(in srgb, var(--af-accent) 45%, var(--af-border-strong)) !important;
+}
+.af-btn-glass:active {
+  transform: scale(0.98);
+}
+
+.af-btn-ai {
+  position: relative;
+  background: var(--af-surface) !important;
+  color: var(--af-ink) !important;
+  border: 1px solid transparent !important;
+  background-clip: padding-box;
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.14) !important;
+  transition: transform 120ms ease, box-shadow 180ms ease;
+}
+.af-btn-ai::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, #0071E3, #38BDF8, #6366F1);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.af-btn-ai:hover {
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.28) !important;
+}
+.af-btn-ai:active {
+  transform: scale(0.98);
+}
+
+/* Apple Segmented Control */
+.af-seg {
+  background: color-mix(in srgb, var(--af-ink) 5%, transparent);
+  border: 1px solid var(--af-border);
+}
+.af-seg-btn {
+  color: var(--af-muted);
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.af-seg-btn:hover {
+  color: var(--af-ink);
+}
+.af-seg-btn-active {
+  background: var(--af-surface) !important;
+  color: var(--af-ink) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), inset 0 1px 0 var(--af-specular) !important;
+}
+
+@keyframes afPulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.25); }
+}
+.af-live-dot {
+  animation: afPulseDot 2s infinite ease-in-out;
 }
 
 /* Crisp tabular numerals for financial & operational metrics */

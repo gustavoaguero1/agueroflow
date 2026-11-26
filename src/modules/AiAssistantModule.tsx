@@ -317,13 +317,13 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
       </div>
 
       {/* Quick Prompts Bar */}
-      <div className="px-4 py-2 bg-slate-900/70 border-t border-slate-800/80 overflow-x-auto flex items-center space-x-2">
+      <div className="px-4 py-2.5 bg-slate-900/70 border-t border-slate-800/80 overflow-x-auto flex items-center space-x-2">
         <span className="text-[10px] text-slate-500 shrink-0 font-semibold uppercase">Sugestões:</span>
         {promptSuggestions.map((sug, i) => (
           <button
             key={i}
             onClick={() => handleSendMessage(sug)}
-            className="text-[11px] px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            className="af-btn-ai text-[11px] px-3 py-1 rounded-full whitespace-nowrap shrink-0 cursor-pointer font-medium"
           >
             {sug}
           </button>
@@ -344,12 +344,12 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Pergunte ao AgueroFlow IA sobre ordens, estoque, manutenção..."
-            className="flex-1 px-4 py-2.5 rounded-xl bg-[#121826] border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-[#121826] border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#0071E3]"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md disabled:opacity-40 transition-all cursor-pointer"
+            className="p-2.5 rounded-xl af-btn-primary disabled:opacity-40 cursor-pointer apple-solid-btn"
           >
             <Send className="w-4 h-4" />
           </button>

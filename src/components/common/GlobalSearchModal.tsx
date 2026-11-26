@@ -332,115 +332,105 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center pt-10 sm:pt-20 px-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-black/40 dark:bg-black/65 backdrop-blur-md flex items-start justify-center pt-10 sm:pt-20 px-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="bg-[#121826] border border-slate-700/80 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col text-slate-100 max-h-[85vh] ring-1 ring-blue-500/20"
+        className="af-glass-strong rounded-3xl max-w-2xl w-full overflow-hidden flex flex-col text-[#1D1D1F] dark:text-[#F5F5F7] max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         {/* Search Input Bar */}
-        <div className="flex items-center px-4 py-3.5 border-b border-slate-800 bg-[#0F1422]">
-          <Search className="w-5 h-5 text-blue-400 shrink-0 mr-3" />
+        <div className="flex items-center px-5 py-4 border-b border-black/[0.08] dark:border-white/[0.08]">
+          <Search className="w-5 h-5 text-[#0071E3] dark:text-[#409CFF] shrink-0 mr-3" />
           <input
             ref={inputRef}
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar por código de OS (ex: OS-2026), peça (ex: Flange), checklist..."
-            className="flex-1 bg-transparent text-sm sm:text-base text-white placeholder:text-slate-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm sm:text-base text-[#1D1D1F] dark:text-white placeholder:text-[#86868B] focus:outline-none border-none shadow-none"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white mr-1"
+              className="p-1 rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-[#6E6E73] dark:text-[#98989D] mr-1.5 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           )}
-          <kbd className="hidden sm:inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-400 font-mono">
+          <kbd className="hidden sm:inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.10] text-[10px] text-[#6E6E73] dark:text-[#AEAEB2] font-mono">
             <span>ESC</span>
           </kbd>
         </div>
 
         {/* Category Pills Filter */}
-        <div className="flex items-center space-x-1.5 px-4 py-2 border-b border-slate-800/80 bg-slate-900/60 overflow-x-auto custom-scrollbar text-xs">
-          <span className="text-slate-500 text-[11px] font-medium mr-1 flex items-center">
+        <div className="flex items-center space-x-1.5 px-4 py-2.5 border-b border-black/[0.06] dark:border-white/[0.08] overflow-x-auto custom-scrollbar text-xs">
+          <span className="text-[#86868B] text-[11px] font-medium mr-1 flex items-center shrink-0">
             <Filter className="w-3 h-3 mr-1" />
             Filtro:
           </span>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('todos')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-              activeCategory === 'todos'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            Todos ({allResults.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('ordens')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1 transition-colors cursor-pointer ${
-              activeCategory === 'ordens'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <span>OS</span>
-            <span className="opacity-70 text-[10px]">({rawOrders.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('pecas')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1 transition-colors cursor-pointer ${
-              activeCategory === 'pecas'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <span>Peças/Itens</span>
-            <span className="opacity-70 text-[10px]">({rawItems.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('checklists')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1 transition-colors cursor-pointer ${
-              activeCategory === 'checklists'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <span>Checklists</span>
-            <span className="opacity-70 text-[10px]">({rawChecklists.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('ocorrencias')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1 transition-colors cursor-pointer ${
-              activeCategory === 'ocorrencias'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <span>Ocorrências</span>
-            <span className="opacity-70 text-[10px]">({rawOccurrences.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategory('obras')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1 transition-colors cursor-pointer ${
-              activeCategory === 'obras'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <span>Obras</span>
-            <span className="opacity-70 text-[10px]">({rawConstructions.length})</span>
-          </button>
+          <div className="af-seg rounded-xl p-0.5 inline-flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveCategory('todos')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap cursor-pointer ${
+                activeCategory === 'todos' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              Todos ({allResults.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('ordens')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex items-center space-x-1 cursor-pointer ${
+                activeCategory === 'ordens' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              <span>OS</span>
+              <span className="opacity-70 text-[10px] tabular-nums">({rawOrders.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('pecas')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex items-center space-x-1 cursor-pointer ${
+                activeCategory === 'pecas' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              <span>Peças/Itens</span>
+              <span className="opacity-70 text-[10px] tabular-nums">({rawItems.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('checklists')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex items-center space-x-1 cursor-pointer ${
+                activeCategory === 'checklists' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              <span>Checklists</span>
+              <span className="opacity-70 text-[10px] tabular-nums">({rawChecklists.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('ocorrencias')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex items-center space-x-1 cursor-pointer ${
+                activeCategory === 'ocorrencias' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              <span>Ocorrências</span>
+              <span className="opacity-70 text-[10px] tabular-nums">({rawOccurrences.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('obras')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap flex items-center space-x-1 cursor-pointer ${
+                activeCategory === 'obras' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn'
+              }`}
+            >
+              <span>Obras</span>
+              <span className="opacity-70 text-[10px] tabular-nums">({rawConstructions.length})</span>
+            </button>
+          </div>
         </div>
 
         {/* Results List */}
