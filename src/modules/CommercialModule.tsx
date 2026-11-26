@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   FileText,
@@ -172,7 +172,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
       const items = await getProposalItems(created.id);
       setSelectedProposalItems(items);
     }
-    setTab('comercial-revisao');
+    setTab(moduleLevel('comercial-revisao') >= 1 ? 'comercial-revisao' : 'comercial-painel');
   };
 
   const navTabs = [
