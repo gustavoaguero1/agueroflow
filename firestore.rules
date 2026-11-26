@@ -507,9 +507,42 @@ service cloud.firestore {
     match /ops_orgs/{orgId}/{coll}/{docId} {
       function opsManager() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente']); }
       function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
-      allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : areaOk(orgId, A_OPS(), 1);
-      allow write: if coll == 'salarios' ? areaOk(orgId, A_RH(), 2)
-        : (managerOnlyWrite() ? opsManager() && areaOk(orgId, A_OPS(), 2) : areaOk(orgId, A_OPS(), 2));
+      function opsSectionIndex() {
+        return coll == 'passagens' || coll == 'viagens' ? 30
+          : (coll in ['candidatos', 'indicacoes'] ? 32
+            : (coll in ['colaboradores', 'tarefas'] ? 33
+              : (coll == 'notificacoes' ? 27
+                : (coll in ['obras'] ? 24
+                  : (coll in ['direcionamentos', 'economias'] ? 28
+                    : (coll == 'diario' ? 29
+                      : (coll in ['reemb_notas', 'reemb_lotes', 'vales'] ? 31
+                        : (coll in ['gases_lancamentos', 'gases_pendencias', 'gases_boletos'] ? 34
+                          : (coll in ['contatos'] ? 35
+                            : (coll in ['membros', 'config'] ? 36
+                              : (coll in ['fat_pedidos', 'fat_nfs', 'fat_cobrancas'] ? 76 : 35))))))))));
+      }
+      function opsLegacyAllowed(action) {
+        return coll == 'salarios'
+          ? areaOk(orgId, A_RH(), action == 0 ? 1 : 2)
+          : areaOk(orgId, A_OPS(), action == 0 ? 1 : 2);
+      }
+      function opsSectionAllowed(action) {
+        return coll == 'salarios'
+          ? sectionOk(orgId, 45, action, opsLegacyAllowed(action))
+          : sectionOk(orgId, opsSectionIndex(), action, opsLegacyAllowed(action));
+      }
+      function opsScopeAllowed() {
+        return coll == 'salarios'
+          ? sectionDataScopeOk(orgId, 45, resource.data)
+          : sectionDataScopeOk(orgId, opsSectionIndex(), resource.data);
+      }
+      function opsManageAllowed() {
+        return sectionOk(orgId, 36, 5, opsManager() && areaOk(orgId, A_OPS(), 2));
+      }
+      allow read: if opsSectionAllowed(0) && opsScopeAllowed();
+      allow create: if managerOnlyWrite() ? opsManageAllowed() : opsSectionAllowed(1);
+      allow update: if managerOnlyWrite() ? opsManageAllowed() : opsSectionAllowed(2);
+      allow delete: if managerOnlyWrite() ? opsManageAllowed() : opsSectionAllowed(3);
     }
 
     // ---- Salário da equipe de campo (fora de field_workers, que toda a Operação lê) ----
