@@ -57,7 +57,8 @@ interface StructureModuleProps {
 }
 
 export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = 'organizacao' }) => {
-  const { user, organization, member, role, isAdmin, isManagerOrAbove, areaLevel, logAudit, adminSetUserPassword } = useAuth();
+  const { user, organization, member, role, moduleLevel, logAudit, adminSetUserPassword } = useAuth();
+  const canManageUsers = moduleLevel('estrutura') >= 4;
   const [activeTab, setActiveTab] = useState<'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria'>(initialTab);
 
   // Sync tab if prop changes from navigation
@@ -546,8 +547,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           contracts={contracts}
           costCenters={costCenters}
           canManage={
-            (isManagerOrAbove || role === 'Supervisor') &&
-            (areaLevel('operacoes') >= 2 || areaLevel('comercial') >= 2)
+            (moduleLevel('obras') >= 2 || moduleLevel('comercial-painel') >= 2)
           }
           onAudit={(action, details, targetId) => logAudit('Projetos/Obras', action, details, targetId)}
         />
@@ -782,7 +782,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 <th className="py-3 px-4">Papel (RBAC)</th>
                 <th className="py-3 px-4">Credencial / Senha</th>
                 <th className="py-3 px-4">Status</th>
-                {isAdmin && <th className="py-3 px-4 text-right">Ações</th>}
+                {canManageUsers && <th className="py-3 px-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -821,7 +821,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                       <span>Ativo</span>
                     </span>
                   </td>
-                  {isAdmin && (
+                  {canManageUsers && (
                     <td className="py-3 px-4 text-right">
                       <button
                         type="button"
