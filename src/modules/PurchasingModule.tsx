@@ -218,7 +218,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
         </div>
 
         {/* Tab Strip */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-3 no-scrollbar">
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-3 pb-1.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

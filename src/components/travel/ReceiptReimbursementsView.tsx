@@ -608,7 +608,7 @@ export const ReceiptReimbursementsView: React.FC<ReceiptReimbursementsViewProps>
       <div className="bg-[#111827] border border-slate-700/80 rounded-2xl p-4 shadow-xl space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           {/* Status Filter Tabs */}
-          <div className="flex items-center space-x-1 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex items-center space-x-1 overflow-x-auto pb-1.5">
             {[
               { id: 'todos', label: 'Todos' },
               { id: 'pendente', label: 'Pendentes' },

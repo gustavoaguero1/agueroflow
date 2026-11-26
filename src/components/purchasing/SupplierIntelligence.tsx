@@ -850,7 +850,7 @@ export const SupplierIntelligence: React.FC<SupplierIntelligenceProps> = ({
                 const avgY = topPadding + usableHeight - (selectedItem.avgPrice / maxVal) * usableHeight;
 
                 return (
-                  <div className="relative w-full overflow-x-auto no-scrollbar">
+                  <div className="relative w-full overflow-x-auto">
                     <svg
                       viewBox={`0 0 800 ${chartHeight}`}
                       className="w-full h-64 select-none min-w-[500px]"
