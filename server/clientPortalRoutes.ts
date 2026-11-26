@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { evaluatePortalGrantAccess, sanitizePortalScopes } from '../src/services/clientPortalRules.ts';
 import { compileProjectDataBook } from '../src/services/industrialQualityRules.ts';
@@ -29,7 +29,7 @@ export function createClientPortalRouter(getH: () => AdminHandles | null = getAd
   const router = Router();
 
   // ---- Internal grant management (requires authenticated internal member) ----
-  router.post('/grants', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/grants', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -80,7 +80,7 @@ export function createClientPortalRouter(getH: () => AdminHandles | null = getAd
     return res.status(201).json({ ok: true, grant: { ...grant, tokenHash: undefined }, accessToken: rawToken });
   });
 
-  router.post('/grants/:grantId/revoke', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/grants/:grantId/revoke', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const grantId = req.params.grantId;
