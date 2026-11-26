@@ -4473,6 +4473,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
     receipts: () => reimbursementReceipts,
     persist: () => persistReceipts(),
     db: () => getAdmin()?.db,
+    getAdminHandles: getAdmin,
   }));
 
   // Get WhatsApp receipts config
