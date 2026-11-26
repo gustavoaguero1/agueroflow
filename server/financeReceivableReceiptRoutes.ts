@@ -18,7 +18,7 @@ const optionalText = (value: unknown): string | undefined => typeof value === 's
 
 export function createFinanceReceivableReceiptRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireModuleAccess('financeiro-receber', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-receber', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const receivableId = req.body?.receivableId;
     const actor = req.user;
