@@ -32,8 +32,9 @@ export const OperationsModule: React.FC<{
   /** Abre outra tela do AgueroFlow (ex.: 'rh-funcionarios'), pedida pela página. */
   onNavigate?: (section: string) => void;
 }> = ({ route = 'inicio', onRouteChange, onNavigate }) => {
-  const { user, organization, member, role, isMaster, moduleLevel } = useAuth();
+  const { user, organization, member, role, isMaster, isManagerOrAbove, moduleLevel, moduleAccessExplicit } = useAuth();
   const rhLevel = moduleLevel('rh-funcionarios');
+  const salaryLevel = moduleLevel('rh-holerites');
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -41,7 +42,7 @@ export const OperationsModule: React.FC<{
   // Importações e ações internas herdam a permissão do submódulo correspondente.
   const canImport = moduleLevel('rh-importacao') >= 2;
   const canImportGases = moduleLevel('ops-gases') >= 2;
-  const canManageOperations = moduleLevel('ops-config') >= 4;
+  const canManageOperations = moduleLevel('ops-config') >= 4 || (isManagerOrAbove && !moduleAccessExplicit.includes('ops-config'));
   const orgId = organization?.id || '';
 
   const bridge = useMemo(() => {
@@ -53,10 +54,10 @@ export const OperationsModule: React.FC<{
       role,
       isManager: isMaster || canManageOperations,
       canWrite: moduleLevel(({ inicio: 'ops-inicio', direcionar: 'ops-direcionar', diario: 'ops-diario', viagem: 'ops-viagem', reembolso: 'ops-reembolso', contratacao: 'ops-contratacao', tarefas: 'ops-tarefas', gases: 'ops-gases', base: 'ops-base', config: 'ops-config' } as Record<string, string>)[normalizeRoute(route)] || 'ops-inicio') >= 2,
-      canSeeSalaries: rhLevel >= 1,
+      canSeeSalaries: salaryLevel >= 1,
       canEditRh: rhLevel === 2,
     });
-  }, [user, orgId, member?.userName, role, isMaster, canManageOperations, moduleLevel, route, rhLevel]);
+  }, [user, orgId, member?.userName, role, isMaster, canManageOperations, moduleLevel, route, rhLevel, salaryLevel]);
 
   // Publica a ponte antes do iframe carregar; troca de empresa recarrega a página.
   if (bridge) window.__agueroOps = bridge.api;
