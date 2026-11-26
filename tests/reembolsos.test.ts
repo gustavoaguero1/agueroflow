@@ -117,7 +117,7 @@ test('router: org scoping, roles, approve/reimburse week, obra manual', async ()
   app.use((req, _res, next) => { req.user = user; next(); });
   const contracts: Record<string, any> = { c1: { orgId: 'o', title: 'Contrato Obra Z' }, cx: { orgId: 'other', title: 'Alheio' } };
   let db: any = null;
-  const moduleGrants = new Map<string, any>([['o__u', { orgId: 'o', uid: 'u', modules: { 'ops-reembolso': 3 } }]]);
+  const moduleGrants = new Map<string, any>([['o__u', { orgId: 'o', uid: 'u', modules: { 'ops-reembolso': 3 }, explicitModules: ['ops-reembolso'] }]]);
   const permissionAdmin = {
     db: { collection: (name: string) => ({ doc: (id: string) => ({
       get: async () => { const data = name === 'org_module_access' ? moduleGrants.get(id) : undefined; return { exists: data !== undefined, data: () => data }; },
