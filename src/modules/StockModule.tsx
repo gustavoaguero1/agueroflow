@@ -30,7 +30,9 @@ import {
   Filter,
   X,
   Search,
+  QrCode,
 } from 'lucide-react';
+import { QrLabelModal, type QrLabelTarget } from '../components/common/QrLabelModal';
 
 export const StockModule: React.FC = () => {
   const { user, organization, logAudit } = useAuth();
@@ -42,6 +44,7 @@ export const StockModule: React.FC = () => {
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>('todas');
   const [searchQuery, setSearchQuery] = useState('');
+  const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
 
   // Movement Modal
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -382,6 +385,28 @@ export const StockModule: React.FC = () => {
                             </button>
                           )}
                           <button
+                            type="button"
+                            onClick={() =>
+                              setQrTarget({
+                                entityType: 'item',
+                                entityId: item.id,
+                                orgId: organization?.id,
+                                code: item.sku || item.id.slice(0, 8),
+                                title: item.name,
+                                subtitle: unit?.name || 'Unidade',
+                                metaLines: [
+                                  `Saldo atual: ${bal.currentBalance} ${item.unitOfMeasure || 'UN'}`,
+                                  ...(item.minStock !== undefined ? [`Mínimo: ${item.minStock}`] : []),
+                                ],
+                              })
+                            }
+                            className="mr-2 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs inline-flex items-center gap-1 cursor-pointer"
+                            title="Etiqueta QR do Item"
+                          >
+                            <QrCode className="w-3 h-3" />
+                            <span>QR</span>
+                          </button>
+                          <button
                             onClick={() => {
                               setMovItemId(item.id);
                               setMovUnitId(bal.unitId);
@@ -611,6 +636,7 @@ export const StockModule: React.FC = () => {
           </div>
         </div>
       )}
+      <QrLabelModal target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   );
 };

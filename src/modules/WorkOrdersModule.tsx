@@ -72,7 +72,9 @@ import {
   Tag,
   MessageSquare,
   Wrench,
+  QrCode,
 } from 'lucide-react';
+import { QrLabelModal, type QrLabelTarget } from '../components/common/QrLabelModal';
 import { BrandLogo } from '../components/common/BrandLogo';
 import { getActiveTimeInfo, getPlanningSummary } from '../components/workOrders/workOrderHelpers';
 import { OrderOverviewTab } from '../components/workOrders/OrderOverviewTab';
@@ -380,6 +382,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
+  const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'overview' | 'execution' | 'discussion' | 'planning' | 'reservations' | 'timeline'>('overview');
   const [showReportModal, setShowReportModal] = useState(false);
   const [orderEvents, setOrderEvents] = useState<OrderEvent[]>([]);
@@ -2069,13 +2072,37 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                 <h3 className="text-base sm:text-lg font-bold text-white">{selectedOrder.title}</h3>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQrTarget({
+                      entityType: 'order',
+                      entityId: selectedOrder.id,
+                      orgId: organization?.id,
+                      code: selectedOrder.orderNumber,
+                      title: selectedOrder.title,
+                      subtitle: `Prioridade: ${selectedOrder.priority} · Status: ${selectedOrder.status}`,
+                      metaLines: [
+                        ...(selectedOrder.assignedTeam ? [`Equipe: ${selectedOrder.assignedTeam}`] : []),
+                        ...(selectedOrder.scheduledStartDate ? [`Início previsto: ${selectedOrder.scheduledStartDate}`] : []),
+                      ],
+                    })
+                  }
+                  className="text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Gerar Etiqueta QR da OS"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>QR</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Tab Navigation Bar */}
@@ -2593,6 +2620,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           </div>
         </div>
       )}
+      <QrLabelModal target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   );
 };

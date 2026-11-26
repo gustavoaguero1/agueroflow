@@ -36,6 +36,8 @@ import {
   WhatsAppAutomationSubSection,
 } from './modules/WhatsAppAutomationModule';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { OfflineSyncProvider } from './contexts/OfflineSyncContext';
+import { parseQrDeepLinkSearch } from './services/qrDeepLinkRules';
 import { testConnection } from './firebase';
 import { BrandLogo } from './components/common/BrandLogo';
 import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
@@ -87,6 +89,11 @@ function MainRouter() {
       setCurrentRoute('master-panel');
     } else {
       setCurrentRoute('app');
+      const qrTarget = parseQrDeepLinkSearch(window.location.search);
+      if (qrTarget && (!qrTarget.orgId || !organization || qrTarget.orgId === organization.id)) {
+        setCurrentNavSection(qrTarget.section);
+        setNavPayload({ targetId: qrTarget.entityId });
+      }
     }
   }, [user, isMaster, organization]);
 
@@ -396,7 +403,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <MainRouter />
+        <OfflineSyncProvider>
+          <MainRouter />
+        </OfflineSyncProvider>
       </AuthProvider>
     </ThemeProvider>
   );
