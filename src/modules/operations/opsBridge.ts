@@ -49,7 +49,8 @@ export interface OpsContext {
   user: User;
   userName: string;
   role: UserRole;
-  isManager: boolean; // Admin, Gerente ou master
+  isManager: boolean; // permissão Administrar no submódulo Configurações de Operações
+  canWrite: boolean; // permissão Operar no submódulo atualmente aberto
   canSeeSalaries: boolean; // acesso ao RH (nível ≥ Ver)
   canEditRh?: boolean; // acesso ao RH para editar (aprovar candidato cria o funcionário)
 }
@@ -179,7 +180,7 @@ export function createOpsBridge(ctx: OpsContext) {
     me: async () => ({ id: ctx.user.uid, name: ctx.userName || ctx.user.displayName || ctx.user.email || '' }),
     isOwner: async () => ctx.isManager,
     canEdit: async () => ctx.isManager,
-    can: async (perm: string) => (perm === 'data.write' ? ctx.role !== 'Visualizador' : true),
+    can: async (perm: string) => (perm === 'data.write' ? ctx.canWrite : true),
     profiles: async (ids: string[]) => {
       const all = await members();
       const out: Record<string, { name: string }> = {};
