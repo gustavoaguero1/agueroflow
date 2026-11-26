@@ -3,7 +3,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { Router, type Request } from 'express';
 import type { Firestore } from 'firebase-admin/firestore';
 import * as XLSX from 'xlsx';
-import { requireRole, orgIdOf } from './authMiddleware.ts';
+import { requireModuleAccess, orgIdOf } from './authMiddleware.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { effectiveOrg, LEGACY_ORG_ID } from './orgDefaults.ts';
 
 type Rec = Record<string, any>;
@@ -213,8 +214,10 @@ export function createReembolsosRouter(deps: {
   persist: () => void;
   db: () => Firestore | null | undefined;
   now?: () => Date;
+  getAdminHandles?: () => AdminHandles | null;
 }): Router {
   const r = Router();
+  const getH = deps.getAdminHandles ?? getAdmin;
   const now = () => deps.now?.() ?? new Date();
   const inicioOf = (req: Request) => String(req.query.inicio || req.body?.inicio || '') || undefined;
   const badInicio = (req: Request, res: any) => {
@@ -246,9 +249,9 @@ export function createReembolsosRouter(deps: {
     res.setHeader('Content-Disposition', `attachment; filename="reembolsos_${w.inicio}.xlsx"`);
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(weekWorkbookBuffer(s));
   });
-  r.post('/semana/aprovar', requireRole('Admin', 'Gerente'), transition('pendente', 'aprovado', (rec, by, at) => { rec.approvedBy = by; rec.approvedAt = at; }));
-  r.post('/semana/reembolsado', requireRole('Admin', 'Gerente'), transition('aprovado', 'reembolsado', (rec, by, at) => { rec.reimbursedBy = by; rec.reimbursedAt = at; }));
-  r.put('/:id/obra', requireRole('Admin', 'Gerente'), async (req, res) => {
+  r.post('/semana/aprovar', requireModuleAccess('ops-reembolso', 3, getH), transition('pendente', 'aprovado', (rec, by, at) => { rec.approvedBy = by; rec.approvedAt = at; }));
+  r.post('/semana/reembolsado', requireModuleAccess('ops-reembolso', 3, getH), transition('aprovado', 'reembolsado', (rec, by, at) => { rec.reimbursedBy = by; rec.reimbursedAt = at; }));
+  r.put('/:id/obra', requireModuleAccess('ops-reembolso', 2, getH), async (req, res) => {
     const rec = deps.receipts().find((x) => x.id === req.params.id);
     if (!rec || !visibleTo(req)(rec)) return res.status(404).json({ error: 'nota não encontrada' });
     const contractId = String(req.body?.contractId || '').trim();
