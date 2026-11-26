@@ -1122,8 +1122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, member?.id, isMasterUser, readTokenAreas, readModuleAccess, organization?.id]);
   const areaCode = organization ? tokenAreas[organization.id] : undefined;
   const areaLevels = useMemo(() => effectiveLevels(isMasterUser, role, areaCode), [isMasterUser, role, areaCode]);
-  const activeModuleAccess = moduleAccessOrgId === (organization?.id || '') ? moduleAccess : {};
-  const activeExplicitModules = moduleAccessOrgId === (organization?.id || '') ? moduleAccessExplicit : [];
+  const activeModuleAccess = useMemo(() => moduleAccessOrgId === (organization?.id || '') ? moduleAccess : {}, [moduleAccessOrgId, organization?.id, moduleAccess]);
+  const activeExplicitModules = useMemo(() => moduleAccessOrgId === (organization?.id || '') ? moduleAccessExplicit : [], [moduleAccessOrgId, organization?.id, moduleAccessExplicit]);
   const areaLevel = useCallback((area: AreaId): AreaLevel => areaLevels[area], [areaLevels]);
   const moduleLevel = useCallback((section: string): number => {
     if (isMasterUser) return 4;
@@ -1159,8 +1159,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         areaLevels,
         areaLevel,
         canSeeSection: canSeeSectionFn,
-        moduleAccess,
-        moduleAccessExplicit,
+        moduleAccess: activeModuleAccess,
+        moduleAccessExplicit: activeExplicitModules,
         moduleLevel,
         selectedUnitId,
         setSelectedUnitId,
