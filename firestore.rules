@@ -1313,34 +1313,34 @@ service cloud.firestore {
     // ---- WhatsApp bridge mirror (strict multi-tenant + area isolation) -------
     // Every mirrored WhatsApp document must carry orgId/organizationId matching a caller's org
     // and the caller must have WhatsApp area access (level >= 1 read, level >= 2 write).
-    function waCanRead(res) { return canRead(res) && (res == null || areaOk(orgOf(res.data), A_WA(), 1)); }
-    function waCanCreate() { return canCreate() && areaOk(orgOf(request.resource.data), A_WA(), 2); }
-    function waCanUpdate() { return canUpdate() && areaOk(orgOf(resource.data), A_WA(), 2); }
-    function waCanDelete() { return canDelete() && areaOk(orgOf(resource.data), A_WA(), 2); }
+    function waCanRead(res, section) { return canRead(res) && (res == null || moduleOk(orgOf(res.data), section, A_WA(), 1)); }
+    function waCanCreate(section) { return canCreate() && moduleOk(orgOf(request.resource.data), section, A_WA(), 2); }
+    function waCanUpdate(section) { return canUpdate() && moduleOk(orgOf(resource.data), section, A_WA(), 2); }
+    function waCanDelete(section) { return canDelete() && moduleOk(orgOf(resource.data), section, A_WA(), 2); }
 
     match /whatsapp_contacts/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_quick_replies/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_ai_rules/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_ai_settings/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
 
     match /whatsapp_scheduled_jobs/{jobId} {
@@ -1354,10 +1354,10 @@ service cloud.firestore {
           && request.resource.data.promptInstruction.size() > 0
           && request.resource.data.promptInstruction.size() <= 2000;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaJobPayload();
-      allow update: if waCanUpdate() && validWaJobPayload();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-comandos');
+      allow create: if waCanCreate('whatsapp-comandos') && validWaJobPayload();
+      allow update: if waCanUpdate('whatsapp-comandos') && validWaJobPayload();
+      allow delete: if waCanDelete('whatsapp-comandos');
     }
 
     match /whatsapp_ocr_receipts/{receiptId} {
@@ -1366,9 +1366,9 @@ service cloud.firestore {
           && request.resource.data.establishmentName.size() <= 200
           && request.resource.data.totalAmount is number;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaReceiptPayload();
-      allow update: if waCanUpdate() && validWaReceiptPayload();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central') && validWaReceiptPayload();
+      allow update: if waCanUpdate('whatsapp-central') && validWaReceiptPayload();
       allow delete: if false;
     }
 
@@ -1379,10 +1379,10 @@ service cloud.firestore {
           && request.resource.data.name.size() <= 160
           && request.resource.data.groupJid is string;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaNdRulePayload();
-      allow update: if waCanUpdate() && validWaNdRulePayload();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-nds');
+      allow create: if waCanCreate('whatsapp-nds') && validWaNdRulePayload();
+      allow update: if waCanUpdate('whatsapp-nds') && validWaNdRulePayload();
+      allow delete: if waCanDelete('whatsapp-nds');
     }
 
     match /whatsapp_nd_records/{recordId} {
@@ -1391,9 +1391,9 @@ service cloud.firestore {
           && request.resource.data.receiverName.size() <= 180
           && request.resource.data.amount is number;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaNdRecordPayload();
-      allow update: if waCanUpdate() && validWaNdRecordPayload();
+      allow read: if waCanRead(resource, 'whatsapp-nds');
+      allow create: if waCanCreate('whatsapp-nds') && validWaNdRecordPayload();
+      allow update: if waCanUpdate('whatsapp-nds') && validWaNdRecordPayload();
       allow delete: if false;
     }
 
@@ -1419,12 +1419,12 @@ service cloud.firestore {
       }
       function factCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_FIN(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_STOCK(), 1);
+        return moduleOk(o, 'financeiro-pagar', A_FIN(), 1) || moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'estoque', A_STOCK(), 1);
       }
       function factCanCreate(d) {
         let o = orgOf(d);
         return (isMaster() || hasRole(o, ['Admin', 'Gerente', 'Supervisor']))
-          && (areaOk(o, A_FIN(), 2) || areaOk(o, A_OPS(), 2));
+          && (moduleOk(o, 'financeiro-pagar', A_FIN(), 2) || moduleOk(o, 'obras-medicoes', A_OPS(), 2));
       }
       allow read: if canRead(resource) && (resource == null || factCanRead(resource.data));
       allow create: if canCreate() && factCanCreate(request.resource.data)
@@ -1486,7 +1486,7 @@ service cloud.firestore {
     match /stock_reservations/{resId} {
       function sresCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_STOCK(), 1) || areaOk(o, A_OPS(), 1);
+        return moduleOk(o, 'estoque', A_STOCK(), 1) || moduleOk(o, 'ordens', A_OPS(), 1);
       }
       allow read: if canRead(resource) && (resource == null || sresCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1522,17 +1522,17 @@ service cloud.firestore {
     match /lpu_tables/{tableId} {
       function lpuCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_COM(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'ordens', A_OPS(), 1) || moduleOk(o, 'financeiro-notas', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || lpuCanRead(resource.data));
       allow create, update, delete: if false;
     }
     match /purchasing_approval_rules/{ruleId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'compras-cotacoes', A_STOCK(), 1) || moduleOk(orgOf(resource.data), 'financeiro-pagar', A_FIN(), 1));
       allow create, update, delete: if false;
     }
     match /purchasing_approvals/{approvalId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'compras-cotacoes', A_STOCK(), 1) || moduleOk(orgOf(resource.data), 'financeiro-pagar', A_FIN(), 1));
       allow create, update, delete: if false;
     }
 
