@@ -1,7 +1,6 @@
 import type { AuthUser } from './authMiddleware.ts';
 import { areaLevelOf } from './authMiddleware.ts';
 import {
-  hasPermissionCustomization,
   resolvePermissionMatrix,
   sanitizeAccessProfiles,
   sanitizePermissionOverrides,
@@ -17,6 +16,7 @@ export type AccessMember = {
   role: UserRole;
   userName: string;
   active: boolean;
+  areaOverrides?: unknown;
   accessProfileId?: string;
   permissionOverrides?: unknown;
 };
@@ -63,7 +63,7 @@ export function createAccessService(store: AccessStore) {
   async function effectiveFor(member: AccessMember, profilesRaw: unknown, defaultsRaw: unknown) {
     const profiles = sanitizeAccessProfiles(profilesRaw);
     const profile = profiles.find((p) => p.id === member.accessProfileId) || null;
-    const areas = resolveAreas(member.role, sanitizeOrgDefaults(defaultsRaw), sanitizeOverrides(undefined));
+    const areas = resolveAreas(member.role, sanitizeOrgDefaults(defaultsRaw), sanitizeOverrides(member.areaOverrides));
     return resolvePermissionMatrix(areas, profile, sanitizePermissionOverrides(member.permissionOverrides));
   }
 
@@ -149,8 +149,5 @@ export function createAccessService(store: AccessStore) {
       return { ok: true, data: undefined };
     },
 
-    async clearMember(u: AuthUser, memberId: string): Promise<Result> {
-      return this.setMember(u, memberId, null, {});
-    },
   };
 }
