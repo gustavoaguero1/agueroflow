@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class InspectionRouteError extends Error {
@@ -25,7 +25,7 @@ const actorName = (req: Request): string => req.user?.email || req.user?.uid || 
 export function createInspectionRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('inspecoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const body = req.body ?? {};
@@ -118,7 +118,7 @@ export function createInspectionRouter(getH: () => AdminHandles | null = getAdmi
     }
   });
 
-  router.post('/:inspectionId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:inspectionId/transition', requireModuleAccess('inspecoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const inspectionId = req.params.inspectionId;
