@@ -9,7 +9,7 @@ import {
   receivableReceiptRequestMatches,
   normalizeReceivableMoney,
 } from '../src/services/financeReceivableRules.ts';
-import { areaLevelOf, requireArea, requireRole } from './authMiddleware.ts';
+import { areaLevelOf, requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -29,7 +29,7 @@ const receiptPermission: RequestHandler = (req, res, next) => {
 
 export function createFinanceReceivableReceiptRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireArea('financeiro', 1), receiptPermission, async (req: Request, res: Response) => {
+  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireModuleAccess('financeiro-receber', 1), receiptPermission, async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const receivableId = req.body?.receivableId;
     const actor = req.user;
