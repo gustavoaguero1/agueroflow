@@ -79,7 +79,7 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, requireArea, requireAuth, requireRole, requireModuleAccess, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
 import { createModuleAccessRouter } from './server/moduleAccessRoutes';
 import { createTravelProviderRouter } from './server/travelProviderRoutes';
@@ -612,9 +612,9 @@ async function main() {
   const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender });
   app.use('/api', waMiddlewares.companyContext);
   app.use('/api/whatsapp/bridge', waMiddlewares.ownSessionContext);
-  app.use('/api/nfe', nfeRouter);
-  app.use('/api/nfe', nfeSyncRouter);
-  app.use('/api/protheus', protheusProbeRouter);
+  app.use('/api/nfe', requireModuleAccess('financeiro-notas', 1), nfeRouter);
+  app.use('/api/nfe', requireModuleAccess('financeiro-notas', 1), nfeSyncRouter);
+  app.use('/api/protheus', requireModuleAccess('financeiro-notas', 1), protheusProbeRouter);
   // NDs for the finance network share: pulled by an agent on a company PC with ND_EXPORT_TOKEN (see docs/nd-pasta-rede.md).
   const ndExportSinceFile = path.join(__dirname, 'data_nd_export_since.json');
   app.use('/api/nd-export', createNdExportRouter({
@@ -715,7 +715,7 @@ async function main() {
   });
 
   // AgueroFlow IA Server Endpoint
-  app.post('/api/ai/chat', async (req: Request, res: Response) => {
+  app.post('/api/ai/chat', requireModuleAccess('ia', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`ai_${clientIp}`, 20, 60 * 1000)) {
       return res.status(429).json({ error: 'Limite de mensagens atingido. Aguarde alguns instantes.' });
@@ -807,7 +807,7 @@ ${JSON.stringify(context || {}, null, 2)}
   });
 
   // Intelligent Document Parser with Gemini Multimodal Vision / OCR for NR
-  app.post('/api/ai/parse-nr-document', async (req: Request, res: Response) => {
+  app.post('/api/ai/parse-nr-document', requireModuleAccess('ordens', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`doc_parse_${clientIp}`, 40, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de análise de documento. Aguarde um minuto.' });
@@ -1541,12 +1541,12 @@ REGRAS DE EXTRAÇÃO PARA CADA ITEM:
     }
   };
 
-  app.post('/api/ai/parse-supplier-quote-pdf', handleSupplierQuoteParse);
-  app.post('/api/ai/parse-supplier-quote-document', handleSupplierQuoteParse);
+  app.post('/api/ai/parse-supplier-quote-pdf', requireModuleAccess('compras-cotacoes', 1), handleSupplierQuoteParse);
+  app.post('/api/ai/parse-supplier-quote-document', requireModuleAccess('compras-cotacoes', 1), handleSupplierQuoteParse);
 
 
   // AI Market Price Benchmark & Savings Indicator (Purchasing Intelligence)
-  app.post('/api/ai/market-benchmark', async (req: Request, res: Response) => {
+  app.post('/api/ai/market-benchmark', requireModuleAccess('compras-inteligencia', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`benchmark_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas consultas de benchmark. Aguarde alguns instantes.' });
@@ -4455,14 +4455,14 @@ Sua missão é extrair rigorosamente os seguintes campos:
     }
   };
 
-  app.use('/api/reembolsos', createReembolsosRouter({
+  app.use('/api/reembolsos', requireModuleAccess('ops-reembolso', 1), createReembolsosRouter({
     receipts: () => reimbursementReceipts,
     persist: () => persistReceipts(),
     db: () => getAdmin()?.db,
   }));
 
   // Get WhatsApp receipts config
-  app.get('/api/whatsapp/config', (req: Request, res: Response) => {
+  app.get('/api/whatsapp/config', requireModuleAccess('whatsapp-central', 1), (req: Request, res: Response) => {
     res.json({
       success: true,
       config: maskWaConfig(whatsAppReceiptsConfig),
@@ -4470,7 +4470,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Update WhatsApp receipts config
-  app.post('/api/whatsapp/config', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
+  app.post('/api/whatsapp/config', requireModuleAccess('whatsapp-central', 4), (req: Request, res: Response) => {
     // Masked values echoed back by the UI are not new secrets.
     const incoming = Object.fromEntries(
       Object.entries(req.body || {}).filter(([, v]) => !isMasked(v))
