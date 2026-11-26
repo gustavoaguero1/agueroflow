@@ -299,23 +299,23 @@ service cloud.firestore {
 
 
     match /safety_permits/{permitId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       // Creation and every state change are performed atomically by the trusted API.
       allow create, update, delete: if false;
     }
 
     match /safety_permit_events/{eventId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     match /safety_permit_states/{permitId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     match /safety_ppe_catalog/{catalogId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
         && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
@@ -330,12 +330,12 @@ service cloud.firestore {
     }
 
     match /safety_ppe_movements/{movementId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow write: if false;
     }
 
     match /safety_training_catalog/{catalogId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
         && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
@@ -350,7 +350,7 @@ service cloud.firestore {
     }
 
     match /safety_training_records/{recordId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow write: if false;
     }
 
@@ -1437,7 +1437,7 @@ service cloud.firestore {
     match /measurement_bulletins/{bulletinId} {
       function bmCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'financeiro-receber', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || bmCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1445,7 +1445,7 @@ service cloud.firestore {
     match /measurement_events/{eventId} {
       function bmEventCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'financeiro-receber', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || bmEventCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1453,22 +1453,22 @@ service cloud.firestore {
 
     // ---- Marketing multiusuário (área Comercial A_COM()) ----------------------
     match /marketing_campaigns/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-campanhas', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 2);
     }
     match /marketing_events/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-eventos', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 2);
     }
     match /marketing_assets/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-biblioteca', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 2);
     }
     match /marketing_brand_configs/{orgId} {
       allow read: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 1));
@@ -1478,7 +1478,7 @@ service cloud.firestore {
 
     // ---- Execuções idempotentes de OS recorrentes (escrita exclusiva do servidor) ----
     match /recurring_order_runs/{runId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens-recorrencias', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
@@ -1494,27 +1494,27 @@ service cloud.firestore {
 
     // ---- Soldagem, END, Lotes/Corridas e ITP/PIT (escrita exclusiva /api/industrial-quality) ----
     match /welding_procedures/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /welder_qualifications/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_RH(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'rh-funcionarios', A_RH(), 1));
       allow create, update, delete: if false;
     }
     match /material_lots/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_STOCK(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'estoque', A_STOCK(), 1));
       allow create, update, delete: if false;
     }
     match /weld_joints/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /ndt_reports/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /quality_itp_matrices/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
@@ -1538,25 +1538,25 @@ service cloud.firestore {
 
     // ---- Produção/Fabricação (Oficina) e CMMS (escrita exclusiva do servidor) ----
     match /fabrication_orders/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /cmms_plans/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'bens-manutencoes', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /cmms_records/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'bens-manutencoes', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     // ---- Portal do Cliente (identidade externa isolada), IA com confirmação e Protheus (server-only) ----
     match /client_portal_grants/{grantId} {
-      allow read: if canRead(resource) && (resource == null || (areaOk(orgOf(resource.data), A_OPS(), 1) && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))));
+      allow read: if canRead(resource) && (resource == null || (moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))));
       allow create, update, delete: if false;
     }
     match /client_portal_audit/{auditId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'comercial-painel', A_COM(), 1));
       allow create, update, delete: if false;
     }
     match /ai_action_proposals/{propId} {
