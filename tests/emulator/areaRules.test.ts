@@ -124,6 +124,8 @@ test('acesso por área só muda pelo servidor', async () => {
   await assertSucceeds(updateDoc(doc(admin, 'organizations/org_a'), { name: 'A2' }));
   await assertFails(updateDoc(doc(admin, 'org_members/m1'), { areaOverrides: { rh: 2 } }));
   await assertFails(updateDoc(doc(as('member_m1', 'Supervisor'), 'org_members/m1'), { areasUpdatedAt: 'x' }));
+  await assertFails(updateDoc(doc(admin, 'organizations/org_a'), { moduleAccessDefaults: { Supervisor: { 'ops-diario': 0 } } }));
+  await assertFails(updateDoc(doc(admin, 'org_members/m1'), { moduleAccessOverrides: { 'ops-diario': 4 } }));
 });
 
 test('listas (como o app consulta) respeitam a área', async () => {
