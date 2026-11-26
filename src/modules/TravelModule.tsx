@@ -398,7 +398,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 
       {/* Navigation Sub-Tabs */}
       <div className="bg-[#111827] border border-slate-700/80 rounded-2xl p-2 shadow-xl">
-        <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none">
+        <div className="flex items-center space-x-1 overflow-x-auto pb-1.5">
           {tabs.filter((t) => visibleTravelTabs(tabs.map((x) => x.id), legacyEnabled).includes(t.id)).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

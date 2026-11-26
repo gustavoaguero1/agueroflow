@@ -1033,7 +1033,7 @@ export const TravelSearchForm: React.FC<TravelSearchFormProps> = ({
             </div>
 
             {/* Quick Suggestions (Airports or Bus Hubs) */}
-            <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-[11px] text-slate-400 scrollbar-none">
+            <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-[11px] text-slate-400">
               <span className="font-semibold text-slate-500 flex-shrink-0 flex items-center gap-1">
                 <Compass className="w-3.5 h-3.5 text-cyan-400" />
                 {transportType === 'aereo' ? 'Principais Aeroportos:' : 'Destinos rápidos:'}
