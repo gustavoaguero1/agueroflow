@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ShoppingCart,
   FileText,
@@ -39,6 +39,7 @@ import { PurchaseHistoryTable } from '../components/purchasing/PurchaseHistoryTa
 import { SupplierIntelligence } from '../components/purchasing/SupplierIntelligence';
 import { NewPurchaseOrderModal } from '../components/purchasing/NewPurchaseOrderModal';
 import type { WorkOrder } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PurchasingModuleProps {
   currentSubSection: PurchasingSubSection;
@@ -53,6 +54,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
   currentOrgId = '',
   currentUserName = 'Comprador Industrial',
 }) => {
+  const { moduleLevel } = useAuth();
   const [activeTab, setActiveTab] = useState<PurchasingSubSection>(currentSubSection);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -174,6 +176,13 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
       count: receipts.length,
     },
   ];
+  const visibleTabs = useMemo(() => tabs.filter((tab) => moduleLevel(tab.id) >= 1), [tabs, moduleLevel]);
+  useEffect(() => {
+    if (visibleTabs.length && !visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+      onNavigateSubSection(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab, onNavigateSubSection]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -209,6 +218,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               <RefreshCw size={16} className={refreshing ? 'animate-spin text-cyan-400' : ''} />
             </button>
             <button
+              disabled={moduleLevel('compras-pedidos') < 2}
               onClick={() => setIsNewOrderModalOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-md shadow-cyan-600/20 transition"
             >
@@ -219,7 +229,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
 
         {/* Tab Strip */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-3 pb-1.5">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 
