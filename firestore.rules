@@ -50,14 +50,18 @@ service cloud.firestore {
 
     // Grants por submódulo são privados (somente Admin SDK). Se não houver override,
     // a regra antiga por área continua valendo para preservar cadastros existentes.
-    function moduleMap(org) {
+    function moduleGrant(org) {
       let p = /databases/$(database)/documents/org_module_access/$(org + '__' + request.auth.uid);
-      return exists(p) ? get(p).data.get('modules', {}) : {};
+      return exists(p) ? get(p).data : {};
+    }
+    function moduleMap(org) { return moduleGrant(org).get('modules', {}); }
+    function moduleExplicit(org, section) {
+      return moduleGrant(org).get('explicitModules', []).hasAny([section]);
     }
     function moduleOk(org, section, areaIndex, lvl) {
       let modules = moduleMap(org);
       return isMaster() || (isMemberOf(org)
-        && (modules.keys().hasAny([section])
+        && (moduleExplicit(org, section)
           ? int(modules[section]) >= lvl
           : areaLevel(org, areaIndex) >= lvl));
     }
@@ -443,7 +447,7 @@ service cloud.firestore {
         let modules = moduleMap(orgId);
         // Mantém os Admin/Gerentes legados quando não há personalização; um grant explícito
         // substitui essa herança e permite delegar/restringir a administração a qualquer pessoa.
-        return isMaster() || (modules.keys().hasAny(['ops-config'])
+        return isMaster() || (moduleExplicit(orgId, 'ops-config')
           ? moduleOk(orgId, 'ops-config', A_OPS(), 4)
           : hasRole(orgId, ['Admin', 'Gerente']));
       }
