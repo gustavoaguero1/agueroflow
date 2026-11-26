@@ -1,7 +1,7 @@
 // SPIKE (descartável): descobre onde está a API REST do Protheus e o que o usuário consegue ler.
 // shortcut: diagnóstico único, sem cache nem paginação; substituir pelo cliente real do módulo Protheus.
 import { Router } from 'express';
-import { requireRole } from './authMiddleware';
+import { requireModuleAccess } from './authMiddleware';
 
 const PATHS = [
   '/rest/',
@@ -35,7 +35,7 @@ export async function probeProtheus(base: string, user: string, pass: string): P
 }
 
 export const protheusProbeRouter = Router();
-protheusProbeRouter.get('/diagnostico', requireRole('Admin'), async (_req, res) => {
+protheusProbeRouter.get('/diagnostico', requireModuleAccess('financeiro-notas', 4), async (_req, res) => {
   const { PROTHEUS_URL, PROTHEUS_USER, PROTHEUS_PASSWORD } = process.env;
   if (!PROTHEUS_URL || !PROTHEUS_USER || !PROTHEUS_PASSWORD) {
     return res.status(400).json({ error: 'Configure PROTHEUS_URL, PROTHEUS_USER e PROTHEUS_PASSWORD nos Secrets e reinicie o servidor.' });
