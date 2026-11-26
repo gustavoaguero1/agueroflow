@@ -4,7 +4,7 @@ import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
 import { safetyPermitCode, validateSafetyPermitInput } from '../src/services/safetyManagement.ts';
 import type { SafetyPermitEventType } from '../src/types/safety.ts';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class SafetyRouteError extends Error {
@@ -30,7 +30,7 @@ function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, 
 export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/permits', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/permits', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const draft = req.body?.permit as Record<string, any> | undefined;
@@ -162,7 +162,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/permits/:permitId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/permits/:permitId/transition', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const permitId = req.params.permitId;
     const eventType = req.body?.eventType;
@@ -327,7 +327,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
       || String(a.movementDate || '').localeCompare(String(b.movementDate || '')))
     .at(-1);
 
-  router.post('/ppe-movements', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/ppe-movements', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const { employeeId, ppeId, eventType, movementDate, referenceMovementId } = req.body || {};
@@ -394,7 +394,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/ppe-movements/replace', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/ppe-movements/replace', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const { employeeId, oldMovementId, newPpeId, movementDate } = req.body || {};
@@ -470,7 +470,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/training-records', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/training-records', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const {
