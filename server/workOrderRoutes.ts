@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea, requireRole } from './authMiddleware.ts';
+import { requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   evaluateWorkOrderSafetyGate,
@@ -107,7 +107,7 @@ async function loadSafetyGateResult(
 export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     if (!orgId || !actor || (req.body?.orgId && req.body.orgId !== orgId)) {
@@ -234,7 +234,7 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.post('/:orderId/safety-check', requireArea('operacoes', 1), async (req: Request, res: Response) => {
+  router.post('/:orderId/safety-check', requireModuleAccess('ordens', 1), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const orderId = req.params.orderId;
     if (!orgId || (req.body?.orgId && req.body.orgId !== orgId) || !validId(orderId)) {
@@ -263,7 +263,7 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.post('/:orderId/status', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:orderId/status', requireModuleAccess('ordens', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const orderId = req.params.orderId;
@@ -433,7 +433,7 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.post('/:orderId/reservation-approval', requireArea('operacoes', 2), requireRole('Admin', 'Gerente', 'Supervisor'), async (req: Request, res: Response) => {
+  router.post('/:orderId/reservation-approval', requireModuleAccess('ordens', 2), requireRole('Admin', 'Gerente', 'Supervisor'), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const orderId = req.params.orderId;
