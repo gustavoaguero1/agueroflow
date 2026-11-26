@@ -216,7 +216,7 @@ test('manager cannot approve a permit they created', async () => {
   const seed = baseSeed();
   seed['safety_permits/apr_01'] = { ...aprPermit, createdByUid: 'supervisor_2' };
   seed['safety_permit_states/apr_01'] = { ...aprState, status: 'awaiting_approval', latestEventId: 'submitted' };
-  seed['org_module_access/org_a__supervisor_2'] = { orgId: 'org_a', uid: 'supervisor_2', modules: { ordens: 3 } };
+  seed['org_module_access/org_a__supervisor_2'] = { orgId: 'org_a', uid: 'supervisor_2', modules: { ordens: 3 }, explicitModules: ['ordens'] };
   await withApi('Supervisor', seed, async (base, docs) => {
     const response = await post(base, 'apr_01', { eventType: 'approved', previousEventId: 'submitted' });
     assert.equal(response.status, 403);
