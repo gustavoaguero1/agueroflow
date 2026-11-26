@@ -16,7 +16,14 @@ function mockAdmin(seed: Seed) {
       where: (field: string, op: string, value: unknown) => buildQuery([...filters, { field, op, value }]),
     });
     return {
-      doc: (id?: string) => ({ path: name + '/' + (id || 'generated_' + (++eventSequence)), id: id || 'generated_' + eventSequence }),
+      doc: (id?: string) => {
+        const docId = id || 'generated_' + (++eventSequence);
+        const path = name + '/' + docId;
+        return {
+          path, id: docId,
+          get: async () => { const data = docs.get(path); return { id: docId, exists: data !== undefined, data: () => data }; },
+        };
+      },
       where: (field: string, op: string, value: unknown) => buildQuery([{ field, op, value }]),
     };
   };
