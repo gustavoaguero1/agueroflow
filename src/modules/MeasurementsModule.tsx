@@ -41,9 +41,10 @@ interface DraftLine {
 }
 
 export const MeasurementsModule: React.FC = () => {
-  const { organization, units, isManagerOrAbove, areaLevel } = useAuth();
+  const { organization, units, moduleLevel } = useAuth();
   const orgId = organization?.id || '';
-  const canEdit = areaLevel('operacoes') >= 2;
+  const canEdit = moduleLevel('obras-medicoes') >= 2;
+  const canApprove = moduleLevel('obras-medicoes') >= 3;
 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -357,7 +358,7 @@ export const MeasurementsModule: React.FC = () => {
                               <span>Enviar</span>
                             </button>
                           )}
-                          {isManagerOrAbove && bm.status === 'enviado_aprovacao' && (
+                          {canApprove && bm.status === 'enviado_aprovacao' && (
                             <>
                               <button
                                 type="button"
