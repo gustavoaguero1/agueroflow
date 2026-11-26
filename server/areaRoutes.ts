@@ -10,7 +10,7 @@ import { orgIdOf } from './authMiddleware.ts';
 import { refreshMemberClaims, revokeMemberTokens } from './authService.ts';
 import { createAreaService, type AreaStore } from './areaService.ts';
 import { createAccessService, type AccessStore } from './accessService.ts';
-import { sanitizeAccessProfiles, sanitizePermissionOverrides, type AccessProfile } from '../src/permissions/granular.ts';
+import { sanitizeAccessProfiles, sanitizePermissionOverrides } from '../src/permissions/granular.ts';
 
 const validId = (id: unknown): id is string => typeof id === 'string' && !!id && !id.includes('/');
 const orgOfDoc = (d: FirebaseFirestore.DocumentData | undefined) => String(d?.orgId || d?.organizationId || '');
