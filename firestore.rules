@@ -47,6 +47,20 @@ service cloud.firestore {
     function areaCode(org) { return request.auth.token.get('areas', {}).get(org, roleAreas(orgClaims()[org])); }
     function areaLevel(org, i) { return isMaster() ? 2 : (isMemberOf(org) ? int(areaCode(org)[i:i + 1]) : 0); }
     function areaOk(org, i, lvl) { return isMaster() || areaLevel(org, i) >= lvl; }
+
+    // Grants por submódulo são privados (somente Admin SDK). Se não houver override,
+    // a regra antiga por área continua valendo para preservar cadastros existentes.
+    function moduleMap(org) {
+      let p = /databases/$(database)/documents/org_module_access/$(org + '__' + request.auth.uid);
+      return exists(p) ? get(p).data.get('modules', {}) : {};
+    }
+    function moduleOk(org, section, areaIndex, lvl) {
+      let modules = moduleMap(org);
+      return isMaster() || (isMemberOf(org)
+        && (modules.keys().hasAny([section])
+          ? int(modules[section]) >= lvl
+          : areaLevel(org, areaIndex) >= lvl));
+    }
     function A_OPS() { return 1; }
     function A_STOCK() { return 2; }
     function A_COM() { return 3; }
@@ -490,28 +504,41 @@ service cloud.firestore {
               : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK()
                 : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? A_EST() : -1))));
       }
+      function collModule() {
+        return coll in ['work_orders', 'work_order_statuses', 'order_events', 'order_messages', 'lpu_approvals'] ? 'ordens'
+          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events'] ? 'checklists'
+            : (coll in ['inspections', 'inspection_events'] ? 'inspecoes'
+              : (coll == 'occurrences' ? 'ocorrencias'
+                : (coll in ['construction_reports', 'construction_milestones', 'constructions', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? 'obras'
+                  : (coll.matches('commercial_.*') ? 'comercial-funil'
+                    : (coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? 'rh-funcionarios'
+                      : (coll in ['items', 'item_categories'] ? 'pecas-catalogo'
+                        : (coll in ['stock_balances', 'stock_movements'] ? 'estoque'
+                          : (coll in ['purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? 'compras-pedidos'
+                            : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? 'estrutura' : '')))))))));
+      }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
       function areaRead(d) {
         return coll == 'projects'
-          ? (areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1) || areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+          ? (moduleOk(orgOf(d), 'obras', A_OPS(), 1) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 1) || moduleOk(orgOf(d), 'compras-painel', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
           : (coll == 'audit_logs'
-            ? areaOk(orgOf(d), A_EST(), 1)
+            ? moduleOk(orgOf(d), 'auditoria', A_EST(), 1)
             : (coll in ['items', 'item_categories']
-              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+              ? (moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 1) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 1) || moduleOk(orgOf(d), 'comercial-materiais', A_COM(), 1))
               : (coll in ['stock_balances', 'stock_movements']
-                ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+                ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 1) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 1))
                 : (coll in ['purchasing_orders', 'purchasing_receipts']
-                  ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-                  : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))))));
+                  ? (moduleOk(orgOf(d), 'compras-pedidos', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
+                  : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 1))))));
       }
       function areaWrite(d) {
         return coll == 'projects'
-          ? (areaOk(orgOf(d), A_OPS(), 2) || areaOk(orgOf(d), A_COM(), 2))
-          : (coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
+          ? (moduleOk(orgOf(d), 'obras', A_OPS(), 2) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 2))
+          : (coll in ['items', 'item_categories'] ? moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 2)
             : (coll in ['stock_balances', 'stock_movements']
-              ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
-              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2))));
+              ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 2) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 2))
+              : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 2))));
       }
       function projectUnitValid(d) {
         let unitId = d.get('unitId', '');
