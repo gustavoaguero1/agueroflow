@@ -85,12 +85,12 @@ export function createTravelProviderRouter(opts: {
   const org = (req: Request) => String(req.orgId || '');
   const uid = (req: Request) => String(req.user?.uid || '');
 
-  r.get('/settings', requireModuleAccess('viagens-configuracoes', 1), wrap(async (req, res) => {
+  r.get('/settings', requireModuleAccess('viagens-configuracoes', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     res.json({ legacySourcesEnabled: (await s.getSettings(org(req)))?.legacySourcesEnabled === true });
   }));
 
-  r.put('/settings', requireModuleAccess('viagens-configuracoes', 4), wrap(async (req, res) => {
+  r.put('/settings', requireModuleAccess('viagens-configuracoes', 4, getH), wrap(async (req, res) => {
     const v = req.body?.legacySourcesEnabled;
     if (typeof v !== 'boolean') return res.status(400).json({ error: 'legacySourcesEnabled deve ser verdadeiro ou falso' });
     const s = storeOr503(res); if (!s) return;
@@ -98,13 +98,13 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, legacySourcesEnabled: v });
   }));
 
-  r.get('/martravel/account', requireModuleAccess('viagens-configuracoes', 1), wrap(async (req, res) => {
+  r.get('/martravel/account', requireModuleAccess('viagens-configuracoes', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const acc = await s.getAccount(accountKey(org(req), uid(req)));
     res.json(acc ? { connected: true, login: acc.login, updatedAt: acc.updatedAt } : { connected: false });
   }));
 
-  r.put('/martravel/account', requireModuleAccess('viagens-configuracoes', 2), wrap(async (req, res) => {
+  r.put('/martravel/account', requireModuleAccess('viagens-configuracoes', 2, getH), wrap(async (req, res) => {
     const login = typeof req.body?.login === 'string' ? req.body.login.trim() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!login || !password) return res.status(400).json({ error: 'Informe o login e a senha da Mar Travel.' });
@@ -119,7 +119,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, connected: true, login, updatedAt });
   }));
 
-  r.delete('/martravel/account', requireModuleAccess('viagens-configuracoes', 2), wrap(async (req, res) => {
+  r.delete('/martravel/account', requireModuleAccess('viagens-configuracoes', 2, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     await s.deleteAccount(accountKey(org(req), uid(req)));
     res.json({ ok: true, connected: false });
