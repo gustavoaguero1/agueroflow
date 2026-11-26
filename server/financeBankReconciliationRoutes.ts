@@ -11,7 +11,7 @@ const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const normalize = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-const bankWriteAccess = [requireModuleAccess('financeiro-pagar', 2)];
+const bankWriteAccess = (getH: () => AdminHandles | null) => [requireModuleAccess('financeiro-pagar', 2, getH)];
 
 function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -40,7 +40,7 @@ function transactionIdentity(orgId: string, accountLabel: string, sourceFileName
 export function createFinanceBankReconciliationRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/import', ...bankWriteAccess, async (req: Request, res: Response) => {
+  router.post('/import', ...bankWriteAccess(getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const body = req.body ?? {};
@@ -95,7 +95,7 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
     }
   });
 
-  router.post('/:transactionId/match', ...bankWriteAccess, async (req: Request, res: Response) => {
+  router.post('/:transactionId/match', ...bankWriteAccess(getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const transactionId = req.params.transactionId;
@@ -159,7 +159,7 @@ export function createFinanceBankReconciliationRouter(getH: () => AdminHandles |
   });
 
 
-  router.post('/:transactionId/match-receipt', ...bankWriteAccess, async (req: Request, res: Response) => {
+  router.post('/:transactionId/match-receipt', ...bankWriteAccess(getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const transactionId = req.params.transactionId;
