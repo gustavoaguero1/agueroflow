@@ -131,9 +131,10 @@ function PermissionMatrix({
                           aria-label={section.label + ' - abrangência dos dados'}
                           className={FIELD + ' min-w-[122px]'}
                           disabled={disabled}
-                          value={grant.scope || 'all'}
-                          onChange={(e) => onChange(patchGrant(value, section.id, 'scope', e.target.value as DataScope))}
+                          value={grant.scope || (memberMode ? 'inherit' : 'all')}
+                          onChange={(e) => onChange(patchGrant(value, section.id, 'scope', e.target.value === 'inherit' ? undefined : e.target.value as DataScope))}
                         >
+                          {memberMode && <option value="inherit">Herdar</option>}
                           <option value="all">Todos</option>
                           <option value="assigned">Atribuídos a mim</option>
                           <option value="own">Criados por mim</option>
