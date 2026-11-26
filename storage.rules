@@ -23,23 +23,39 @@ service firebase.storage {
         roleAreas(request.auth.token.get('orgs', {}).get(orgId, ''))
       );
     }
-    function engineeringCanRead(orgId) {
-      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 1);
+    function sectionCode(orgId) { return request.auth.token.get('sectionPermissions', {}).get(orgId, ''); }
+    function grantView(symbol) { return symbol.matches('^[13579BDFHJLNPRTVXZbdfhjlnprtvxz_]$"); }
+    function grantCreate(symbol) { return symbol.matches('^[2367ABEFIJMNQRUVYZcdghklopstwx_-]$"); }
+    function grantEdit(symbol) { return symbol.matches('^[4567CDEFKLMNSTUVabcdijklqrstyz_-]$"); }
+    function grantDelete(symbol) { return symbol.matches('^[89ABCDEFOPQRSTUVefghijkluvwxyz_-]$"); }
+    function grantApprove(symbol) { return symbol.matches('^[GHIJKLMNOPQRSTUVmnopqrstuvwxyz_-]$"); }
+    function grantManage(symbol) { return symbol.matches('^[WXYZabcdefghijklmnopqrstuvwxyz_-]$"); }
+    function sectionFlagAllowed(symbol, action) {
+      return action == 0 ? grantView(symbol)
+        : (action == 1 ? grantCreate(symbol)
+          : (action == 2 ? grantEdit(symbol)
+            : (action == 3 ? grantDelete(symbol)
+              : (action == 4 ? grantApprove(symbol) : (action == 5 && grantManage(symbol))))));
     }
-    function engineeringCanWrite(orgId) {
-      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2);
+    function sectionOk(orgId, section, action, legacyAllowed) {
+      let code = sectionCode(orgId);
+      let offset = section * 2;
+      let symbol = code.size() == 196 && section >= 0 ? code[offset:offset + 1] : '';
+      return isMaster() || (isMember(orgId) && (
+        code == '' ? legacyAllowed
+          : (code is string && code.size() == 196 && section >= 0 && sectionFlagAllowed(symbol, action))
+      ));
     }
-    function safetyCertificateCanWrite(orgId) {
-      let role = request.auth.token.get('orgs', {}).get(orgId, '');
-      return isMaster() || (isMember(orgId)
-        && int(areaCode(orgId)[1:2]) >= 2
-        && role in ['Admin', 'Gerente', 'Supervisor']);
-    }
+    function workOrderCanRead(orgId) { return sectionOk(orgId, 1, 0, isMember(orgId) && int(areaCode(orgId)[1:2]) >= 1); }
+    function workOrderCanWrite(orgId) { return sectionOk(orgId, 1, 1, isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2); }
+    function engineeringCanRead(orgId) { return sectionOk(orgId, 24, 0, isMember(orgId) && int(areaCode(orgId)[1:2]) >= 1); }
+    function engineeringCanWrite(orgId) { return sectionOk(orgId, 24, 1, isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2); }
+    function safetyCertificateCanWrite(orgId) { return sectionOk(orgId, 47, 1, isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2 && request.auth.token.get('orgs', {}).get(orgId, '') in ['Admin', 'Gerente', 'Supervisor']); }
 
     // OS evidence: private, same-company and immutable.
     match /work-orders/{orgId}/{allPaths=**} {
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if workOrderCanRead(orgId);
+      allow create: if workOrderCanWrite(orgId)
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 10 * 1024 * 1024
@@ -56,8 +72,8 @@ service firebase.storage {
         return fileId == 'arquivos_historico.json'
           && request.resource.contentType == 'application/json';
       }
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if sectionOk(orgId, 35, 0, engineeringCanRead(orgId));
+      allow create: if sectionOk(orgId, 35, 1, engineeringCanWrite(orgId))
         && request.resource.size > 0
         && request.resource.size <= 15 * 1024 * 1024
         && (legacyJsonBackup() || (resource == null && allowedOperationsFileType()));
@@ -93,7 +109,7 @@ service firebase.storage {
 
     // HR onboarding candidate documents (uploaded exclusively by backend Admin SDK).
     match /hr-onboardings/{orgId}/{onboardingId}/{fileId} {
-      allow read: if isMaster() || (isMember(orgId) && int(areaCode(orgId)[5:6]) >= 1);
+      allow read: if sectionOk(orgId, 49, 0, isMember(orgId) && int(areaCode(orgId)[5:6]) >= 1);
       allow write: if false;
     }
 
@@ -110,8 +126,8 @@ service firebase.storage {
 
     // Measurement Bulletin (BM) memory of calculation and evidences (private, immutable).
     match /measurement-evidences/{orgId}/{bulletinId}/{fileId} {
-      allow read: if isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 1 || int(areaCode(orgId)[3:4]) >= 1 || int(areaCode(orgId)[4:5]) >= 1));
-      allow create: if (isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 2 || int(areaCode(orgId)[3:4]) >= 2)))
+      allow read: if sectionOk(orgId, 25, 0, isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 1 || int(areaCode(orgId)[3:4]) >= 1 || int(areaCode(orgId)[4:5]) >= 1));
+      allow create: if sectionOk(orgId, 25, 1, isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 2 || int(areaCode(orgId)[3:4]) >= 2))
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
