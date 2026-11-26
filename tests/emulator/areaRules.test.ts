@@ -114,7 +114,8 @@ test('submódulo bloqueado para uma pessoa não afeta os outros submódulos da m
   const op = as('member_op', 'Operacional'); // Operações geral = 2
   await assertFails(getDoc(doc(op, 'work_orders/wo_granular'))); // Ordens revogada individualmente
   await assertSucceeds(getDoc(doc(op, 'checklist_templates/tpl1'))); // Checklists continuam herdando a área
-  await assertFails(getDoc(doc(op, 'org_module_access/org_a__member_op'))); // Grant nunca é lido pelo cliente
+  await assertSucceeds(getDoc(doc(op, 'org_module_access/org_a__member_op'))); // O próprio usuário lê somente seu grant para Storage
+  await assertFails(getDoc(doc(as('member_other', 'Operacional'), 'org_module_access/org_a__member_op')));
 });
 
 test('acesso por área só muda pelo servidor', async () => {
