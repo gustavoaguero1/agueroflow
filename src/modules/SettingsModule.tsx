@@ -38,6 +38,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import { apiFetch } from '../apiAuthFetch';
 import { AreaAccessPanel } from '../components/settings/AreaAccessPanel';
+import { ModuleAccessPanel } from '../components/settings/ModuleAccessPanel';
 
 interface SettingsModuleProps {
   onNavigate?: (section: any) => void;
@@ -424,8 +425,11 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
         </div>
       </div>
 
-      {/* Quem vê e edita cada área do sistema */}
-      {canSeeAreaAccess && <AreaAccessPanel />}
+      {/* Permissões gerais por área e granularidade por submódulo/ação */}
+      {canSeeAreaAccess && <>
+        <AreaAccessPanel />
+        <ModuleAccessPanel />
+      </>}
 
       {/* Integração WhatsApp Webhook & OCR (Reembolsos de Campo) */}
       <div className="bg-[#121826] border border-slate-800 rounded-2xl p-5 space-y-5">
