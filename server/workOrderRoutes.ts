@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireModuleAccess, requireRole } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   evaluateWorkOrderSafetyGate,
@@ -433,7 +433,7 @@ export function createWorkOrderRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.post('/:orderId/reservation-approval', requireModuleAccess('ordens', 2), requireRole('Admin', 'Gerente', 'Supervisor'), async (req: Request, res: Response) => {
+  router.post('/:orderId/reservation-approval', requireModuleAccess('ordens', 3), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const orderId = req.params.orderId;
