@@ -13,7 +13,7 @@ const validDocId = (value: unknown): value is string => typeof value === 'string
 export function createFinancePayableAuthorizationRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/', requireModuleAccess('financeiro-pagar', 3), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-pagar', 3, getH), async (req: Request, res: Response) => {
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });
 
