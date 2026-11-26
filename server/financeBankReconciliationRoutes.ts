@@ -11,7 +11,7 @@ const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const normalize = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-const bankWriteAccess = [requireRole('Admin', 'Gerente'), requireArea('financeiro', 2)];
+const bankWriteAccess = [requireRole('Admin', 'Gerente'), requireModuleAccess('financeiro-pagar', 2)];
 
 function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
