@@ -13,7 +13,7 @@ async function api(opts: { uid?: string; role?: string; orgs?: Record<string, st
   const role = opts.role ?? 'Admin';
   const moduleGrants = new Map<string, any>();
   if (role === 'Admin') moduleGrants.set(`org_a__${uid}`, {
-    orgId: 'org_a', uid, modules: { 'viagens-configuracoes': 4 },
+    orgId: 'org_a', uid, modules: { 'viagens-configuracoes': 4 }, explicitModules: ['viagens-configuracoes'],
   });
   const getAdminHandles = () => ({
     db: { collection: () => ({ doc: (id: string) => ({ get: async () => {
