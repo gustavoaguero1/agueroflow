@@ -311,6 +311,10 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     { id: 'rh-relatorios', label: 'Relatórios', icon: FileBarChart },
     { id: 'rh-holerites', label: 'Demonstrativos/Holerites', icon: FileText },
   ];
+  const visibleTabs = useMemo(() => tabs.filter((tab) => moduleLevel(tab.id) >= 1), [tabs, moduleLevel]);
+  useEffect(() => {
+    if (visibleTabs.length && !visibleTabs.some((tab) => tab.id === currentTab)) setCurrentTab(visibleTabs[0].id);
+  }, [visibleTabs, currentTab]);
 
   return (
     <div className="space-y-5">
@@ -352,7 +356,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
         {/* Sub-Navigation Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 custom-scrollbar border-t border-slate-800/80">
-          {tabs.map((t) => {
+          {visibleTabs.map((t) => {
             const Icon = t.icon;
             const isActive = currentTab === t.id;
             return (
