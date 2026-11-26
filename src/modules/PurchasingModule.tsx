@@ -38,6 +38,10 @@ import { PurchasingReceivingManager } from '../components/purchasing/PurchasingR
 import { PurchaseHistoryTable } from '../components/purchasing/PurchaseHistoryTable';
 import { SupplierIntelligence } from '../components/purchasing/SupplierIntelligence';
 import { NewPurchaseOrderModal } from '../components/purchasing/NewPurchaseOrderModal';
+import {
+  PurchasingApprovalPanel,
+  SupplierScorecardPanel,
+} from '../components/purchasing/PurchasingApprovalsAndScorecardPanel';
 import type { WorkOrder } from '../types';
 
 interface PurchasingModuleProps {
@@ -309,11 +313,14 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
           )}
 
           {activeTab === 'compras-pedidos' && (
-            <PurchasingOrdersManager
-              orders={orders}
-              onRefresh={loadAllData}
-              onOpenNewOrderModal={() => setIsNewOrderModalOpen(true)}
-            />
+            <div className="space-y-4">
+              <PurchasingApprovalPanel orgId={currentOrgId} orders={orders} onRefresh={loadAllData} />
+              <PurchasingOrdersManager
+                orders={orders}
+                onRefresh={loadAllData}
+                onOpenNewOrderModal={() => setIsNewOrderModalOpen(true)}
+              />
+            </div>
           )}
 
           {activeTab === 'compras-historico' && (
@@ -326,12 +333,15 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
           )}
 
           {activeTab === 'compras-inteligencia' && (
-            <SupplierIntelligence
-              quotations={quotations}
-              orders={orders}
-              suppliers={suppliers}
-              onNavigateSub={handleTabChange}
-            />
+            <div className="space-y-4">
+              <SupplierScorecardPanel suppliers={suppliers} orders={orders} receipts={receipts} />
+              <SupplierIntelligence
+                quotations={quotations}
+                orders={orders}
+                suppliers={suppliers}
+                onNavigateSub={handleTabChange}
+              />
+            </div>
           )}
 
           {activeTab === 'compras-fornecedores' && (
