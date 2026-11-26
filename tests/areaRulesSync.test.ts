@@ -41,8 +41,8 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
 
 test('salário da equipe de campo só com acesso ao RH', () => {
   const block = /match \/field_worker_pay\/\{id\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
-  assert.match(block, /allow read: if resource == null \? signedIn\(\) : areaOk\(payOrg\(resource\.data\), A_RH\(\), 1\)/);
-  assert.match(block, /allow create: if areaOk\(payOrg\(request\.resource\.data\), A_RH\(\), 2\)/);
+  assert.match(block, /allow read: if resource == null \? signedIn\(\) : moduleOk\(payOrg\(resource\.data\), 'rh-holerites', A_RH\(\), 1\)/);
+  assert.match(block, /allow create: if moduleOk\(payOrg\(request\.resource\.data\), 'rh-holerites', A_RH\(\), 2\)/);
 });
 
 test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só por proposalId)', () => {
