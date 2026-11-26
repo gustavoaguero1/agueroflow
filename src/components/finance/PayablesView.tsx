@@ -20,7 +20,7 @@ const PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string> = { pix: 'PIX'
 const PAYMENT_METHOD_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS) as [FinancePaymentMethod, string][];
 
 export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory[] }> = ({ orgId, categories }) => {
-  const { user, role, contracts, isSupervisorOrAbove, isMaster, areaLevel, logAudit } = useAuth();
+  const { user, contracts, moduleLevel, logAudit } = useAuth();
   const [ps, setPs] = useState<FinancePayable[]>([]);
   const [authorizations, setAuthorizations] = useState<FinancePayableAuthorization[]>([]);
   const [settlements, setSettlements] = useState<FinancePayableSettlement[]>([]);
@@ -64,8 +64,8 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
     && (!f.categoriaId || p.categoriaId === f.categoriaId || p.rateio?.some((r) => r.categoriaId === f.categoriaId))
     && (!f.contractId || p.contractId === f.contractId || p.rateio?.some((r) => r.contractId === f.contractId)));
 
-  const canSettle = isSupervisorOrAbove && areaLevel('financeiro') >= (role === 'Supervisor' ? 1 : 2);
-  const canApplyDiscount = isMaster || ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2);
+  const canSettle = moduleLevel('financeiro-pagar') >= 2;
+  const canApplyDiscount = moduleLevel('financeiro-pagar') >= 3;
   const openSettlement = (payable: FinancePayable) => {
     setSettlementTarget(payable);
     setSettlementRequestKey(crypto.randomUUID());
@@ -139,7 +139,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
           <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-blue-400" />Contas a Pagar</h2>
           <p className="text-xs text-slate-400 mt-0.5">Parcelas geradas pelas NF-e classificadas e lançamentos manuais.</p>
         </div>
-        {isSupervisorOrAbove && (
+        {moduleLevel('financeiro-pagar') >= 2 && (
           <button type="button" className={btnPrimary} onClick={() => setShowForm((v) => !v)}><Plus className="w-3.5 h-3.5" />Lançamento manual</button>
         )}
       </div>
