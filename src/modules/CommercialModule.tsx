@@ -65,7 +65,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
   activeSubSection = 'comercial-painel',
   onNavigateSubSection,
 }) => {
-  const { user, organization, role } = useAuth();
+  const { user, organization, role, moduleLevel } = useAuth();
   const organizationId = organization?.id || '';
   const userId = user?.uid || '';
   const userName = user?.displayName || user?.email || 'Representante Comercial';
@@ -268,7 +268,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
                   items={selectedProposalItems}
                   catalog={catalog}
                   organizationName={organization?.name || 'AgueroFlow Industrial'}
-                  userRole={role}
+                  canApprove={moduleLevel('comercial-revisao') >= 3}
                   userName={userName}
                   onRefresh={loadData}
                   onNavigateBack={() => setTab('comercial-painel')}
@@ -322,7 +322,6 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
             <CommercialSettingsManager
               policy={policy}
               organizationId={organizationId}
-              userRole={role}
               userName={userName}
               onRefresh={loadData}
             />
