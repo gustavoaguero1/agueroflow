@@ -173,7 +173,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     role,
     isMaster,
     isAdmin,
-    isManagerOrAbove,
     canViewFinancials,
     areaLevels,
     moduleAccess,
