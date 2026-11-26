@@ -33,7 +33,11 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
   const areaLevels = resolveAreas(role, org.areaDefaults, member.areaOverrides);
   const orgDefaults = sanitizeModuleDefaults(org.moduleAccessDefaults);
   const personal = sanitizeModuleOverrides(member.moduleAccessOverrides);
-  const hasOverrides = Object.keys(orgDefaults[role] || {}).length > 0 || Object.keys(personal).length > 0;
+  const explicitModules = [...new Set([
+    ...Object.keys(orgDefaults[role] || {}),
+    ...Object.keys(personal),
+  ])];
+  const hasOverrides = explicitModules.length > 0;
   const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
 
   if (!hasOverrides) {
@@ -46,6 +50,7 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
     orgId,
     uid: ref.id.slice(orgId.length + 2),
     modules,
+    explicitModules,
     updatedAt: new Date().toISOString(),
   })));
 }
