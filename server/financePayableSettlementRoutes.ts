@@ -10,7 +10,7 @@ import {
   validateFinancePayableSettlementRequest,
   settlementRequestMatches,
 } from '../src/services/financePayableSettlementRules.ts';
-import { areaLevelOf, requireModuleAccess, requireRole } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -19,20 +19,9 @@ const optionalText = (value: unknown): string | undefined => typeof value === 's
 const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const money = (value: number) => cents(value) / 100;
 
-const settlementPermission: RequestHandler = (req, res, next) => {
-  const actor = req.user;
-  const orgId = req.orgId;
-  if (!actor || !orgId) return res.status(403).json({ ok: false, error: 'Empresa não autorizada.' });
-  const role = actor.orgs?.[orgId];
-  if (!actor.master && role !== 'Supervisor' && areaLevelOf(actor, orgId, 'financeiro') < 2) {
-    return res.status(403).json({ ok: false, error: 'Admin/Gerente precisam de Financeiro nível 2 para registrar a baixa.' });
-  }
-  next();
-};
-
 export function createFinancePayableSettlementRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireModuleAccess('financeiro-pagar', 1), settlementPermission, async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-pagar', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const payableId = req.body?.payableId;
     const actor = req.user;
