@@ -66,15 +66,15 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
   assert.match(rules, /moduleOk\(orgOf\(res\.data\), section, A_WA\(\), 1\)/);
   assert.match(rules, /match \/org_module_access\/\{id\}/);
   assert.match(rules, /function moduleMap\(org\)/);
-  assert.match(waMiddleware, /areaLevelOf\(req\.user, org, 'whatsapp'\)/);
+  assert.match(waMiddleware, /moduleLevelOf\(req\.user, org, section\)/);
 
   // Estrutura collections enforce A_EST()
   assert.match(rules, /function A_EST\(\) \{ return 8; \}/);
   assert.match(rules, /\['assets', 'contracts', 'cost_centers', 'teams', 'units'\] \? A_EST\(\)/);
-  assert.match(rules, /coll == 'audit_logs'\s*\?\s*areaOk\(orgOf\(d\), A_EST\(\), 1\)/);
+  assert.match(rules, /coll == 'audit_logs'\s*\?\s*moduleOk\(orgOf\(d\), 'auditoria', A_EST\(\), 1\)/);
 
   // Storage rules enforce Operações (index 1) and RH onboardings (index 5)
-  assert.match(storageRules, /areaCode\(orgId\)\[1:2\]/);
+  assert.match(storageRules, /moduleLevel\(orgId, 'ordens', 1\)/);
   assert.match(storageRules, /match \/hr-onboardings\/\{orgId\}\/\{onboardingId\}\/\{fileId\}/);
-  assert.match(storageRules, /areaCode\(orgId\)\[5:6\]/);
+  assert.match(storageRules, /moduleLevel\(orgId, 'rh-admissoes', 5\)/);
 });
