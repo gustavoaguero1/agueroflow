@@ -117,7 +117,7 @@ export type PermissionGrant = Partial<Record<AccessAction, boolean>> & { scope?:
 export type PermissionMap = Partial<Record<AccessSectionId, PermissionGrant>>;
 export type AccessProfile = { id: string; name: string; description?: string; permissions: PermissionMap; updatedAt?: string };
 
-const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+const PERMISSION_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
 const SCOPE_CODE: Record<DataScope, string> = { all: '0', assigned: '1', own: '2' };
 const CODE_SCOPE: Record<string, DataScope> = { '0': 'all', '1': 'assigned', '2': 'own' };
 const ACTION_BIT: Record<AccessAction, number> = { view: 1, create: 2, edit: 4, delete: 8, approve: 16, manage: 32 };
@@ -209,29 +209,29 @@ export function resolvePermissionMatrix(
  * seis flags (view/create/edit/delete/approve/manage) + escopo (0=todos, 1=atribuídos, 2=próprios).
  * Só é emitido quando há configuração granular; sem ele vale o legado por área.
  */
+/** Compact token: one base64url-like flag character + one scope character per submodule. */
 export function encodePermissionMatrix(matrix: Record<AccessSectionId, PermissionGrant>): string {
   return ACCESS_SECTIONS.map((item) => {
     const grant = matrix[item.id] || {};
-    const flags = ACCESS_ACTIONS.map((action) => grant[action] === true ? '1' : '0').join('');
-    return flags + SCOPE_CODE[grant.scope || 'all'];
+    const flags = ACCESS_ACTIONS.reduce((bits, action, index) =>
+      bits | (grant[action] === true ? (1 << index) : 0), 0);
+    return PERMISSION_ALPHABET[flags] + SCOPE_CODE[grant.scope || 'all'];
   }).join('');
 }
 
 export function decodePermissionMatrix(raw: unknown): Record<AccessSectionId, PermissionGrant> | null {
-  const expected = ACCESS_SECTIONS.length * 7;
+  const expected = ACCESS_SECTIONS.length * 2;
   if (typeof raw !== 'string' || raw.length !== expected) return null;
-  for (let i = 0; i < ACCESS_SECTIONS.length; i += 1) {
-    const block = raw.slice(i * 7, i * 7 + 7);
-    if (!/^[01]{6}[012]$/.test(block)) return null;
-  }
   const result = {} as Record<AccessSectionId, PermissionGrant>;
-  ACCESS_SECTIONS.forEach((item, index) => {
-    const offset = index * 7;
+  for (let index = 0; index < ACCESS_SECTIONS.length; index += 1) {
+    const flags = PERMISSION_ALPHABET.indexOf(raw[index * 2]);
+    const scope = CODE_SCOPE[raw[index * 2 + 1]];
+    if (flags < 0 || !scope) return null;
     const grant: PermissionGrant = {};
-    ACCESS_ACTIONS.forEach((action, bit) => { grant[action] = raw[offset + bit] === '1'; });
-    grant.scope = CODE_SCOPE[raw[offset + 6]];
-    result[item.id] = grant;
-  });
+    ACCESS_ACTIONS.forEach((action, bit) => { grant[action] = (flags & (1 << bit)) !== 0; });
+    grant.scope = scope;
+    result[ACCESS_SECTIONS[index].id] = grant;
+  }
   return result;
 }
 
