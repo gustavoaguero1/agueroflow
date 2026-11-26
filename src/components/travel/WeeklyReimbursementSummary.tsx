@@ -24,9 +24,9 @@ const br = (ymd: string) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : ''
 const shift = (ymd: string, days: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
 
 export const WeeklyReimbursementSummary: React.FC = () => {
-  const { organization, role } = useAuth();
+  const { organization, moduleLevel } = useAuth();
   const orgId = organization?.id;
-  const canManage = role === 'Admin' || role === 'Gerente';
+  const canManage = moduleLevel('ops-reembolso') >= 3;
   const [inicio, setInicio] = useState<string | undefined>(); // undefined = previous week (server default)
   const [semana, setSemana] = useState<Semana | null>(null);
   const [erro, setErro] = useState<string | null>(null);
