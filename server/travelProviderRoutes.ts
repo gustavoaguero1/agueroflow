@@ -8,7 +8,7 @@
  * A senha fica cifrada (AES-256-GCM, chave MARTRAVEL_SECRET_KEY) e nunca volta para o navegador.
  */
 import { Router, type Request, type Response, type RequestHandler } from 'express';
-import { getAdmin } from './firebaseAdmin.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { requireModuleAccess } from './authMiddleware.ts';
 import { sealSecret, openSecret, parseSecretKey, type SealedSecret } from './secretBox.ts';
 
@@ -70,7 +70,9 @@ export async function loadMarTravelCredentials(store: TravelProviderStore, keyB6
 export function createTravelProviderRouter(opts: {
   store?: () => TravelProviderStore | null;
   secretKey?: () => string | undefined;
+  getAdminHandles?: () => AdminHandles | null;
 } = {}): Router {
+  const getH = opts.getAdminHandles ?? getAdmin;
   const getStore = opts.store ?? firestoreTravelProviderStore;
   const getKey = opts.secretKey ?? (() => process.env.MARTRAVEL_SECRET_KEY);
   const r = Router();
