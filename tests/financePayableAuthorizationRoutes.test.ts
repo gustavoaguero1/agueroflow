@@ -76,7 +76,7 @@ async function withApi(
   const fixture = { ...seed };
   // Este cenário de teste representa um Gerente explicitamente delegado para aprovar Contas a Pagar.
   if (role === 'Gerente') fixture['org_module_access/org_a__manager1'] = {
-    orgId: 'org_a', uid: 'manager1', modules: { 'financeiro-pagar': 3 },
+    orgId: 'org_a', uid: 'manager1', modules: { 'financeiro-pagar': 3 }, explicitModules: ['financeiro-pagar'],
   };
   const mocked = mockAdmin(fixture);
   const app = express();
