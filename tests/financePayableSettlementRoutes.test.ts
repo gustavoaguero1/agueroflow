@@ -131,7 +131,7 @@ test('approved discount requires a reason and an explicit Financeiro approval gr
     const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0001' });
     assert.equal(response.status, 403);
   });
-  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable, 'org_module_access/org_a__settler1': { orgId: 'org_a', uid: 'settler1', modules: { 'financeiro-pagar': 3 } } }, async (base, docs) => {
+  await withApi('Gerente', { ['finance_payables/' + payable.id]: payable, 'org_module_access/org_a__settler1': { orgId: 'org_a', uid: 'settler1', modules: { 'financeiro-pagar': 3 }, explicitModules: ['financeiro-pagar'] } }, async (base, docs) => {
     const response = await post(base, { ...discountRequest, idempotencyKey: 'discount_0002' });
     assert.equal(response.status, 201);
     const eventId = financePayableSettlementId('org_a', payable.id, 'discount_0002');
