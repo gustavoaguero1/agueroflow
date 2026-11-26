@@ -15,6 +15,7 @@ export type FinanceSubSection = 'financeiro-notas' | 'financeiro-pagar' | 'finan
 export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> = ({ currentSubSection }) => {
   const { organization, moduleLevel } = useAuth();
   const orgId = organization?.id;
+  const canSeedCategories = moduleLevel('financeiro-plano') >= 2;
   const [categories, setCategories] = useState<FinanceCategory[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +35,8 @@ export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> =
 
   // The chart is configuration: created once, when the org has none (needed by every finance screen).
   useEffect(() => {
-    if (orgId && moduleLevel('financeiro-plano') >= 2) ensureDefaultCategories(db, orgId).catch((e) => setError(`Falha ao criar o plano de contas padrão: ${e.message}`));
-  }, [orgId, moduleLevel]);
+    if (orgId && canSeedCategories) ensureDefaultCategories(db, orgId).catch((e) => setError(`Falha ao criar o plano de contas padrão: ${e.message}`));
+  }, [orgId, canSeedCategories]);
 
   if (!orgId) return null;
   return (
