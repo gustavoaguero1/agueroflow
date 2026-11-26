@@ -17,7 +17,7 @@ const orgOf = (d: Record<string, any> | undefined): string =>
 export function createManufacturingRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/orders', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
+  router.post('/orders', requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -90,7 +90,7 @@ export function createManufacturingRouter(getH: () => AdminHandles | null = getA
     }
   });
 
-  router.post('/orders/:orderId/operations/:opId/report', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
+  router.post('/orders/:orderId/operations/:opId/report', requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const { orderId, opId } = req.params;
@@ -145,7 +145,7 @@ export function createManufacturingRouter(getH: () => AdminHandles | null = getA
     }
   });
 
-  router.post('/orders/:orderId/ship', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
+  router.post('/orders/:orderId/ship', requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const orderId = req.params.orderId;
     if (!orgId || !validId(orderId)) return res.status(400).json({ ok: false, error: 'Ordem inválida.' });
