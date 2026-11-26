@@ -47,7 +47,7 @@ test('salário da equipe de campo só com acesso ao RH', () => {
 
 test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só por proposalId)', () => {
   const block = /match \/commercial_proposal_items\/\{itemId\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
-  assert.match(block, /areaOk\(parentOrg\(resource\.data\), A_COM\(\), 1\)/);
+  assert.match(block, /moduleOk\(parentOrg\(resource\.data\), 'comercial-composicao', A_COM\(\), 1\)/);
   assert.doesNotMatch(block, /itemOrg/);
 });
 
@@ -62,8 +62,10 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
 
   // WhatsApp collections must not use legacy cross-tenant waMember()
   assert.doesNotMatch(rules, /function waMember\(/);
-  assert.match(rules, /function waCanRead\(res\)/);
-  assert.match(rules, /areaOk\(orgOf\(res\.data\), A_WA\(\), 1\)/);
+  assert.match(rules, /function waCanRead\(res, section\)/);
+  assert.match(rules, /moduleOk\(orgOf\(res\.data\), section, A_WA\(\), 1\)/);
+  assert.match(rules, /match \/org_module_access\/\{id\}/);
+  assert.match(rules, /function moduleMap\(org\)/);
   assert.match(waMiddleware, /areaLevelOf\(req\.user, org, 'whatsapp'\)/);
 
   // Estrutura collections enforce A_EST()
