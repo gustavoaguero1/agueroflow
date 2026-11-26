@@ -10,7 +10,7 @@ import {
   validateFinancePayableSettlementRequest,
   settlementRequestMatches,
 } from '../src/services/financePayableSettlementRules.ts';
-import { requireModuleAccess } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -45,11 +45,8 @@ export function createFinancePayableSettlementRouter(getH: () => AdminHandles | 
     const invalidRequest = validateFinancePayableSettlementRequest(request);
     if (invalidRequest) return res.status(400).json({ ok: false, error: invalidRequest });
 
-    if (request.discountAmount > 0 && !actor.master) {
-      const role = actor.orgs?.[orgId];
-      if ((role !== 'Admin' && role !== 'Gerente') || areaLevelOf(actor, orgId, 'financeiro') < 2) {
-        return res.status(403).json({ ok: false, error: 'Somente Admin/Gerente com Financeiro nível 2 podem registrar abatimentos.' });
-      }
+    if (request.discountAmount > 0 && await moduleLevelOf(actor, orgId, 'financeiro-pagar', getH) < 3) {
+      return res.status(403).json({ ok: false, error: 'Registrar abatimentos exige nível Aprovar em Contas a Pagar.' });
     }
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });
