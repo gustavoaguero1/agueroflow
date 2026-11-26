@@ -46,6 +46,9 @@ import { TravelSettingsView } from '../components/travel/TravelSettingsView';
 import { TravelMissionComposerModal } from '../components/travel/TravelMissionComposerModal';
 import { ReceiptReimbursementsView } from '../components/travel/ReceiptReimbursementsView';
 import { MultimodalBreakEvenModal } from '../components/travel/MultimodalBreakEvenModal';
+import { MarTravelPanel } from '../components/travel/MarTravelPanel';
+import { buildTravelSources, readLegacyEnabled, visibleTravelTabs, travelTabOrFallback } from '../services/marTravel';
+import { apiFetch } from '../apiAuthFetch';
 import { useAuth } from '../contexts/AuthContext';
 
 interface TravelModuleProps {
@@ -63,10 +66,33 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 }) => {
   const { user, role } = useAuth();
   const isAdmin = role === 'Admin';
+  const canManageSources = role === 'Admin' || role === 'Gerente';
 
-  const [activeTab, setActiveTab] = useState<TravelSubSection>(currentSubSection);
+  // Mar Travel é o canal oficial; as buscas antigas (homologações) ficam desligadas até um Admin ou Gerente religar.
+  const [legacyEnabled, setLegacyEnabled] = useState(false);
+  const [activeTabRaw, setActiveTab] = useState<TravelSubSection>(currentSubSection);
+  const activeTab = travelTabOrFallback(activeTabRaw, legacyEnabled) as TravelSubSection;
   const [loading, setLoading] = useState(false);
-  const [sources, setSources] = useState<TravelSourceConfig[]>(DEFAULT_TRAVEL_SOURCES_CONFIG);
+  const [sourceOverrides, setSourceOverrides] = useState<Record<string, boolean>>({});
+  const sources: TravelSourceConfig[] = buildTravelSources(DEFAULT_TRAVEL_SOURCES_CONFIG, legacyEnabled).map((s) =>
+    legacyEnabled && s.id in sourceOverrides ? { ...s, active: sourceOverrides[s.id] } : s,
+  );
+
+  useEffect(() => {
+    if (!currentOrgId) return;
+    apiFetch(`/api/travel/settings?orgId=${encodeURIComponent(currentOrgId)}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((j) => setLegacyEnabled(readLegacyEnabled(j)))
+      .catch(() => setLegacyEnabled(false));
+  }, [currentOrgId]);
+
+  const saveLegacyEnabled = async (v: boolean) => {
+    const r = await apiFetch('/api/travel/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId: currentOrgId, legacySourcesEnabled: v }),
+    });
+    if (r.ok) { setLegacyEnabled(v); showToast(v ? 'Buscas antigas religadas.' : 'Buscas antigas desligadas. A Mar Travel segue como canal oficial.'); }
+    else showToast('Só Admin ou Gerente podem mudar essa opção.');
+  };
 
   // Search and Results States
   const [currentCriteria, setCurrentCriteria] = useState<TravelSearchCriteria | null>(null);
@@ -87,7 +113,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 
   // Sync prop changes
   useEffect(() => {
-    if (currentSubSection && currentSubSection !== activeTab) {
+    if (currentSubSection && currentSubSection !== activeTabRaw) {
       setActiveTab(currentSubSection);
     }
   }, [currentSubSection]);
@@ -124,6 +150,11 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 
   // Execute Search
   const handleExecuteSearch = async (criteria: TravelSearchCriteria) => {
+    if (!legacyEnabled) {
+      showToast('A compra oficial é pela Mar Travel: use "Abrir Mar Travel" no Painel.');
+      handleTabChange('viagens-painel');
+      return;
+    }
     setLoading(true);
     setCurrentCriteria(criteria);
 
@@ -179,6 +210,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 
   // Reconsult from saved search
   const handleReconsult = async (record: TravelSearchRecord) => {
+    if (!legacyEnabled) { handleTabChange('viagens-painel'); return; }
     setLoading(true);
     showToast(`Reconsultando rota ${record.criteria.originCity} ➔ ${record.criteria.destinationCity}...`);
 
@@ -367,7 +399,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
       {/* Navigation Sub-Tabs */}
       <div className="bg-[#111827] border border-slate-700/80 rounded-2xl p-2 shadow-xl">
         <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none">
-          {tabs.map((tab) => {
+          {tabs.filter((t) => visibleTravelTabs(tabs.map((x) => x.id), legacyEnabled).includes(t.id)).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 
@@ -400,9 +432,11 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
       </div>
 
       {/* TAB 1: PAINEL GERAL (DASHBOARD) */}
-      {activeTab === 'viagens-painel' && (
+      {activeTab === 'viagens-painel' && <MarTravelPanel orgId={currentOrgId} />}
+
+      {activeTab === 'viagens-painel' && legacyEnabled && (
         <div className="space-y-6 max-w-5xl mx-auto text-slate-100">
-          {/* Hero Banner */}
+          {/* Hero Banner (buscas antigas, religadas por um Admin ou Gerente) */}
           <div className="bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-blue-950/40 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -640,16 +674,35 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
 
       {/* TAB 7: CONFIGURAÇÕES DE FONTES & PARCEIROS (ADMIN) */}
       {activeTab === 'viagens-configuracoes' && (
-        <TravelSettingsView
-          sources={sources}
-          isAdmin={isAdmin}
-          onToggleSourceActive={(id, active) => {
-            setSources((prev) =>
-              prev.map((s) => (s.id === id ? { ...s, active } : s))
-            );
-            showToast('Configuração de fonte atualizada!');
-          }}
-        />
+        <div className="space-y-4">
+          <div className="max-w-5xl mx-auto bg-[#111827] border border-slate-700/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-slate-100">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white">Buscas antigas (homologações)</h3>
+              <p className="text-xs text-slate-400 max-w-xl">
+                QueroPassagem, ClickBus, Buser, companhias aéreas e redes de hotéis. Ficam desligadas: a compra oficial é pela Mar Travel.
+                {canManageSources ? '' : ' Só Admin ou Gerente podem religar.'}
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={legacyEnabled}
+                disabled={!canManageSources}
+                onChange={(e) => saveLegacyEnabled(e.target.checked)}
+              />
+              {legacyEnabled ? 'Religadas' : 'Desligadas'}
+            </label>
+          </div>
+          <TravelSettingsView
+            sources={sources}
+            isAdmin={isAdmin && legacyEnabled}
+            onToggleSourceActive={(id, active) => {
+              if (id === 'src_martravel') return;
+              setSourceOverrides((prev) => ({ ...prev, [id]: active }));
+              showToast('Configuração de fonte atualizada!');
+            }}
+          />
+        </div>
       )}
 
       {/* Mission Composer Modal (Combo 3 em 1) */}

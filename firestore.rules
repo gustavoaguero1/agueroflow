@@ -1529,5 +1529,9 @@ service cloud.firestore {
     match /durable_jobs/{jobId} {
       allow read, write: if false;
     }
+    // Login da Mar Travel de cada colaborador (senha cifrada): só o servidor lê e grava (server/travelProviderRoutes.ts).
+    match /travel_provider_accounts/{accountId} {
+      allow read, write: if false;
+    }
   }
 }
