@@ -391,7 +391,7 @@ service cloud.firestore {
       allow create, delete: if isMaster();
       // Padrões de acesso por área: só pelo servidor (PUT /api/org/areas), que também renova os logins.
       allow update: if isMaster() || (hasRole(orgId, ['Admin'])
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['areaDefaults']));
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['areaDefaults', 'moduleAccessDefaults']));
     }
 
     // ---- Members --------------------------------------------------------------
@@ -410,11 +410,11 @@ service cloud.firestore {
             && request.auth.token.get('email', null) is string
             && resource.data.get('userEmail', '') == request.auth.token.email.lower());
       // Ajuste de acesso por área: só pelo servidor (PUT /api/org/members/:id/areas).
-      allow create: if !request.resource.data.keys().hasAny(['passwordHash', 'areaOverrides', 'areasUpdatedAt'])
+      allow create: if !request.resource.data.keys().hasAny(['passwordHash', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'])
         && request.resource.data.get('userId', '') in ['', request.auth.uid]
         && manages(request.resource.data.get('orgId', ''))
         && roleOk(request.resource.data.get('orgId', ''), request.resource.data);
-      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'])
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'])
         && (isMaster()
           || (manages(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId
               && roleOk(resource.data.orgId, resource.data) && roleOk(resource.data.orgId, request.resource.data))
