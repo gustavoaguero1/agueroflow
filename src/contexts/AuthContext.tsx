@@ -12,9 +12,8 @@ import {
   updateDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import {
-  canSeeSection, effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels,
-} from '../permissions/areas';
+import { effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels } from '../permissions/areas';
+import { canAccessPermission, scopeOfPermission, type AccessAction, type DataScope } from '../permissions/granular';
 import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
 import { postJson, setApiOrgGetter } from '../apiAuthFetch';
 import {
@@ -44,6 +43,8 @@ interface AuthContextType {
   areaLevels: AreaLevels;
   areaLevel: (area: AreaId) => AreaLevel;
   canSeeSection: (section: string) => boolean;
+  canAccessSection: (section: string, action: AccessAction) => boolean;
+  sectionDataScope: (section: string) => DataScope;
 
   // Global Context Multiempresa (Hierarchy: Org -> Contract -> Unit)
   selectedUnitId: string;
@@ -1050,6 +1051,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Acesso por área: vem do token (o servidor grava); sem áreas no token, padrão do perfil.
   const [tokenAreas, setTokenAreas] = useState<Record<string, string>>({});
+  const [tokenSectionPermissions, setTokenSectionPermissions] = useState<Record<string, string>>({});
   const tokenIssuedAt = useRef<string>('');
   const lastAreasStamp = useRef<unknown>(undefined); // último areasUpdatedAt visto no cadastro da pessoa
   const readTokenAreas = useCallback(async (u: User, force = false): Promise<void> => {
@@ -1058,6 +1060,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       tokenIssuedAt.current = r.issuedAtTime;
       const a = r.claims.areas;
       setTokenAreas(a && typeof a === 'object' ? (a as Record<string, string>) : {});
+      const sectionPermissions = r.claims.sectionPermissions;
+      setTokenSectionPermissions(sectionPermissions && typeof sectionPermissions === 'object' ? (sectionPermissions as Record<string, string>) : {});
       // O cadastro pode ter chegado antes do token: confere de novo agora que sabemos quando o token saiu.
       if (!force && needsTokenRefresh(lastAreasStamp.current, r.issuedAtTime)) return readTokenAreas(u, true);
     } catch (err) {
@@ -1066,7 +1070,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
   useEffect(() => {
     if (user) readTokenAreas(user);
-    else setTokenAreas({});
+    else {
+      setTokenAreas({});
+      setTokenSectionPermissions({});
+    }
   }, [user, organization?.id, readTokenAreas]);
   // Quando o Admin muda o acesso da pessoa, o servidor marca areasUpdatedAt: renova o login aqui.
   useEffect(() => {
@@ -1082,7 +1089,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, member?.id, isMasterUser, readTokenAreas]);
   const areaLevels = effectiveLevels(isMasterUser, role, organization ? tokenAreas[organization.id] : undefined);
   const areaLevel = (area: AreaId): AreaLevel => areaLevels[area];
-  const canSeeSectionFn = (section: string) => canSeeSection(section, areaLevels);
+  const permissionCode = organization ? tokenSectionPermissions[organization.id] : undefined;
+  const canAccessSectionFn = (section: string, action: AccessAction) =>
+    canAccessPermission(section, action, areaLevels, permissionCode, isMasterUser);
+  const canSeeSectionFn = (section: string) => canAccessSectionFn(section, 'view');
+  const sectionDataScope = (section: string) => scopeOfPermission(section, areaLevels, permissionCode);
   const isAdmin = isMasterUser || role === 'Admin';
   const isManagerOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente';
   const isSupervisorOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente' || role === 'Supervisor';
