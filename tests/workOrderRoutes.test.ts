@@ -250,7 +250,7 @@ test('read-only Operations access cannot change a work order status', async () =
 test('reservation approval updates the OS, history and release message atomically', async () => {
   const seed = {
     ...standardSeed(),
-    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { ordens: 3 } },
+    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { ordens: 3 }, explicitModules: ['ordens'] },
     ['work_orders/' + order.id]: {
       ...order,
       isBlockedByReservation: true,
