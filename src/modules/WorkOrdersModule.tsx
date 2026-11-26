@@ -79,6 +79,7 @@ import { OrderOverviewTab } from '../components/workOrders/OrderOverviewTab';
 import { OrderDiscussionTab } from '../components/workOrders/OrderDiscussionTab';
 import { OrderPlanningTab } from '../components/workOrders/OrderPlanningTab';
 import { OrderTimelineTab } from '../components/workOrders/OrderTimelineTab';
+import { WorkOrderStockReservationsTab } from '../components/workOrders/WorkOrderStockReservationsTab';
 import { OrderQuickPreview } from '../components/workOrders/OrderQuickPreview';
 import { OrderExecutionHubTab } from '../components/workOrders/OrderExecutionHubTab';
 import { OrderTechnicalReportModal } from '../components/workOrders/OrderTechnicalReportModal';
@@ -337,6 +338,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     selectedContractId: globalContractId,
     units,
     contracts,
+    areaLevel,
     logAudit,
   } = useAuth();
 
@@ -378,7 +380,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<'overview' | 'execution' | 'discussion' | 'planning' | 'timeline'>('overview');
+  const [activeModalTab, setActiveModalTab] = useState<'overview' | 'execution' | 'discussion' | 'planning' | 'reservations' | 'timeline'>('overview');
   const [showReportModal, setShowReportModal] = useState(false);
   const [orderEvents, setOrderEvents] = useState<OrderEvent[]>([]);
 
@@ -2147,6 +2149,19 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
               <button
                 type="button"
+                onClick={() => setActiveModalTab('reservations')}
+                className={`px-3 py-2.5 rounded-t-lg font-semibold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+                  activeModalTab === 'reservations'
+                    ? 'border-blue-500 text-blue-400 bg-slate-900/60 font-bold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/30'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>Reservas &amp; RC</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveModalTab('timeline')}
                 className={`px-3 py-2.5 rounded-t-lg font-semibold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
                   activeModalTab === 'timeline'
@@ -2161,6 +2176,14 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
             {/* Modal Body Content */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {activeModalTab === 'reservations' && organization && (
+                <WorkOrderStockReservationsTab
+                  order={selectedOrder}
+                  orgId={organization.id}
+                  canEdit={areaLevel('operacoes') >= 2}
+                />
+              )}
+
               {activeModalTab === 'overview' && (
                 <OrderOverviewTab
                   order={selectedOrder}

@@ -53,6 +53,7 @@ export const StockModule: React.FC = () => {
   const [movOrderId, setMovOrderId] = useState('');
   const [movToUnitId, setMovToUnitId] = useState('');
   const [rcBusy, setRcBusy] = useState(false);
+  const [activeReservations, setActiveReservations] = useState<Array<{ id: string; workOrderNumber?: string; itemName?: string; reservedQty?: number; shortageQty?: number; generatedRequisitionCode?: string }>>([]);
   const [movError, setMovError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,6 +72,19 @@ export const StockModule: React.FC = () => {
       setMovements(list);
     });
 
+    const qRes = query(
+      collection(db, 'stock_reservations'),
+      where('orgId', '==', organization.id),
+      where('status', '==', 'ativa'),
+    );
+    const unsubRes = onSnapshot(
+      qRes,
+      (snap) => {
+        setActiveReservations(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
+      },
+      () => setActiveReservations([]),
+    );
+
     getDocs(query(collection(db, 'items'), where('orgId', '==', organization.id))).then((s) =>
       setItems(s.docs.map((d) => ({ id: d.id, ...d.data() } as Item)).filter((i) => i.type === 'peca'))
     );
@@ -84,6 +98,7 @@ export const StockModule: React.FC = () => {
     return () => {
       unsubBalances();
       unsubMovements();
+      unsubRes();
     };
   }, [organization]);
 
@@ -249,6 +264,41 @@ export const StockModule: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Active OS Reservations Strip */}
+      {activeReservations.length > 0 && (
+        <div className="af-card rounded-2xl p-4 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-[#1D1D1F] dark:text-[#F5F5F7]">
+              Reservas Ativas por Ordem de Serviço ({activeReservations.length})
+            </span>
+            <span className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">
+              Gerenciáveis na aba &ldquo;Reservas &amp; RC&rdquo; da OS
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {activeReservations.slice(0, 8).map((r) => (
+              <div
+                key={r.id}
+                className="px-3 py-1.5 rounded-xl bg-[#F5F5F7] dark:bg-[#1C1F26] border border-black/[0.06] dark:border-white/[0.08] flex items-center gap-2"
+              >
+                <span className="font-mono font-semibold text-[#0071E3] dark:text-[#409CFF]">
+                  {r.workOrderNumber || 'OS'}
+                </span>
+                <span className="truncate max-w-[160px]">{r.itemName}</span>
+                <span className="font-mono tabular-nums font-bold">
+                  {r.reservedQty ?? 0} un.
+                </span>
+                {(r.shortageQty || 0) > 0 && (
+                  <span className="text-[#B25000] dark:text-[#FF9F0A] font-medium">
+                    (Falta {r.shortageQty}{r.generatedRequisitionCode ? ` · ${r.generatedRequisitionCode}` : ''})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Balances Grid Table */}
       <div className="space-y-4">
