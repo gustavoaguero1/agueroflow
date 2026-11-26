@@ -190,8 +190,8 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Submenu Tabs Bar */}
-      <div className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-1.5 shadow-xl flex items-center overflow-x-auto gap-1">
+      {/* Submenu Tabs Bar — Apple Segmented Control */}
+      <div className="af-seg rounded-2xl p-1.5 flex items-center overflow-x-auto custom-scrollbar gap-1">
         {navTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
@@ -199,13 +199,11 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
             <button
               key={tab.id}
               onClick={() => setTab(tab.id)}
-              className={`flex items-center space-x-2 px-3.5 py-2 text-xs font-semibold rounded-lg transition whitespace-nowrap ${
-                isActive
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              className={`flex items-center space-x-2 px-3.5 py-2 text-xs rounded-xl whitespace-nowrap cursor-pointer ${
+                isActive ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
-              <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+              <Icon className="w-3.5 h-3.5 flex-shrink-0 opacity-80" />
               <span>{tab.label}</span>
             </button>
           );

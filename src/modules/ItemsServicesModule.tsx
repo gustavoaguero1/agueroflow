@@ -495,7 +495,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <div className="flex items-center space-x-2 text-cyan-400 mb-1">
             <Wrench className="w-4 h-4" />
@@ -525,7 +525,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
                 setPieceName('');
                 setShowPieceModal(true);
               }}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Nova peça</span>
@@ -538,7 +538,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
                 setServiceTitle('');
                 setShowServiceModal(true);
               }}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Novo serviço</span>
@@ -552,7 +552,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
                 setLaborName('');
                 setShowLaborModal(true);
               }}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Nova mão de obra</span>
@@ -562,7 +562,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
           {activeTab === 'categorias' && (
             <button
               onClick={() => setShowCategoryModal(true)}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Nova Categoria</span>
@@ -572,7 +572,7 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-3">
+      <div className="af-seg rounded-2xl p-1.5 flex items-center gap-1 overflow-x-auto custom-scrollbar">
         {[
           { id: 'peca' as const, label: 'Peças & Materiais', icon: Boxes },
           { id: 'servico' as const, label: 'Serviços Especializados', icon: Wrench },
@@ -585,10 +585,8 @@ export const ItemsServicesModule: React.FC<ItemsServicesModuleProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer ${
+                isActive ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
