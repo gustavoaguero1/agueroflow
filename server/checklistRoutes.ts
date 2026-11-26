@@ -80,7 +80,7 @@ function routeError(res: Response, error: unknown, context: string) {
 export function createChecklistRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/templates', requireModuleAccess('checklists', 2), async (req: Request, res: Response) => {
+  router.post('/templates', requireModuleAccess('checklists', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     if (!orgId || req.body?.orgId !== orgId) return res.status(400).json({ ok: false, error: 'Empresa inválida para criar o template.' });
@@ -126,7 +126,7 @@ export function createChecklistRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.put('/templates/:templateId', requireModuleAccess('checklists', 2), async (req: Request, res: Response) => {
+  router.put('/templates/:templateId', requireModuleAccess('checklists', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const templateId = req.params.templateId;
@@ -180,7 +180,7 @@ export function createChecklistRouter(getH: () => AdminHandles | null = getAdmin
     }
   });
 
-  router.post('/templates/:templateId/runs', requireModuleAccess('checklists', 2), async (req: Request, res: Response) => {
+  router.post('/templates/:templateId/runs', requireModuleAccess('checklists', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const templateId = req.params.templateId;
