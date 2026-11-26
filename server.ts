@@ -609,7 +609,7 @@ async function main() {
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
-  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender });
+  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender, getAdminHandles: getAdmin });
   app.use('/api', waMiddlewares.companyContext);
   app.use('/api/whatsapp/bridge', waMiddlewares.ownSessionContext);
   app.use('/api/nfe', requireModuleAccess('financeiro-notas', 1), nfeRouter);
