@@ -43,7 +43,10 @@ function mockAdmin(seed: Record<string, unknown>) {
   const docs = new Map(Object.entries(seed));
   const db: any = {
     collection: (name: string) => ({
-      doc: (id: string) => ({ path: name + '/' + id, id }),
+      doc: (id: string) => ({
+        path: name + '/' + id, id,
+        get: async () => { const data = docs.get(name + '/' + id); return { id, exists: data !== undefined, data: () => data }; },
+      }),
     }),
     runTransaction: async (fn: (tx: any) => Promise<unknown>) => {
       const writes: Array<{ path: string; data: unknown }> = [];
