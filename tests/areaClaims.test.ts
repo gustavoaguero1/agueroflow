@@ -120,7 +120,7 @@ test('requireArea marca a empresa autorizada na requisição', async () => {
 });
 
 function moduleStore(uid: string, modules?: Record<string, number>) {
-  const data = modules ? { orgId: 'a', uid, modules } : undefined;
+  const data = modules ? { orgId: 'a', uid, modules, explicitModules: Object.keys(modules) } : undefined;
   return () => ({
     db: {
       collection: () => ({
