@@ -55,6 +55,86 @@ service cloud.firestore {
     function A_WA() { return 6; }
     function A_EST() { return 8; }
 
+    // Matriz granular: sectionPermissions[org] tem 98 blocos de 7 caracteres.
+    // A ausência de uma matriz mantém o comportamento legado; uma matriz inválida nega acesso.
+    function sectionCode(org) {
+      return request.auth.token.get('sectionPermissions', {}).get(org, '');
+    }
+    function sectionConfigured(org) { return sectionCode(org) != ''; }
+    function sectionOk(org, section, action, legacyAllowed) {
+      let code = sectionCode(org);
+      let offset = section * 7 + action;
+      return isMaster() || (isMemberOf(org) && (
+        code == '' ? legacyAllowed
+          : (code is string && code.size() == 686 && section >= 0
+            && code[offset:offset + 1] == '1')
+      ));
+    }
+    function sectionDataScopeOk(org, section, d) {
+      let code = sectionCode(org);
+      let scope = code.size() == 686 ? code[section * 7 + 6:section * 7 + 7] : '0';
+      let own = d.get('createdByUid', '') == request.auth.uid
+        || d.get('ownerUid', '') == request.auth.uid
+        || d.get('userId', '') == request.auth.uid
+        || d.get('requestedByUid', '') == request.auth.uid;
+      let assigned = d.get('assignedToUid', '') == request.auth.uid
+        || d.get('assigneeUid', '') == request.auth.uid
+        || d.get('responsibleUid', '') == request.auth.uid
+        || d.get('supervisorUid', '') == request.auth.uid
+        || d.get('ownerUid', '') == request.auth.uid
+        || (d.get('assignedUserIds', []) is list && request.auth.uid in d.get('assignedUserIds', []))
+        || (d.get('assigneeUids', []) is list && request.auth.uid in d.get('assigneeUids', []))
+        || (d.get('memberUids', []) is list && request.auth.uid in d.get('memberUids', []));
+      return isMaster() || code == '' || (code.size() == 686 && (
+        scope == '0' || (scope == '1' && assigned) || (scope == '2' && own)
+      ));
+    }
+    function collSectionIndex() {
+      return coll in ['work_orders', 'work_order_statuses', 'order_events', 'order_messages'] ? 1
+        : (coll == 'lpu_approvals' ? 2
+          : (coll == 'recurring_orders' ? 3
+            : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events'] ? 4
+              : (coll in ['inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? 5
+                : (coll in ['items', 'item_categories'] ? 7
+                  : (coll in ['stock_balances', 'stock_movements'] ? 11
+                    : (coll == 'occurrences' ? 12
+                      : (coll == 'audit_logs' ? 23
+                        : (coll in ['constructions', 'construction_reports', 'engineering_documents', 'engineering_document_events'] ? 24
+                          : (coll in ['measurement_bulletins', 'measurement_bulletin_events', 'measurement_evidences'] ? 25
+                            : (coll in ['collective_assets', 'assets'] ? 39
+                              : (coll == 'collective_asset_movements' ? 40
+                                : (coll in ['collective_asset_services'] ? 41
+                                  : (coll == 'collective_asset_categories' ? 42
+                                    : (coll in ['collective_asset_workers', 'collective_asset_movements'] ? 43
+                                      : (coll in ['rh_employees', 'rh_directory'] ? 47
+                                        : (coll == 'rh_batches' || coll == 'rh_imports' ? 50
+                                          : (coll == 'rh_calculations' ? 51
+                                            : (coll == 'hr_onboardings' ? 49
+                                              : (coll == 'field_worker_pay' ? 54
+                                                : (coll in ['commercial_clients', 'commercial_proposals'] ? 57
+                                                  : (coll == 'commercial_cost_compositions' ? 59
+                                                    : (coll in ['commercial_imports'] ? 62
+                                                      : (coll == 'commercial_materials' ? 63
+                                                        : (coll.matches('marketing_.*') ? 91
+                                                          : (coll in ['purchasing_requisitions'] ? 68
+                                                            : (coll in ['purchasing_quotations'] ? 69
+                                                              : (coll in ['purchasing_orders'] ? 70
+                                                                : (coll in ['purchasing_receipts'] ? 73
+                                                                  : (coll in ['purchasing_suppliers'] ? 73
+                                                                    : (coll in ['finance_payables', 'finance_categories', 'finance_rules', 'finance_reconciliation_cases', 'finance_payable_authorizations', 'finance_payable_settlements', 'finance_bank_transactions', 'finance_bank_reconciliations'] ? 77
+                                                                      : (coll in ['finance_receivables', 'finance_receivable_receipts'] ? 78
+                                                                        : (coll in ['travel_requests', 'travel_searches'] ? 85
+                                                                          : (coll in ['support_tickets'] ? 14
+                                                                            : (coll.matches('whatsapp_.*') ? 18
+                                                                              : (collArea() == A_OPS() ? 26
+                                                                                : (collArea() == A_STOCK() ? 11
+                                                                                  : (collArea() == A_COM() ? 55
+                                                                                    : (collArea() == A_FIN() ? 75
+                                                                                      : (collArea() == A_RH() ? 47
+                                                                                        : (collArea() == A_EST() ? 21
+                                                                                          : -1))))))))))))))))))))))))))))))));
+    }
+
     // ---- Segurança do Trabalho & SMS ----------------------------------------
       function safetyRiskRank(level) {
         return level == 'baixo' ? 1 : level == 'medio' ? 2 : level == 'alto' ? 3 : level == 'critico' ? 4 : 0;
@@ -492,7 +572,7 @@ service cloud.firestore {
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
-      function areaRead(d) {
+      function legacyAreaRead(d) {
         return coll == 'projects'
           ? (areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1) || areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
           : (coll == 'audit_logs'
@@ -505,13 +585,38 @@ service cloud.firestore {
                   ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
                   : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))))));
       }
-      function areaWrite(d) {
+      function legacyAreaWrite(d) {
         return coll == 'projects'
           ? (areaOk(orgOf(d), A_OPS(), 2) || areaOk(orgOf(d), A_COM(), 2))
           : (coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
             : (coll in ['stock_balances', 'stock_movements']
               ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
               : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2))));
+      }
+      function areaRead(d) {
+        let org = orgOf(d);
+        return coll == 'projects'
+          ? (sectionOk(org, 24, 0, legacyAreaRead(d)) || sectionOk(org, 57, 0, false))
+          : (coll in ['items', 'item_categories']
+            ? (sectionOk(org, 7, 0, legacyAreaRead(d)) || sectionOk(org, 35, 0, false) || sectionOk(org, 63, 0, false))
+            : (coll in ['stock_balances', 'stock_movements']
+              ? (sectionOk(org, 11, 0, legacyAreaRead(d)) || sectionOk(org, 35, 0, false))
+              : (coll in ['purchasing_orders', 'purchasing_receipts']
+                ? (sectionOk(org, coll == 'purchasing_orders' ? 70 : 73, 0, legacyAreaRead(d)) || sectionOk(org, 76, 0, false))
+                : (coll == 'audit_logs'
+                  ? sectionOk(org, 23, 0, legacyAreaRead(d))
+                  : sectionOk(org, collSectionIndex(), 0, legacyAreaRead(d)))))
+          && sectionDataScopeOk(org, collSectionIndex(), d);
+      }
+      function areaWrite(d, action) {
+        let org = orgOf(d);
+        return coll == 'projects'
+          ? (sectionOk(org, 24, action, legacyAreaWrite(d)) || sectionOk(org, 57, action, false))
+          : (coll in ['items', 'item_categories']
+            ? sectionOk(org, 7, action, legacyAreaWrite(d))
+            : (coll in ['stock_balances', 'stock_movements']
+              ? (sectionOk(org, 11, action, legacyAreaWrite(d)) || sectionOk(org, 35, action, false))
+              : sectionOk(org, collSectionIndex(), action, legacyAreaWrite(d))));
       }
       function projectUnitValid(d) {
         let unitId = d.get('unitId', '');
@@ -1065,7 +1170,7 @@ service cloud.firestore {
           && (coll != 'work_orders' || workOrderReferencesValid(request.resource.data))
           && (coll != 'order_events' || validOrderEventCreate())
           && (coll != 'order_messages' || validOrderMessageCreate())
-          && areaWrite(request.resource.data);
+          && areaWrite(request.resource.data, 1);
       }
       function collectiveWorkerRhLinkValid(d) {
         let rhId = d.get('rhEmployeeId', '');
@@ -1095,15 +1200,15 @@ service cloud.firestore {
           || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['masterItemId'])
           || commercialMaterialMasterItemValid(request.resource.data))
         && (coll == 'projects'
-          ? (areaWrite(resource.data) && validProjectUpdate())
+          ? (areaWrite(resource.data, 2) && validProjectUpdate())
           : (coll == 'order_messages'
-            ? (areaWrite(resource.data) && validOrderMessageUpdate())
+            ? (areaWrite(resource.data, 2) && validOrderMessageUpdate())
             : (coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory'])
-            ? (areaWrite(resource.data) && validSafetyOccurrenceUpdate())
+            ? (areaWrite(resource.data, 4) && validSafetyOccurrenceUpdate())
             : (coll == 'quality_record_states'
-              ? (areaWrite(resource.data) && validQualityStateUpdate())
-              : (areaWrite(resource.data) || rhAllocation())))));
-      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs', 'order_messages', 'projects']) && !immutable() && canDelete() && areaWrite(resource.data)
+              ? (areaWrite(resource.data, 4) && validQualityStateUpdate())
+              : (areaWrite(resource.data, 2) || rhAllocation())))));
+      allow delete: if orgScoped() && !(coll in ['quality_record_states', 'inspections', 'checklist_templates', 'checklist_runs', 'order_messages', 'projects']) && !immutable() && canDelete() && areaWrite(resource.data, 3)
         && !(coll == 'occurrences' && resource.data.keys().hasAny(['safetyCategory']));
 
       // Finance data: members read; Supervisor+ create; Admin/Gerente review divergence cases; payables retain a separate settlement rule.
@@ -1207,11 +1312,11 @@ service cloud.firestore {
               : (coll == 'quality_record_states'
                 ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityStateCreate())
                 : (coll == 'projects'
-                  ? (canCreate() && areaWrite(request.resource.data) && validProjectCreate())
+                  ? (canCreate() && areaWrite(request.resource.data, 1) && validProjectCreate())
                   : (coll == 'collective_asset_workers'
-                    ? (canCreate() && areaWrite(request.resource.data) && collectiveWorkerRhLinkValid(request.resource.data))
+                    ? (canCreate() && areaWrite(request.resource.data, 1) && collectiveWorkerRhLinkValid(request.resource.data))
                     : (coll == 'commercial_materials'
-                      ? (canCreate() && areaWrite(request.resource.data) && commercialMaterialMasterItemValid(request.resource.data))
+                      ? (canCreate() && areaWrite(request.resource.data, 1) && commercialMaterialMasterItemValid(request.resource.data))
                       : (coll in [
                           'safety_permits', 'safety_permit_events', 'safety_permit_states',
                           'safety_ppe_catalog', 'safety_ppe_movements', 'safety_training_catalog', 'safety_training_records'
