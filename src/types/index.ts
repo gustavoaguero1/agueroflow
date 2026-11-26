@@ -11,6 +11,8 @@ export interface Organization {
   updatedAt: string;
   /** Acesso por área ajustado pela empresa, por perfil (ver src/permissions/areas.ts). */
   areaDefaults?: Partial<Record<UserRole, Partial<Record<string, 0 | 1 | 2>>>>;
+  /** Padrões de acesso por submódulo, independentes por perfil. */
+  moduleAccessDefaults?: Partial<Record<UserRole, Partial<Record<string, 0 | 1 | 2 | 3 | 4>>>>;
 }
 
 export interface OrgMember {
@@ -27,6 +29,8 @@ export interface OrgMember {
   initialPasswordSetByAdmin?: boolean;
   /** Ajuste de acesso só desta pessoa, por cima do padrão do perfil. */
   areaOverrides?: Partial<Record<string, 0 | 1 | 2>>;
+  /** Exceções granulares de acesso por submódulo para esta pessoa. */
+  moduleAccessOverrides?: Partial<Record<string, 0 | 1 | 2 | 3 | 4>>;
   /** Muda quando o acesso da pessoa muda; o navegador renova o login ao ver a mudança. */
   areasUpdatedAt?: string;
   createdAt: string;
