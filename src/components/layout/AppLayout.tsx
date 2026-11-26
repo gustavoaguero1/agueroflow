@@ -176,6 +176,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     isManagerOrAbove,
     canViewFinancials,
     areaLevels,
+    moduleAccess,
     selectedUnitId,
     setSelectedUnitId,
     selectedContractId,
@@ -368,7 +369,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         { id: 'ops-tarefas' as NavSection, label: 'Auxiliares' },
         { id: 'ops-gases' as NavSection, label: 'Controle de gases' },
         { id: 'ops-base' as NavSection, label: 'Base de dados' },
-        ...(isManagerOrAbove ? [{ id: 'ops-config' as NavSection, label: 'Configurações' }] : []),
+        { id: 'ops-config' as NavSection, label: 'Configurações' },
       ],
     },
     {
@@ -469,7 +470,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     },
   ];
   // Só o que a pessoa pode ver (acesso por área; Configurações → Acessos por área).
-  const navItems = visibleNav(allNavItems, areaLevels);
+  const navItems = visibleNav(allNavItems, areaLevels, moduleAccess);
   const currentArea = areaOfSection(currentSection);
 
   const getSectionTitle = (id: NavSection) => {
