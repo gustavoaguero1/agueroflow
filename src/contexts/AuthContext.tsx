@@ -1126,8 +1126,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isAdmin = isMasterUser || role === 'Admin';
   const isManagerOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente';
   const isSupervisorOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente' || role === 'Supervisor';
-  // Financial numbers and 100% of modules visible to Admin, Gerente, and Master User
-  const canViewFinancials = isMasterUser || role === 'Admin' || role === 'Gerente';
+  // Custos financeiros só aparecem quando a pessoa tem consulta em Contas a Pagar.
+  const canViewFinancials = moduleLevel('financeiro-pagar') >= 1;
 
   return (
     <AuthContext.Provider
