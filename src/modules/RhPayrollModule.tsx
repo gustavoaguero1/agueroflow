@@ -74,9 +74,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     organization,
     user,
     role,
-    isAdmin,
-    isManagerOrAbove,
-    canViewFinancials,
+    moduleLevel,
     units,
     contracts,
     selectedUnitId,
@@ -84,6 +82,8 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     logAudit,
     areaLevel,
   } = useAuth();
+
+  const canViewFinancials = moduleLevel('rh-holerites') >= 1;
 
   // Tab State
   const [currentTab, setCurrentTab] = useState<RhSubSection>(activeSubSection);
