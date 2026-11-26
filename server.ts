@@ -79,7 +79,7 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { memberOrgOf, requireArea, requireAuth, requireRole, requireModuleAccess, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, moduleLevelOf, requireArea, requireAuth, requireRole, requireModuleAccess, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
 import { createModuleAccessRouter } from './server/moduleAccessRoutes';
 import { createTravelProviderRouter } from './server/travelProviderRoutes';
