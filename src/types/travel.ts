@@ -229,6 +229,7 @@ export interface TravelOffer {
 }
 
 export type TravelPartnerKey =
+  | 'martravel'
   | 'queropassagem'
   | 'clickbus'
   | 'buser'

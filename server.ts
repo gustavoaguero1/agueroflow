@@ -81,6 +81,7 @@ import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, s
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
 import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
+import { createTravelProviderRouter } from './server/travelProviderRoutes';
 import { createFinancePayableAuthorizationRouter } from './server/financePayableAuthorizationRoutes';
 import { createFinancePayableSettlementRouter } from './server/financePayableSettlementRoutes';
 import { createFinanceBankReconciliationRouter } from './server/financeBankReconciliationRoutes';
@@ -583,6 +584,7 @@ async function main() {
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
   app.use('/api/org', createAreaRouter());
+  app.use('/api/travel', createTravelProviderRouter());
   app.use('/api/finance/payable-authorizations', createFinancePayableAuthorizationRouter());
   app.use('/api/finance/payable-settlements', createFinancePayableSettlementRouter());
   app.use('/api/finance/bank-reconciliation', createFinanceBankReconciliationRouter());
