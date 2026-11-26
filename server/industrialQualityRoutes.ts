@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   compileProjectDataBook,
@@ -35,7 +35,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   const router = Router();
 
   // 1. Register Welding Procedure (EPS / WPS / PQR)
-  router.post('/procedures', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/procedures', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -74,7 +74,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 2. Register Welder Qualification & Stamp (linked to official rh_directory)
-  router.post('/welder-qualifications', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/welder-qualifications', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -125,7 +125,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 3. Register Material Lot / Metallurgical Heat Number & Certificate
-  router.post('/material-lots', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/material-lots', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -185,7 +185,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 4. Register Welded Joint Passport (enforces active EPS + valid welder stamp + org project)
-  router.post('/weld-joints', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/weld-joints', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -298,7 +298,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 5. Register NDT / Hydrostatic Report (enforces calibrated instrument in assets + updates linked joints)
-  router.post('/ndt-reports', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/ndt-reports', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -405,7 +405,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 6. Register ITP / PIT Matrix
-  router.post('/itp-matrices', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/itp-matrices', requireModuleAccess('obras', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -452,7 +452,7 @@ export function createIndustrialQualityRouter(getH: () => AdminHandles | null = 
   });
 
   // 7. Live Consolidated Project Data Book Compilation
-  router.get('/projects/:projectId/databook', requireArea('operacoes', 1), async (req: Request, res: Response) => {
+  router.get('/projects/:projectId/databook', requireModuleAccess('obras', 1), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const projectId = req.params.projectId;
     if (!orgId || !validId(projectId)) {
