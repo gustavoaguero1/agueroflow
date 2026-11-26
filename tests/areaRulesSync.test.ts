@@ -52,8 +52,8 @@ test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só 
 });
 
 test('acesso por área só muda pelo servidor', () => {
-  assert.match(rules, /hasAny\(\['areaDefaults'\]\)/);
-  assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'\]\)/);
+  assert.match(rules, /hasAny\(\['areaDefaults', 'moduleAccessDefaults'\]\)/);
+  assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'\]\)/);
 });
 
 test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e APIs', () => {
