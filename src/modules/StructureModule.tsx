@@ -463,7 +463,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
         </div>
 
         <div className="flex items-center space-x-2">
-          {activeTab === 'unidades' && (
+          {activeTab === 'unidades' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => setShowUnitModal(true)}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
@@ -472,7 +472,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Nova Unidade</span>
             </button>
           )}
-          {activeTab === 'ativos' && (
+          {activeTab === 'ativos' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => {
                 setAssetUnitId('');
@@ -485,7 +485,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Ativo</span>
             </button>
           )}
-          {activeTab === 'contratos' && (
+          {activeTab === 'contratos' && moduleLevel('contratos') >= 2 && (
             <button
               onClick={() => setShowContractModal(true)}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
@@ -494,7 +494,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Contrato</span>
             </button>
           )}
-          {activeTab === 'usuarios' && (
+          {activeTab === 'usuarios' && canManageUsers && (
             <button
               onClick={() => setShowMemberModal(true)}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
@@ -516,7 +516,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           { id: 'ativos' as const, label: `Ativos (${assets.length})`, icon: Boxes },
           { id: 'usuarios' as const, label: `Usuários & Papéis (${members.length})`, icon: Users },
           { id: 'auditoria' as const, label: `Auditoria (${auditLogs.length})`, icon: ShieldAlert },
-        ].map((tab) => {
+        ].filter((tab) => moduleLevel(({ organizacao: 'estrutura', projetos: 'obras', unidades: 'estrutura', contratos: 'contratos', ativos: 'estrutura', usuarios: 'estrutura', auditoria: 'auditoria' } as Record<string, string>)[tab.id]) >= 1).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
