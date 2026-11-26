@@ -85,6 +85,7 @@ export const MODULE_PERMISSIONS = [
   ['compras-painel', 'Painel de compras', 'Estoque e Compras'],
   ['compras-requisicoes', 'Requisições (RC)', 'Estoque e Compras'],
   ['compras-cotacoes', 'Mapa 3-Bid de cotações', 'Estoque e Compras'],
+  ['compras-tomada-precos', 'Tomada de preços', 'Estoque e Compras'],
   ['compras-pedidos', 'Ordens de compra (OC)', 'Estoque e Compras'],
   ['compras-historico', 'Histórico de compras', 'Estoque e Compras'],
   ['compras-inteligencia', 'Inteligência de fornecedores', 'Estoque e Compras'],
