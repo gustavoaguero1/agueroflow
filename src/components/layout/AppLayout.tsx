@@ -41,7 +41,7 @@ import { readSidebarCollapsed, writeSidebarCollapsed, isToggleSidebarShortcut } 
 import { BrandLogo } from '../common/BrandLogo';
 import { GlobalSearchModal, GlobalSearchResult } from '../common/GlobalSearchModal';
 import { useTheme } from '../../contexts/ThemeContext';
-import { areaOfSection, visibleNav } from '../../permissions/areas';
+import { visibleNav } from '../../permissions/areas';
 
 export type NavSection =
   | 'painel'
@@ -176,6 +176,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     canViewFinancials,
     areaLevels,
     moduleAccess,
+    moduleLevel,
     selectedUnitId,
     setSelectedUnitId,
     selectedContractId,
@@ -470,7 +471,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   ];
   // Só o que a pessoa pode ver (acesso por área; Configurações → Acessos por área).
   const navItems = visibleNav(allNavItems, areaLevels, moduleAccess);
-  const currentArea = areaOfSection(currentSection);
+  const currentModuleLevel = moduleLevel(currentSection);
 
   const getSectionTitle = (id: NavSection) => {
     switch (id) {
@@ -1008,7 +1009,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <h1 className="text-[15px] font-semibold text-[#1D1D1F] dark:text-[#F5F5F7] tracking-[-0.015em] truncate hidden md:block">
               {getSectionTitle(currentSection)}
             </h1>
-            {currentArea && areaLevels[currentArea] === 1 && (
+            {currentModuleLevel === 1 && (
               <span
                 className="hidden md:inline-flex items-center gap-1 rounded-full bg-black/[0.05] dark:bg-white/[0.1] px-2.5 py-0.5 text-[11px] font-medium text-[#6E6E73] dark:text-[#98989D] shrink-0"
                 title="Você pode ver esta área, mas não alterar. Peça ao administrador se precisar editar."
