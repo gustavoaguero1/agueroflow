@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { cmmsTriggerKey } from '../src/services/cmmsRules.ts';
 import type { CmmsMaintenanceRecord, CmmsPreventivePlan } from '../src/types/cmms.ts';
@@ -21,7 +21,7 @@ export function createCmmsRouter(getH: () => AdminHandles | null = getAdmin): Ro
   const router = Router();
 
   // 1. Create CMMS preventive plan tied to an existing Asset (never duplicates asset catalog)
-  router.post('/plans', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/plans', requireModuleAccess('bens-manutencoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
@@ -66,7 +66,7 @@ export function createCmmsRouter(getH: () => AdminHandles | null = getAdmin): Ro
   });
 
   // 2. Idempotently trigger preventive Work Order from a CMMS plan
-  router.post('/plans/:planId/trigger', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/plans/:planId/trigger', requireModuleAccess('bens-manutencoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const planId = req.params.planId;
@@ -157,7 +157,7 @@ export function createCmmsRouter(getH: () => AdminHandles | null = getAdmin): Ro
   });
 
   // 3. Record failure / maintenance / calibration and update Asset status/hourmeter/calibration atomically
-  router.post('/records', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/records', requireModuleAccess('bens-manutencoes', 2), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
