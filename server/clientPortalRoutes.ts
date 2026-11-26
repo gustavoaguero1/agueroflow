@@ -5,7 +5,6 @@ import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import { evaluatePortalGrantAccess, sanitizePortalScopes } from '../src/services/clientPortalRules.ts';
 import { compileProjectDataBook } from '../src/services/industrialQualityRules.ts';
 import type { ClientPortalAuditEntry, ClientPortalGrant } from '../src/types/clientPortal.ts';
-import type { UserRole } from '../src/types/index.ts';
 
 const validId = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0 && v.length <= 180 && !v.includes('/');
@@ -29,15 +28,11 @@ export function createClientPortalRouter(getH: () => AdminHandles | null = getAd
   const router = Router();
 
   // ---- Internal grant management (requires authenticated internal member) ----
-  router.post('/grants', requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
+  router.post('/grants', requireModuleAccess('obras', 4, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
     if (!orgId || !actor) return res.status(401).json({ ok: false, error: 'Não autenticado.' });
-    const role = (actor.orgs?.[orgId] || 'Visualizador') as UserRole;
-    if (!actor.master && !['Admin', 'Gerente'].includes(role)) {
-      return res.status(403).json({ ok: false, error: 'Apenas Admin ou Gerente pode emitir acessos externos ao Portal do Cliente.' });
-    }
     const projectId = String(b.projectId || '').trim();
     const clientName = String(b.clientName || '').trim();
     const scopes = sanitizePortalScopes(b.scopes);
@@ -80,7 +75,7 @@ export function createClientPortalRouter(getH: () => AdminHandles | null = getAd
     return res.status(201).json({ ok: true, grant: { ...grant, tokenHash: undefined }, accessToken: rawToken });
   });
 
-  router.post('/grants/:grantId/revoke', requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
+  router.post('/grants/:grantId/revoke', requireModuleAccess('obras', 4, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const grantId = req.params.grantId;
