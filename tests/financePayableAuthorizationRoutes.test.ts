@@ -43,7 +43,10 @@ function mockAdmin(seed: Record<string, unknown>) {
   const docs = new Map(Object.entries(seed));
   const db: any = {
     collection: (name: string) => ({
-      doc: (id: string) => ({ path: name + '/' + id, id }),
+      doc: (id: string) => ({
+        path: name + '/' + id, id,
+        get: async () => { const data = docs.get(name + '/' + id); return { id, exists: data !== undefined, data: () => data }; },
+      }),
     }),
     runTransaction: async (fn: (tx: any) => Promise<unknown>) => {
       const writes: Array<{ path: string; data: unknown }> = [];
@@ -70,7 +73,12 @@ async function withApi(
   seed: Record<string, unknown>,
   action: (base: string, docs: Map<string, unknown>) => Promise<void>,
 ) {
-  const mocked = mockAdmin(seed);
+  const fixture = { ...seed };
+  // Este cenário de teste representa um Gerente explicitamente delegado para aprovar Contas a Pagar.
+  if (role === 'Gerente') fixture['org_module_access/org_a__manager1'] = {
+    orgId: 'org_a', uid: 'manager1', modules: { 'financeiro-pagar': 3 }, explicitModules: ['financeiro-pagar'],
+  };
+  const mocked = mockAdmin(fixture);
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -177,7 +185,7 @@ test('backend rejects unapproved case, wrong invoice and paid title', async () =
   });
 });
 
-test('only Admin/Gerente can use the endpoint and Financeiro level 2 is required', async () => {
+test('endpoint requires level Aprovar in Contas a Pagar regardless of job title', async () => {
   await withApi('Supervisor', {
     'finance_reconciliation_cases/rcase_org_a_1': caseRecord,
     'finance_payables/pay_org_a_K1_001': payable,

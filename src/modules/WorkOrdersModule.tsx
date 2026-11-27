@@ -2234,7 +2234,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                     setSelectedOrder((prev) => (prev ? { ...prev, ...upd } : null))
                   }
                   onOpenReportModal={() => setShowReportModal(true)}
-                  canApprove={role === 'Admin' || role === 'Gerente'}
+                  canApprove={moduleLevel('ordens') >= 3}
                 />
               )}
 

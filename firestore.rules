@@ -47,6 +47,24 @@ service cloud.firestore {
     function areaCode(org) { return request.auth.token.get('areas', {}).get(org, roleAreas(orgClaims()[org])); }
     function areaLevel(org, i) { return isMaster() ? 2 : (isMemberOf(org) ? int(areaCode(org)[i:i + 1]) : 0); }
     function areaOk(org, i, lvl) { return isMaster() || areaLevel(org, i) >= lvl; }
+
+    // Grants por submódulo são privados (somente Admin SDK). Se não houver override,
+    // a regra antiga por área continua valendo para preservar cadastros existentes.
+    function moduleGrant(org) {
+      let p = /databases/$(database)/documents/org_module_access/$(org + '__' + request.auth.uid);
+      return exists(p) ? get(p).data : {};
+    }
+    function moduleMap(org) { return moduleGrant(org).get('modules', {}); }
+    function moduleExplicit(org, section) {
+      return moduleGrant(org).get('explicitModules', []).hasAny([section]);
+    }
+    function moduleOk(org, section, areaIndex, lvl) {
+      let modules = moduleMap(org);
+      return isMaster() || (isMemberOf(org)
+        && (moduleExplicit(org, section)
+          ? int(modules[section]) >= lvl
+          : areaLevel(org, areaIndex) >= lvl));
+    }
     function A_OPS() { return 1; }
     function A_STOCK() { return 2; }
     function A_COM() { return 3; }
@@ -285,28 +303,28 @@ service cloud.firestore {
 
 
     match /safety_permits/{permitId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       // Creation and every state change are performed atomically by the trusted API.
       allow create, update, delete: if false;
     }
 
     match /safety_permit_events/{eventId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     match /safety_permit_states/{permitId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     match /safety_ppe_catalog/{catalogId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'ordens', A_OPS(), 2)
         && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
         && validSafetyPpeCatalogCreate();
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_OPS(), 2)
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 2)
         && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
         && request.resource.data.get('orgId', '') == orgOf(resource.data)
@@ -316,17 +334,17 @@ service cloud.firestore {
     }
 
     match /safety_ppe_movements/{movementId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow write: if false;
     }
 
     match /safety_training_catalog/{catalogId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'ordens', A_OPS(), 2)
         && hasRole(orgOf(request.resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
         && validSafetyTrainingCatalogCreate();
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_OPS(), 2)
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 2)
         && hasRole(orgOf(resource.data), ['Admin', 'Gerente', 'Supervisor'])
         && request.resource.data.get('id', '') == catalogId
         && request.resource.data.get('orgId', '') == orgOf(resource.data)
@@ -336,13 +354,13 @@ service cloud.firestore {
     }
 
     match /safety_training_records/{recordId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens', A_OPS(), 1));
       allow write: if false;
     }
 
     match /occurrences/{occurrenceId} {
       allow create: if request.resource.data.keys().hasAny(['safetyCategory'])
-        && canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2)
+        && canCreate() && moduleOk(orgOf(request.resource.data), 'ocorrencias', A_OPS(), 2)
         && validSafetyOccurrenceCreate(occurrenceId);
     }
 
@@ -377,7 +395,7 @@ service cloud.firestore {
       allow create, delete: if isMaster();
       // Padrões de acesso por área: só pelo servidor (PUT /api/org/areas), que também renova os logins.
       allow update: if isMaster() || (hasRole(orgId, ['Admin'])
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['areaDefaults']));
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['areaDefaults', 'moduleAccessDefaults']));
     }
 
     // ---- Members --------------------------------------------------------------
@@ -387,7 +405,7 @@ service cloud.firestore {
       }
       // A Gerente may not create, change or remove an Admin.
       function roleOk(org, d) { return isMaster() || orgClaims()[org] == 'Admin' || d.get('role', '') != 'Admin'; }
-      function manages(org) { return isMaster() || hasRole(org, ['Admin', 'Gerente']); }
+      function manages(org) { return isMaster() || moduleOk(org, 'estrutura', A_EST(), 4); }
 
       allow read: if isMaster() || (resource == null && signedIn())
         || isMemberOf(resource.data.get('orgId', ''))
@@ -396,11 +414,11 @@ service cloud.firestore {
             && request.auth.token.get('email', null) is string
             && resource.data.get('userEmail', '') == request.auth.token.email.lower());
       // Ajuste de acesso por área: só pelo servidor (PUT /api/org/members/:id/areas).
-      allow create: if !request.resource.data.keys().hasAny(['passwordHash', 'areaOverrides', 'areasUpdatedAt'])
+      allow create: if !request.resource.data.keys().hasAny(['passwordHash', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'])
         && request.resource.data.get('userId', '') in ['', request.auth.uid]
         && manages(request.resource.data.get('orgId', ''))
         && roleOk(request.resource.data.get('orgId', ''), request.resource.data);
-      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'])
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['passwordHash', 'userId', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'])
         && (isMaster()
           || (manages(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId
               && roleOk(resource.data.orgId, resource.data) && roleOk(resource.data.orgId, request.resource.data))
@@ -424,22 +442,40 @@ service cloud.firestore {
     // Salários: área RH (ver/editar). Equipe (membros) e parâmetros (config): escrita só Admin/Gerente.
     // Demais coleções: área Operações (ver lê, editar grava).
     match /ops_orgs/{orgId}/{coll}/{docId} {
-      function opsManager() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente']); }
       function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
-      allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : areaOk(orgId, A_OPS(), 1);
+      function opsConfigCanWrite() {
+        let modules = moduleMap(orgId);
+        // Mantém os Admin/Gerentes legados quando não há personalização; um grant explícito
+        // substitui essa herança e permite delegar/restringir a administração a qualquer pessoa.
+        return isMaster() || (moduleExplicit(orgId, 'ops-config')
+          ? moduleOk(orgId, 'ops-config', A_OPS(), 4)
+          : hasRole(orgId, ['Admin', 'Gerente']));
+      }
+      function opsSection() {
+        return coll == 'obras' ? 'obras'
+          : (coll in ['diarios', 'diario', 'rdo', 'ponto_dia'] ? 'ops-diario'
+            : (coll in ['contratacao', 'contratos_equipe'] ? 'ops-contratacao'
+              : (coll in ['tarefas', 'auxiliares'] ? 'ops-tarefas'
+                : (coll in ['gases', 'controle_gases'] ? 'ops-gases'
+                  : (coll in ['horas_viagem', 'viagem'] ? 'ops-viagem'
+                    : (coll in ['reembolsos', 'reembolso'] ? 'ops-reembolso'
+                      : (coll in ['base', 'cadastros'] ? 'ops-base'
+                        : (coll in ['membros', 'config'] ? 'ops-config' : 'ops-inicio'))))))));
+      }
+      allow read: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 1) : moduleOk(orgId, opsSection(), A_OPS(), 1);
       // ponto_dia: horas do ponto para o Diário, gravadas só pelo servidor (server/ponto/diarioSync.ts).
       allow write: if coll == 'ponto_dia' ? false
-        : coll == 'salarios' ? areaOk(orgId, A_RH(), 2)
-        : (managerOnlyWrite() ? opsManager() && areaOk(orgId, A_OPS(), 2) : areaOk(orgId, A_OPS(), 2));
+        : coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 2)
+        : (managerOnlyWrite() ? opsConfigCanWrite() : moduleOk(orgId, opsSection(), A_OPS(), 2));
     }
 
     // ---- Salário da equipe de campo (fora de field_workers, que toda a Operação lê) ----
     match /field_worker_pay/{id} {
       function payOrg(d) { return d.get('orgId', ''); }
-      allow read: if resource == null ? signedIn() : areaOk(payOrg(resource.data), A_RH(), 1);
-      allow create: if areaOk(payOrg(request.resource.data), A_RH(), 2);
-      allow update: if payOrg(request.resource.data) == payOrg(resource.data) && areaOk(payOrg(resource.data), A_RH(), 2);
-      allow delete: if areaOk(payOrg(resource.data), A_RH(), 2);
+      allow read: if resource == null ? signedIn() : moduleOk(payOrg(resource.data), 'rh-holerites', A_RH(), 1);
+      allow create: if moduleOk(payOrg(request.resource.data), 'rh-holerites', A_RH(), 2);
+      allow update: if payOrg(request.resource.data) == payOrg(resource.data) && moduleOk(payOrg(resource.data), 'rh-holerites', A_RH(), 2);
+      allow delete: if moduleOk(payOrg(resource.data), 'rh-holerites', A_RH(), 2);
     }
 
     // ---- Diretório de pessoas (sem salários; gravado pelo RH) -------------------
@@ -450,11 +486,11 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
       }
       allow read: if resource == null ? signedIn()
-        : (areaOk(dirOrg(resource.data), A_RH(), 1) || areaOk(dirOrg(resource.data), A_OPS(), 1));
-      allow create: if areaOk(dirOrg(request.resource.data), A_RH(), 2);
+        : (moduleOk(dirOrg(resource.data), 'rh-funcionarios', A_RH(), 1) || moduleOk(dirOrg(resource.data), 'ops-direcionar', A_OPS(), 1));
+      allow create: if moduleOk(dirOrg(request.resource.data), 'rh-funcionarios', A_RH(), 2);
       allow update: if dirOrg(request.resource.data) == dirOrg(resource.data)
-        && (areaOk(dirOrg(resource.data), A_RH(), 2) || (areaOk(dirOrg(resource.data), A_OPS(), 2) && allocation()));
-      allow delete: if areaOk(dirOrg(resource.data), A_RH(), 2);
+        && (moduleOk(dirOrg(resource.data), 'rh-funcionarios', A_RH(), 2) || (moduleOk(dirOrg(resource.data), 'ops-direcionar', A_OPS(), 2) && allocation()));
+      allow delete: if moduleOk(dirOrg(resource.data), 'rh-funcionarios', A_RH(), 2);
     }
 
     // ---- Org-scoped by orgId / organizationId field ----------------------------
@@ -486,34 +522,68 @@ service cloud.firestore {
       // Área da coleção: RH, Estoque/Compras, Comercial e Engenharia exigem nível de acesso.
       // As demais coleções org-scoped continuam restritas à associação com a empresa.
       function collArea() {
-        return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? A_RH()
-          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders'] ? A_OPS()
+        return coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings', 'field_worker_pay'] ? A_RH()
+          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events', 'construction_reports', 'construction_milestones', 'constructions', 'engineering_documents', 'engineering_document_events', 'inspections', 'inspection_events', 'quality_records', 'quality_record_events', 'quality_record_states', 'order_events', 'order_messages', 'work_order_statuses', 'work_orders', 'occurrences', 'collective_asset_categories', 'collective_asset_movements', 'collective_asset_services', 'collective_asset_workers', 'collective_assets', 'travel_requests', 'travel_searches'] ? A_OPS()
             : (coll.matches('commercial_.*') ? A_COM()
               : (coll in ['items', 'item_categories', 'stock_balances', 'stock_movements', 'purchasing_orders', 'purchasing_quotations', 'purchasing_receipts', 'purchasing_requisitions', 'purchasing_suppliers'] ? A_STOCK()
                 : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? A_EST() : -1))));
+      }
+      function collModule() {
+        return coll in ['work_orders', 'work_order_statuses', 'order_events', 'order_messages', 'lpu_approvals'] ? 'ordens'
+          : (coll in ['checklist_runs', 'checklist_templates', 'checklist_run_events', 'checklist_template_events'] ? 'checklists'
+            : (coll in ['inspections', 'inspection_events'] ? 'inspecoes'
+              : (coll in ['occurrences'] ? 'ocorrencias'
+                : (coll in ['construction_reports', 'construction_milestones', 'constructions', 'engineering_documents', 'engineering_document_events', 'quality_records', 'quality_record_events', 'quality_record_states'] ? 'obras'
+                  : (coll in ['collective_assets', 'collective_asset_categories', 'collective_asset_workers'] ? 'bens-lista'
+                    : (coll in ['collective_asset_movements'] ? 'bens-movimentacoes'
+                      : (coll in ['collective_asset_services'] ? 'bens-manutencoes'
+                        : (coll == 'commercial_proposals' ? 'comercial-funil'
+                          : (coll in ['commercial_proposal_items', 'commercial_cost_compositions'] ? 'comercial-composicao'
+                            : (coll == 'commercial_materials' ? 'comercial-materiais'
+                              : (coll == 'commercial_clients' ? 'comercial-painel'
+                                : (coll == 'commercial_imports' ? 'comercial-importacoes'
+                                  : (coll.matches('commercial_.*') ? 'comercial-funil'
+                                    : (coll in ['rh_batches', 'rh_calculations', 'rh_employees', 'rh_imports', 'hr_onboardings'] ? 'rh-funcionarios'
+                                      : (coll in ['field_worker_pay'] ? 'rh-holerites'
+                                        : (coll in ['items', 'item_categories'] ? 'pecas-catalogo'
+                                          : (coll in ['stock_balances', 'stock_movements'] ? 'estoque'
+                                            : (coll in ['purchasing_orders'] ? 'compras-pedidos'
+                                              : (coll in ['purchasing_quotations'] ? 'compras-cotacoes'
+                                                : (coll in ['purchasing_requisitions'] ? 'compras-requisicoes'
+                                                  : (coll in ['purchasing_receipts'] ? 'compras-recebimento'
+                                                    : (coll in ['purchasing_suppliers'] ? 'compras-fornecedores'
+                                                      : (coll in ['travel_requests'] ? 'viagens-solicitacoes'
+                                                        : (coll in ['travel_searches'] ? 'viagens-busca'
+                                                          : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? 'estrutura' : ''))))))))))))))))))))))));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
       function areaRead(d) {
         return coll == 'projects'
-          ? (areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1) || areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
+          ? (moduleOk(orgOf(d), 'obras', A_OPS(), 1) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 1) || moduleOk(orgOf(d), 'compras-painel', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
           : (coll == 'audit_logs'
-            ? areaOk(orgOf(d), A_EST(), 1)
+            ? moduleOk(orgOf(d), 'auditoria', A_EST(), 1)
             : (coll in ['items', 'item_categories']
-              ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1) || areaOk(orgOf(d), A_COM(), 1))
+              ? (moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 1) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 1) || moduleOk(orgOf(d), 'comercial-materiais', A_COM(), 1))
               : (coll in ['stock_balances', 'stock_movements']
-                ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_OPS(), 1))
+                ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 1) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 1))
                 : (coll in ['purchasing_orders', 'purchasing_receipts']
-                  ? (areaOk(orgOf(d), A_STOCK(), 1) || areaOk(orgOf(d), A_FIN(), 1))
-                  : (collArea() < 0 || areaOk(orgOf(d), collArea(), 1))))));
+                  ? (moduleOk(orgOf(d), 'compras-pedidos', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
+                  : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 1))))));
       }
       function areaWrite(d) {
-        return coll == 'projects'
-          ? (areaOk(orgOf(d), A_OPS(), 2) || areaOk(orgOf(d), A_COM(), 2))
-          : (coll in ['items', 'item_categories'] ? areaOk(orgOf(d), A_STOCK(), 2)
-            : (coll in ['stock_balances', 'stock_movements']
-              ? (areaOk(orgOf(d), A_STOCK(), 2) || areaOk(orgOf(d), A_OPS(), 2))
-              : (collArea() < 0 || areaOk(orgOf(d), collArea(), 2))));
+        let approvedNow = coll == 'commercial_proposals'
+          && d.get('status', '') == 'aprovada'
+          && resource.data.get('status', '') != 'aprovada';
+        return approvedNow
+          ? moduleOk(orgOf(resource.data), 'comercial-revisao', A_COM(), 3)
+          : (coll == 'projects'
+            ? (moduleOk(orgOf(d), 'obras', A_OPS(), 2) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 2))
+            : (coll in ['items', 'item_categories']
+              ? (moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 2) || moduleOk(orgOf(d), 'comercial-materiais', A_COM(), 2))
+              : (coll in ['stock_balances', 'stock_movements']
+                ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 2) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 2))
+                : (collArea() < 0 || moduleOk(orgOf(d), collModule(), collArea(), 2)))));
       }
       function projectUnitValid(d) {
         let unitId = d.get('unitId', '');
@@ -605,7 +675,7 @@ service cloud.firestore {
           || workOrderReferencesValid(request.resource.data);
       }
       function rhAllocation() {
-        return coll == 'rh_employees' && areaOk(orgOf(resource.data), A_OPS(), 2)
+        return coll == 'rh_employees' && moduleOk(orgOf(resource.data), 'ops-direcionar', A_OPS(), 2)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unitId', 'codigoObra', 'updatedAt']);
       }
 
@@ -1146,7 +1216,12 @@ service cloud.firestore {
       }
       // Payables: Admin/Gerente may edit title fields, but the paid state is changed only by the backend settlement transaction.
       // Financeiro: members read; immutable settlement events are written only by the backend.
-      function fin(d, lvl) { return areaOk(orgOf(d), A_FIN(), lvl); }
+      function fin(d, lvl) {
+        let section = coll == 'finance_receivables' || coll == 'finance_receivable_receipts' ? 'financeiro-receber'
+          : (coll in ['finance_payables', 'finance_payable_authorizations', 'finance_payable_settlements'] ? 'financeiro-pagar'
+            : (coll in ['finance_categories', 'finance_rules'] ? 'financeiro-plano' : 'financeiro-notas'));
+        return moduleOk(orgOf(d), section, A_FIN(), lvl);
+      }
       allow read: if finance() && canRead(resource) && (resource == null || fin(resource.data, 1));
       function financeCreate() { return finance() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivableReceipt() && canCreate() && (isMaster() || idHasOrg({'finance_categories': 'cat_', 'finance_payables': 'pay_', 'finance_receivables': 'recv_', 'finance_rules': 'rule_', 'finance_reconciliation_cases': 'rcase_'}[coll], request.resource.data)) && financeRole(request.resource.data, ['Admin', 'Gerente', 'Supervisor'])
         && fin(request.resource.data, 2)
@@ -1188,26 +1263,27 @@ service cloud.firestore {
             : (financeRole(resource.data, ['Admin', 'Gerente', 'Supervisor']) && fin(resource.data, 2))));
       allow delete: if finance() && !isReconciliationCase() && !isPayableAuthorization() && !isPayableSettlement() && !isBankTransaction() && !isBankReconciliation() && !isReceivable() && !isReceivableReceipt() && canDelete() && financeRole(resource.data, ['Admin', 'Gerente']) && fin(resource.data, 2);
 
-      function perOrgArea(lvl) { return coll != 'commercial_policies' || areaOk(docId, A_COM(), lvl); }
-      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgArea(lvl) { return coll != 'commercial_policies' || moduleOk(docId, 'comercial-configuracoes', A_COM(), lvl); }
+      function perOrgWriteArea() { return coll != 'commercial_policies' || moduleOk(docId, 'comercial-configuracoes', A_COM(), 4); }
+      function perOrgCreate() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgWriteArea()
         && request.resource.data.get('orgId', docId) == docId
         && request.resource.data.get('organizationId', docId) == docId; }
-      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(2)
+      function perOrgMutation() { return perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgWriteArea()
         && (request.method == 'delete'
           || (request.resource.data.get('orgId', docId) == docId && request.resource.data.get('organizationId', docId) == docId)); }
       allow read: if perOrgDoc() && (isMaster() || isMemberOf(docId)) && perOrgArea(1);
       allow update, delete: if perOrgMutation();
       // Keep engineering, quality, project, and master-data link writes on a narrow validation path; the wildcard branch handles other domains.
       allow create: if coll == 'engineering_documents'
-        ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringDocumentCreate())
+        ? (canCreate() && moduleOk(orgOf(request.resource.data), 'obras', A_OPS(), 2) && validEngineeringDocumentCreate())
         : (coll == 'engineering_document_events'
-          ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validEngineeringEventCreate())
+          ? (canCreate() && moduleOk(orgOf(request.resource.data), 'obras', A_OPS(), 2) && validEngineeringEventCreate())
           : (coll == 'quality_records'
-            ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityRecordCreate())
+            ? (canCreate() && moduleOk(orgOf(request.resource.data), 'obras', A_OPS(), 2) && validQualityRecordCreate())
             : (coll == 'quality_record_events'
-              ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityEventCreate())
+              ? (canCreate() && moduleOk(orgOf(request.resource.data), 'obras', A_OPS(), 2) && validQualityEventCreate())
               : (coll == 'quality_record_states'
-                ? (canCreate() && areaOk(orgOf(request.resource.data), A_OPS(), 2) && validQualityStateCreate())
+                ? (canCreate() && moduleOk(orgOf(request.resource.data), 'obras', A_OPS(), 2) && validQualityStateCreate())
                 : (coll == 'projects'
                   ? (canCreate() && areaWrite(request.resource.data) && validProjectCreate())
                   : (coll == 'collective_asset_workers'
@@ -1224,6 +1300,13 @@ service cloud.firestore {
     }
 
     // ---- NF-e (written by the server; the client only moves classification status) ----
+    match /org_module_access/{id} {
+      // Cada usuário pode ler somente o próprio grant. Escritas continuam exclusivas do Admin SDK.
+      allow read: if signedIn() && resource.data.get('uid', '') == request.auth.uid
+        && isMemberOf(resource.data.get('orgId', ''));
+      allow write: if false;
+    }
+
     match /nfe_documents/{id} {
       function move() { return resource.data.get('status', '') + '>' + request.resource.data.get('status', ''); }
       function run() { return resource.data.get('classificacao', {}); }
@@ -1235,7 +1318,7 @@ service cloud.firestore {
         return r.get('by', '') == request.auth.uid && r.get('startedAt', null) == request.time;
       }
       function manager() { return isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']); }
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'financeiro-notas', A_FIN(), 1));
       allow update: if canUpdate() && areaOk(orgOf(resource.data), A_FIN(), 2)
         && (manager() || hasRole(orgOf(resource.data), ['Supervisor']))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'classificacao', 'erroClassificacao', 'updatedAt'])
@@ -1244,7 +1327,7 @@ service cloud.firestore {
           || (move() == 'classificando>classificada' && ownRun())
           || (move() == 'classificando>erro_classificacao' && (ownRun() || (manager() && stale()))));
     }
-    match /nfe_sync/{orgId} { allow read: if areaOk(orgId, A_FIN(), 1); }
+    match /nfe_sync/{orgId} { allow read: if moduleOk(orgId, 'financeiro-notas', A_FIN(), 1); }
 
     // Items carry organizationId, but the client lists them by proposalId only: fall back to the parent proposal's org.
     match /commercial_proposal_items/{itemId} {
@@ -1258,43 +1341,43 @@ service cloud.firestore {
       }
       // Área conferida pela empresa da proposta-mãe: a lista filtra só por proposalId.
       allow read: if (canRead(resource) || isMemberOf(parentOrg(resource.data)))
-        && (resource == null || areaOk(parentOrg(resource.data), A_COM(), 1));
-      allow create: if canCreate() && matchesParent() && areaOk(request.resource.data.get('organizationId', ''), A_COM(), 2);
-      allow update: if canUpdate() && matchesParent() && areaOk(parentOrg(resource.data), A_COM(), 2);
-      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && areaOk(parentOrg(resource.data), A_COM(), 2);
+        && (resource == null || moduleOk(parentOrg(resource.data), 'comercial-composicao', A_COM(), 1));
+      allow create: if canCreate() && matchesParent() && moduleOk(request.resource.data.get('organizationId', ''), 'comercial-composicao', A_COM(), 2);
+      allow update: if canUpdate() && matchesParent() && moduleOk(parentOrg(resource.data), 'comercial-composicao', A_COM(), 2);
+      allow delete: if (canDelete() || isMemberOf(parentOrg(resource.data))) && moduleOk(parentOrg(resource.data), 'comercial-composicao', A_COM(), 2);
     }
 
     // ---- WhatsApp bridge mirror (strict multi-tenant + area isolation) -------
     // Every mirrored WhatsApp document must carry orgId/organizationId matching a caller's org
     // and the caller must have WhatsApp area access (level >= 1 read, level >= 2 write).
-    function waCanRead(res) { return canRead(res) && (res == null || areaOk(orgOf(res.data), A_WA(), 1)); }
-    function waCanCreate() { return canCreate() && areaOk(orgOf(request.resource.data), A_WA(), 2); }
-    function waCanUpdate() { return canUpdate() && areaOk(orgOf(resource.data), A_WA(), 2); }
-    function waCanDelete() { return canDelete() && areaOk(orgOf(resource.data), A_WA(), 2); }
+    function waCanRead(res, section) { return canRead(res) && (res == null || moduleOk(orgOf(res.data), section, A_WA(), 1)); }
+    function waCanCreate(section) { return canCreate() && moduleOk(orgOf(request.resource.data), section, A_WA(), 2); }
+    function waCanUpdate(section) { return canUpdate() && moduleOk(orgOf(resource.data), section, A_WA(), 2); }
+    function waCanDelete(section) { return canDelete() && moduleOk(orgOf(resource.data), section, A_WA(), 2); }
 
     match /whatsapp_contacts/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_quick_replies/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_ai_rules/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
     match /whatsapp_ai_settings/{id} {
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate();
-      allow update: if waCanUpdate();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central');
+      allow update: if waCanUpdate('whatsapp-central');
+      allow delete: if waCanDelete('whatsapp-central');
     }
 
     match /whatsapp_scheduled_jobs/{jobId} {
@@ -1308,10 +1391,10 @@ service cloud.firestore {
           && request.resource.data.promptInstruction.size() > 0
           && request.resource.data.promptInstruction.size() <= 2000;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaJobPayload();
-      allow update: if waCanUpdate() && validWaJobPayload();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-comandos');
+      allow create: if waCanCreate('whatsapp-comandos') && validWaJobPayload();
+      allow update: if waCanUpdate('whatsapp-comandos') && validWaJobPayload();
+      allow delete: if waCanDelete('whatsapp-comandos');
     }
 
     match /whatsapp_ocr_receipts/{receiptId} {
@@ -1320,9 +1403,9 @@ service cloud.firestore {
           && request.resource.data.establishmentName.size() <= 200
           && request.resource.data.totalAmount is number;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaReceiptPayload();
-      allow update: if waCanUpdate() && validWaReceiptPayload();
+      allow read: if waCanRead(resource, 'whatsapp-central');
+      allow create: if waCanCreate('whatsapp-central') && validWaReceiptPayload();
+      allow update: if waCanUpdate('whatsapp-central') && validWaReceiptPayload();
       allow delete: if false;
     }
 
@@ -1333,10 +1416,10 @@ service cloud.firestore {
           && request.resource.data.name.size() <= 160
           && request.resource.data.groupJid is string;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaNdRulePayload();
-      allow update: if waCanUpdate() && validWaNdRulePayload();
-      allow delete: if waCanDelete();
+      allow read: if waCanRead(resource, 'whatsapp-nds');
+      allow create: if waCanCreate('whatsapp-nds') && validWaNdRulePayload();
+      allow update: if waCanUpdate('whatsapp-nds') && validWaNdRulePayload();
+      allow delete: if waCanDelete('whatsapp-nds');
     }
 
     match /whatsapp_nd_records/{recordId} {
@@ -1345,9 +1428,9 @@ service cloud.firestore {
           && request.resource.data.receiverName.size() <= 180
           && request.resource.data.amount is number;
       }
-      allow read: if waCanRead(resource);
-      allow create: if waCanCreate() && validWaNdRecordPayload();
-      allow update: if waCanUpdate() && validWaNdRecordPayload();
+      allow read: if waCanRead(resource, 'whatsapp-nds');
+      allow create: if waCanCreate('whatsapp-nds') && validWaNdRecordPayload();
+      allow update: if waCanUpdate('whatsapp-nds') && validWaNdRecordPayload();
       allow delete: if false;
     }
 
@@ -1373,12 +1456,12 @@ service cloud.firestore {
       }
       function factCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_FIN(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_STOCK(), 1);
+        return moduleOk(o, 'financeiro-pagar', A_FIN(), 1) || moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'estoque', A_STOCK(), 1);
       }
       function factCanCreate(d) {
         let o = orgOf(d);
         return (isMaster() || hasRole(o, ['Admin', 'Gerente', 'Supervisor']))
-          && (areaOk(o, A_FIN(), 2) || areaOk(o, A_OPS(), 2));
+          && (moduleOk(o, 'financeiro-pagar', A_FIN(), 2) || moduleOk(o, 'obras-medicoes', A_OPS(), 2));
       }
       allow read: if canRead(resource) && (resource == null || factCanRead(resource.data));
       allow create: if canCreate() && factCanCreate(request.resource.data)
@@ -1391,7 +1474,7 @@ service cloud.firestore {
     match /measurement_bulletins/{bulletinId} {
       function bmCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'financeiro-receber', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || bmCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1399,7 +1482,7 @@ service cloud.firestore {
     match /measurement_events/{eventId} {
       function bmEventCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_OPS(), 1) || areaOk(o, A_COM(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'obras-medicoes', A_OPS(), 1) || moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'financeiro-receber', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || bmEventCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1407,32 +1490,32 @@ service cloud.firestore {
 
     // ---- Marketing multiusuário (área Comercial A_COM()) ----------------------
     match /marketing_campaigns/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-campanhas', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-campanhas', A_COM(), 2);
     }
     match /marketing_events/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-eventos', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-eventos', A_COM(), 2);
     }
     match /marketing_assets/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_COM(), 1));
-      allow create: if canCreate() && areaOk(orgOf(request.resource.data), A_COM(), 2);
-      allow update: if canUpdate() && areaOk(orgOf(resource.data), A_COM(), 2);
-      allow delete: if canDelete() && areaOk(orgOf(resource.data), A_COM(), 2);
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 1));
+      allow create: if canCreate() && moduleOk(orgOf(request.resource.data), 'marketing-biblioteca', A_COM(), 2);
+      allow update: if canUpdate() && moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 2);
+      allow delete: if canDelete() && moduleOk(orgOf(resource.data), 'marketing-biblioteca', A_COM(), 2);
     }
     match /marketing_brand_configs/{orgId} {
-      allow read: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 1));
-      allow create, update: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2) && orgOf(request.resource.data) == orgId);
-      allow delete: if isMaster() || (isMemberOf(orgId) && areaOk(orgId, A_COM(), 2));
+      allow read: if isMaster() || (isMemberOf(orgId) && moduleOk(orgId, 'marketing-biblioteca', A_COM(), 1));
+      allow create, update: if isMaster() || (isMemberOf(orgId) && moduleOk(orgId, 'marketing-biblioteca', A_COM(), 2) && orgOf(request.resource.data) == orgId);
+      allow delete: if isMaster() || (isMemberOf(orgId) && moduleOk(orgId, 'marketing-biblioteca', A_COM(), 2));
     }
 
     // ---- Execuções idempotentes de OS recorrentes (escrita exclusiva do servidor) ----
     match /recurring_order_runs/{runId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'ordens-recorrencias', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
@@ -1440,7 +1523,7 @@ service cloud.firestore {
     match /stock_reservations/{resId} {
       function sresCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_STOCK(), 1) || areaOk(o, A_OPS(), 1);
+        return moduleOk(o, 'estoque', A_STOCK(), 1) || moduleOk(o, 'ordens', A_OPS(), 1);
       }
       allow read: if canRead(resource) && (resource == null || sresCanRead(resource.data));
       allow create, update, delete: if false;
@@ -1448,27 +1531,27 @@ service cloud.firestore {
 
     // ---- Soldagem, END, Lotes/Corridas e ITP/PIT (escrita exclusiva /api/industrial-quality) ----
     match /welding_procedures/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /welder_qualifications/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_RH(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'rh-funcionarios', A_RH(), 1));
       allow create, update, delete: if false;
     }
     match /material_lots/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_STOCK(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'estoque', A_STOCK(), 1));
       allow create, update, delete: if false;
     }
     match /weld_joints/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /ndt_reports/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /quality_itp_matrices/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
@@ -1476,41 +1559,41 @@ service cloud.firestore {
     match /lpu_tables/{tableId} {
       function lpuCanRead(d) {
         let o = orgOf(d);
-        return areaOk(o, A_COM(), 1) || areaOk(o, A_OPS(), 1) || areaOk(o, A_FIN(), 1);
+        return moduleOk(o, 'comercial-composicao', A_COM(), 1) || moduleOk(o, 'ordens', A_OPS(), 1) || moduleOk(o, 'financeiro-notas', A_FIN(), 1);
       }
       allow read: if canRead(resource) && (resource == null || lpuCanRead(resource.data));
       allow create, update, delete: if false;
     }
     match /purchasing_approval_rules/{ruleId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'compras-cotacoes', A_STOCK(), 1) || moduleOk(orgOf(resource.data), 'financeiro-pagar', A_FIN(), 1));
       allow create, update, delete: if false;
     }
     match /purchasing_approvals/{approvalId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_STOCK(), 1) || areaOk(orgOf(resource.data), A_FIN(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'compras-cotacoes', A_STOCK(), 1) || moduleOk(orgOf(resource.data), 'financeiro-pagar', A_FIN(), 1));
       allow create, update, delete: if false;
     }
 
     // ---- Produção/Fabricação (Oficina) e CMMS (escrita exclusiva do servidor) ----
     match /fabrication_orders/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /cmms_plans/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'bens-manutencoes', A_OPS(), 1));
       allow create, update, delete: if false;
     }
     match /cmms_records/{docId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'bens-manutencoes', A_OPS(), 1));
       allow create, update, delete: if false;
     }
 
     // ---- Portal do Cliente (identidade externa isolada), IA com confirmação e Protheus (server-only) ----
     match /client_portal_grants/{grantId} {
-      allow read: if canRead(resource) && (resource == null || (areaOk(orgOf(resource.data), A_OPS(), 1) && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))));
+      allow read: if canRead(resource) && (resource == null || (moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) && (isMaster() || hasRole(orgOf(resource.data), ['Admin', 'Gerente']))));
       allow create, update, delete: if false;
     }
     match /client_portal_audit/{auditId} {
-      allow read: if canRead(resource) && (resource == null || areaOk(orgOf(resource.data), A_OPS(), 1) || areaOk(orgOf(resource.data), A_COM(), 1));
+      allow read: if canRead(resource) && (resource == null || moduleOk(orgOf(resource.data), 'obras', A_OPS(), 1) || moduleOk(orgOf(resource.data), 'comercial-painel', A_COM(), 1));
       allow create, update, delete: if false;
     }
     match /ai_action_proposals/{propId} {

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Sparkles,
   Calendar,
@@ -41,6 +42,7 @@ export const MarketingModule: React.FC<MarketingModuleProps> = ({
   currentSubSection = 'marketing-painel',
   onNavigateSubSection,
 }) => {
+  const { moduleLevel } = useAuth();
   const [activeTab, setActiveTab] = useState<MarketingSubSection>(currentSubSection);
   const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([]);
   const [events, setEvents] = useState<CorporateEvent[]>([]);
@@ -145,12 +147,16 @@ export const MarketingModule: React.FC<MarketingModuleProps> = ({
     { id: 'marketing-desempenho' as MarketingSubSection, label: 'Desempenho & Tráfego', icon: TrendingUp },
     { id: 'marketing-configuracoes' as MarketingSubSection, label: 'Configurações', icon: Settings },
   ];
+  const visibleSubsections = useMemo(() => SUBSECTIONS.filter((item) => moduleLevel(item.id) >= 1), [moduleLevel]);
+  useEffect(() => {
+    if (visibleSubsections.length && !visibleSubsections.some((item) => item.id === activeTab)) setActiveTab(visibleSubsections[0].id);
+  }, [visibleSubsections, activeTab]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       {/* Sub-navigation tabs */}
       <div className="flex items-center space-x-1 overflow-x-auto pb-2 border-b border-slate-800 custom-scrollbar text-xs">
-        {SUBSECTIONS.map((sub) => {
+        {visibleSubsections.map((sub) => {
           const Icon = sub.icon;
           const isActive = activeTab === sub.id;
           return (

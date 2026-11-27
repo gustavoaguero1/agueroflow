@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class InspectionRouteError extends Error {
@@ -15,17 +15,12 @@ const validId = (value: unknown): value is string =>
 const operationId = (orgId: string, inspectionId: string, key: string) =>
   createHash('sha256').update(`${orgId}:${inspectionId}:${key}`).digest('hex');
 
-const actorCanReview = (req: Request, orgId: string): boolean => {
-  const actor = req.user;
-  return !!actor && (actor.master || ['Admin', 'Gerente', 'Supervisor'].includes(actor.orgs?.[orgId] || ''));
-};
-
 const actorName = (req: Request): string => req.user?.email || req.user?.uid || 'Usuário';
 
 export function createInspectionRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('inspecoes', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const body = req.body ?? {};
@@ -118,7 +113,7 @@ export function createInspectionRouter(getH: () => AdminHandles | null = getAdmi
     }
   });
 
-  router.post('/:inspectionId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:inspectionId/transition', requireModuleAccess('inspecoes', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const inspectionId = req.params.inspectionId;
@@ -138,8 +133,8 @@ export function createInspectionRouter(getH: () => AdminHandles | null = getAdmi
       return res.status(400).json({ ok: false, error: 'Informe os dados válidos para a transição da inspeção.' });
     }
     if (!actor?.uid) return res.status(401).json({ ok: false, error: 'Usuário não autenticado.' });
-    if (['approve', 'reject'].includes(action) && !actorCanReview(req, orgId)) {
-      return res.status(403).json({ ok: false, error: 'Somente Admin, Gerente ou Supervisor podem revisar inspeções.' });
+    if (['approve', 'reject'].includes(action) && await moduleLevelOf(actor, orgId, 'inspecoes', getH) < 3) {
+      return res.status(403).json({ ok: false, error: 'A revisão desta inspeção exige nível Aprovar no submódulo Inspeções.' });
     }
     if (action === 'submit' && !['conforme', 'nao_conforme', 'pendente'].includes(result)) {
       return res.status(400).json({ ok: false, error: 'Informe o resultado técnico da inspeção.' });

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   advanceRecurringRunDate,
@@ -198,7 +198,7 @@ async function executeRecurringOrderOnce(params: {
 export function createRecurringOrderRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/:recurringId/run', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:recurringId/run', requireModuleAccess('ordens-recorrencias', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const recurringId = req.params.recurringId;
@@ -226,7 +226,7 @@ export function createRecurringOrderRouter(getH: () => AdminHandles | null = get
     }
   });
 
-  router.post('/run-due', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/run-due', requireModuleAccess('ordens-recorrencias', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     if (!orgId || !actor || (req.body?.orgId && req.body.orgId !== orgId)) {
@@ -275,7 +275,7 @@ export function createRecurringOrderRouter(getH: () => AdminHandles | null = get
     }
   });
 
-  router.patch('/:recurringId/state', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.patch('/:recurringId/state', requireModuleAccess('ordens-recorrencias', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const recurringId = req.params.recurringId;
     const target = String(req.body?.lifecycleStatus || '').trim() as RecurringOrderLifecycleStatus;

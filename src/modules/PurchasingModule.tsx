@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ShoppingCart,
   FileText,
@@ -43,6 +43,7 @@ import {
   SupplierScorecardPanel,
 } from '../components/purchasing/PurchasingApprovalsAndScorecardPanel';
 import type { WorkOrder } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PurchasingModuleProps {
   currentSubSection: PurchasingSubSection;
@@ -57,6 +58,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
   currentOrgId = '',
   currentUserName = 'Comprador Industrial',
 }) => {
+  const { moduleLevel } = useAuth();
   const [activeTab, setActiveTab] = useState<PurchasingSubSection>(currentSubSection);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -178,6 +180,13 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
       count: receipts.length,
     },
   ];
+  const visibleTabs = useMemo(() => tabs.filter((tab) => moduleLevel(tab.id) >= 1), [tabs, moduleLevel]);
+  useEffect(() => {
+    if (visibleTabs.length && !visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+      onNavigateSubSection(visibleTabs[0].id);
+    }
+  }, [visibleTabs, activeTab, onNavigateSubSection]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -213,6 +222,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
               <RefreshCw size={16} className={refreshing ? 'animate-spin text-[#0071E3]' : ''} />
             </button>
             <button
+              disabled={moduleLevel('compras-pedidos') < 2}
               onClick={() => setIsNewOrderModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 af-btn-primary rounded-xl text-xs font-semibold cursor-pointer apple-solid-btn"
             >
@@ -223,7 +233,7 @@ export const PurchasingModule: React.FC<PurchasingModuleProps> = ({
 
         {/* Tab Strip — Apple Segmented Control */}
         <div className="mt-3 af-seg rounded-xl p-1 flex items-center gap-1 overflow-x-auto custom-scrollbar">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 

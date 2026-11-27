@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export const InspectionsModule: React.FC = () => {
-  const { user, organization, logAudit, contracts, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
+  const { user, organization, logAudit, contracts, moduleLevel } = useAuth();
   const [activeTab, setActiveTab] = useState<'inspecoes' | 'qualidade'>('inspecoes');
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -287,8 +287,8 @@ export const InspectionsModule: React.FC = () => {
             contracts={contracts}
             currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
             currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Inspetor Técnico'}
-            canEdit={areaLevel('operacoes') >= 2}
-            canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
+            canEdit={moduleLevel('inspecoes') >= 2}
+            canApprove={moduleLevel('inspecoes') >= 3}
             logAudit={logAudit}
           />
         )
@@ -415,19 +415,19 @@ export const InspectionsModule: React.FC = () => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1 min-w-[180px]">
-                        {areaLevel('operacoes') >= 2 && insp.status === 'agendada' && (
+                        {moduleLevel('inspecoes') >= 2 && insp.status === 'agendada' && (
                           <button type="button" disabled={isSubmitting} onClick={() => handleStartInspection(insp)} className="rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Iniciar</button>
                         )}
-                        {areaLevel('operacoes') >= 2 && insp.status === 'em_campo' && (
+                        {moduleLevel('inspecoes') >= 2 && insp.status === 'em_campo' && (
                           <button type="button" disabled={isSubmitting} onClick={() => { setInspectionToComplete(insp); setResult('pendente'); setFindings(''); }} className="rounded bg-cyan-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Registrar resultado</button>
                         )}
-                        {(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2 && insp.status === 'aguardando_revisao' && (
+                        {moduleLevel('inspecoes') >= 3 && insp.status === 'aguardando_revisao' && (
                           <>
                             <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'approve')} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Aprovar</button>
                             <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'reject')} className="rounded bg-red-800 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Devolver</button>
                           </>
                         )}
-                        {areaLevel('operacoes') >= 2 && insp.status === 'reprovada' && (
+                        {moduleLevel('inspecoes') >= 2 && insp.status === 'reprovada' && (
                           <button type="button" disabled={isSubmitting} onClick={() => handleReopenInspection(insp)} className="rounded bg-amber-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Reexecutar</button>
                         )}
                         {['aprovada', 'reprovada', 'aguardando_revisao'].includes(insp.status) || insp.status === 'concluida'

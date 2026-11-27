@@ -108,7 +108,8 @@ const createEmptyRdoWorkforceDrafts = (): RdoWorkforceDraft[] => [
 ];
 
 export const ConstructionModule: React.FC = () => {
-  const { user, organization, units, contracts, logAudit, canViewFinancials, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
+  const { user, organization, units, contracts, logAudit, moduleLevel } = useAuth();
+  const canViewFinancials = moduleLevel('financeiro-pagar') >= 1;
   const [activeTab, setActiveTab] = useState<
     | 'rdo'
     | 'avanco'
@@ -990,8 +991,8 @@ export const ConstructionModule: React.FC = () => {
           contracts={contracts}
           currentUser={user ? { uid: user.uid, displayName: user.displayName, email: user.email } : null}
           currentUserName={user?.displayName || user?.email?.split('@')[0] || 'Equipe de Engenharia'}
-          canEdit={areaLevel('operacoes') >= 2}
-          canApprove={(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2}
+          canEdit={moduleLevel('obras') >= 2}
+          canApprove={moduleLevel('obras') >= 3}
           logAudit={logAudit}
         />
       )}

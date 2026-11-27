@@ -10,7 +10,7 @@ import {
   validateFinancePayableSettlementRequest,
   settlementRequestMatches,
 } from '../src/services/financePayableSettlementRules.ts';
-import { areaLevelOf, requireArea, requireRole } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -19,20 +19,9 @@ const optionalText = (value: unknown): string | undefined => typeof value === 's
 const cents = (value: number) => Math.round((value + Number.EPSILON) * 100);
 const money = (value: number) => cents(value) / 100;
 
-const settlementPermission: RequestHandler = (req, res, next) => {
-  const actor = req.user;
-  const orgId = req.orgId;
-  if (!actor || !orgId) return res.status(403).json({ ok: false, error: 'Empresa não autorizada.' });
-  const role = actor.orgs?.[orgId];
-  if (!actor.master && role !== 'Supervisor' && areaLevelOf(actor, orgId, 'financeiro') < 2) {
-    return res.status(403).json({ ok: false, error: 'Admin/Gerente precisam de Financeiro nível 2 para registrar a baixa.' });
-  }
-  next();
-};
-
 export function createFinancePayableSettlementRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireArea('financeiro', 1), settlementPermission, async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-pagar', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const payableId = req.body?.payableId;
     const actor = req.user;
@@ -56,11 +45,8 @@ export function createFinancePayableSettlementRouter(getH: () => AdminHandles | 
     const invalidRequest = validateFinancePayableSettlementRequest(request);
     if (invalidRequest) return res.status(400).json({ ok: false, error: invalidRequest });
 
-    if (request.discountAmount > 0 && !actor.master) {
-      const role = actor.orgs?.[orgId];
-      if ((role !== 'Admin' && role !== 'Gerente') || areaLevelOf(actor, orgId, 'financeiro') < 2) {
-        return res.status(403).json({ ok: false, error: 'Somente Admin/Gerente com Financeiro nível 2 podem registrar abatimentos.' });
-      }
+    if (request.discountAmount > 0 && await moduleLevelOf(actor, orgId, 'financeiro-pagar', getH) < 3) {
+      return res.status(403).json({ ok: false, error: 'Registrar abatimentos exige nível Aprovar em Contas a Pagar.' });
     }
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });

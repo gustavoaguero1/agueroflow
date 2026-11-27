@@ -64,9 +64,9 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
   currentOrgId = '',
   currentUserName = 'Gestor de Viagens',
 }) => {
-  const { user, role } = useAuth();
-  const isAdmin = role === 'Admin';
-  const canManageSources = role === 'Admin' || role === 'Gerente';
+  const { user, moduleLevel } = useAuth();
+  const isAdmin = moduleLevel('viagens-configuracoes') >= 4;
+  const canManageSources = moduleLevel('viagens-configuracoes') >= 4;
 
   // Mar Travel é o canal oficial; as buscas antigas (homologações) ficam desligadas até um Admin ou Gerente religar.
   const [legacyEnabled, setLegacyEnabled] = useState(false);
@@ -91,7 +91,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId: currentOrgId, legacySourcesEnabled: v }),
     });
     if (r.ok) { setLegacyEnabled(v); showToast(v ? 'Buscas antigas religadas.' : 'Buscas antigas desligadas. A Mar Travel segue como canal oficial.'); }
-    else showToast('Só Admin ou Gerente podem mudar essa opção.');
+    else showToast('É necessário nível Administrar em Configurações de Viagens para mudar essa opção.');
   };
 
   // Search and Results States
@@ -680,7 +680,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
               <h3 className="text-sm font-bold text-white">Buscas antigas (homologações)</h3>
               <p className="text-xs text-slate-400 max-w-xl">
                 QueroPassagem, ClickBus, Buser, companhias aéreas e redes de hotéis. Ficam desligadas: a compra oficial é pela Mar Travel.
-                {canManageSources ? '' : ' Só Admin ou Gerente podem religar.'}
+                {canManageSources ? '' : ' Somente quem administra Configurações de Viagens pode religar.'}
               </p>
             </div>
             <label className="flex items-center gap-2 text-xs text-slate-300">

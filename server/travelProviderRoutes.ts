@@ -8,8 +8,8 @@
  * A senha fica cifrada (AES-256-GCM, chave MARTRAVEL_SECRET_KEY) e nunca volta para o navegador.
  */
 import { Router, type Request, type Response, type RequestHandler } from 'express';
-import { getAdmin } from './firebaseAdmin.ts';
-import { requireArea, requireRole } from './authMiddleware.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
+import { requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { sealSecret, openSecret, parseSecretKey, type SealedSecret } from './secretBox.ts';
 import { createWsSelfBookingClient, readLemontechConfig } from './lemontech/wsSelfBooking.ts';
 import {
@@ -111,10 +111,12 @@ export async function loadMarTravelCredentials(store: TravelProviderStore, keyB6
 export function createTravelProviderRouter(opts: {
   store?: () => TravelProviderStore | null;
   secretKey?: () => string | undefined;
+  getAdminHandles?: () => AdminHandles | null;
   /** API Lemontech configurada (secrets LEMONTECH_WS_*), ou null. `orgId` trava a conta numa empresa só. */
   lemontech?: () => { client: SolicitacaoClient; orgId?: string } | null;
   sleep?: (ms: number) => Promise<void>;
 } = {}): Router {
+  const getH = opts.getAdminHandles ?? getAdmin;
   const getStore = opts.store ?? firestoreTravelProviderStore;
   const getLemon = opts.lemontech ?? defaultLemontech;
   const getKey = opts.secretKey ?? (() => process.env.MARTRAVEL_SECRET_KEY);
@@ -130,12 +132,12 @@ export function createTravelProviderRouter(opts: {
   const org = (req: Request) => String(req.orgId || '');
   const uid = (req: Request) => String(req.user?.uid || '');
 
-  r.get('/settings', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/settings', requireModuleAccess('viagens-configuracoes', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     res.json({ legacySourcesEnabled: (await s.getSettings(org(req)))?.legacySourcesEnabled === true });
   }));
 
-  r.put('/settings', requireRole('Admin', 'Gerente'), wrap(async (req, res) => {
+  r.put('/settings', requireModuleAccess('viagens-configuracoes', 4, getH), wrap(async (req, res) => {
     const v = req.body?.legacySourcesEnabled;
     if (typeof v !== 'boolean') return res.status(400).json({ error: 'legacySourcesEnabled deve ser verdadeiro ou falso' });
     const s = storeOr503(res); if (!s) return;
@@ -143,13 +145,13 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, legacySourcesEnabled: v });
   }));
 
-  r.get('/martravel/account', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/martravel/account', requireModuleAccess('viagens-configuracoes', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const acc = await s.getAccount(accountKey(org(req), uid(req)));
     res.json(acc ? { connected: true, login: acc.login, updatedAt: acc.updatedAt } : { connected: false });
   }));
 
-  r.put('/martravel/account', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.put('/martravel/account', requireModuleAccess('viagens-configuracoes', 2, getH), wrap(async (req, res) => {
     const login = typeof req.body?.login === 'string' ? req.body.login.trim() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!login || !password) return res.status(400).json({ error: 'Informe o login e a senha da Mar Travel.' });
@@ -164,7 +166,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, connected: true, login, updatedAt });
   }));
 
-  r.delete('/martravel/account', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.delete('/martravel/account', requireModuleAccess('viagens-configuracoes', 2, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     await s.deleteAccount(accountKey(org(req), uid(req)));
     res.json({ ok: true, connected: false });
@@ -176,13 +178,14 @@ export function createTravelProviderRouter(opts: {
     return l && (!l.orgId || l.orgId === orgId) ? l : null;
   };
 
-  r.get('/lemontech/status', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/status', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     if (!lemonFor(org(req))) return res.json({ configured: false });
     const s = storeOr503(res); if (!s) return;
     res.json({ configured: true, lastSync: (await s.getLemontechMeta(org(req))) ?? null });
   }));
 
-  r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), wrap(async (req, res) => {
+  // Sincronizar consome a cota da API (60/min): Admin ou Gerente, e o submódulo não pode estar revogado.
+  r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), requireModuleAccess('viagens-painel', 2, getH), wrap(async (req, res) => {
     const desde = req.body?.desde ?? isoDaysAgo(730);
     const ate = req.body?.ate ?? isoDaysAgo(0);
     if (!DATE_RE.test(String(desde)) || !DATE_RE.test(String(ate)) || desde > ate) {
@@ -210,7 +213,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, ...meta });
   }));
 
-  r.get('/lemontech/solicitacoes', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/solicitacoes', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const items = (await s.listSolicitacoes(org(req)))
       .map(({ rawJson: _r, ...i }) => i)
@@ -218,7 +221,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ items });
   }));
 
-  r.get('/lemontech/solicitacoes/:id', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/solicitacoes/:id', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const it = await s.getSolicitacao(org(req), String(req.params.id));
     if (!it) return res.status(404).json({ error: 'nao_encontrada' });

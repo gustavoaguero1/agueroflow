@@ -250,6 +250,7 @@ test('read-only Operations access cannot change a work order status', async () =
 test('reservation approval updates the OS, history and release message atomically', async () => {
   const seed = {
     ...standardSeed(),
+    'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { ordens: 3 }, explicitModules: ['ordens'] },
     ['work_orders/' + order.id]: {
       ...order,
       isBlockedByReservation: true,
@@ -299,7 +300,7 @@ test('reservation approval updates the OS, history and release message atomicall
   });
 });
 
-test('only management roles may approve reservations and approval requires a pending reservation', async () => {
+test('reservation approval requires an explicit approval grant and a pending reservation', async () => {
   const seed = {
     ...standardSeed(),
     ['work_orders/' + order.id]: { ...order, isBlockedByReservation: true },
@@ -311,7 +312,7 @@ test('only management roles may approve reservations and approval requires a pen
     assert.equal(response.status, 403);
     assert.equal((docs.get('work_orders/' + order.id) as Record<string, unknown>).status, 'aberto');
   });
-  await withApi('Supervisor', standardSeed(), async (base, docs) => {
+  await withApi('Supervisor', { ...standardSeed(), 'org_module_access/org_a__operator_1': { orgId: 'org_a', uid: 'operator_1', modules: { ordens: 3 } } }, async (base, docs) => {
     const response = await postReservation(base, {
       orgId: 'org_a', expectedStatus: 'aberto', idempotencyKey: 'reservation_not_pending_001',
     });

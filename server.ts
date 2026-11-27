@@ -79,8 +79,9 @@ import { protheusProbeRouter } from './server/protheusProbe';
 import { createNdExportRouter } from './server/ndFolderExport';
 import { createReembolsosRouter, enrichReceipt, saveReceiptImage, weeklyCheck, summaryMarker } from './server/reembolsos';
 import { checkNdRetroactiveDate as checkNdRetroactiveDateAt, replyAllowsRetroactive, originalMessageAllowsRetroactive, FileBackedMap, type RetroactiveDateCheck } from './server/ndRetroactive';
-import { memberOrgOf, requireArea, requireAuth, requireRole, requireWebhookSecret } from './server/authMiddleware';
+import { memberOrgOf, moduleLevelOf, requireArea, requireAuth, requireRole, requireModuleAccess, requireWebhookSecret } from './server/authMiddleware';
 import { createAreaRouter } from './server/areaRoutes';
+import { createModuleAccessRouter } from './server/moduleAccessRoutes';
 import { createTravelProviderRouter } from './server/travelProviderRoutes';
 import { createPontoRouter } from './server/pontoRoutes';
 import { createFinancePayableAuthorizationRouter } from './server/financePayableAuthorizationRoutes';
@@ -111,7 +112,7 @@ import { nfeSyncRouter, startNfeSyncScheduler } from './server/nfe/nfeSync';
 import { getAdmin, adminStatus, runtimeServiceAccount } from './server/firebaseAdmin';
 import { mirrorReceiptsToOps } from './server/opsReimbursements';
 import { effectiveOrg } from './server/orgDefaults';
-import { answerWithTools, canUseErpTools, canQueryErp, ERP_QUESTION } from './server/agentTools';
+import { answerWithTools, canUseErpTools, ERP_QUESTION } from './server/agentTools';
 import type {
   WhatsAppNdRecord,
   WhatsAppNdRule,
@@ -585,6 +586,7 @@ async function main() {
   app.use('/api/auth', authRouter);
   app.use('/api', requireAuth); // skips PUBLIC_API_PATTERNS itself
   app.use('/api/org', createAreaRouter());
+  app.use('/api/org', createModuleAccessRouter());
   app.use('/api/travel', createTravelProviderRouter());
   app.use('/api/ponto', createPontoRouter());
   app.use('/api/finance/payable-authorizations', createFinancePayableAuthorizationRouter());
@@ -609,12 +611,12 @@ async function main() {
 
   // WhatsApp: ações da empresa (NDs, reembolsos, assistente...) usam o número oficial da empresa;
   // a gestão da própria conexão (/api/whatsapp/bridge/*) usa o WhatsApp de quem está chamando.
-  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender });
+  const waMiddlewares = createWhatsAppMiddlewares({ runInSession: runInWhatsAppSession, runAsOrgSender: runAsOrgWhatsAppSender, getAdminHandles: getAdmin });
   app.use('/api', waMiddlewares.companyContext);
   app.use('/api/whatsapp/bridge', waMiddlewares.ownSessionContext);
-  app.use('/api/nfe', nfeRouter);
-  app.use('/api/nfe', nfeSyncRouter);
-  app.use('/api/protheus', protheusProbeRouter);
+  app.use('/api/nfe', requireModuleAccess('financeiro-notas', 1), nfeRouter);
+  app.use('/api/nfe', requireModuleAccess('financeiro-notas', 1), nfeSyncRouter);
+  app.use('/api/protheus', requireModuleAccess('financeiro-notas', 1), protheusProbeRouter);
   // NDs for the finance network share: pulled by an agent on a company PC with ND_EXPORT_TOKEN (see docs/nd-pasta-rede.md).
   const ndExportSinceFile = path.join(__dirname, 'data_nd_export_since.json');
   app.use('/api/nd-export', createNdExportRouter({
@@ -715,7 +717,7 @@ async function main() {
   });
 
   // AgueroFlow IA Server Endpoint
-  app.post('/api/ai/chat', async (req: Request, res: Response) => {
+  app.post('/api/ai/chat', requireModuleAccess('ia', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`ai_${clientIp}`, 20, 60 * 1000)) {
       return res.status(429).json({ error: 'Limite de mensagens atingido. Aguarde alguns instantes.' });
@@ -741,9 +743,23 @@ async function main() {
       // ERP tools: no client context supplied (or explicit flag) -> answer from live org data.
       const toolOrg = req.orgId ?? (req.user?.orgs && Object.keys(req.user.orgs).length === 1 ? Object.keys(req.user.orgs)[0] : undefined);
       const h = getAdmin();
-      if (h && toolOrg && (useTools === true || !context) && canQueryErp(req.user, toolOrg)) {
+      if (h && toolOrg && (useTools === true || !context) && req.user) {
         try {
-          const text = await answerWithTools(h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [], async (p) => (await generateContentWithFallback(p)).response);
+          const toolPermissions = [
+            ['contas_a_pagar', 'financeiro-pagar'],
+            ['notas_pendentes', 'financeiro-notas'],
+            ['estoque_critico', 'estoque'],
+            ['os_abertas', 'ordens'],
+            ['nr_vencendo', 'rh-funcionarios'],
+            ['funil_comercial', 'comercial-funil'],
+          ] as const;
+          const levels = await Promise.all(toolPermissions.map(([, section]) => moduleLevelOf(req.user, toolOrg, section)));
+          const allowedTools = new Set(toolPermissions.filter((_, i) => levels[i] >= 1).map(([name]) => name));
+          const text = await answerWithTools(
+            h, toolOrg, prompt, Array.isArray(conversationHistory) ? conversationHistory : [],
+            async (p) => (await generateContentWithFallback(p)).response,
+            allowedTools,
+          );
           if (text) return res.json({ reply: text, timestamp: new Date().toISOString() });
         } catch (e) {
           console.warn('[AI chat tools] fallback para chat normal:', e);
@@ -807,7 +823,7 @@ ${JSON.stringify(context || {}, null, 2)}
   });
 
   // Intelligent Document Parser with Gemini Multimodal Vision / OCR for NR
-  app.post('/api/ai/parse-nr-document', async (req: Request, res: Response) => {
+  app.post('/api/ai/parse-nr-document', requireModuleAccess('ordens', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`doc_parse_${clientIp}`, 40, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas requisições de análise de documento. Aguarde um minuto.' });
@@ -1541,12 +1557,12 @@ REGRAS DE EXTRAÇÃO PARA CADA ITEM:
     }
   };
 
-  app.post('/api/ai/parse-supplier-quote-pdf', handleSupplierQuoteParse);
-  app.post('/api/ai/parse-supplier-quote-document', handleSupplierQuoteParse);
+  app.post('/api/ai/parse-supplier-quote-pdf', requireModuleAccess('compras-cotacoes', 1), handleSupplierQuoteParse);
+  app.post('/api/ai/parse-supplier-quote-document', requireModuleAccess('compras-cotacoes', 1), handleSupplierQuoteParse);
 
 
   // AI Market Price Benchmark & Savings Indicator (Purchasing Intelligence)
-  app.post('/api/ai/market-benchmark', async (req: Request, res: Response) => {
+  app.post('/api/ai/market-benchmark', requireModuleAccess('compras-inteligencia', 1), async (req: Request, res: Response) => {
     const clientIp = req.user?.uid ?? req.ip ?? 'unknown';
     if (!checkRateLimit(`benchmark_${clientIp}`, 30, 60 * 1000)) {
       return res.status(429).json({ error: 'Muitas consultas de benchmark. Aguarde alguns instantes.' });
@@ -4455,14 +4471,15 @@ Sua missão é extrair rigorosamente os seguintes campos:
     }
   };
 
-  app.use('/api/reembolsos', createReembolsosRouter({
+  app.use('/api/reembolsos', requireModuleAccess('ops-reembolso', 1), createReembolsosRouter({
     receipts: () => reimbursementReceipts,
     persist: () => persistReceipts(),
     db: () => getAdmin()?.db,
+    getAdminHandles: getAdmin,
   }));
 
   // Get WhatsApp receipts config
-  app.get('/api/whatsapp/config', (req: Request, res: Response) => {
+  app.get('/api/whatsapp/config', requireModuleAccess('whatsapp-central', 1), (req: Request, res: Response) => {
     res.json({
       success: true,
       config: maskWaConfig(whatsAppReceiptsConfig),
@@ -4470,7 +4487,7 @@ Sua missão é extrair rigorosamente os seguintes campos:
   });
 
   // Update WhatsApp receipts config
-  app.post('/api/whatsapp/config', requireRole('Admin', 'Gerente'), (req: Request, res: Response) => {
+  app.post('/api/whatsapp/config', requireModuleAccess('whatsapp-central', 4), (req: Request, res: Response) => {
     // Masked values echoed back by the UI are not new secrets.
     const incoming = Object.fromEntries(
       Object.entries(req.body || {}).filter(([, v]) => !isMasked(v))

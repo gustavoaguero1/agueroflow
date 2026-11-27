@@ -58,7 +58,8 @@ interface StructureModuleProps {
 }
 
 export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = 'organizacao' }) => {
-  const { user, organization, member, role, isAdmin, isManagerOrAbove, areaLevel, logAudit, adminSetUserPassword } = useAuth();
+  const { user, organization, member, role, moduleLevel, logAudit, adminSetUserPassword } = useAuth();
+  const canManageUsers = moduleLevel('estrutura') >= 4;
   const [activeTab, setActiveTab] = useState<'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria'>(initialTab);
 
   // Sync tab if prop changes from navigation
@@ -464,7 +465,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
         </div>
 
         <div className="flex items-center space-x-2">
-          {activeTab === 'unidades' && (
+          {activeTab === 'unidades' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => setShowUnitModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -473,7 +474,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Nova Unidade</span>
             </button>
           )}
-          {activeTab === 'ativos' && (
+          {activeTab === 'ativos' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => {
                 setAssetUnitId('');
@@ -486,7 +487,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Ativo</span>
             </button>
           )}
-          {activeTab === 'contratos' && (
+          {activeTab === 'contratos' && moduleLevel('contratos') >= 2 && (
             <button
               onClick={() => setShowContractModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -495,7 +496,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Contrato</span>
             </button>
           )}
-          {activeTab === 'usuarios' && (
+          {activeTab === 'usuarios' && canManageUsers && (
             <button
               onClick={() => setShowMemberModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -517,7 +518,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           { id: 'ativos' as const, label: `Ativos (${assets.length})`, icon: Boxes },
           { id: 'usuarios' as const, label: `Usuários & Papéis (${members.length})`, icon: Users },
           { id: 'auditoria' as const, label: `Auditoria (${auditLogs.length})`, icon: ShieldAlert },
-        ].map((tab) => {
+        ].filter((tab) => moduleLevel(({ organizacao: 'estrutura', projetos: 'obras', unidades: 'estrutura', contratos: 'contratos', ativos: 'estrutura', usuarios: 'estrutura', auditoria: 'auditoria' } as Record<string, string>)[tab.id]) >= 1).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -546,8 +547,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           contracts={contracts}
           costCenters={costCenters}
           canManage={
-            (isManagerOrAbove || role === 'Supervisor') &&
-            (areaLevel('operacoes') >= 2 || areaLevel('comercial') >= 2)
+            (moduleLevel('obras') >= 2 || moduleLevel('comercial-painel') >= 2)
           }
           onAudit={(action, details, targetId) => logAudit('Projetos/Obras', action, details, targetId)}
         />
@@ -789,7 +789,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 <th className="py-3 px-4">Papel (RBAC)</th>
                 <th className="py-3 px-4">Credencial / Senha</th>
                 <th className="py-3 px-4">Status</th>
-                {isAdmin && <th className="py-3 px-4 text-right">Ações</th>}
+                {canManageUsers && <th className="py-3 px-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -828,7 +828,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                       <span>Ativo</span>
                     </span>
                   </td>
-                  {isAdmin && (
+                  {canManageUsers && (
                     <td className="py-3 px-4 text-right">
                       <button
                         type="button"

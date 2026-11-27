@@ -41,19 +41,19 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
 
 test('salário da equipe de campo só com acesso ao RH', () => {
   const block = /match \/field_worker_pay\/\{id\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
-  assert.match(block, /allow read: if resource == null \? signedIn\(\) : areaOk\(payOrg\(resource\.data\), A_RH\(\), 1\)/);
-  assert.match(block, /allow create: if areaOk\(payOrg\(request\.resource\.data\), A_RH\(\), 2\)/);
+  assert.match(block, /allow read: if resource == null \? signedIn\(\) : moduleOk\(payOrg\(resource\.data\), 'rh-holerites', A_RH\(\), 1\)/);
+  assert.match(block, /allow create: if moduleOk\(payOrg\(request\.resource\.data\), 'rh-holerites', A_RH\(\), 2\)/);
 });
 
 test('itens de proposta conferem a área pela proposta-mãe (a lista filtra só por proposalId)', () => {
   const block = /match \/commercial_proposal_items\/\{itemId\} \{([\s\S]*?)\n    \}/.exec(rules)?.[1] || '';
-  assert.match(block, /areaOk\(parentOrg\(resource\.data\), A_COM\(\), 1\)/);
+  assert.match(block, /moduleOk\(parentOrg\(resource\.data\), 'comercial-composicao', A_COM\(\), 1\)/);
   assert.doesNotMatch(block, /itemOrg/);
 });
 
 test('acesso por área só muda pelo servidor', () => {
-  assert.match(rules, /hasAny\(\['areaDefaults'\]\)/);
-  assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'areasUpdatedAt'\]\)/);
+  assert.match(rules, /hasAny\(\['areaDefaults', 'moduleAccessDefaults'\]\)/);
+  assert.match(rules, /hasAny\(\['passwordHash', 'userId', 'areaOverrides', 'moduleAccessOverrides', 'areasUpdatedAt'\]\)/);
 });
 
 test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e APIs', () => {
@@ -62,17 +62,19 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
 
   // WhatsApp collections must not use legacy cross-tenant waMember()
   assert.doesNotMatch(rules, /function waMember\(/);
-  assert.match(rules, /function waCanRead\(res\)/);
-  assert.match(rules, /areaOk\(orgOf\(res\.data\), A_WA\(\), 1\)/);
-  assert.match(waMiddleware, /areaLevelOf\(req\.user, org, 'whatsapp'\)/);
+  assert.match(rules, /function waCanRead\(res, section\)/);
+  assert.match(rules, /moduleOk\(orgOf\(res\.data\), section, A_WA\(\), 1\)/);
+  assert.match(rules, /match \/org_module_access\/\{id\}/);
+  assert.match(rules, /function moduleMap\(org\)/);
+  assert.match(waMiddleware, /moduleLevelOf\(req\.user, org, section\)/);
 
   // Estrutura collections enforce A_EST()
   assert.match(rules, /function A_EST\(\) \{ return 8; \}/);
   assert.match(rules, /\['assets', 'contracts', 'cost_centers', 'teams', 'units'\] \? A_EST\(\)/);
-  assert.match(rules, /coll == 'audit_logs'\s*\?\s*areaOk\(orgOf\(d\), A_EST\(\), 1\)/);
+  assert.match(rules, /coll == 'audit_logs'\s*\?\s*moduleOk\(orgOf\(d\), 'auditoria', A_EST\(\), 1\)/);
 
   // Storage rules enforce Operações (index 1) and RH onboardings (index 5)
-  assert.match(storageRules, /areaCode\(orgId\)\[1:2\]/);
+  assert.match(storageRules, /moduleLevel\(orgId, 'ordens', 1\)/);
   assert.match(storageRules, /match \/hr-onboardings\/\{orgId\}\/\{onboardingId\}\/\{fileId\}/);
-  assert.match(storageRules, /areaCode\(orgId\)\[5:6\]/);
+  assert.match(storageRules, /moduleLevel\(orgId, 'rh-admissoes', 5\)/);
 });

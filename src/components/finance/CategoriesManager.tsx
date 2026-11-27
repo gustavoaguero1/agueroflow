@@ -9,7 +9,9 @@ import { btnGhost, btnPrimary, card, input, label, msgErr } from './ui';
 const GRUPOS: CategoryGroup[] = ['Custo direto', 'Custo indireto', 'Despesa administrativa', 'Impostos'];
 
 export const CategoriesManager: React.FC<{ orgId: string; categories: FinanceCategory[] }> = ({ orgId, categories }) => {
-  const { isSupervisorOrAbove, isManagerOrAbove } = useAuth();
+  const { moduleLevel } = useAuth();
+  const canOperate = moduleLevel('financeiro-plano') >= 2;
+  const canAdmin = moduleLevel('financeiro-plano') >= 4;
   const [nome, setNome] = useState('');
   const [grupo, setGrupo] = useState<CategoryGroup>('Custo direto');
   const [editing, setEditing] = useState<{ id: string; nome: string } | null>(null);
@@ -35,7 +37,7 @@ export const CategoriesManager: React.FC<{ orgId: string; categories: FinanceCat
         <p className="text-xs text-slate-400 mt-0.5">Categorias usadas na classificação das notas e nas contas a pagar.</p>
       </div>
       {error && <p className={msgErr}>{error}</p>}
-      {isSupervisorOrAbove && (
+      {canOperate && (
         <form onSubmit={add} className={`${card} grid grid-cols-1 sm:grid-cols-[1fr_220px_auto] gap-2 items-end`}>
           <div><span className={label}>Nova categoria</span><input className={input} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Pintura industrial" /></div>
           <div><span className={label}>Grupo</span>
@@ -57,7 +59,7 @@ export const CategoriesManager: React.FC<{ orgId: string; categories: FinanceCat
                 ) : (
                   <span className={`text-xs ${c.ativo === false ? 'text-slate-500 line-through' : 'text-slate-100'}`}>{c.nome}</span>
                 )}
-                {isSupervisorOrAbove && (
+                {canOperate && (
                   <div className="flex flex-wrap gap-2">
                     {editing?.id === c.id
                       ? <button type="button" className={btnPrimary} onClick={saveName}>Salvar</button>
@@ -69,7 +71,7 @@ export const CategoriesManager: React.FC<{ orgId: string; categories: FinanceCat
                     <button type="button" className={btnGhost} onClick={() => run(updateDoc(doc(db, 'finance_categories', c.id), { ativo: c.ativo === false }))}>
                       {c.ativo === false ? 'Reativar' : 'Desativar'}
                     </button>
-                    {isManagerOrAbove && (
+                    {canAdmin && (
                       confirmDel === c.id
                         ? <button type="button" className={btnGhost} onClick={() => run(deleteDoc(doc(db, 'finance_categories', c.id)))}>Confirmar exclusão</button>
                         : <button type="button" className={btnGhost} aria-label="Excluir" title="Excluir (prefira desativar se já foi usada)"
