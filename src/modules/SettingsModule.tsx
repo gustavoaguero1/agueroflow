@@ -353,7 +353,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
-      <div className="bg-[#121826] p-5 rounded-2xl border border-slate-800">
+      <div className="af-card p-5 rounded-2xl">
         <h2 className="text-lg font-bold text-white tracking-tight">Configurações & Dispositivos Confiáveis</h2>
         <p className="text-xs text-slate-400 mt-0.5">
           Parâmetros operacionais da organização, diretrizes de segurança, controle de segundo fator e gerenciamento de dispositivos.
@@ -379,7 +379,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
       )}
 
       {/* Seletor de Tema / Aparência Global */}
-      <div className="bg-white dark:bg-[#1C1C1E] border border-black/[0.08] dark:border-white/[0.10] rounded-[20px] p-5 space-y-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="af-card rounded-2xl p-5 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-[#1D1D1F] dark:text-[#F5F5F7] flex items-center space-x-2">
@@ -391,35 +391,31 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
               <span>Aparência & Tema da Aplicação</span>
             </h3>
             <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
-              O Modo Claro corporativo é o padrão da plataforma. Sua preferência fica salva neste navegador.
+              Alterne entre o tema Claro e Escuro. Sua preferência fica salva neste navegador.
             </p>
           </div>
 
-          <div className="flex items-center space-x-1 bg-black/[0.06] dark:bg-white/[0.08] p-1 rounded-xl self-start sm:self-auto">
+          <div className="flex items-center space-x-1 af-seg p-1 rounded-xl self-start sm:self-auto">
             <button
               type="button"
               onClick={() => setTheme('light')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-[10px] text-xs font-semibold transition-all cursor-pointer ${
-                theme === 'light'
-                  ? 'bg-white text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.10)]'
-                  : 'text-[#6E6E73] dark:text-[#98989D] hover:text-[#1D1D1F] dark:hover:text-white'
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-[10px] text-xs transition-all cursor-pointer ${
+                theme === 'light' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Sun className="w-3.5 h-3.5 text-[#0071E3]" />
-              <span>Modo Claro (Padrão)</span>
+              <span>Claro</span>
             </button>
 
             <button
               type="button"
               onClick={() => setTheme('dark')}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-[10px] text-xs font-semibold transition-all cursor-pointer ${
-                theme === 'dark'
-                  ? 'bg-[#2C2C2E] text-white shadow-[0_1px_3px_rgba(0,0,0,0.25)]'
-                  : 'text-[#6E6E73] dark:text-[#98989D] hover:text-[#1D1D1F] dark:hover:text-white'
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-[10px] text-xs transition-all cursor-pointer ${
+                theme === 'dark' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Moon className="w-3.5 h-3.5" />
-              <span>Modo Escuro</span>
+              <span>Escuro</span>
             </button>
           </div>
         </div>

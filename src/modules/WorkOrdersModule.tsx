@@ -72,13 +72,16 @@ import {
   Tag,
   MessageSquare,
   Wrench,
+  QrCode,
 } from 'lucide-react';
+import { QrLabelModal, type QrLabelTarget } from '../components/common/QrLabelModal';
 import { BrandLogo } from '../components/common/BrandLogo';
 import { getActiveTimeInfo, getPlanningSummary } from '../components/workOrders/workOrderHelpers';
 import { OrderOverviewTab } from '../components/workOrders/OrderOverviewTab';
 import { OrderDiscussionTab } from '../components/workOrders/OrderDiscussionTab';
 import { OrderPlanningTab } from '../components/workOrders/OrderPlanningTab';
 import { OrderTimelineTab } from '../components/workOrders/OrderTimelineTab';
+import { WorkOrderStockReservationsTab } from '../components/workOrders/WorkOrderStockReservationsTab';
 import { OrderQuickPreview } from '../components/workOrders/OrderQuickPreview';
 import { OrderExecutionHubTab } from '../components/workOrders/OrderExecutionHubTab';
 import { OrderTechnicalReportModal } from '../components/workOrders/OrderTechnicalReportModal';
@@ -337,6 +340,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
     selectedContractId: globalContractId,
     units,
     contracts,
+    areaLevel,
     logAudit,
   } = useAuth();
 
@@ -378,7 +382,8 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<'overview' | 'execution' | 'discussion' | 'planning' | 'timeline'>('overview');
+  const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<'overview' | 'execution' | 'discussion' | 'planning' | 'reservations' | 'timeline'>('overview');
   const [showReportModal, setShowReportModal] = useState(false);
   const [orderEvents, setOrderEvents] = useState<OrderEvent[]>([]);
 
@@ -959,7 +964,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight">Ordens de Serviço & Demandas</h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -969,11 +974,11 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}
-          <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+          <div className="flex items-center af-seg p-1 rounded-xl gap-0.5">
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
-                viewMode === 'table' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center space-x-1 cursor-pointer ${
+                viewMode === 'table' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <List className="w-3.5 h-3.5" />
@@ -981,8 +986,8 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
             </button>
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded text-xs font-semibold flex items-center space-x-1 cursor-pointer ${
-                viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`px-2.5 py-1.5 rounded-lg text-xs flex items-center space-x-1 cursor-pointer ${
+                viewMode === 'kanban' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
               }`}
             >
               <Kanban className="w-3.5 h-3.5" />
@@ -993,7 +998,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           {/* Configurar Estados button */}
           <button
             onClick={() => setShowStatusConfigModal(true)}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl af-btn-glass text-xs font-medium cursor-pointer"
             title="Personalizar estados do fluxo operacional (Ex: Aberto, Em Aprovação, Em Execução, Aguardando Peças, Concluído, Validado)"
           >
             <Sliders className="w-3.5 h-3.5 text-blue-400" />
@@ -1002,7 +1007,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Nova OS</span>
@@ -2067,13 +2072,37 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
                 <h3 className="text-base sm:text-lg font-bold text-white">{selectedOrder.title}</h3>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQrTarget({
+                      entityType: 'order',
+                      entityId: selectedOrder.id,
+                      orgId: organization?.id,
+                      code: selectedOrder.orderNumber,
+                      title: selectedOrder.title,
+                      subtitle: `Prioridade: ${selectedOrder.priority} · Status: ${selectedOrder.status}`,
+                      metaLines: [
+                        ...(selectedOrder.assignedTeam ? [`Equipe: ${selectedOrder.assignedTeam}`] : []),
+                        ...(selectedOrder.scheduledStartDate ? [`Início previsto: ${selectedOrder.scheduledStartDate}`] : []),
+                      ],
+                    })
+                  }
+                  className="text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Gerar Etiqueta QR da OS"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>QR</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Tab Navigation Bar */}
@@ -2147,6 +2176,19 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
               <button
                 type="button"
+                onClick={() => setActiveModalTab('reservations')}
+                className={`px-3 py-2.5 rounded-t-lg font-semibold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+                  activeModalTab === 'reservations'
+                    ? 'border-blue-500 text-blue-400 bg-slate-900/60 font-bold'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/30'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>Reservas &amp; RC</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveModalTab('timeline')}
                 className={`px-3 py-2.5 rounded-t-lg font-semibold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
                   activeModalTab === 'timeline'
@@ -2161,6 +2203,14 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
 
             {/* Modal Body Content */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+              {activeModalTab === 'reservations' && organization && (
+                <WorkOrderStockReservationsTab
+                  order={selectedOrder}
+                  orgId={organization.id}
+                  canEdit={areaLevel('operacoes') >= 2}
+                />
+              )}
+
               {activeModalTab === 'overview' && (
                 <OrderOverviewTab
                   order={selectedOrder}
@@ -2570,6 +2620,7 @@ export const WorkOrdersModule: React.FC<WorkOrdersModuleProps> = ({
           </div>
         </div>
       )}
+      <QrLabelModal target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   );
 };

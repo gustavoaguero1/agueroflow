@@ -387,7 +387,7 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight">Ocorrências & Não Conformidades</h2>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -402,7 +402,7 @@ export const OccurrencesModule: React.FC<OccurrencesModuleProps> = ({
             setShowCreateModal(true);
           }}
           disabled={units.length === 0}
-          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+          className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold disabled:opacity-50 cursor-pointer apple-solid-btn"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Registrar Ocorrência</span>

@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { apiFetch } from '../apiAuthFetch';
+import { AiActionProposalPanel } from '../components/ai/AiActionProposalPanel';
 
 interface ChatMessage {
   id: string;
@@ -36,6 +37,7 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showActionPanel, setShowActionPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initial welcome message
@@ -219,6 +221,14 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowActionPanel(true)}
+            className="af-btn-ai px-3 py-1.5 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#0EA5E9]" />
+            <span>Propor Ação Assistida</span>
+          </button>
           {onNavigate && (
             <div className="flex items-center gap-1.5">
               <button
@@ -355,6 +365,12 @@ export const AiAssistantModule: React.FC<AiAssistantModuleProps> = ({ onNavigate
           </button>
         </form>
       </div>
+
+      <AiActionProposalPanel
+        orgId={organization?.id || ''}
+        isOpen={showActionPanel}
+        onClose={() => setShowActionPanel(false)}
+      />
     </div>
   );
 };

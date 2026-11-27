@@ -204,7 +204,7 @@ export const MeasurementsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-5 rounded-2xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <ClipboardCheck className="w-5 h-5 text-cyan-400" />
@@ -219,7 +219,7 @@ export const MeasurementsModule: React.FC = () => {
             type="button"
             onClick={() => void loadData()}
             disabled={loading}
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-2 af-btn-glass rounded-xl text-xs font-medium flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Atualizar</span>
@@ -228,7 +228,7 @@ export const MeasurementsModule: React.FC = () => {
             <button
               type="button"
               onClick={handleOpenNew}
-              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-500/20 cursor-pointer"
+              className="px-4 py-2 af-btn-primary rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer apple-solid-btn"
             >
               <Plus className="w-4 h-4" />
               <span>Novo Boletim (BM)</span>

@@ -9,6 +9,7 @@ import { NfeInbox } from '../components/finance/NfeInbox';
 import { PayablesView } from '../components/finance/PayablesView';
 import { CategoriesManager } from '../components/finance/CategoriesManager';
 import { ReceivablesView } from '../components/finance/ReceivablesView';
+import { ProtheusReconciliationPanel } from '../components/finance/ProtheusReconciliationPanel';
 
 export type FinanceSubSection = 'financeiro-notas' | 'financeiro-pagar' | 'financeiro-receber' | 'financeiro-plano';
 
@@ -18,6 +19,7 @@ export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> =
   const canSeedCategories = moduleLevel('financeiro-plano') >= 2;
   const [categories, setCategories] = useState<FinanceCategory[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [receivablesSubTab, setReceivablesSubTab] = useState<'titulos' | 'protheus'>('titulos');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,7 +46,35 @@ export const FinanceModule: React.FC<{ currentSubSection: FinanceSubSection }> =
       {error && <p className="text-xs rounded-lg px-3 py-2 bg-red-950/60 text-red-300 border border-red-800/50">{error}</p>}
       {currentSubSection === 'financeiro-notas' && <NfeInbox orgId={orgId} categories={categories} costCenters={costCenters} />}
       {currentSubSection === 'financeiro-pagar' && <PayablesView orgId={orgId} categories={categories} />}
-      {currentSubSection === 'financeiro-receber' && <ReceivablesView orgId={orgId} />}
+      {currentSubSection === 'financeiro-receber' && (
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-1 p-1 rounded-xl af-seg">
+            <button
+              type="button"
+              onClick={() => setReceivablesSubTab('titulos')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs cursor-pointer ${
+                receivablesSubTab === 'titulos' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
+              }`}
+            >
+              Contas a Receber
+            </button>
+            <button
+              type="button"
+              onClick={() => setReceivablesSubTab('protheus')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs cursor-pointer ${
+                receivablesSubTab === 'protheus' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
+              }`}
+            >
+              Reconciliação ERP Protheus
+            </button>
+          </div>
+          {receivablesSubTab === 'titulos' ? (
+            <ReceivablesView orgId={orgId} />
+          ) : (
+            <ProtheusReconciliationPanel orgId={orgId} />
+          )}
+        </div>
+      )}
       {currentSubSection === 'financeiro-plano' && <CategoriesManager orgId={orgId} categories={categories} />}
     </div>
   );

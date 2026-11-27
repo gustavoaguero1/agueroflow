@@ -30,7 +30,9 @@ import {
   Filter,
   X,
   Search,
+  QrCode,
 } from 'lucide-react';
+import { QrLabelModal, type QrLabelTarget } from '../components/common/QrLabelModal';
 
 export const StockModule: React.FC = () => {
   const { user, organization, logAudit } = useAuth();
@@ -42,6 +44,7 @@ export const StockModule: React.FC = () => {
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>('todas');
   const [searchQuery, setSearchQuery] = useState('');
+  const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
 
   // Movement Modal
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -53,6 +56,7 @@ export const StockModule: React.FC = () => {
   const [movOrderId, setMovOrderId] = useState('');
   const [movToUnitId, setMovToUnitId] = useState('');
   const [rcBusy, setRcBusy] = useState(false);
+  const [activeReservations, setActiveReservations] = useState<Array<{ id: string; workOrderNumber?: string; itemName?: string; reservedQty?: number; shortageQty?: number; generatedRequisitionCode?: string }>>([]);
   const [movError, setMovError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,6 +75,19 @@ export const StockModule: React.FC = () => {
       setMovements(list);
     });
 
+    const qRes = query(
+      collection(db, 'stock_reservations'),
+      where('orgId', '==', organization.id),
+      where('status', '==', 'ativa'),
+    );
+    const unsubRes = onSnapshot(
+      qRes,
+      (snap) => {
+        setActiveReservations(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) })));
+      },
+      () => setActiveReservations([]),
+    );
+
     getDocs(query(collection(db, 'items'), where('orgId', '==', organization.id))).then((s) =>
       setItems(s.docs.map((d) => ({ id: d.id, ...d.data() } as Item)).filter((i) => i.type === 'peca'))
     );
@@ -84,6 +101,7 @@ export const StockModule: React.FC = () => {
     return () => {
       unsubBalances();
       unsubMovements();
+      unsubRes();
     };
   }, [organization]);
 
@@ -208,21 +226,21 @@ export const StockModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Controle de Estoque & Saldos</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Saldos em tempo real por localidade com validação de saldo e bloqueio de saídas a descoberto.
+          <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Controle de Estoque &amp; Saldos</h2>
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
+            Saldos em tempo real por localidade com validação de saldo, reservas por OS e etiquetas QR.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex items-center space-x-2.5">
+          <div className="flex items-center space-x-2 af-btn-glass px-3 py-2 rounded-xl">
+            <Filter className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#98989D]" />
             <select
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+              className="apple-inline-select bg-transparent text-xs font-medium text-[#1D1D1F] dark:text-[#F5F5F7] focus:outline-none cursor-pointer"
             >
               <option value="todas">Todas as Unidades</option>
               {units.map((u) => (
@@ -242,13 +260,48 @@ export const StockModule: React.FC = () => {
               setMovError(null);
               setShowMoveModal(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Nova Movimentação</span>
           </button>
         </div>
       </div>
+
+      {/* Active OS Reservations Strip */}
+      {activeReservations.length > 0 && (
+        <div className="af-card rounded-2xl p-4 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-[#1D1D1F] dark:text-[#F5F5F7]">
+              Reservas Ativas por Ordem de Serviço ({activeReservations.length})
+            </span>
+            <span className="text-[11px] text-[#6E6E73] dark:text-[#98989D]">
+              Gerenciáveis na aba &ldquo;Reservas &amp; RC&rdquo; da OS
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {activeReservations.slice(0, 8).map((r) => (
+              <div
+                key={r.id}
+                className="px-3 py-1.5 rounded-xl bg-[#F5F5F7] dark:bg-[#1C1F26] border border-black/[0.06] dark:border-white/[0.08] flex items-center gap-2"
+              >
+                <span className="font-mono font-semibold text-[#0071E3] dark:text-[#409CFF]">
+                  {r.workOrderNumber || 'OS'}
+                </span>
+                <span className="truncate max-w-[160px]">{r.itemName}</span>
+                <span className="font-mono tabular-nums font-bold">
+                  {r.reservedQty ?? 0} un.
+                </span>
+                {(r.shortageQty || 0) > 0 && (
+                  <span className="text-[#B25000] dark:text-[#FF9F0A] font-medium">
+                    (Falta {r.shortageQty}{r.generatedRequisitionCode ? ` · ${r.generatedRequisitionCode}` : ''})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Balances Grid Table */}
       <div className="space-y-4">
@@ -331,6 +384,28 @@ export const StockModule: React.FC = () => {
                               Gerar RC
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setQrTarget({
+                                entityType: 'item',
+                                entityId: item.id,
+                                orgId: organization?.id,
+                                code: item.sku || item.id.slice(0, 8),
+                                title: item.name,
+                                subtitle: unit?.name || 'Unidade',
+                                metaLines: [
+                                  `Saldo atual: ${bal.currentBalance} ${item.unitOfMeasure || 'UN'}`,
+                                  ...(item.minStock !== undefined ? [`Mínimo: ${item.minStock}`] : []),
+                                ],
+                              })
+                            }
+                            className="mr-2 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs inline-flex items-center gap-1 cursor-pointer"
+                            title="Etiqueta QR do Item"
+                          >
+                            <QrCode className="w-3 h-3" />
+                            <span>QR</span>
+                          </button>
                           <button
                             onClick={() => {
                               setMovItemId(item.id);
@@ -561,6 +636,7 @@ export const StockModule: React.FC = () => {
           </div>
         </div>
       )}
+      <QrLabelModal target={qrTarget} onClose={() => setQrTarget(null)} />
     </div>
   );
 };

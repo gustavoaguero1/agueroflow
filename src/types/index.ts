@@ -834,9 +834,13 @@ export interface SupportTicket {
   userName: string;
   userEmail: string;
   category: 'duvida' | 'problema_tecnico' | 'sugestao' | 'financeiro';
-  priority: 'baixa' | 'media' | 'alta';
+  priority: 'baixa' | 'media' | 'alta' | 'critica';
   subject: string;
   message: string;
+  workOrderId?: string;
+  workOrderNumber?: string;
+  projectId?: string;
+  projectCode?: string;
   status: 'aberto' | 'em_atendimento' | 'resolvido';
   resolutionMessage?: string;
   createdAt: string;

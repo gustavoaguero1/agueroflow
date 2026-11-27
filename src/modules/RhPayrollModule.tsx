@@ -319,43 +319,42 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   return (
     <div className="space-y-5">
       {/* Module Title & Context Header */}
-      <div className="bg-[#121826] border border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
+      <div className="af-card rounded-2xl p-5 space-y-3">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center space-x-3.5">
-            <div className="p-3 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
-              <Calculator className="w-6 h-6" />
+            <div className="p-2.5 bg-[#0071E3]/10 dark:bg-[#0A84FF]/15 text-[#0071E3] dark:text-[#409CFF] rounded-xl">
+              <Calculator className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-white">RH / Salários & 13º Salário</h1>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-900/80 text-blue-300 font-semibold border border-blue-700/50">
+                <h1 className="text-base font-bold text-[#1D1D1F] dark:text-white">RH / Salários &amp; 13º Salário</h1>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0071E3]/10 text-[#0071E3] dark:text-[#409CFF] font-semibold">
                   Exercício {referenceYear}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Organização: <strong className="text-slate-200">{organization?.name}</strong> •
-                Contrato / Unidade: {selectedUnitId === 'todas' ? 'Todas' : selectedUnitId}
+              <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
+                Organização: <strong className="text-[#1D1D1F] dark:text-slate-200">{organization?.name}</strong> ·
+                Unidade: {selectedUnitId === 'todas' ? 'Todas' : selectedUnitId}
               </p>
             </div>
           </div>
-
         </div>
 
         {/* Mandatory Module Disclaimer Banner */}
-        <div className="p-2.5 bg-blue-950/40 border border-blue-900/60 rounded-lg text-xs text-blue-200 flex items-center justify-between gap-2">
+        <div className="p-2.5 bg-[#EBF5FF] dark:bg-blue-950/35 border border-[#0071E3]/20 rounded-xl text-xs text-[#0055B3] dark:text-blue-200 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-medium">
-            <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-[#0071E3] dark:text-[#409CFF] shrink-0" />
             <span>
               <strong>Nota Técnica Obrigatória:</strong> Pré-cálculo para conferência do RH/contabilidade. Não constitui folha de pagamento.
             </span>
           </div>
-          <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-            Tabela INSS 2025 • Carga 220h
+          <span className="text-[10px] opacity-80 font-mono hidden sm:inline">
+            Tabela INSS 2025 · Carga 220h
           </span>
         </div>
 
-        {/* Sub-Navigation Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-1 custom-scrollbar border-t border-slate-800/80">
+        {/* Sub-Navigation Tabs — Apple Segmented Control */}
+        <div className="af-seg rounded-xl p-1 flex items-center gap-1 overflow-x-auto custom-scrollbar">
           {visibleTabs.map((t) => {
             const Icon = t.icon;
             const isActive = currentTab === t.id;
@@ -363,18 +362,18 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               <button
                 key={t.id}
                 onClick={() => handleTabChange(t.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap cursor-pointer ${
+                  isActive ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'
                 }`}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
                 <span>{t.label}</span>
                 {typeof t.badge === 'number' && t.badge > 0 && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold tabular-nums ${
+                      isActive
+                        ? 'bg-[#FFF4E5] dark:bg-amber-950 text-[#B25000] dark:text-amber-300'
+                        : 'bg-[#FFF4E5] dark:bg-amber-950 text-[#B25000] dark:text-amber-300'
                     }`}
                   >
                     {t.badge}

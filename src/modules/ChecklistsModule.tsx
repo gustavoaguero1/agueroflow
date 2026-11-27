@@ -226,17 +226,17 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#121826] p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
-          <h2 className="text-lg font-bold text-white tracking-tight">Templates e Execução de Checklists</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Templates e Execução de Checklists</h2>
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
             Padronização de rotinas operacionais, auditoria de itens e acompanhamento de conformidade em campo.
           </p>
         </div>
 
         <button
           onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+          className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Novo Template de Checklist</span>
@@ -244,15 +244,15 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
       </div>
 
       {/* Search & Actions Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#121826] p-3 rounded-xl border border-slate-800">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 af-card p-3.5 rounded-2xl">
         <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-[#86868B] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por título do checklist ou categoria..."
-            className="w-full pl-9 pr-4 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#F5F5F7] dark:bg-[#1C1F26] border border-black/[0.08] dark:border-white/[0.10] text-xs text-[#1D1D1F] dark:text-white placeholder:text-[#86868B]"
           />
         </div>
         <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
