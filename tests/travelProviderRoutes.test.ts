@@ -9,10 +9,22 @@ const KEY = randomBytes(32).toString('base64');
 
 async function api(opts: { uid?: string; role?: string; orgs?: Record<string, string>; key?: string | undefined; store?: ReturnType<typeof memoryTravelProviderStore> } = {}) {
   const store = opts.store ?? memoryTravelProviderStore();
+  const uid = opts.uid ?? 'u1';
+  const role = opts.role ?? 'Admin';
+  const moduleGrants = new Map<string, any>();
+  if (role === 'Admin') moduleGrants.set(`org_a__${uid}`, {
+    orgId: 'org_a', uid, modules: { 'viagens-configuracoes': 4 }, explicitModules: ['viagens-configuracoes'],
+  });
+  const getAdminHandles = () => ({
+    db: { collection: () => ({ doc: (id: string) => ({ get: async () => {
+      const data = moduleGrants.get(id);
+      return { exists: data !== undefined, data: () => data };
+    } }) }) },
+  }) as any;
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { (req as any).user = { uid: opts.uid ?? 'u1', master: false, orgs: opts.orgs ?? { org_a: opts.role ?? 'Admin' } }; next(); });
-  app.use('/api/travel', createTravelProviderRouter({ store: () => store, secretKey: () => ('key' in opts ? opts.key : KEY) }));
+  app.use((req, _res, next) => { (req as any).user = { uid, master: false, orgs: opts.orgs ?? { org_a: role } }; next(); });
+  app.use('/api/travel', createTravelProviderRouter({ store: () => store, secretKey: () => ('key' in opts ? opts.key : KEY), getAdminHandles }));
   const server: Server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const port = (server.address() as { port: number }).port;
   const call = async (method: string, path: string, body?: unknown) => {
@@ -31,7 +43,7 @@ test('configuração de viagens: buscas antigas começam desligadas', async () =
   } finally { await a.close(); }
 });
 
-test('só Admin ou Gerente religam as buscas antigas', async () => {
+test('somente o nível Administrar em Configurações de Viagens pode religar fontes antigas', async () => {
   const store = memoryTravelProviderStore();
   const sup = await api({ role: 'Supervisor', store });
   try {
