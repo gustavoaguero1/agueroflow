@@ -55,6 +55,7 @@ service cloud.firestore {
       return exists(p) ? get(p).data : {};
     }
     function moduleMap(org) { return moduleGrant(org).get('modules', {}); }
+    function moduleRevoked(org) { return moduleGrant(org).get('revoked', false) == true; }
     function moduleExplicit(org, section) {
       return moduleGrant(org).get('explicitModules', []).hasAny([section]);
     }
@@ -64,7 +65,7 @@ service cloud.firestore {
     }
     function moduleOk(org, section, areaIndex, lvl) {
       let modules = moduleMap(org);
-      return isMaster() || (isMemberOf(org)
+      return isMaster() || (isMemberOf(org) && !moduleRevoked(org)
         && (moduleExplicit(org, section)
           ? int(modules[section]) >= lvl
           : fallbackModuleLevel(org, areaIndex) >= lvl));
