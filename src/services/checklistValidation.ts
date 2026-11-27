@@ -142,11 +142,15 @@ export function validateChecklistSubmission(
       }
       value = parsed;
     } else if (item.type === 'foto' || item.type === 'assinatura') {
-      if (typeof rawValue !== 'string' || rawValue.trim().length < 5 || rawValue.trim().length > 2000) {
+      const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
+      const isDataImage = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed);
+      const validUrlRef = trimmed.length >= 5 && trimmed.length <= 2000 && !trimmed.toLowerCase().startsWith('data:');
+      const validInlineImg = isDataImage && trimmed.length <= 350_000;
+      if (!validUrlRef && !validInlineImg) {
         errors.push(`Referência de evidência inválida para o item: ${item.title}.`);
         continue;
       }
-      value = rawValue.trim();
+      value = trimmed;
     }
 
     const notes = sourceRecord?.notes;

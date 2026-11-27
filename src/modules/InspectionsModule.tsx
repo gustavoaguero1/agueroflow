@@ -23,7 +23,18 @@ import {
   User,
   X,
   ArrowRight,
+  Printer,
+  Search,
+  FileWarning,
 } from 'lucide-react';
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 export const InspectionsModule: React.FC = () => {
   const { user, organization, logAudit, contracts, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
@@ -32,6 +43,9 @@ export const InspectionsModule: React.FC = () => {
   const [units, setUnits] = useState<Unit[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [linkedRncInspectionIds, setLinkedRncInspectionIds] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<'todas' | 'ativas' | 'revisao' | 'nc' | 'aprovadas'>('todas');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -64,6 +78,16 @@ export const InspectionsModule: React.FC = () => {
     getDocs(query(collection(db, 'work_orders'), where('orgId', '==', organization.id))).then((s) =>
       setWorkOrders(s.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)))
     );
+    getDocs(query(collection(db, 'occurrences'), where('orgId', '==', organization.id)))
+      .then((s) => {
+        const ids = new Set<string>();
+        s.docs.forEach((d) => {
+          const inspId = d.data()?.inspectionId;
+          if (typeof inspId === 'string' && inspId) ids.add(inspId);
+        });
+        setLinkedRncInspectionIds(ids);
+      })
+      .catch(() => undefined);
 
     return () => unsub();
   }, [organization]);
@@ -234,6 +258,10 @@ export const InspectionsModule: React.FC = () => {
 
   const handleCreateOccurrenceFromInspection = async (insp: Inspection) => {
     if (!organization || !user) return;
+    if (linkedRncInspectionIds.has(insp.id)) {
+      alert('Já existe uma Ocorrência (RNC) vinculada a esta inspeção.');
+      return;
+    }
     try {
       const occId = `occ_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       await setDoc(doc(db, 'occurrences', occId), {
@@ -243,23 +271,132 @@ export const InspectionsModule: React.FC = () => {
         assetId: insp.assetId || null,
         orderId: insp.orderId || null,
         inspectionId: insp.id,
-        title: `Não Conformidade: ${insp.title}`,
-        description: `Ocorrência gerada automaticamente a partir da inspeção técnica.\nConstatações: ${insp.findings}`,
+        title: `Não Conformidade (RNC): ${insp.title}`,
+        description: `Ocorrência gerada automaticamente a partir da inspeção técnica.\nConstatações: ${insp.findings || 'Não informado'}${insp.reviewComment ? `\nRevisão: ${insp.reviewComment}` : ''}`,
         type: 'qualidade',
         urgency: 'alta',
         status: 'aberta',
-        reportedBy: insp.inspectorName,
+        reportedBy: insp.inspectorName || user.displayName || user.email || 'Inspetor',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
 
+      setLinkedRncInspectionIds((prev) => new Set(prev).add(insp.id));
       await logAudit('Ocorrências', 'Gerar Ocorrência da Inspeção', `Ocorrência vinculada à inspeção ${insp.title}`, occId);
       setNonConformantPrompt(null);
-      alert('Ocorrência registrada com sucesso na central de Ocorrências!');
+      alert('Ocorrência (RNC) registrada com sucesso na central de Ocorrências!');
     } catch (err) {
       console.error('Erro ao criar ocorrência vinculada:', err);
+      alert('Não foi possível criar a ocorrência agora.');
     }
   };
+
+  const handlePrintLaudo = (insp: Inspection) => {
+    const unitName = units.find((u) => u.id === insp.unitId)?.name || 'Unidade não informada';
+    const assetObj = assets.find((a) => a.id === insp.assetId);
+    const assetLabel = assetObj ? `${assetObj.tag} — ${assetObj.name}` : 'Geral / Sem ativo específico';
+    const woObj = workOrders.find((w) => w.id === insp.orderId);
+    const woLabel = woObj ? `${woObj.orderNumber} — ${woObj.title}` : 'Não vinculada';
+    const dateRef = insp.completedAt || insp.startedAt || insp.createdAt;
+    const statusMap: Record<string, string> = {
+      agendada: 'Agendada',
+      em_campo: 'Em campo',
+      aguardando_revisao: 'Aguardando revisão',
+      aprovada: 'Aprovada',
+      reprovada: 'Devolvida / Reprovada',
+      concluida: 'Concluída',
+    };
+    const resultLabel = (insp.result || 'pendente').replace('_', ' ').toUpperCase();
+    const orgName = organization?.name || 'Grupo Aguero';
+
+    const win = window.open('', '_blank', 'width=860,height=740');
+    if (!win) {
+      alert('Permita pop-ups para gerar o laudo de inspeção em PDF.');
+      return;
+    }
+
+    win.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Laudo de Inspeção — ${escapeHtml(insp.title)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1d1d1f; margin: 32px; line-height: 1.5; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0071e3; padding-bottom: 14px; margin-bottom: 20px; }
+    .brand { font-size: 18px; font-weight: 800; color: #0071e3; letter-spacing: -0.02em; }
+    .sub { font-size: 12px; color: #6e6e73; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: ${insp.result === 'conforme' ? '#e8f8ee; color: #166534;' : insp.result === 'nao_conforme' ? '#ffecef; color: #c41c28;' : '#fff4e5; color: #9a4400;'} }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f5f5f7; padding: 14px; border-radius: 12px; font-size: 12px; margin-bottom: 20px; }
+    .label { font-size: 10px; text-transform: uppercase; color: #6e6e73; font-weight: 700; display: block; }
+    .box { border: 1px solid #d2d2d7; border-radius: 12px; padding: 14px; margin-bottom: 16px; font-size: 13px; white-space: pre-wrap; }
+    .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 48px; text-align: center; font-size: 12px; }
+    .sig-line { border-top: 1px solid #1d1d1f; padding-top: 6px; }
+    @media print { .no-print { display: none; } body { margin: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">${escapeHtml(orgName)} · Laudo de Inspeção Técnica</div>
+      <div class="sub">Emitido via AgueroFlow em ${escapeHtml(new Date().toLocaleString('pt-BR'))}</div>
+    </div>
+    <span class="badge">${escapeHtml(resultLabel)}</span>
+  </div>
+
+  <h2 style="margin:0 0 12px;font-size:17px;">${escapeHtml(insp.title)}</h2>
+
+  <div class="grid">
+    <div><span class="label">Unidade / Obra</span>${escapeHtml(unitName)}</div>
+    <div><span class="label">Ativo / Equipamento</span>${escapeHtml(assetLabel)}</div>
+    <div><span class="label">Ordem de Serviço</span>${escapeHtml(woLabel)}</div>
+    <div><span class="label">Inspetor Responsável</span>${escapeHtml(insp.inspectorName || '—')}</div>
+    <div><span class="label">Etapa Atual</span>${escapeHtml(statusMap[insp.status] || insp.status)}</div>
+    <div><span class="label">Data / Hora de Referência</span>${escapeHtml(dateRef ? new Date(dateRef).toLocaleString('pt-BR') : '—')}</div>
+  </div>
+
+  <div class="box">
+    <span class="label" style="margin-bottom:6px;">Constatações Técnicas</span>
+    ${escapeHtml(insp.findings || 'Nenhuma constatação detalhada informada.')}
+  </div>
+
+  ${insp.reviewComment ? `<div class="box"><span class="label" style="margin-bottom:6px;">Parecer da Revisão / Qualidade</span>${escapeHtml(insp.reviewComment)}</div>` : ''}
+
+  <div class="sigs">
+    <div class="sig-line"><b>${escapeHtml(insp.inspectorName || 'Inspetor Técnico')}</b><br/>Responsável pela Vistoria</div>
+    <div class="sig-line"><b>Qualidade / Supervisão</b><br/>Aprovação Técnica</div>
+  </div>
+
+  <p class="no-print" style="margin-top:24px;text-align:right;">
+    <button onclick="window.print()" style="background:#0071e3;color:#fff;border:none;padding:10px 18px;border-radius:10px;font-weight:700;cursor:pointer;">Imprimir / Salvar PDF</button>
+  </p>
+</body>
+</html>`);
+    win.document.close();
+  };
+
+  const inspCounts = {
+    todas: inspections.length,
+    ativas: inspections.filter((i) => i.status === 'agendada' || i.status === 'em_campo').length,
+    revisao: inspections.filter((i) => i.status === 'aguardando_revisao').length,
+    nc: inspections.filter((i) => i.result === 'nao_conforme' || i.status === 'reprovada').length,
+    aprovadas: inspections.filter((i) => i.status === 'aprovada' || i.status === 'concluida').length,
+  };
+
+  const filteredInspections = inspections.filter((insp) => {
+    if (statusFilter === 'ativas' && insp.status !== 'agendada' && insp.status !== 'em_campo') return false;
+    if (statusFilter === 'revisao' && insp.status !== 'aguardando_revisao') return false;
+    if (statusFilter === 'nc' && insp.result !== 'nao_conforme' && insp.status !== 'reprovada') return false;
+    if (statusFilter === 'aprovadas' && insp.status !== 'aprovada' && insp.status !== 'concluida') return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return (
+        insp.title.toLowerCase().includes(q) ||
+        (insp.inspectorName || '').toLowerCase().includes(q) ||
+        (insp.findings || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -299,7 +436,7 @@ export const InspectionsModule: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Inspeções &amp; Vistorias Técnicas</h2>
           <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
-            Registro de auditorias visuais, conformidade técnica e abertura de plano de ação corretiva.
+            Registro de auditorias visuais, conformidade técnica, laudo imprimível e abertura rápida de RNC.
           </p>
         </div>
 
@@ -316,6 +453,45 @@ export const InspectionsModule: React.FC = () => {
         </button>
       </div>
 
+      {/* Filter Pills + Search */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {([
+            ['todas', `Todas (${inspCounts.todas})`],
+            ['ativas', `Em andamento (${inspCounts.ativas})`],
+            ['revisao', `Aguardando revisão (${inspCounts.revisao})`],
+            ['nc', `Não conformes / Devolvidas (${inspCounts.nc})`],
+            ['aprovadas', `Aprovadas (${inspCounts.aprovadas})`],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStatusFilter(key)}
+              className={`px-3 py-1.5 rounded-xl font-semibold transition-all cursor-pointer border ${
+                statusFilter === key
+                  ? key === 'nc'
+                    ? 'bg-rose-600 text-white border-rose-500 apple-solid-btn'
+                    : 'bg-blue-600 text-white border-blue-500 apple-solid-btn'
+                  : 'bg-[#121826] border-slate-800 text-slate-300 hover:border-slate-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full md:w-72">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filtrar por título, inspetor ou constatação..."
+            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#121826] border border-slate-800 text-xs text-white focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
       {/* Non-conformant prompt banner */}
       {nonConformantPrompt && (
         <div className="p-4 rounded-xl bg-red-950/60 border border-red-800 text-red-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
@@ -324,7 +500,7 @@ export const InspectionsModule: React.FC = () => {
             <div>
               <p className="font-bold text-white">Não conformidade detectada na inspeção!</p>
               <p className="text-[11px] text-red-300">
-                "{nonConformantPrompt.title}". Deseja registrar imediatamente uma ocorrência formal para ação corretiva?
+                &ldquo;{nonConformantPrompt.title}&rdquo;. Deseja registrar imediatamente uma ocorrência formal (RNC) para ação corretiva?
               </p>
             </div>
           </div>
@@ -332,13 +508,13 @@ export const InspectionsModule: React.FC = () => {
           <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={() => setNonConformantPrompt(null)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
             >
               Ignorar
             </button>
             <button
               onClick={() => handleCreateOccurrenceFromInspection(nonConformantPrompt)}
-              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold shadow-md"
+              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold shadow-md cursor-pointer apple-solid-btn"
             >
               Gerar Ocorrência Imediata
             </button>
@@ -362,14 +538,17 @@ export const InspectionsModule: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
-              {inspections.length === 0 ? (
+              {filteredInspections.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-slate-400">
-                    Nenhuma inspeção técnica registrada ainda.
+                    Nenhuma inspeção técnica encontrada para o filtro atual.
                   </td>
                 </tr>
               ) : (
-                inspections.map((insp) => (
+                filteredInspections.map((insp) => {
+                  const isNonConforming = insp.result === 'nao_conforme' || insp.status === 'reprovada';
+                  const hasRnc = linkedRncInspectionIds.has(insp.id);
+                  return (
                   <tr key={insp.id} className="hover:bg-slate-800/40">
                     <td className="py-3 px-4 font-semibold text-slate-100">{insp.title}</td>
                     <td className="py-3 px-4 text-slate-300">{insp.inspectorName}</td>
@@ -414,29 +593,54 @@ export const InspectionsModule: React.FC = () => {
                       {insp.completedAt ? new Date(insp.completedAt).toLocaleString('pt-BR') : insp.startedAt ? new Date(insp.startedAt).toLocaleString('pt-BR') : new Date(insp.createdAt).toLocaleString('pt-BR')}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1 min-w-[180px]">
+                      <div className="flex flex-wrap gap-1 min-w-[210px]">
                         {areaLevel('operacoes') >= 2 && insp.status === 'agendada' && (
-                          <button type="button" disabled={isSubmitting} onClick={() => handleStartInspection(insp)} className="rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Iniciar</button>
+                          <button type="button" disabled={isSubmitting} onClick={() => handleStartInspection(insp)} className="rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50 cursor-pointer apple-solid-btn">Iniciar</button>
                         )}
                         {areaLevel('operacoes') >= 2 && insp.status === 'em_campo' && (
-                          <button type="button" disabled={isSubmitting} onClick={() => { setInspectionToComplete(insp); setResult('pendente'); setFindings(''); }} className="rounded bg-cyan-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Registrar resultado</button>
+                          <button type="button" disabled={isSubmitting} onClick={() => { setInspectionToComplete(insp); setResult('pendente'); setFindings(''); }} className="rounded bg-cyan-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50 cursor-pointer apple-solid-btn">Registrar resultado</button>
                         )}
                         {(isMaster || isSupervisorOrAbove) && areaLevel('operacoes') >= 2 && insp.status === 'aguardando_revisao' && (
                           <>
-                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'approve')} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Aprovar</button>
-                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'reject')} className="rounded bg-red-800 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Devolver</button>
+                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'approve')} className="rounded bg-emerald-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50 cursor-pointer apple-solid-btn">Aprovar</button>
+                            <button type="button" disabled={isSubmitting} onClick={() => handleReviewInspection(insp, 'reject')} className="rounded bg-red-800 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50 cursor-pointer apple-solid-btn">Devolver</button>
                           </>
                         )}
                         {areaLevel('operacoes') >= 2 && insp.status === 'reprovada' && (
-                          <button type="button" disabled={isSubmitting} onClick={() => handleReopenInspection(insp)} className="rounded bg-amber-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">Reexecutar</button>
+                          <button type="button" disabled={isSubmitting} onClick={() => handleReopenInspection(insp)} className="rounded bg-amber-700 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50 cursor-pointer apple-solid-btn">Reexecutar</button>
                         )}
-                        {['aprovada', 'reprovada', 'aguardando_revisao'].includes(insp.status) || insp.status === 'concluida'
-                          ? <span className="text-[10px] text-slate-500">—</span>
-                          : null}
+                        {isNonConforming && (
+                          hasRnc ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-950/70 border border-emerald-800/50 px-2 py-1 text-[10px] font-semibold text-emerald-300">
+                              <CheckCircle2 className="w-3 h-3" />
+                              RNC aberta
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isSubmitting}
+                              onClick={() => void handleCreateOccurrenceFromInspection(insp)}
+                              className="inline-flex items-center gap-1 rounded bg-rose-700 hover:bg-rose-600 px-2 py-1 text-[10px] font-semibold text-white cursor-pointer apple-solid-btn"
+                              title="Abrir Não Conformidade (RNC) na central de Ocorrências"
+                            >
+                              <FileWarning className="w-3 h-3" />
+                              Abrir RNC
+                            </button>
+                          )
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handlePrintLaudo(insp)}
+                          className="inline-flex items-center gap-1 rounded bg-slate-800 hover:bg-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-200 cursor-pointer"
+                          title="Gerar laudo técnico imprimível / PDF"
+                        >
+                          <Printer className="w-3 h-3" />
+                          Laudo
+                        </button>
                       </div>
                     </td>
                   </tr>
-                ))
+                );})
               )}
             </tbody>
           </table>
