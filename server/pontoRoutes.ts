@@ -16,6 +16,7 @@ import { firestorePontoStore, type Device, type PontoStore } from './ponto/store
 import { registrarMarcacao, PontoErro, type MarcacaoInput } from './ponto/registrar.ts';
 import { concluirPareamento, verificarAssinatura } from './ponto/devices.ts';
 import { registerRhRoutes } from './ponto/rhRoutes.ts';
+import { recalcularPontoDia, firestorePontoDiaWriter } from './ponto/diarioSync.ts';
 
 export const MAX_ITENS_LOTE = 200;
 
@@ -29,6 +30,10 @@ export interface PontoRouterOpts {
 export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
   const getStore = opts.store ?? firestorePontoStore;
   const now = opts.now ?? (() => new Date());
+  const after = opts.afterRegistro ?? (async (orgId: string, dia: string) => {
+    const s = getStore();
+    if (s) await recalcularPontoDia(s, firestorePontoDiaWriter, orgId, dia, now);
+  });
   const r = Router();
 
   const wrap = (fn: (req: Request, res: Response, store: PontoStore) => Promise<unknown>): RequestHandler => (req, res) => {
@@ -114,12 +119,10 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
         results.push({ clientId, ok: false, error: e instanceof PontoErro ? e.message : 'Marcação inválida.' });
       }
     }
-    if (opts.afterRegistro) {
-      for (const dia of dias) await opts.afterRegistro(d.orgId, dia).catch((e) => console.warn('ponto: pós-registro', e));
-    }
+    for (const dia of dias) await after(d.orgId, dia).catch((e) => console.warn('ponto: pós-registro', e));
     res.json({ results });
   }));
 
-  registerRhRoutes(r, { getStore, now, wrap });
+  registerRhRoutes(r, { getStore, now, wrap, after });
   return r;
 }

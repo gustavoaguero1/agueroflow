@@ -24,6 +24,8 @@ export interface RhRouteCtx {
   getStore: () => PontoStore | null;
   now: () => Date;
   wrap: (fn: (req: Request, res: Response, store: PontoStore) => Promise<unknown>) => RequestHandler;
+  /** Recalcula o Diário do dia depois de uma mudança. */
+  after: (orgId: string, dia: string) => Promise<void>;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -239,6 +241,7 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     } else {
       throw new PontoErro(400, 'Ação inválida.');
     }
+    await ctx.after(org(req), base.data).catch((e) => console.warn('ponto: pós-ajuste', e));
     res.json({ ok: true, id: base.id });
   }));
 
