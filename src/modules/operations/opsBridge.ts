@@ -52,6 +52,7 @@ export interface OpsContext {
   isManager: boolean; // Admin, Gerente ou master
   canSeeSalaries: boolean; // acesso ao RH (nível ≥ Ver)
   canEditRh?: boolean; // acesso ao RH para editar (aprovar candidato cria o funcionário)
+  canWrite?: boolean; // edição do submódulo de Operações atualmente aberto
 }
 
 type Unsub = () => void;
@@ -94,6 +95,7 @@ const snapQuery = (s: QuerySnapshot<DocumentData>) => ({
 
 export function createOpsBridge(ctx: OpsContext) {
   const subs = new Set<Unsub>();
+  const canWrite = ctx.canWrite ?? ctx.isManager;
   const base = (path: string) => `ops_orgs/${ctx.orgId}/${String(path).replace(/^\/+|\/+$/g, '')}`;
 
   // Pessoas e salários vêm do RH (ver peopleSource.ts); demais coleções ficam em ops_orgs/{orgId}.
@@ -178,8 +180,8 @@ export function createOpsBridge(ctx: OpsContext) {
     id: async () => ctx.user.uid,
     me: async () => ({ id: ctx.user.uid, name: ctx.userName || ctx.user.displayName || ctx.user.email || '' }),
     isOwner: async () => ctx.isManager,
-    canEdit: async () => ctx.isManager,
-    can: async (perm: string) => (perm === 'data.write' ? ctx.role !== 'Visualizador' : true),
+    canEdit: async () => canWrite,
+    can: async (perm: string) => (perm === 'data.write' ? canWrite : true),
     profiles: async (ids: string[]) => {
       const all = await members();
       const out: Record<string, { name: string }> = {};
