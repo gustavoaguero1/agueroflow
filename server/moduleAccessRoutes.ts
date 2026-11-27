@@ -103,6 +103,7 @@ export function createModuleAccessRouter(): Router {
       return responseError(res, 403, 'Somente um Admin pode alterar as permissões granulares de outro Admin.');
     }
     const overrides = sanitizeModuleOverrides(req.body?.overrides);
+    if (member.role === 'Admin') overrides.configuracoes = 4;
     await ref.update({ moduleAccessOverrides: overrides, updatedAt: new Date().toISOString() });
     try {
       await syncModuleAccessForMember(getAdmin()!, memberId);
