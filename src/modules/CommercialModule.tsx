@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   FileText,
@@ -65,7 +65,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
   activeSubSection = 'comercial-painel',
   onNavigateSubSection,
 }) => {
-  const { user, organization, role } = useAuth();
+  const { user, organization, role, moduleLevel } = useAuth();
   const organizationId = organization?.id || '';
   const userId = user?.uid || '';
   const userName = user?.displayName || user?.email || 'Representante Comercial';
@@ -145,7 +145,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     setSelectedProposal(proposal);
     const items = await getProposalItems(proposal.id);
     setSelectedProposalItems(items);
-    setTab('comercial-revisao');
+    setTab(moduleLevel('comercial-revisao') >= 1 ? 'comercial-revisao' : 'comercial-painel');
   };
 
   // Handle Open Detail Modal
@@ -172,7 +172,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
       const items = await getProposalItems(created.id);
       setSelectedProposalItems(items);
     }
-    setTab('comercial-revisao');
+    setTab(moduleLevel('comercial-revisao') >= 1 ? 'comercial-revisao' : 'comercial-painel');
   };
 
   const navTabs = [
@@ -187,12 +187,16 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
     { id: 'comercial-configuracoes' as CommercialSubSection, label: 'Configurações Comerciais', icon: Settings },
     { id: 'comercial-relatorios' as CommercialSubSection, label: 'Relatórios', icon: FileBarChart },
   ];
+  const visibleNavTabs = useMemo(() => navTabs.filter((tab) => moduleLevel(tab.id) >= 1), [moduleLevel]);
+  useEffect(() => {
+    if (visibleNavTabs.length && !visibleNavTabs.some((tab) => tab.id === currentTab)) setTab(visibleNavTabs[0].id);
+  }, [visibleNavTabs, currentTab]);
 
   return (
     <div className="space-y-6">
       {/* Submenu Tabs Bar — Apple Segmented Control */}
       <div className="af-seg rounded-2xl p-1.5 flex items-center overflow-x-auto custom-scrollbar gap-1">
-        {navTabs.map((tab) => {
+        {visibleNavTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
           return (
@@ -267,6 +271,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
                   catalog={catalog}
                   organizationName={organization?.name || 'AgueroFlow Industrial'}
                   userRole={role}
+                  canApprove={moduleLevel('comercial-revisao') >= 3}
                   userName={userName}
                   onRefresh={loadData}
                   onNavigateBack={() => setTab('comercial-painel')}
@@ -320,7 +325,6 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
             <CommercialSettingsManager
               policy={policy}
               organizationId={organizationId}
-              userRole={role}
               userName={userName}
               onRefresh={loadData}
             />
