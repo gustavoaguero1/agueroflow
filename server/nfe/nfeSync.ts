@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdmin, type AdminHandles } from '../firebaseAdmin.ts';
-import { requireRole } from '../authMiddleware.ts';
+import { requireModuleAccess } from '../authMiddleware.ts';
 import { parseNfeXml } from './parseNfe.ts';
 import { upsertNfe, upsertNfeSummary } from './nfeStore.ts';
 import { distDfeRequest, nfeConfigFromEnv, parseResNFe, sendCiencia, type DistDoc, type SefazCfg } from './sefaz.ts';
@@ -144,14 +144,14 @@ export function startNfeSyncScheduler(getH: () => AdminHandles | null = getAdmin
 
 export function createNfeSyncRouter(getH: () => AdminHandles | null = getAdmin, getCfg: () => SefazCfg | null = cfgFromEnv): Router {
   const r = Router();
-  r.post('/sync-now', requireRole('Admin', 'Gerente'), async (req, res) => {
+  r.post('/sync-now', requireModuleAccess('financeiro-notas', 2, getH), async (req, res) => {
     const h = getH(), cfg = getCfg();
     if (!h || !cfg) return res.status(503).json({ error: 'Busca na SEFAZ não configurada no servidor.' });
     if (req.orgId !== cfg.orgId) return res.status(403).json({ error: 'A busca na SEFAZ está configurada para outra empresa.' });
     try { res.json(await runNfeSync(h, cfg)); }
     catch (e) { res.status(500).json({ error: errMsg(e) }); }
   });
-  r.get('/sync-status', requireRole('Admin', 'Gerente', 'Supervisor', 'Operacional', 'Visualizador'), async (req, res) => {
+  r.get('/sync-status', requireModuleAccess('financeiro-notas', 1, getH), async (req, res) => {
     const h = getH(), cfg = getCfg();
     if (!h || !cfg || req.orgId !== cfg.orgId) return res.json({ configured: false });
     try {
