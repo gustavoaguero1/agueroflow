@@ -243,7 +243,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || moduleLevel('estrutura') < 2) return;
     if (!assetUnitId || !units.some((unit) => unit.id === assetUnitId)) {
       alert('Selecione uma unidade cadastrada para vincular o ativo.');
       return;
@@ -371,6 +371,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   };
 
   const handleDeleteContract = async (contractId: string, title: string) => {
+    if (moduleLevel('contratos') < 2) return;
     if (!confirm(`Tem certeza que deseja excluir o contrato "${title}"?`)) return;
     try {
       await deleteDoc(doc(db, 'contracts', contractId));
@@ -382,7 +383,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || !canManageUsers) return;
     setMemberFormError(null);
 
     const normEmail = memberEmail.trim().toLowerCase();
