@@ -142,6 +142,7 @@ export function canSeeSection(section: string, levels: AreaLevels | null | undef
   const configured = moduleAccess?.[section];
   if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured >= 1;
   const a = areaOfSection(section);
-  if (!a || !levels) return false;
+  if (!a) return true; // Seções utilitárias sem área permanecem visíveis; o catálogo granular controla módulos reais.
+  if (!levels) return false;
   return levels[a] >= 1;
 }
