@@ -5,7 +5,8 @@
  * A empresa vem do pedido (orgId) e só vale se a pessoa for membro dela.
  */
 import type { NextFunction, Request, Response } from 'express';
-import { areaLevelOf, memberOrgOf } from './authMiddleware';
+import { memberOrgOf, moduleLevelOf } from './authMiddleware';
+import type { AdminHandles } from './firebaseAdmin.ts';
 import { sessionForRequest } from './whatsappRouting';
 import { effectiveOrg } from './orgDefaults';
 import type { SessionContext } from './whatsappContext';
@@ -16,9 +17,10 @@ const OWN_SESSION_PATHS = ['/status', '/connect', '/disconnect', '/sessions', '/
 export function createWhatsAppMiddlewares(deps: {
   runInSession: <T>(ctx: SessionContext, fn: () => T) => T;
   runAsOrgSender: <T>(orgId: string, fn: () => T) => T;
+  getAdminHandles?: () => AdminHandles | null;
 }) {
   return {
-    companyContext(req: Request, res: Response, next: NextFunction) {
+    async companyContext(req: Request, res: Response, next: NextFunction) {
       const waData = /^\/(whatsapp|composio)\//.test(req.path);
       const org = memberOrgOf(req);
       if (!org) {
@@ -29,8 +31,17 @@ export function createWhatsAppMiddlewares(deps: {
         }
         return next();
       }
-      if (waData && req.user && !req.user.master && areaLevelOf(req.user, org, 'whatsapp') < 1) {
-        return res.status(403).json({ success: false, error: 'Sem permissão de acesso à área de WhatsApp nesta empresa.' });
+      if (waData && req.user && !req.user.master) {
+        const section = /\/((nds|outlook|nd-export|nd-rules|nd-records))\b/i.test(req.path)
+          ? 'whatsapp-nds'
+          : /\/(commands|scheduled|jobs)\b/i.test(req.path) ? 'whatsapp-comandos' : 'whatsapp-central';
+        try {
+          if (await moduleLevelOf(req.user, org, section, deps.getAdminHandles) < 1) {
+            return res.status(403).json({ success: false, error: 'Sem permissão para este submódulo do WhatsApp.' });
+          }
+        } catch {
+          return res.status(503).json({ success: false, error: 'Não foi possível validar as permissões do WhatsApp.' });
+        }
       }
       deps.runAsOrgSender(effectiveOrg(org), next);
     },
