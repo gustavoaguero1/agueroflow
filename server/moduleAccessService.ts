@@ -28,7 +28,7 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
   const orgId = memberOrg(member);
   if (!orgId || orgId.includes('/')) return;
   const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
-  if (member.active !== true) {
+  if (member.active === false) {
     const modules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
     await Promise.all(refs.map((ref) => ref.set({
       orgId,
@@ -46,6 +46,7 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
   const areaLevels = resolveAreas(role, org.areaDefaults, member.areaOverrides);
   const orgDefaults = sanitizeModuleDefaults(org.moduleAccessDefaults);
   const personal = sanitizeModuleOverrides(member.moduleAccessOverrides);
+  if (role === 'Admin') personal.configuracoes = 4;
   const explicitModules = [...new Set([
     ...Object.keys(orgDefaults[role] || {}),
     ...Object.keys(personal),
@@ -81,7 +82,7 @@ export async function syncModuleAccessForOrganization(h: AdminHandles, orgId: st
   const activeUids = new Set<string>();
   for (const [id, doc] of docs) {
     const data = doc.data();
-    if (data.active === true) identities(id, data).forEach((uid) => activeUids.add(uid));
+    if (data.active !== false) identities(id, data).forEach((uid) => activeUids.add(uid));
   }
   const grantSnap = await h.db.collection('org_module_access').where('orgId', '==', orgId).get();
   const zeroModules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
