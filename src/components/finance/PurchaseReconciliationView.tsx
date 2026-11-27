@@ -71,7 +71,7 @@ const defaultIssueType = (entry: ReturnType<typeof buildPurchaseReconciliations>
 };
 
 export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: NfeDocument[] }> = ({ orgId, invoices }) => {
-  const { user, member, isSupervisorOrAbove, isManagerOrAbove, areaLevel, logAudit } = useAuth();
+  const { user, member, moduleLevel, logAudit } = useAuth();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [receipts, setReceipts] = useState<MaterialReceiptRecord[]>([]);
   const [cases, setCases] = useState<FinanceReconciliationCase[]>([]);
@@ -166,8 +166,8 @@ export const PurchaseReconciliationView: React.FC<{ orgId: string; invoices: Nfe
     rejected: cases.filter((item) => item.status === 'rejeitada').length,
   }), [cases]);
 
-  const canCreateCase = isSupervisorOrAbove && areaLevel('financeiro') === 2;
-  const canReviewCase = isManagerOrAbove && areaLevel('financeiro') === 2;
+  const canCreateCase = moduleLevel('financeiro-notas') >= 2;
+  const canReviewCase = moduleLevel('financeiro-notas') >= 3;
 
   const openCaseForm = (entry: ReturnType<typeof buildPurchaseReconciliations>[number]) => {
     setDraftFor(entry);

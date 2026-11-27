@@ -10,6 +10,7 @@
  * RH (login normal, área RH): ver a parte de baixo deste arquivo.
  */
 import { Router, type Request, type Response, type RequestHandler } from 'express';
+import type { AdminHandles } from './firebaseAdmin.ts';
 import { resolveConfig } from '../src/ponto/config.ts';
 import { toBrt, diaBrt } from '../src/ponto/tempo.ts';
 import { firestorePontoStore, type Alerta, type BiometriaPessoa, type Device, type PontoStore } from './ponto/store.ts';
@@ -27,6 +28,7 @@ export interface PontoRouterOpts {
   now?: () => Date;
   /** Chamado depois de cada marcação nova (ex.: recalcular o Diário do dia). Falha só gera log. */
   afterRegistro?: (orgId: string, dataISO: string, rhId?: string) => Promise<void>;
+  getAdminHandles?: () => AdminHandles | null;
 }
 
 export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
@@ -260,6 +262,6 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
     res.json({ results });
   }));
 
-  registerRhRoutes(r, { getStore, now, wrap, after });
+  registerRhRoutes(r, { getStore, now, wrap, after, getAdminHandles: opts.getAdminHandles });
   return r;
 }

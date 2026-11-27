@@ -58,15 +58,32 @@ interface StructureModuleProps {
 }
 
 export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = 'organizacao' }) => {
-  const { user, organization, member, role, isAdmin, isManagerOrAbove, areaLevel, logAudit, adminSetUserPassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria'>(initialTab);
+  const { user, organization, member, isMaster, moduleLevel, logAudit, adminSetUserPassword } = useAuth();
+  type StructureTab = 'organizacao' | 'projetos' | 'unidades' | 'contratos' | 'ativos' | 'usuarios' | 'auditoria';
+  const [activeTab, setActiveTab] = useState<StructureTab>(initialTab);
+  const tabModule: Record<StructureTab, string> = {
+    organizacao: 'estrutura', projetos: 'obras', unidades: 'estrutura', contratos: 'contratos',
+    ativos: 'estrutura', usuarios: 'estrutura', auditoria: 'auditoria',
+  };
+  const canSeeTab = (tab: StructureTab) => tab === 'usuarios'
+    ? moduleLevel('estrutura') >= 4
+    : (tab === 'projetos'
+      ? moduleLevel('obras') >= 1 || moduleLevel('comercial-painel') >= 1
+      : moduleLevel(tabModule[tab]) >= 1);
+  const canManageUsers = moduleLevel('estrutura') >= 4;
+  const tabOrder: StructureTab[] = ['organizacao', 'projetos', 'unidades', 'contratos', 'ativos', 'usuarios', 'auditoria'];
 
-  // Sync tab if prop changes from navigation
+  // Deep links and stale navigation cannot open a restricted submodule.
   useEffect(() => {
-    if (initialTab) {
+    if (canSeeTab(initialTab)) {
       setActiveTab(initialTab);
+      return;
     }
-  }, [initialTab]);
+    if (!canSeeTab(activeTab)) {
+      const next = tabOrder.find(canSeeTab);
+      if (next) setActiveTab(next);
+    }
+  }, [initialTab, activeTab, moduleLevel]);
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [geoUnit, setGeoUnit] = useState<Unit | null>(null);
@@ -140,50 +157,66 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!organization) return;
+    if (!organization?.id) {
+      setUnits([]);
+      setContracts([]);
+      setCostCenters([]);
+      setProjects([]);
+      setAssets([]);
+      setMembers([]);
+      setAuditLogs([]);
+      return;
+    }
+    const orgId = organization.id;
+    const unsubscribers: Array<() => void> = [];
+    const canSeeStructure = moduleLevel('estrutura') >= 1;
 
-    const unsubUnits = onSnapshot(query(collection(db, 'units'), where('orgId', '==', organization.id)), (s) =>
-      setUnits(s.docs.map((d) => ({ id: d.id, ...d.data() } as Unit)))
-    );
+    if (canSeeStructure) {
+      unsubscribers.push(onSnapshot(query(collection(db, 'units'), where('orgId', '==', orgId)), (s) =>
+        setUnits(s.docs.map((d) => ({ id: d.id, ...d.data() } as Unit)))
+      ));
+      unsubscribers.push(onSnapshot(query(collection(db, 'cost_centers'), where('orgId', '==', orgId)), (s) =>
+        setCostCenters(s.docs.map((d) => ({ id: d.id, ...d.data() } as CostCenter)))
+      ));
+      unsubscribers.push(onSnapshot(query(collection(db, 'assets'), where('orgId', '==', orgId)), (s) =>
+        setAssets(s.docs.map((d) => ({ id: d.id, ...d.data() } as Asset)))
+      ));
+    } else {
+      setUnits([]);
+      setCostCenters([]);
+      setAssets([]);
+    }
 
-    const unsubContracts = onSnapshot(query(collection(db, 'contracts'), where('orgId', '==', organization.id)), (s) =>
-      setContracts(s.docs.map((d) => ({ id: d.id, ...d.data() } as Contract)))
-    );
+    if (moduleLevel('contratos') >= 1) {
+      unsubscribers.push(onSnapshot(query(collection(db, 'contracts'), where('orgId', '==', orgId)), (s) =>
+        setContracts(s.docs.map((d) => ({ id: d.id, ...d.data() } as Contract)))
+      ));
+    } else setContracts([]);
 
-    const unsubCostCenters = onSnapshot(query(collection(db, 'cost_centers'), where('orgId', '==', organization.id)), (s) =>
-      setCostCenters(s.docs.map((d) => ({ id: d.id, ...d.data() } as CostCenter)))
-    );
+    if (moduleLevel('obras') >= 1 || moduleLevel('comercial-painel') >= 1) {
+      unsubscribers.push(subscribeProjects(orgId, setProjects));
+    } else setProjects([]);
 
-    const unsubProjects = subscribeProjects(organization.id, setProjects);
+    if (canManageUsers) {
+      unsubscribers.push(onSnapshot(query(collection(db, 'org_members'), where('orgId', '==', orgId)), (s) =>
+        setMembers(s.docs.map((d) => ({ id: d.id, ...d.data() } as OrgMember)))
+      ));
+    } else setMembers([]);
 
-    const unsubAssets = onSnapshot(query(collection(db, 'assets'), where('orgId', '==', organization.id)), (s) =>
-      setAssets(s.docs.map((d) => ({ id: d.id, ...d.data() } as Asset)))
-    );
+    if (moduleLevel('auditoria') >= 1) {
+      unsubscribers.push(onSnapshot(query(collection(db, 'audit_logs'), where('orgId', '==', orgId)), (s) => {
+        const list = s.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        setAuditLogs(list);
+      }));
+    } else setAuditLogs([]);
 
-    const unsubMembers = onSnapshot(query(collection(db, 'org_members'), where('orgId', '==', organization.id)), (s) =>
-      setMembers(s.docs.map((d) => ({ id: d.id, ...d.data() } as OrgMember)))
-    );
-
-    const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), where('orgId', '==', organization.id)), (s) => {
-      const list = s.docs.map((d) => ({ id: d.id, ...d.data() } as AuditLog));
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setAuditLogs(list);
-    });
-
-    return () => {
-      unsubUnits();
-      unsubContracts();
-      unsubCostCenters();
-      unsubProjects();
-      unsubAssets();
-      unsubMembers();
-      unsubAudit();
-    };
-  }, [organization]);
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [organization?.id, moduleLevel, canManageUsers]);
 
   const handleCreateUnit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || moduleLevel('estrutura') < 2) return;
     setIsSubmitting(true);
     try {
       const uId = `unit_${Date.now()}`;
@@ -210,7 +243,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || moduleLevel('estrutura') < 2) return;
     if (!assetUnitId || !units.some((unit) => unit.id === assetUnitId)) {
       alert('Selecione uma unidade cadastrada para vincular o ativo.');
       return;
@@ -275,7 +308,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const handleCreateContract = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || moduleLevel('contratos') < 2) return;
     if (!contractCode.trim()) {
       alert('Por favor, informe o Código do contrato.');
       return;
@@ -338,6 +371,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   };
 
   const handleDeleteContract = async (contractId: string, title: string) => {
+    if (moduleLevel('contratos') < 2) return;
     if (!confirm(`Tem certeza que deseja excluir o contrato "${title}"?`)) return;
     try {
       await deleteDoc(doc(db, 'contracts', contractId));
@@ -349,7 +383,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
 
   const handleCreateMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization) return;
+    if (!organization || !canManageUsers) return;
     setMemberFormError(null);
 
     const normEmail = memberEmail.trim().toLowerCase();
@@ -464,7 +498,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
         </div>
 
         <div className="flex items-center space-x-2">
-          {activeTab === 'unidades' && (
+          {activeTab === 'unidades' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => setShowUnitModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -473,7 +507,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Nova Unidade</span>
             </button>
           )}
-          {activeTab === 'ativos' && (
+          {activeTab === 'ativos' && moduleLevel('estrutura') >= 2 && (
             <button
               onClick={() => {
                 setAssetUnitId('');
@@ -486,7 +520,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Ativo</span>
             </button>
           )}
-          {activeTab === 'contratos' && (
+          {activeTab === 'contratos' && moduleLevel('contratos') >= 2 && (
             <button
               onClick={() => setShowContractModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -495,7 +529,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
               <span>Novo Contrato</span>
             </button>
           )}
-          {activeTab === 'usuarios' && (
+          {activeTab === 'usuarios' && canManageUsers && (
             <button
               onClick={() => setShowMemberModal(true)}
               className="px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold flex items-center space-x-1.5 cursor-pointer apple-solid-btn"
@@ -517,7 +551,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           { id: 'ativos' as const, label: `Ativos (${assets.length})`, icon: Boxes },
           { id: 'usuarios' as const, label: `Usuários & Papéis (${members.length})`, icon: Users },
           { id: 'auditoria' as const, label: `Auditoria (${auditLogs.length})`, icon: ShieldAlert },
-        ].map((tab) => {
+        ].filter((tab) => canSeeTab(tab.id)).map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -546,8 +580,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
           contracts={contracts}
           costCenters={costCenters}
           canManage={
-            (isManagerOrAbove || role === 'Supervisor') &&
-            (areaLevel('operacoes') >= 2 || areaLevel('comercial') >= 2)
+            moduleLevel('obras') >= 2 || moduleLevel('comercial-painel') >= 2
           }
           onAudit={(action, details, targetId) => logAudit('Projetos/Obras', action, details, targetId)}
         />
@@ -789,7 +822,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 <th className="py-3 px-4">Papel (RBAC)</th>
                 <th className="py-3 px-4">Credencial / Senha</th>
                 <th className="py-3 px-4">Status</th>
-                {isAdmin && <th className="py-3 px-4 text-right">Ações</th>}
+                {canManageUsers && <th className="py-3 px-4 text-right">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -828,7 +861,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                       <span>Ativo</span>
                     </span>
                   </td>
-                  {isAdmin && (
+                  {canManageUsers && (
                     <td className="py-3 px-4 text-right">
                       <button
                         type="button"

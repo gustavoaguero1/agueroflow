@@ -1,0 +1,121 @@
+import type { AdminHandles } from './firebaseAdmin.ts';
+import { resolveAreas } from '../src/permissions/areas.ts';
+import {
+  MODULE_PERMISSION_ID_LIST, resolveModuleLevels, sanitizeModuleDefaults, sanitizeModuleOverrides,
+  type ModuleAccessDefaults, type ModuleAccessOverrides,
+} from '../src/permissions/modules.ts';
+import type { UserRole } from '../src/types/index.ts';
+
+export const moduleAccessDocId = (orgId: string, uid: string) => `${orgId}__${uid}`;
+
+const memberOrg = (data: FirebaseFirestore.DocumentData) => String(data.orgId || data.organizationId || '');
+
+function identities(memberId: string, member: FirebaseFirestore.DocumentData): string[] {
+  const ids = new Set<string>([`member_${memberId}`]);
+  const bound = member.userId;
+  if (typeof bound === 'string' && bound && !bound.startsWith('uid_manual_') && !bound.startsWith('usr_')) {
+    ids.add(bound);
+  }
+  return [...ids];
+}
+
+/** Escreve somente no servidor o grant consultado pelas regras Firestore e pelos middlewares da API. */
+export async function syncModuleAccessForMember(h: AdminHandles, memberId: string): Promise<void> {
+  const memberRef = h.db.doc(`org_members/${memberId}`);
+  const snap = await memberRef.get();
+  if (!snap.exists) return;
+  const member = snap.data() || {};
+  const orgId = memberOrg(member);
+  if (!orgId || orgId.includes('/')) return;
+  const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
+  if (member.active === false) {
+    const modules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
+    await Promise.all(refs.map((ref) => ref.set({
+      orgId,
+      uid: ref.id.slice(orgId.length + 2),
+      modules,
+      explicitModules: [...MODULE_PERMISSION_ID_LIST],
+      revoked: true,
+      updatedAt: new Date().toISOString(),
+    })));
+    return;
+  }
+  const orgSnap = await h.db.doc(`organizations/${orgId}`).get();
+  const org = orgSnap.data() || {};
+  const role = member.role as UserRole;
+  const areaLevels = resolveAreas(role, org.areaDefaults, member.areaOverrides);
+  const orgDefaults = sanitizeModuleDefaults(org.moduleAccessDefaults);
+  const personal = sanitizeModuleOverrides(member.moduleAccessOverrides);
+  if (role === 'Admin') personal.configuracoes = 4;
+  const explicitModules = [...new Set([
+    ...Object.keys(orgDefaults[role] || {}),
+    ...Object.keys(personal),
+  ])];
+  const hasOverrides = explicitModules.length > 0;
+  // Sem personalização, remova o grant e mantenha a herança por área.
+  if (!hasOverrides) {
+    await Promise.all(refs.map((ref) => ref.delete()));
+    return;
+  }
+
+  const modules = resolveModuleLevels(role, areaLevels, orgDefaults, personal);
+  await Promise.all(refs.map((ref) => ref.set({
+    orgId,
+    uid: ref.id.slice(orgId.length + 2),
+    modules,
+    explicitModules,
+    updatedAt: new Date().toISOString(),
+  })));
+}
+
+export async function syncModuleAccessForOrganization(h: AdminHandles, orgId: string): Promise<number> {
+  const members = h.db.collection('org_members');
+  const [byOrg, byLegacyOrg] = await Promise.all([
+    members.where('orgId', '==', orgId).get(),
+    members.where('organizationId', '==', orgId).get(),
+  ]);
+  const docs = new Map([...byOrg.docs, ...byLegacyOrg.docs].map((d) => [d.id, d]));
+  const ids = [...docs.keys()];
+  const results = await Promise.allSettled(ids.map((id) => syncModuleAccessForMember(h, id)));
+  // Grants de membros removidos (sem documento em org_members) também precisam ser revogados;
+  // caso contrário, o token antigo poderia cair na herança permissiva por área.
+  const activeUids = new Set<string>();
+  for (const [id, doc] of docs) {
+    const data = doc.data();
+    if (data.active !== false) identities(id, data).forEach((uid) => activeUids.add(uid));
+  }
+  const grantSnap = await h.db.collection('org_module_access').where('orgId', '==', orgId).get();
+  const zeroModules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
+  const orphanRevocations = await Promise.allSettled(grantSnap.docs
+    .filter((grant) => {
+      const uid = String(grant.get('uid') || grant.id.slice(orgId.length + 2));
+      return !activeUids.has(uid) && grant.get('revoked') !== true;
+    })
+    .map((grant) => grant.ref.set({ orgId, uid: String(grant.get('uid') || grant.id.slice(orgId.length + 2)), modules: zeroModules, explicitModules: [...MODULE_PERMISSION_ID_LIST], revoked: true, updatedAt: new Date().toISOString() }, { merge: true })));
+  // Notifica os clientes conectados para que leiam o grant atualizado sem novo login.
+  const stamp = new Date().toISOString();
+  const stamps = await Promise.allSettled(ids.map((id) =>
+    members.doc(id).update({ areasUpdatedAt: stamp, updatedAt: stamp }),
+  ));
+  return results.filter((r) => r.status === 'rejected').length
+    + stamps.filter((r) => r.status === 'rejected').length
+    + orphanRevocations.filter((r) => r.status === 'rejected').length;
+}
+
+export function resolvedMemberModuleAccess(
+  role: UserRole,
+  areaDefaults: unknown,
+  areaOverrides: unknown,
+  orgModuleDefaults: unknown,
+  memberModuleOverrides: unknown,
+) {
+  const areaLevels = resolveAreas(role, areaDefaults as never, areaOverrides as never);
+  return resolveModuleLevels(
+    role,
+    areaLevels,
+    sanitizeModuleDefaults(orgModuleDefaults),
+    sanitizeModuleOverrides(memberModuleOverrides),
+  );
+}
+
+export type { ModuleAccessDefaults, ModuleAccessOverrides };

@@ -85,7 +85,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     selectedUnitId,
     selectedContractId,
     logAudit,
-    areaLevel,
+    moduleLevel,
   } = useAuth();
 
   // Tab State
@@ -111,7 +111,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
   const handleSyncWithObras = async () => {
-    if (!organization?.id) return;
+    if (!organization?.id || moduleLevel('rh-funcionarios') < 2 || moduleLevel('ops-direcionar') < 2) return;
     setIsSyncingWithObras(true);
     setSyncToast(null);
     try {
@@ -132,20 +132,23 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   // Role Security Check
   // Super Admin/Master, Admin, RH/Gestor autorizado têm acesso; Operador/Almoxarife não têm acesso
   // Acesso por área: "ver" abre o RH, "editar" grava (Configurações → Acessos por área).
-  const isAuthorized = areaLevel('rh') >= 1;
-  const canEdit = areaLevel('rh') === 2;
+  const isAuthorized = moduleLevel(currentTab) >= 1;
+  const canEdit = moduleLevel(currentTab) >= 2;
+  const canEditEmployees = moduleLevel('rh-funcionarios') >= 2;
+  const canApproveAdmissions = moduleLevel('rh-admissoes') >= 2;
+  const canImportSpreadsheet = moduleLevel('rh-importacao') >= 2;
+  const canEditCalculations = moduleLevel('rh-calculo') >= 2;
 
   // Sync tab with props
   useEffect(() => {
-    if (activeSubSection) {
+    if (activeSubSection && moduleLevel(activeSubSection) >= 1) {
       setCurrentTab(activeSubSection);
-      if (activeSubSection === 'rh-holerites') {
-        setShowHoleriteModal(true);
-      }
+      if (activeSubSection === 'rh-holerites') setShowHoleriteModal(true);
     }
-  }, [activeSubSection]);
+  }, [activeSubSection, moduleLevel]);
 
   const handleTabChange = (tabId: RhSubSection) => {
+    if (moduleLevel(tabId) < 1) return;
     setCurrentTab(tabId);
     if (onNavigateSubSection) {
       onNavigateSubSection(tabId);
@@ -155,45 +158,62 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     }
   };
 
-  // Subscriptions to Firestore Collections
+  // Subscriptions are scoped to the active RH submodule. Ponto uses its own REP-P API.
   useEffect(() => {
-    if (!organization?.id || !isAuthorized) {
+    const orgId = organization?.id;
+    if (!orgId || !isAuthorized || currentTab === 'rh-ponto') {
+      setEmployees([]);
+      setFieldWorkers([]);
+      setCalculations([]);
+      setBatches([]);
+      setImports([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    // Mantém o diretório de pessoas (sem salários) em dia para as outras áreas.
-    if (canEdit) syncRhDirectory(organization.id).catch((err) => console.warn('Diretório de pessoas não atualizado:', err));
-    const unsubEmployees = subscribeRhEmployees(organization.id, (data) => {
-      setEmployees(data);
-    });
+    setEmployees([]);
+    setFieldWorkers([]);
+    setCalculations([]);
+    setBatches([]);
+    setImports([]);
 
-    const unsubFieldWorkers = subscribeRhFieldWorkers(organization.id, (data) => {
-      setFieldWorkers(data);
-    });
+    const unsubscribers: Array<() => void> = [];
+    const employeeTabs: RhSubSection[] = [
+      'rh-painel', 'rh-funcionarios', 'rh-pendencias', 'rh-importacao',
+      'rh-calculo', 'rh-historico', 'rh-relatorios',
+    ];
+    const calculationTabs: RhSubSection[] = [
+      'rh-painel', 'rh-calculo', 'rh-historico', 'rh-relatorios', 'rh-holerites',
+    ];
+    const importTabs: RhSubSection[] = ['rh-importacao', 'rh-historico'];
+    const batchTabs: RhSubSection[] = ['rh-calculo', 'rh-historico', 'rh-relatorios'];
 
-    const unsubCalculations = subscribeRhCalculations(organization.id, referenceYear, (data) => {
-      setCalculations(data);
-      setLoading(false);
-    });
+    if (employeeTabs.includes(currentTab)) {
+      unsubscribers.push(subscribeRhEmployees(orgId, setEmployees));
+      if (currentTab === 'rh-pendencias' || currentTab === 'rh-funcionarios') {
+        unsubscribers.push(subscribeRhFieldWorkers(orgId, setFieldWorkers));
+      }
+    }
+    if (calculationTabs.includes(currentTab)) {
+      unsubscribers.push(subscribeRhCalculations(orgId, referenceYear, (data) => {
+        setCalculations(data);
+        setLoading(false);
+      }));
+    }
+    if (importTabs.includes(currentTab)) {
+      unsubscribers.push(subscribeRhImports(orgId, setImports));
+    }
+    if (batchTabs.includes(currentTab)) {
+      unsubscribers.push(subscribeRhBatches(orgId, setBatches));
+    }
+    if (canEditEmployees) {
+      syncRhDirectory(orgId).catch((err) => console.warn('Diretório de pessoas não atualizado:', err));
+    }
+    if (!calculationTabs.includes(currentTab)) setLoading(false);
 
-    const unsubBatches = subscribeRhBatches(organization.id, (data) => {
-      setBatches(data);
-    });
-
-    const unsubImports = subscribeRhImports(organization.id, (data) => {
-      setImports(data);
-    });
-
-    return () => {
-      unsubEmployees();
-      unsubFieldWorkers();
-      unsubCalculations();
-      unsubBatches();
-      unsubImports();
-    };
-  }, [organization?.id, referenceYear, isAuthorized, canEdit]);
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [organization?.id, referenceYear, currentTab, isAuthorized, canEditEmployees]);
 
   const legacyAuditReport = useMemo(
     () =>
@@ -207,7 +227,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
   // Save Employee
   const handleSaveEmployee = async (employee: RhEmployee) => {
-    if (!organization?.id || !canEdit) return;
+    if (!organization?.id || (!canEditEmployees && !canApproveAdmissions)) return;
     await saveRhEmployee({ ...employee, orgId: organization.id });
     await logAudit(
       'RH / Salários',
@@ -218,20 +238,20 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
   // Delete Employee
   const handleDeleteEmployee = async (id: string) => {
-    if (!canEdit) return;
+    if (!canEditEmployees) return;
     await deleteRhEmployee(id);
     await logAudit('RH / Salários', 'Exclusão de Funcionário', `Colaborador com ID ${id} excluído.`);
   };
 
   // Save Calculation
   const handleSaveCalculation = async (calc: RhThirteenthCalculation) => {
-    if (!organization?.id || !canEdit) return;
+    if (!organization?.id || !canEditCalculations) return;
     await saveRhCalculation({ ...calc, orgId: organization.id });
   };
 
   // Batch Save Calculations
   const handleBatchSaveCalculations = async (calcs: RhThirteenthCalculation[]) => {
-    if (!organization?.id || !canEdit) return;
+    if (!organization?.id || !canEditCalculations) return;
     for (const c of calcs) {
       await saveRhCalculation({ ...c, orgId: organization.id });
     }
@@ -355,7 +375,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
         {/* Sub-Navigation Tabs — Apple Segmented Control */}
         <div className="af-seg rounded-xl p-1 flex items-center gap-1 overflow-x-auto custom-scrollbar">
-          {tabs.map((t) => {
+          {tabs.filter((t) => moduleLevel(t.id) >= 1).map((t) => {
             const Icon = t.icon;
             const isActive = currentTab === t.id;
             return (
@@ -435,7 +455,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               onFocusHandled={() => setFocusEmployeeId(null)}
               onSaveEmployee={handleSaveEmployee}
               onDeleteEmployee={handleDeleteEmployee}
-              canEdit={canEdit}
+              canEdit={canEditEmployees}
               canViewFinancials={canViewFinancials}
               onNavigateToImport={() => handleTabChange('rh-importacao')}
               onNavigateToOnboarding={() => handleTabChange('rh-admissoes')}
@@ -463,7 +483,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               userName={user?.displayName || 'Recursos Humanos'}
               units={units}
               contracts={contracts}
-              canEdit={canEdit}
+              canEdit={canApproveAdmissions}
               onEmployeeApproved={handleSaveEmployee}
               onNavigateToEmployees={() => handleTabChange('rh-funcionarios')}
             />
@@ -478,7 +498,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               userEmail={user?.email || ''}
               userName={user?.displayName || 'Gestor RH'}
               onImportCompleted={() => handleTabChange('rh-calculo')}
-              canImport={canEdit}
+              canImport={canImportSpreadsheet}
             />
           )}
 
@@ -491,7 +511,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               onReferenceYearChange={setReferenceYear}
               onSaveCalculation={handleSaveCalculation}
               onBatchSaveCalculations={handleBatchSaveCalculations}
-              canEdit={canEdit}
+              canEdit={canEditCalculations}
               canViewFinancials={canViewFinancials}
               userEmail={user?.email || ''}
             />
@@ -522,7 +542,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
           {/* 7. Demonstrativos / Holerites Direct View */}
           {currentTab === 'rh-ponto' && organization?.id && (
-            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={role === 'Admin' || role === 'Gerente'} />
+            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={moduleLevel('rh-ponto-admin') >= 4} />
           )}
 
           {currentTab === 'rh-holerites' && (
@@ -552,7 +572,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
       )}
 
       {/* Demonstrativo Modal (Individual or Batch) */}
-      {showHoleriteModal && (
+      {showHoleriteModal && moduleLevel('rh-holerites') >= 1 && (
         <RhDemonstrativoModal
           calculations={filteredCalculations}
           initialCalculationId={selectedHoleriteCalcId}

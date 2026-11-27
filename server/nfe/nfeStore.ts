@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdmin, type AdminHandles } from '../firebaseAdmin.ts';
-import { requireRole } from '../authMiddleware.ts';
+import { requireModuleAccess } from '../authMiddleware.ts';
 import { parseNfeXml, type ParsedNfe } from './parseNfe.ts';
 
 const docId = (orgId: string, chave: string) => `${orgId}_${chave}`;
@@ -55,7 +55,7 @@ const digits = (s: unknown) => String(s ?? '').replace(/\D/g, '');
 
 export function createNfeRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const r = Router();
-  r.post('/import', requireRole('Admin', 'Gerente'), async (req, res) => {
+  r.post('/import', requireModuleAccess('financeiro-notas', 2, getH), async (req, res) => {
     const h = getH();
     if (!h) return res.status(503).json({ error: 'Servidor sem acesso ao banco.' });
     const orgId = req.orgId;

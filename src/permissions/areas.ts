@@ -124,22 +124,25 @@ export function needsTokenRefresh(areasUpdatedAt: unknown, tokenIssuedAt: unknow
 type NavLike = { id: string; subItems?: Array<{ id: string }> };
 
 /** Menu com só o que a pessoa pode ver; grupo sem nenhum subitem visível some. */
-export function visibleNav<T extends NavLike>(items: T[], levels: AreaLevels): T[] {
+export function visibleNav<T extends NavLike>(items: T[], levels: AreaLevels, moduleAccess?: Record<string, number> | null): T[] {
   const out: T[] = [];
   for (const it of items) {
     if (!it.subItems) {
-      if (canSeeSection(it.id, levels)) out.push(it);
+      if (canSeeSection(it.id, levels, moduleAccess)) out.push(it);
       continue;
     }
-    const subItems = it.subItems.filter((s) => canSeeSection(s.id, levels));
+    const subItems = it.subItems.filter((s) => canSeeSection(s.id, levels, moduleAccess));
     if (subItems.length) out.push({ ...it, subItems });
   }
   return out;
 }
 
 /** Seção aparece no menu se a área dela tiver pelo menos "ver" (seção sem área: sempre). */
-export function canSeeSection(section: string, levels: AreaLevels | null | undefined): boolean {
+export function canSeeSection(section: string, levels: AreaLevels | null | undefined, moduleAccess?: Record<string, number> | null): boolean {
+  const configured = moduleAccess?.[section];
+  if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured >= 1;
   const a = areaOfSection(section);
-  if (!a || !levels) return true;
+  if (!a) return true; // Seções utilitárias sem área permanecem visíveis; o catálogo granular controla módulos reais.
+  if (!levels) return false;
   return levels[a] >= 1;
 }

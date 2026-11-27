@@ -31,7 +31,10 @@ async function api(opts: { pages?: number } = {}) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { uid: 'u1', master: false, orgs: { org_a: 'Admin' } }; next(); });
-  app.use('/api/travel', createTravelProviderRouter({ store: () => store, secretKey: () => undefined, lemontech: () => ({ client }), sleep: async (ms) => { esperas.push(ms); } }));
+  const getAdminHandles = () => ({
+    db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) }) }) },
+  }) as any;
+  app.use('/api/travel', createTravelProviderRouter({ store: () => store, secretKey: () => undefined, lemontech: () => ({ client }), sleep: async (ms) => { esperas.push(ms); }, getAdminHandles }));
   const server: Server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const port = (server.address() as { port: number }).port;
   const call = async (body: unknown) => {

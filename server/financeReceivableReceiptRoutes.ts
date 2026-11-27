@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type RequestHandler } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { FinanceReceivable, FinanceReceivableReceipt, FinanceReceivableReceiptRequest } from '../src/types/finance.ts';
 import {
@@ -9,27 +9,16 @@ import {
   receivableReceiptRequestMatches,
   normalizeReceivableMoney,
 } from '../src/services/financeReceivableRules.ts';
-import { areaLevelOf, requireArea, requireRole } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error { constructor(public status: number, message: string) { super(message); } }
 const validDocId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 180 && !value.includes('/');
 const optionalText = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
-const receiptPermission: RequestHandler = (req, res, next) => {
-  const actor = req.user;
-  const orgId = req.orgId;
-  if (!actor || !orgId) return res.status(403).json({ ok: false, error: 'Empresa não autorizada.' });
-  const role = actor.orgs?.[orgId];
-  if (!actor.master && role !== 'Supervisor' && areaLevelOf(actor, orgId, 'financeiro') < 2) {
-    return res.status(403).json({ ok: false, error: 'Admin/Gerente precisam de Financeiro nível 2 para registrar recebimentos.' });
-  }
-  next();
-};
-
 export function createFinanceReceivableReceiptRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
-  router.post('/', requireRole('Admin', 'Gerente', 'Supervisor'), requireArea('financeiro', 1), receiptPermission, async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-receber', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const receivableId = req.body?.receivableId;
     const actor = req.user;

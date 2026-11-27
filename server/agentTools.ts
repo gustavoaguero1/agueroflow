@@ -102,19 +102,25 @@ const SYSTEM = `Você é o @aguero, assistente do ERP AgueroFlow no WhatsApp. Re
 
 export async function answerWithTools(
   h: H, orgId: string, question: string, history: { role: string; text: string }[] = [], gen: AgentGen,
+  allowedTools?: ReadonlySet<string>,
 ): Promise<string> {
   const contents: any[] = [
     ...history.slice(-6).map((m) => ({ role: m.role === 'model' ? 'model' : 'user', parts: [{ text: String(m.text).slice(0, 1000) }] })),
     { role: 'user', parts: [{ text: question }] },
   ];
-  const config = { systemInstruction: SYSTEM, tools: [{ functionDeclarations: agentToolDeclarations }] };
+  const declarations = allowedTools ? agentToolDeclarations.filter((t) => allowedTools.has(t.name)) : agentToolDeclarations;
+  if (!declarations.length) return '';
+  const config = { systemInstruction: SYSTEM, tools: [{ functionDeclarations: declarations }] };
   for (let round = 0; round < 4; round++) {
     const res = await gen({ contents, config });
     const calls: { name: string; args?: Args }[] = res.functionCalls ?? [];
     if (!calls.length) return (res.text || '').trim();
     contents.push(res.candidates?.[0]?.content ?? { role: 'model', parts: calls.map((functionCall) => ({ functionCall })) });
     const parts = [];
-    for (const c of calls.slice(0, 6)) parts.push({ functionResponse: { name: c.name, response: await runAgentTool(h, orgId, c.name, c.args) } });
+    for (const c of calls.slice(0, 6)) {
+      const allowed = !allowedTools || allowedTools.has(c.name);
+      parts.push({ functionResponse: { name: c.name, response: allowed ? await runAgentTool(h, orgId, c.name, c.args) : { erro: 'ferramenta não autorizada para este usuário' } } });
+    }
     contents.push({ role: 'user', parts });
   }
   // Rounds exhausted: force a text answer from what was gathered.

@@ -20,8 +20,8 @@ type Candidate = FinancePayableSettlement & { id: string };
 type ReceiptCandidate = FinanceReceivableReceipt & { id: string };
 
 export const BankReconciliationView: React.FC<{ orgId: string }> = ({ orgId }) => {
-  const { role, isMaster, areaLevel } = useAuth();
-  const canManage = isMaster || ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2);
+  const { moduleLevel } = useAuth();
+  const canManage = moduleLevel('financeiro-pagar') >= 2;
   const [transactions, setTransactions] = useState<FinanceBankTransaction[]>([]);
   const [settlements, setSettlements] = useState<Candidate[]>([]);
   const [receipts, setReceipts] = useState<ReceiptCandidate[]>([]);

@@ -23,23 +23,36 @@ service firebase.storage {
         roleAreas(request.auth.token.get('orgs', {}).get(orgId, ''))
       );
     }
-    function engineeringCanRead(orgId) {
-      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 1);
+    function moduleLevel(orgId, section, areaIndex) {
+      let p = /databases/(default)/documents/org_module_access/$(orgId + '__' + request.auth.uid);
+      let grant = firestore.exists(p) ? firestore.get(p).data : {};
+      let modules = grant.get('modules', {});
+      let explicitModules = grant.get('explicitModules', []);
+      let fallback = int(areaCode(orgId)[areaIndex:areaIndex + 1]);
+      let role = request.auth.token.get('orgs', {}).get(orgId, '');
+      return grant.get('revoked', false) == true ? 0
+        : (role == 'Admin' && section == 'configuracoes' ? 4
+          : (explicitModules.hasAny([section])
+            ? int(modules[section])
+            : (role == 'Admin' && fallback == 2 ? 4 : fallback)));
     }
-    function engineeringCanWrite(orgId) {
-      return isMaster() || (isMember(orgId) && int(areaCode(orgId)[1:2]) >= 2);
+    function engineeringCanRead(orgId, section) {
+      return isMaster() || (isMember(orgId) && moduleLevel(orgId, section, 1) >= 1);
+    }
+    function engineeringCanWrite(orgId, section) {
+      return isMaster() || (isMember(orgId) && moduleLevel(orgId, section, 1) >= 2);
     }
     function safetyCertificateCanWrite(orgId) {
       let role = request.auth.token.get('orgs', {}).get(orgId, '');
       return isMaster() || (isMember(orgId)
-        && int(areaCode(orgId)[1:2]) >= 2
+        && moduleLevel(orgId, 'ordens', 1) >= 2
         && role in ['Admin', 'Gerente', 'Supervisor']);
     }
 
     // OS evidence: private, same-company and immutable.
     match /work-orders/{orgId}/{allPaths=**} {
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if engineeringCanRead(orgId, 'ordens');
+      allow create: if engineeringCanWrite(orgId, 'ordens')
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 10 * 1024 * 1024
@@ -56,13 +69,13 @@ service firebase.storage {
         return fileId == 'arquivos_historico.json'
           && request.resource.contentType == 'application/json';
       }
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if engineeringCanRead(orgId, 'ops-base');
+      allow create: if engineeringCanWrite(orgId, 'ops-base')
         && request.resource.size > 0
         && request.resource.size <= 15 * 1024 * 1024
         && (legacyJsonBackup() || (resource == null && allowedOperationsFileType()));
       allow update: if legacyJsonBackup()
-        && engineeringCanWrite(orgId)
+        && engineeringCanWrite(orgId, 'ops-base')
         && resource != null
         && request.resource.size > 0
         && request.resource.size <= 15 * 1024 * 1024;
@@ -71,8 +84,8 @@ service firebase.storage {
 
     // Engineering controlled documents.
     match /engineering-documents/{orgId}/{documentId}/{fileId} {
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if engineeringCanRead(orgId, 'obras');
+      allow create: if engineeringCanWrite(orgId, 'obras')
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
@@ -82,7 +95,7 @@ service firebase.storage {
 
     // Safety and qualification certificates.
     match /safety-certificates/{orgId}/{employeeId}/{fileId} {
-      allow read: if engineeringCanRead(orgId);
+      allow read: if engineeringCanRead(orgId, 'ordens');
       allow create: if safetyCertificateCanWrite(orgId)
         && resource == null
         && request.resource.size > 0
@@ -93,14 +106,14 @@ service firebase.storage {
 
     // HR onboarding candidate documents (uploaded exclusively by backend Admin SDK).
     match /hr-onboardings/{orgId}/{onboardingId}/{fileId} {
-      allow read: if isMaster() || (isMember(orgId) && int(areaCode(orgId)[5:6]) >= 1);
+      allow read: if isMaster() || (isMember(orgId) && moduleLevel(orgId, 'rh-admissoes', 5) >= 1);
       allow write: if false;
     }
 
     // Industrial metallurgy, NDT, and material heat certificates (private, immutable).
     match /industrial-certificates/{orgId}/{recordId}/{fileId} {
-      allow read: if engineeringCanRead(orgId);
-      allow create: if engineeringCanWrite(orgId)
+      allow read: if engineeringCanRead(orgId, 'obras');
+      allow create: if engineeringCanWrite(orgId, 'obras')
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024
@@ -110,8 +123,8 @@ service firebase.storage {
 
     // Measurement Bulletin (BM) memory of calculation and evidences (private, immutable).
     match /measurement-evidences/{orgId}/{bulletinId}/{fileId} {
-      allow read: if isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 1 || int(areaCode(orgId)[3:4]) >= 1 || int(areaCode(orgId)[4:5]) >= 1));
-      allow create: if (isMaster() || (isMember(orgId) && (int(areaCode(orgId)[1:2]) >= 2 || int(areaCode(orgId)[3:4]) >= 2)))
+      allow read: if isMaster() || (isMember(orgId) && (moduleLevel(orgId, 'obras-medicoes', 1) >= 1 || moduleLevel(orgId, 'comercial-composicao', 3) >= 1 || moduleLevel(orgId, 'financeiro-receber', 4) >= 1));
+      allow create: if (isMaster() || (isMember(orgId) && moduleLevel(orgId, 'obras-medicoes', 1) >= 2))
         && resource == null
         && request.resource.size > 0
         && request.resource.size <= 20 * 1024 * 1024

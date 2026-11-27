@@ -14,7 +14,10 @@ async function setup(role = 'Admin', store = memoryPontoStore()) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { (req as any).user = { uid: 'u_rh', master: false, orgs: { org_a: role } }; next(); });
-  app.use('/api/ponto', createPontoRouter({ store: () => store, now: () => NOW }));
+  const getAdminHandles = () => ({
+    db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) }) }) },
+  }) as any;
+  app.use('/api/ponto', createPontoRouter({ store: () => store, now: () => NOW, getAdminHandles }));
   const server: Server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const port = (server.address() as { port: number }).port;
   const raw = (method: string, path: string, body?: unknown) =>

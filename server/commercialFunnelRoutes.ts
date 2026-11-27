@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   buildDerivedContractFromProposal,
@@ -20,7 +20,7 @@ const historyEntry = (status: string, by: string, at: string) => ({ status, at, 
 export function createCommercialFunnelRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/:proposalId/stage', requireArea('comercial', 2), async (req: Request, res: Response) => {
+  router.post('/:proposalId/stage', requireModuleAccess('comercial-funil', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId, actor = req.user, proposalId = req.params.proposalId, status = req.body?.status;
     if (!orgId || req.body?.orgId !== orgId || !validId(proposalId) || !['enviada', 'negociacao'].includes(status)) {
       return res.status(400).json({ ok: false, error: 'Informe uma etapa e uma proposta válidas.' });
@@ -51,7 +51,7 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
     }
   });
 
-  router.post('/:proposalId/lost', requireArea('comercial', 2), async (req: Request, res: Response) => {
+  router.post('/:proposalId/lost', requireModuleAccess('comercial-funil', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId, actor = req.user, proposalId = req.params.proposalId;
     const reason = req.body?.reason;
     const detail = typeof req.body?.detail === 'string' ? req.body.detail.trim() : '';
@@ -87,7 +87,7 @@ export function createCommercialFunnelRouter(getH: () => AdminHandles | null = g
     }
   });
 
-  router.post('/:proposalId/win', requireArea('comercial', 2), requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/:proposalId/win', requireModuleAccess('comercial-funil', 2, getH), requireModuleAccess('obras', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId, actor = req.user, proposalId = req.params.proposalId;
     if (!orgId || req.body?.orgId !== orgId || !validId(proposalId)) {
       return res.status(400).json({ ok: false, error: 'Informe uma empresa e uma proposta válidas.' });

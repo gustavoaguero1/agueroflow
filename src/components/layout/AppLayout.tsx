@@ -179,6 +179,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     isManagerOrAbove,
     canViewFinancials,
     areaLevels,
+    moduleAccess,
     selectedUnitId,
     setSelectedUnitId,
     selectedContractId,
@@ -473,7 +474,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     },
   ];
   // Só o que a pessoa pode ver (acesso por área; Configurações → Acessos por área).
-  const navItems = visibleNav(allNavItems, areaLevels);
+  const navItems = visibleNav(allNavItems, areaLevels, moduleAccess);
   const currentArea = areaOfSection(currentSection);
 
   const getSectionTitle = (id: NavSection) => {

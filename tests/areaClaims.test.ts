@@ -5,7 +5,7 @@ import {
   AREA_IDS, ROLE_DEFAULTS, encodeAreas, decodeAreas, sanitizeOverrides, sanitizeOrgDefaults,
 } from '../src/permissions/areas.ts';
 import { claimsFromMembers } from '../server/authService.ts';
-import { areaLevelOf, requireArea } from '../server/authMiddleware.ts';
+import { areaLevelOf, moduleLevelOf, requireArea, requireModuleAccess } from '../server/authMiddleware.ts';
 
 test('áreas viram um texto curto no token e voltam iguais', () => {
   const s = encodeAreas(ROLE_DEFAULTS.Supervisor);
@@ -118,3 +118,40 @@ test('requireArea marca a empresa autorizada na requisição', async () => {
   const out = await run(requireArea('rh', 1), { user: userWith('Admin'), query: { orgId: 'a' } as never });
   assert.equal(out.orgId, 'a');
 });
+
+function moduleStore(uid: string, modules?: Record<string, number>) {
+  const data = modules ? { orgId: 'a', uid, modules, explicitModules: Object.keys(modules) } : undefined;
+  return () => ({
+    db: {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: data !== undefined, data: () => data }),
+        }),
+      }),
+    },
+  }) as never;
+}
+
+test('submódulos herdam a área, mas uma exceção individual bloqueia só o submódulo configurado', async () => {
+  const supervisor = userWith('Supervisor');
+  assert.equal(await moduleLevelOf(supervisor, 'a', 'ops-diario', moduleStore('u')), 2);
+  const getH = moduleStore('u', { 'ops-diario': 0, 'ops-contratacao': 3 });
+  assert.equal(await moduleLevelOf(supervisor, 'a', 'ops-diario', getH), 0);
+  assert.equal(await moduleLevelOf(supervisor, 'a', 'ops-contratacao', getH), 3);
+  assert.equal(await moduleLevelOf(supervisor, 'z', 'ops-diario', getH), 0);
+  assert.equal(await moduleLevelOf(supervisor, 'a', 'ops-diario', () => null), 0);
+});
+
+test('requireModuleAccess exige o nível granular e falha fechado quando não consegue validar', async () => {
+  const user = userWith('Operacional');
+  const overrides = moduleStore('u', { ordens: 0, checklists: 2, 'ops-contratacao': 3 });
+  assert.equal((await run(requireModuleAccess('checklists', 2, overrides), { user, query: { orgId: 'a' } as never })).nexted, true);
+  const blocked = await run(requireModuleAccess('ordens', 1, overrides), { user, query: { orgId: 'a' } as never });
+  assert.equal(blocked.status, 403);
+  const delegated = await run(requireModuleAccess('ops-contratacao', 3, overrides), { user, query: { orgId: 'a' } as never });
+  assert.equal(delegated.nexted, true);
+  const unavailable = await run(requireModuleAccess('checklists', 1, () => null), { user, query: { orgId: 'a' } as never });
+  assert.equal(unavailable.status, 503);
+  assert.equal((await run(requireModuleAccess('checklists', 1, overrides), {})).status, 401);
+});
+

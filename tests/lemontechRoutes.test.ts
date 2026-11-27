@@ -21,6 +21,8 @@ async function api(opts: { role?: string; orgs?: Record<string, string>; lemon?:
     secretKey: () => undefined,
     lemontech: () => ('lemon' in opts ? opts.lemon : { client, orgId: opts.orgLock }),
     sleep: async () => {},
+    // Sem grant explícito: vale o nível da área (Operações), como no AuthContext.
+    getAdminHandles: () => ({ db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) }) }) } }) as any,
   }));
   const server: Server = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
   const port = (server.address() as { port: number }).port;
