@@ -10,6 +10,7 @@
 import type { Router, Request, Response, RequestHandler } from 'express';
 import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { requireModuleAccess } from '../authMiddleware.ts';
+import { getAdmin, type AdminHandles } from '../firebaseAdmin.ts';
 import { resolveConfig, TIPOS_MARCACAO, type PontoConfig, type TipoMarcacao } from '../../src/ponto/config.ts';
 import { proximaMarcacao } from '../../src/ponto/jornada.ts';
 import { isValidCpf, onlyDigitsCpf } from '../../src/ponto/cpf.ts';
@@ -28,6 +29,7 @@ export interface RhRouteCtx {
   wrap: (fn: (req: Request, res: Response, store: PontoStore) => Promise<unknown>) => RequestHandler;
   /** Recalcula o Diário do dia depois de uma mudança. */
   after: (orgId: string, dia: string, rhId?: string) => Promise<void>;
+  getAdminHandles?: () => AdminHandles | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -74,10 +76,11 @@ function periodo(q: Record<string, unknown>, maxDias = MAX_DIAS) {
 
 export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
   const { wrap, now } = ctx;
+  const getAdminHandles = ctx.getAdminHandles ?? getAdmin;
   const org = (req: Request) => String(req.orgId ?? '');
-  const rhLer = requireModuleAccess('rh-ponto', 1);
-  const rhGravar = requireModuleAccess('rh-ponto', 2);
-  const rhAdministrar = requireModuleAccess('rh-ponto-admin', 4);
+  const rhLer = requireModuleAccess('rh-ponto', 1, getAdminHandles);
+  const rhGravar = requireModuleAccess('rh-ponto', 2, getAdminHandles);
+  const rhAdministrar = requireModuleAccess('rh-ponto-admin', 4, getAdminHandles);
 
   const estabDaOrg = async (store: PontoStore, orgId: string, id: string) => {
     const e = await store.getEstab(id);
