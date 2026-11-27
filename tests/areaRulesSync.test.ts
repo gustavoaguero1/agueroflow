@@ -7,6 +7,7 @@ import type { UserRole } from '../src/types/index.ts';
 const rules = readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8');
 const storageRules = readFileSync(new URL('../storage.rules', import.meta.url), 'utf8');
 const waMiddleware = readFileSync(new URL('../server/whatsappMiddleware.ts', import.meta.url), 'utf8');
+const pontoRhRoutes = readFileSync(new URL('../server/ponto/rhRoutes.ts', import.meta.url), 'utf8');
 
 test('as regras do banco usam a mesma tabela de padrões por perfil que o app', () => {
   for (const role of Object.keys(ROLE_DEFAULTS) as UserRole[]) {
@@ -80,16 +81,22 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
 });
 
 
-test('Firestore routes contracts through the Contratos module grant', async () => {
-  const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
-  assert.match(rules, /coll == 'contracts' \? 'contratos'/);
-});
 
+test('Firestore routes contracts through the Contratos module grant', () => {
+  assert.match(rules, /coll == 'contracts' \\? 'contratos'/);
+});
 
 test('RH collections honor their granular submodule grants', () => {
   assert.match(rules, /function rhRead\\(d\\)/);
   assert.match(rules, /function rhWrite\\(d\\)/);
-  assert.match(rules, /moduleOk\\(o, 'rh-ponto'/); // REP-P remains an API-protected module, not a Firestore salary collection.
   assert.match(rules, /moduleOk\\(o, 'rh-importacao', A_RH\\(\\), 2\\)/);
   assert.match(rules, /moduleOk\\(o, 'rh-calculo', A_RH\\(\\), 2\\)/);
+});
+
+test('Ponto REP-P retains multi-pose biometrics and protects only its RH administration routes', () => {
+  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 1\\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 2\\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 4\\)/);
+  assert.match(pontoRhRoutes, /openFaceDescriptors/);
+  assert.match(pontoRhRoutes, /FACE_MAX_POSES/);
 });
