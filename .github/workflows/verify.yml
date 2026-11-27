@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/permissoes-granulares-pr73-final
+      - feat/permissoes-granulares-pr71
   pull_request:
     branches:
       - main
