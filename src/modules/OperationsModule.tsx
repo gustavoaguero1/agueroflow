@@ -44,6 +44,12 @@ export const OperationsModule: React.FC<{
   const canImportGases = moduleLevel('ops-gases') >= 2;
   const canManageOperations = moduleLevel('ops-config') >= 4 || (isManagerOrAbove && !moduleAccessExplicit.includes('ops-config'));
   const orgId = organization?.id || '';
+  const routeSectionByName: Record<string, string> = {
+    inicio: 'ops-inicio', direcionar: 'ops-direcionar', diario: 'ops-diario', viagem: 'ops-viagem',
+    reembolso: 'ops-reembolso', contratacao: 'ops-contratacao', tarefas: 'ops-tarefas',
+    gases: 'ops-gases', base: 'ops-base', config: 'ops-config',
+  };
+  const routeSection = routeSectionByName[normalizeRoute(route)];
 
   const bridge = useMemo(() => {
     if (!user || !orgId) return null;
@@ -53,11 +59,11 @@ export const OperationsModule: React.FC<{
       userName: member?.userName || user.displayName || '',
       role,
       isManager: isMaster || canManageOperations,
-      canWrite: moduleLevel(({ inicio: 'ops-inicio', direcionar: 'ops-direcionar', diario: 'ops-diario', viagem: 'ops-viagem', reembolso: 'ops-reembolso', contratacao: 'ops-contratacao', tarefas: 'ops-tarefas', gases: 'ops-gases', base: 'ops-base', config: 'ops-config' } as Record<string, string>)[normalizeRoute(route)] || 'ops-inicio') >= 2,
+      canWrite: !!routeSection && moduleLevel(routeSection) >= 2,
       canSeeSalaries: salaryLevel >= 1,
       canEditRh: rhLevel >= 2,
     });
-  }, [user, orgId, member?.userName, role, isMaster, canManageOperations, moduleLevel, route, rhLevel, salaryLevel]);
+  }, [user, orgId, member?.userName, role, isMaster, canManageOperations, moduleLevel, route, rhLevel, salaryLevel, routeSection]);
 
   // Publica a ponte antes do iframe carregar; troca de empresa recarrega a página.
   if (bridge) window.__agueroOps = bridge.api;
