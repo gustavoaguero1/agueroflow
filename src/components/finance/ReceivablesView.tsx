@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
-import { ArrowDownToLine, CheckCircle2, Plus, Receipt, X } from 'lucide-react';
+import { ArrowDownToLine, CheckCircle2, Download, Plus, Receipt, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import type { FinanceReceivable, FinanceReceivableReceipt, FinancePaymentMethod } from '../../types/finance';
@@ -27,6 +27,7 @@ export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [dueFilter, setDueFilter] = useState<'todos' | 'vencidos' | 'hoje' | '7d' | 'aberto'>('todos');
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [receivingId, setReceivingId] = useState('');
@@ -48,15 +49,50 @@ export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
   }, [orgId]);
 
   const t = today();
+  const in7d = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const totals = useMemo(() => {
     const open = receivables.filter((item) => item.status === 'aberto');
     return {
+      openCount: open.length,
       openValue: open.reduce((sum, item) => sum + financeReceivableBalance(item), 0),
       lateCount: open.filter((item) => item.vencimento < t).length,
-      dueSoon: open.filter((item) => item.vencimento >= t && item.vencimento <= new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)).length,
+      todayCount: open.filter((item) => item.vencimento === t).length,
+      dueSoon: open.filter((item) => item.vencimento >= t && item.vencimento <= in7d).length,
       receivedMonth: receipts.filter((item) => item.receiptDate.slice(0, 7) === t.slice(0, 7)).reduce((sum, item) => sum + item.receiptAmount, 0),
     };
-  }, [receivables, receipts, t]);
+  }, [receivables, receipts, t, in7d]);
+
+  const filteredReceivables = useMemo(() => {
+    return receivables.filter((item) => {
+      if (dueFilter === 'vencidos') return item.status === 'aberto' && item.vencimento < t;
+      if (dueFilter === 'hoje') return item.status === 'aberto' && item.vencimento === t;
+      if (dueFilter === '7d') return item.status === 'aberto' && item.vencimento >= t && item.vencimento <= in7d;
+      if (dueFilter === 'aberto') return item.status === 'aberto';
+      return true;
+    });
+  }, [receivables, dueFilter, t, in7d]);
+
+  const exportCsv = () => {
+    const headers = ['Cliente', 'CNPJ/CPF', 'Documento', 'Parcela', 'Vencimento', 'Original', 'Recebido', 'Saldo', 'Status'];
+    const rows = filteredReceivables.map((item) => [
+      item.cliente?.nome || '',
+      item.cliente?.cnpj || '',
+      item.documento || '',
+      item.parcela || '',
+      fmtDate(item.vencimento),
+      item.valor.toFixed(2).replace('.', ','),
+      (item.valorRecebido || 0).toFixed(2).replace('.', ','),
+      financeReceivableBalance(item).toFixed(2).replace('.', ','),
+      item.status,
+    ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'));
+    const blob = new Blob(['\uFEFF' + [headers.join(';'), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contas_a_receber_${t}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const saveReceivable = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -128,7 +164,12 @@ export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
           <h2 className="flex items-center gap-2 text-lg font-bold text-white"><ArrowDownToLine className="h-5 w-5 text-emerald-400" />Contas a Receber</h2>
           <p className="mt-1 text-xs text-slate-400">Controle interno de valores a receber de clientes, com baixas parciais e histórico auditável.</p>
         </div>
-        {canCreate && <button type="button" className={btnPrimary} onClick={() => setShowForm((value) => !value)}><Plus className="h-3.5 w-3.5" />Novo recebível</button>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={btnGhost} onClick={exportCsv} disabled={filteredReceivables.length === 0}>
+            <Download className="h-3.5 w-3.5" />Exportar CSV ({filteredReceivables.length})
+          </button>
+          {canCreate && <button type="button" className={btnPrimary} onClick={() => setShowForm((value) => !value)}><Plus className="h-3.5 w-3.5" />Novo recebível</button>}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
@@ -136,6 +177,31 @@ export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
         <div className={card}><p className="text-[11px] text-slate-400">Contas vencidas</p><p className="mt-1 text-xl font-bold text-rose-300">{totals.lateCount}</p></div>
         <div className={card}><p className="text-[11px] text-slate-400">Vencem em 7 dias</p><p className="mt-1 text-xl font-bold text-cyan-300">{totals.dueSoon}</p></div>
         <div className={card}><p className="text-[11px] text-slate-400">Recebido no mês</p><p className="mt-1 text-lg font-bold font-mono text-emerald-300">{brl.format(totals.receivedMonth)}</p></div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {([
+          ['todos', `Todos (${receivables.length})`],
+          ['vencidos', `Vencidos (${totals.lateCount})`],
+          ['hoje', `Vence hoje (${totals.todayCount})`],
+          ['7d', `Próximos 7 dias (${totals.dueSoon})`],
+          ['aberto', `Em aberto (${totals.openCount})`],
+        ] as const).map(([key, text]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setDueFilter(key)}
+            className={`px-3 py-1.5 rounded-xl font-semibold border transition cursor-pointer ${
+              dueFilter === key
+                ? key === 'vencidos'
+                  ? 'bg-rose-600 text-white border-rose-500 apple-solid-btn'
+                  : 'bg-blue-600 text-white border-blue-500 apple-solid-btn'
+                : 'bg-[#121826] border-slate-800 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            {text}
+          </button>
+        ))}
       </div>
 
       {error && <p className={msgErr}>{error}</p>}
@@ -172,9 +238,9 @@ export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
         </form>
       )}
 
-      {receivables.length === 0 ? <div className={card + ' py-10 text-center text-xs text-slate-500'}>Nenhuma conta a receber cadastrada.</div> : (
+      {filteredReceivables.length === 0 ? <div className={card + ' py-10 text-center text-xs text-slate-500'}>Nenhuma conta a receber nesta visão.</div> : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          {receivables.map((item) => {
+          {filteredReceivables.map((item) => {
             const balance = financeReceivableBalance(item);
             const history = receiptsByReceivable.get(item.id) || [];
             const late = item.status === 'aberto' && item.vencimento < t;

@@ -31,6 +31,8 @@ import {
   X,
   Search,
   QrCode,
+  Download,
+  ShoppingCart,
 } from 'lucide-react';
 import { QrLabelModal, type QrLabelTarget } from '../components/common/QrLabelModal';
 
@@ -44,6 +46,7 @@ export const StockModule: React.FC = () => {
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>('todas');
   const [searchQuery, setSearchQuery] = useState('');
+  const [onlyBelowMin, setOnlyBelowMin] = useState(false);
   const [qrTarget, setQrTarget] = useState<QrLabelTarget | null>(null);
 
   // Movement Modal
@@ -211,17 +214,123 @@ export const StockModule: React.FC = () => {
     }
   };
 
+  const lowStockRows = balances
+    .filter((b) => selectedUnitId === 'todas' || b.unitId === selectedUnitId)
+    .map((b) => {
+      const item = items.find((i) => i.id === b.itemId);
+      const unit = units.find((u) => u.id === b.unitId);
+      if (!item) return null;
+      const isCritical = item.criticalStock !== undefined && b.currentBalance <= item.criticalStock;
+      const isWarning = !isCritical && item.minStock !== undefined && b.currentBalance <= item.minStock;
+      if (!isCritical && !isWarning) return null;
+      return { bal: b, item, unitName: unit?.name || 'Local Central', isCritical };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  const handleGenerateBatchRC = async () => {
+    if (!organization || !user || rcBusy || lowStockRows.length === 0) return;
+    setRcBusy(true);
+    try {
+      const existingReqs = await getPurchaseRequisitions(organization.id);
+      const alreadyOpenItemIds = new Set<string>();
+      existingReqs
+        .filter((r) => r.status === 'pendente' || r.status === 'em_cotacao')
+        .forEach((r) => r.items.forEach((i) => alreadyOpenItemIds.add(i.id)));
+
+      const toOrder = lowStockRows.filter((r) => !alreadyOpenItemIds.has(r.item.id));
+      if (toOrder.length === 0) {
+        alert('Todos os itens críticos/abaixo do mínimo já possuem requisição de compra em aberto.');
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const hasCritical = toOrder.some((r) => r.isCritical);
+      await savePurchaseRequisition({
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        organizationId: organization.id,
+        code: `RC-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`,
+        title: `Reposição em lote (${toOrder.length} itens abaixo do mínimo)`,
+        requestedBy: user.uid,
+        requestedByName: user.displayName || user.email || 'Almoxarife',
+        department: 'Estoque & Manutenção',
+        urgency: hasCritical ? 'alta' : 'normal',
+        neededByDate: now.slice(0, 10),
+        items: toOrder.map((r) => {
+          const min = r.item.minStock ?? 0;
+          const suggested = Math.max(min * 2 - r.bal.currentBalance, 1);
+          return {
+            id: r.item.id,
+            code: r.item.sku,
+            description: r.item.name,
+            unit: r.item.unitOfMeasure,
+            quantity: suggested,
+            currentStock: r.bal.currentBalance,
+            notes: r.unitName,
+          };
+        }),
+        status: 'pendente',
+        notes: `Reposição consolidada em lote (${toOrder.length} itens abaixo do estoque mínimo).`,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await logAudit('Estoque', 'Gerar RC em Lote', `RC consolidada com ${toOrder.length} itens abaixo do mínimo.`);
+      alert(`Requisição de compra em lote criada com ${toOrder.length} item(ns)!`);
+    } catch (err: any) {
+      alert(err?.message || 'Falha ao gerar requisição em lote.');
+    } finally {
+      setRcBusy(false);
+    }
+  };
+
   // Filter balances
   const filteredBalances = balances.filter((b) => {
     if (selectedUnitId !== 'todas' && b.unitId !== selectedUnitId) return false;
     const item = items.find((i) => i.id === b.itemId);
     if (!item) return false;
+    if (onlyBelowMin) {
+      const isCrit = item.criticalStock !== undefined && b.currentBalance <= item.criticalStock;
+      const isWarn = item.minStock !== undefined && b.currentBalance <= item.minStock;
+      if (!isCrit && !isWarn) return false;
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return item.name.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q);
     }
     return true;
   });
+
+  const handleExportStockCsv = () => {
+    const headers = ['SKU', 'Peça / Material', 'Unidade', 'Saldo Atual', 'Unid. Medida', 'Mínimo', 'Crítico', 'Status'];
+    const rows = filteredBalances
+      .map((bal) => {
+        const item = items.find((i) => i.id === bal.itemId);
+        const unit = units.find((u) => u.id === bal.unitId);
+        if (!item) return null;
+        const isCritical = item.criticalStock !== undefined && bal.currentBalance <= item.criticalStock;
+        const isWarning = !isCritical && item.minStock !== undefined && bal.currentBalance <= item.minStock;
+        const status = isCritical ? 'CRÍTICO' : isWarning ? 'ATENÇÃO' : 'NORMAL';
+        return [
+          item.sku,
+          item.name,
+          unit?.name || 'Local Central',
+          String(bal.currentBalance),
+          item.unitOfMeasure || 'UN',
+          item.minStock !== undefined ? String(item.minStock) : '',
+          item.criticalStock !== undefined ? String(item.criticalStock) : '',
+          status,
+        ]
+          .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+          .join(';');
+      })
+      .filter((r): r is string => r !== null);
+    const blob = new Blob(['\uFEFF' + [headers.join(';'), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `posicao_estoque_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -230,11 +339,11 @@ export const StockModule: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-[#1D1D1F] dark:text-white tracking-tight">Controle de Estoque &amp; Saldos</h2>
           <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5">
-            Saldos em tempo real por localidade com validação de saldo, reservas por OS e etiquetas QR.
+            Saldos em tempo real por localidade com reposição em lote, reservas por OS, CSV e etiquetas QR.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center space-x-2 af-btn-glass px-3 py-2 rounded-xl">
             <Filter className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#98989D]" />
             <select
@@ -250,6 +359,30 @@ export const StockModule: React.FC = () => {
               ))}
             </select>
           </div>
+
+          {lowStockRows.length > 0 && (
+            <button
+              type="button"
+              disabled={rcBusy}
+              onClick={() => void handleGenerateBatchRC()}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold cursor-pointer apple-solid-btn disabled:opacity-50"
+              title="Gerar 1 requisição de compra consolidada para todos os itens abaixo do mínimo"
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>Repor lote ({lowStockRows.length})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={filteredBalances.length === 0}
+            onClick={handleExportStockCsv}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl af-btn-glass text-xs font-semibold cursor-pointer disabled:opacity-40"
+            title="Exportar posição atual de estoque em CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>CSV</span>
+          </button>
 
           <button
             onClick={() => {
@@ -305,15 +438,28 @@ export const StockModule: React.FC = () => {
 
       {/* Balances Grid Table */}
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por código ou descrição da peça em estoque..."
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-[#121826] border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-          />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por código ou descrição da peça em estoque..."
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-[#121826] border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setOnlyBelowMin((v) => !v)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition cursor-pointer shrink-0 ${
+              onlyBelowMin
+                ? 'bg-rose-600 text-white border-rose-500 apple-solid-btn'
+                : 'bg-[#121826] border-slate-800 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            {onlyBelowMin ? `Mostrando abaixo do mínimo (${lowStockRows.length})` : `Abaixo do mínimo (${lowStockRows.length})`}
+          </button>
         </div>
 
         <div className="bg-[#121826] border border-slate-800 rounded-xl overflow-hidden shadow-sm">
