@@ -560,7 +560,7 @@ service cloud.firestore {
                                                     : (coll in ['purchasing_suppliers'] ? 'compras-fornecedores'
                                                       : (coll in ['travel_requests'] ? 'viagens-solicitacoes'
                                                         : (coll in ['travel_searches'] ? 'viagens-busca'
-                                                          : (coll in ['assets', 'contracts', 'cost_centers', 'teams', 'units'] ? 'estrutura' : ''))))))))))))))))))))))));
+                                                          : (coll == 'contracts' ? 'contratos' : (coll in ['assets', 'cost_centers', 'teams', 'units'] ? 'estrutura' : '')))))))))))))))))))))))));
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
