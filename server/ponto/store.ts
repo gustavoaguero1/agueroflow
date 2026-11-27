@@ -35,6 +35,7 @@ export interface Pairing {
 }
 
 type Prev = { nsr: number; hash: string | null };
+export interface RhRef { id: string; name: string; unitId?: string | null; active: boolean }
 
 export interface PontoStore {
   getEstab(id: string): Promise<Estabelecimento | undefined>;
@@ -44,6 +45,8 @@ export interface PontoStore {
   listPessoas(orgId: string): Promise<PessoaPonto[]>;
   savePessoa(p: PessoaPonto): Promise<void>;
   listObras(orgId: string): Promise<ObraGeo[]>;
+  /** Cadastro de pessoas do RH (rh_directory), só o necessário ao ponto. */
+  listRh(orgId: string): Promise<RhRef[]>;
   /** Atômico por estabelecimento: devolve o registro já existente se o clientId repetir. */
   appendMarcacao(estabId: string, orgId: string, clientId: string, build: (prev: Prev) => MarcacaoRegistro): Promise<{ registro: MarcacaoRegistro; duplicada: boolean }>;
   /** Mesma sequência de NSR das marcações; não mexe no último hash. */
@@ -88,8 +91,11 @@ export function memoryPontoStore() {
   };
   const nextState = (estabId: string) => state.get(estabId) ?? { nsr: 0, hash: null };
 
-  const store: PontoStore & { obras: Map<string, ObraGeo[]> } = {
+  const rh = new Map<string, RhRef[]>();
+  const store: PontoStore & { obras: Map<string, ObraGeo[]>; rh: Map<string, RhRef[]> } = {
     obras,
+    rh,
+    listRh: async (o) => clone(rh.get(o) ?? []),
     getEstab: async (id) => (estabs.has(id) ? clone(estabs.get(id)!) : undefined),
     listEstabs: async (o) => [...estabs.values()].filter((e) => e.orgId === o).map(clone),
     saveEstab: async (e) => { estabs.set(e.id, clone(e)); },
@@ -171,6 +177,8 @@ export function firestorePontoStore(): PontoStore | null {
     savePessoa: async (p) => { await C.pessoas.doc(pessoaKey(p.orgId, p.rhId)).set(clone(p)); },
     listObras: async (o) => (await db.collection('units').where('orgId', '==', o).get()).docs
       .map((d) => ({ id: d.id, nome: String(d.get('name') ?? ''), geo: d.get('geo') ?? null })),
+    listRh: async (o) => (await db.collection('rh_directory').where('orgId', '==', o).get()).docs
+      .map((d) => ({ id: d.id, name: String(d.get('name') ?? ''), unitId: d.get('unitId') ?? null, active: d.get('active') !== false })),
     appendMarcacao: (estabId, orgId, clientId, build) => db.runTransaction(async (tx) => {
       const cref = C.clients.doc(`${orgId}__${clientId}`);
       const sref = C.state.doc(estabId);
