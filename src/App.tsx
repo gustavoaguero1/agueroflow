@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PublicLandingPage } from './pages/PublicLandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -45,7 +45,12 @@ import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
 import { apiFetch } from './apiAuthFetch';
 
+const PontoCollectorPage = lazy(() =>
+  import('./pages/PontoCollectorPage').then((m) => ({ default: m.PontoCollectorPage })),
+);
+
 function MainRouter() {
+  const isPontoCollectorPath = window.location.pathname === '/ponto' || window.location.pathname.startsWith('/ponto/');
   const { user, loading, organization, role, isMaster, clearActiveOrganization, signOut, canSeeSection } = useAuth();
 
   // Route state: default is 'login' (Public presentation site is kept on standby via ?site=apresentacao or /apresentacao)
@@ -57,6 +62,7 @@ function MainRouter() {
 
   // Sync route cleanly with URL and auth state
   useEffect(() => {
+    if (isPontoCollectorPath) return;
     testConnection();
 
     const path = window.location.pathname;
@@ -95,11 +101,11 @@ function MainRouter() {
         setNavPayload({ targetId: qrTarget.entityId });
       }
     }
-  }, [user, isMaster, organization]);
+  }, [isPontoCollectorPath, user, isMaster, organization]);
 
   // Global lightweight keep-alive heartbeat while ERP is open so Cloud Run keeps the WhatsApp ND/OCR bridge online in real time
   useEffect(() => {
-    if (!user) return;
+    if (!user || isPontoCollectorPath) return;
     let active = true;
     const pingKeepAlive = () => {
       if (!active) return;
@@ -118,7 +124,22 @@ function MainRouter() {
       window.removeEventListener('focus', pingKeepAlive);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [user]);
+  }, [user, isPontoCollectorPath]);
+
+  // Coletor PWA do Ponto Eletrônico (/ponto) abre sem depender de login do ERP nem de internet
+  if (isPontoCollectorPath) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#090D16] text-white flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-[#0071E3] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <PontoCollectorPage />
+      </Suspense>
+    );
+  }
 
   const navigate = (route: 'landing' | 'login' | 'master-panel' | 'app', section?: NavSection) => {
     setCurrentRoute(route);

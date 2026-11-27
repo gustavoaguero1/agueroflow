@@ -18,7 +18,9 @@ import { gerarAfd, linhaTipo2, linhaTipo5, linhaTipo7 } from './afd.ts';
 import { montarEspelho } from './espelho.ts';
 import { criarPareamento } from './devices.ts';
 import { PontoErro } from './registrar.ts';
-import { nsrKey, type Alerta, type Estabelecimento, type PessoaPonto, type PontoStore } from './store.ts';
+import { nsrKey, type Alerta, type BiometriaPessoa, type Estabelecimento, type PessoaPonto, type PontoStore } from './store.ts';
+import { sealFaceDescriptors } from './bioCrypto.ts';
+import { FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../../src/ponto/faceMath.ts';
 
 export interface RhRouteCtx {
   getStore: () => PontoStore | null;
@@ -118,11 +120,18 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     const items = rh.filter((x) => x.active).map((x) => {
       const p = byRh.get(x.id);
       const dev = devices.find((d) => d.modo === 'pessoal' && d.rhId === x.id && !d.revogadoEm);
+      const bio = p?.biometria;
       return {
         rhId: x.id, nome: x.name, unitId: x.unitId ?? null,
         cpfMascarado: p ? mascaraCpf(p.cpf) : null, vinculo: p?.vinculo ?? null,
         batePonto: p?.config?.batePonto ?? true, estabelecimentoId: p?.estabelecimentoId ?? null,
-        temPin: !!p?.pinHash, temRosto: false, config: p?.config ?? null,
+        temPin: !!p?.pinHash,
+        temRosto: bio?.status === 'cadastrada',
+        biometriaStatus: bio?.status ?? 'pendente',
+        biometriaPoses: bio?.poses ?? 0,
+        biometriaAtualizadaEm: bio?.atualizadoEm ?? null,
+        lgpdAceitoEm: bio?.lgpdAceitoEm ?? null,
+        config: p?.config ?? null,
         aparelho: dev ? { id: dev.id, nome: dev.nome, criadoEm: dev.criadoEm } : null,
       };
     }).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -149,7 +158,9 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     if (typeof b.batePonto === 'boolean') config.batePonto = b.batePonto;
     const nova: PessoaPonto = {
       orgId: org(req), rhId, nome: rh.name, cpf, estabelecimentoId, vinculo,
-      ...(pinHash ? { pinHash } : {}), ...(Object.keys(config).length ? { config } : {}),
+      ...(pinHash ? { pinHash } : {}),
+      ...(Object.keys(config).length ? { config } : {}),
+      ...(atual?.biometria ? { biometria: atual.biometria } : {}),
     };
     await store.savePessoa(nova);
 
@@ -172,6 +183,58 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     res.json({ ok: true, rhId, cpfMascarado: mascaraCpf(cpf), batePonto: config.batePonto ?? true });
   }));
 
+  // ── Biometria facial (LGPD) pelo RH ──
+  r.post('/pessoas/:rhId/rosto', rhGravar, wrap(async (req, res, store) => {
+    const rhId = String(req.params.rhId);
+    const pessoa = await store.getPessoa(org(req), rhId);
+    if (!pessoa || !pessoa.cpf || !pessoa.estabelecimentoId) {
+      throw new PontoErro(400, 'Cadastre CPF e estabelecimento da pessoa antes do cadastro facial.');
+    }
+    const b = req.body ?? {};
+    const at = toBrt(now());
+    const autor = String(req.user?.uid ?? 'rh');
+
+    if (b.recusar === true) {
+      const biometria: BiometriaPessoa = {
+        status: 'recusada',
+        lgpdVersao: String(b.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
+        atualizadoEm: at,
+        atualizadoPor: autor,
+      };
+      await store.savePessoa({ ...pessoa, biometria });
+      return res.json({ ok: true, status: biometria.status, atualizadoEm: at });
+    }
+
+    if (b.lgpdAceito !== true) {
+      throw new PontoErro(400, 'É obrigatório registrar o aceite do termo LGPD antes de salvar a biometria facial.');
+    }
+    const descriptors = sanitizeDescriptors(b.descriptors);
+    if (!descriptors) {
+      throw new PontoErro(400, 'Vetores faciais inválidos. Capture pelo menos 1 pose válida pela câmera.');
+    }
+    const biometria: BiometriaPessoa = {
+      status: 'cadastrada',
+      modelo: String(b.modelo ?? FACE_MODEL_VERSION).slice(0, 60),
+      poses: descriptors.length,
+      vetoresSelados: sealFaceDescriptors(descriptors),
+      lgpdAceitoEm: at,
+      lgpdVersao: String(b.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
+      atualizadoEm: at,
+      atualizadoPor: autor,
+    };
+    await store.savePessoa({ ...pessoa, biometria });
+    res.json({ ok: true, status: biometria.status, poses: biometria.poses, atualizadoEm: at });
+  }));
+
+  r.delete('/pessoas/:rhId/rosto', rhGravar, wrap(async (req, res, store) => {
+    const rhId = String(req.params.rhId);
+    const pessoa = await store.getPessoa(org(req), rhId);
+    if (!pessoa) throw new PontoErro(404, 'Pessoa sem cadastro de ponto.');
+    const { biometria: _removed, ...rest } = pessoa;
+    await store.savePessoa(rest);
+    res.json({ ok: true });
+  }));
+
   // ── Pareamento ──
   r.post('/pareamentos/pessoal', rhGravar, wrap(async (req, res, store) => {
     const p = await criarPareamento(store, { orgId: org(req), modo: 'pessoal', rhId: String(req.body?.rhId ?? ''), criadoPor: String(req.user?.uid ?? '') }, now);
@@ -182,8 +245,31 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     res.json({ code: p.code, expiraEm: p.expiraEm });
   }));
 
-  // ── Espelho e painel do dia ──
+  // ── Espelho, foto da marcação e painel do dia ──
   const cfgPessoa = async (store: PontoStore, p: PessoaPonto) => resolveConfig((await store.getEstab(p.estabelecimentoId))?.config, p.config);
+
+  r.get('/marcacoes/:id/foto', rhLer, wrap(async (req, res, store) => {
+    const m = await store.getMarcacao(String(req.params.id));
+    if (!m || m.orgId !== org(req)) throw new PontoErro(404, 'Marcação não encontrada.');
+    const obras = m.unitId ? await store.listObras(org(req)) : [];
+    const obraNome = m.unitId ? obras.find((o) => o.id === m.unitId)?.nome ?? null : null;
+    res.json({
+      id: m.id,
+      nsr: m.nsr,
+      tipo: m.tipo,
+      dataHora: m.dataHora,
+      gravadoEm: m.gravadoEm,
+      metodo: m.metodo,
+      offline: m.offline,
+      face: m.face,
+      gps: m.gps,
+      distM: m.distM,
+      obraNome,
+      alertas: m.alertas,
+      hash: m.hash,
+      fotoDataUrl: m.fotoDataUrl ?? null,
+    });
+  }));
 
   r.get('/espelho', rhLer, wrap(async (req, res, store) => {
     const { inicio, fim } = periodo(req.query as Record<string, unknown>);

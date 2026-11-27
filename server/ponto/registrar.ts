@@ -5,6 +5,8 @@ import { obraMaisProxima } from '../../src/ponto/geo.ts';
 import { toBrt, diaBrt } from '../../src/ponto/tempo.ts';
 import { camposTipo7, hashTipo7 } from './afd.ts';
 import { nsrKey, type Alerta, type MarcacaoRegistro, type MetodoIdent, type PontoStore } from './store.ts';
+import { openFaceDescriptors, sanitizePontoPhoto } from './bioCrypto.ts';
+import { FACE_MODEL_VERSION, matchFace1to1, sanitizeDescriptor } from '../../src/ponto/faceMath.ts';
 import { scryptSync, timingSafeEqual } from 'node:crypto';
 
 export class PontoErro extends Error {
@@ -14,6 +16,10 @@ export class PontoErro extends Error {
 export interface MarcacaoInput {
   clientId: string; deviceId: string; rhId: string; tipo: TipoMarcacao; dataHora: string; offline: boolean;
   gps: MarcacaoRegistro['gps']; face: MarcacaoRegistro['face'];
+  /** Vetor facial capturado na marcação (128-D) para conferência adicional no servidor. */
+  faceDescriptor?: number[] | null;
+  /** Selfie comprimida (~20-35 KB JPEG/WebP) para conferência visual do RH no espelho. */
+  fotoDataUrl?: string | null;
   relogio: { sincronizadoEm: string; decorridoMs: number } | null;
   /** Como a pessoa foi identificada. Padrão: 'rosto' se veio `face`, senão 'nenhum'. */
   metodo?: MetodoIdent;
@@ -58,7 +64,20 @@ export async function registrarMarcacao(
   const dataHora = toBrt(input.dataHora);
   const gravadoEm = toBrt(now());
   const gps = okGps(input.gps) ? { lat: input.gps.lat, lng: input.gps.lng, ...(Number.isFinite(input.gps.precisaoM) ? { precisaoM: input.gps.precisaoM } : {}) } : null;
-  const face = input.face && Number.isFinite(input.face.score) ? input.face : null;
+  let face = input.face && Number.isFinite(input.face.score) ? { ...input.face } : null;
+  const probeDescriptor = sanitizeDescriptor(input.faceDescriptor);
+  if (probeDescriptor && pessoa.biometria?.status === 'cadastrada' && pessoa.biometria.vetoresSelados) {
+    const enrolled = openFaceDescriptors(pessoa.biometria.vetoresSelados);
+    if (enrolled?.length) {
+      const serverMatch = matchFace1to1(probeDescriptor, enrolled, opts.faceMin ?? FACE_MIN);
+      face = {
+        score: serverMatch.score,
+        ...(face?.liveness !== undefined ? { liveness: face.liveness } : {}),
+        modelo: face?.modelo || pessoa.biometria.modelo || FACE_MODEL_VERSION,
+      };
+    }
+  }
+  const fotoDataUrl = sanitizePontoPhoto(input.fotoDataUrl);
   const prox = obraMaisProxima(gps, await store.listObras(orgId), cfg.raioM);
   const metodo: MetodoIdent = input.metodo === 'pin' || input.metodo === 'nenhum' || input.metodo === 'rosto' ? input.metodo : face ? 'rosto' : 'nenhum';
   if (metodo === 'pin' && !conferePin(String(input.pin ?? ''), pessoa.pinHash)) throw new PontoErro(403, 'PIN incorreto.');
@@ -90,7 +109,7 @@ export async function registrarMarcacao(
       id: nsrKey(estab.id, nsr), orgId, estabId: estab.id, nsr, rhId: pessoa.rhId, cpf: pessoa.cpf, tipo: input.tipo,
       dataHora, dia: diaBrt(dataHora), gravadoEm, diaGrav: diaBrt(gravadoEm), coletor: '01', offline: !!input.offline, metodo,
       campos, hash: hashTipo7(campos, prev.hash), prevHash: prev.hash, clientId: input.clientId, deviceId: String(input.deviceId ?? ''),
-      gps, face, unitId: dentro?.unitId ?? null, distM: prox?.distM ?? null, alertas,
+      gps, face, ...(fotoDataUrl ? { fotoDataUrl } : {}), unitId: dentro?.unitId ?? null, distM: prox?.distM ?? null, alertas,
     };
   });
   if (duplicada && registro.rhId !== pessoa.rhId) throw new PontoErro(409, 'Este código de marcação já foi usado para outra pessoa.');

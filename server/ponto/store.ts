@@ -5,10 +5,22 @@ import type { PontoConfig, TipoMarcacao } from '../../src/ponto/config.ts';
 import type { ObraGeo } from '../../src/ponto/geo.ts';
 import { diasEntre } from '../../src/ponto/tempo.ts';
 
+import type { SealedSecret } from '../secretBox.ts';
+
 export interface Estabelecimento { id: string; orgId: string; cnpj: string; razaoSocial: string; endereco?: string; config?: Partial<PontoConfig> }
+export interface BiometriaPessoa {
+  status: 'cadastrada' | 'recusada';
+  modelo?: string;
+  poses?: number;
+  vetoresSelados?: SealedSecret;
+  lgpdAceitoEm?: string;
+  lgpdVersao?: string;
+  atualizadoEm: string;
+  atualizadoPor: string;
+}
 export interface PessoaPonto {
   orgId: string; rhId: string; nome: string; cpf: string; estabelecimentoId: string; vinculo: 'CLT' | 'PJ';
-  pinHash?: string; config?: Partial<PontoConfig>;
+  pinHash?: string; config?: Partial<PontoConfig>; biometria?: BiometriaPessoa;
 }
 export type Alerta = 'fora_da_cerca' | 'sem_gps' | 'rosto' | 'relogio' | 'offline' | 'sem_biometria' | 'aparelho_revogado';
 export type MetodoIdent = 'rosto' | 'pin' | 'nenhum';
@@ -19,6 +31,7 @@ export interface MarcacaoRegistro {
   campos: string; hash: string; prevHash: string | null; clientId: string; deviceId: string;
   gps: { lat: number; lng: number; precisaoM?: number } | null;
   face: { score: number; liveness?: number; modelo: string } | null;
+  fotoDataUrl?: string | null;
   unitId: string | null; distM: number | null; alertas: Alerta[];
 }
 export interface EventoRegistro { id: string; orgId: string; estabId: string; nsr: number; tipo: 2 | 5; linha: string; gravadoEm: string; dia: string }
@@ -53,6 +66,7 @@ export interface PontoStore {
   appendMarcacao(estabId: string, orgId: string, clientKey: string, build: (prev: Prev) => MarcacaoRegistro): Promise<{ registro: MarcacaoRegistro; duplicada: boolean }>;
   /** Mesma sequência de NSR das marcações; não mexe no último hash. */
   appendEvento(estabId: string, build: (nsr: number) => EventoRegistro): Promise<EventoRegistro>;
+  getMarcacao(id: string): Promise<MarcacaoRegistro | undefined>;
   listMarcacoes(orgId: string, f: { rhId?: string; desde: string; ate: string }): Promise<MarcacaoRegistro[]>;
   /** Por dia de GRAVAÇÃO (para o AFD sair contínuo na ordem do NSR). */
   listMarcacoesEstab(estabId: string, desde: string, ate: string): Promise<MarcacaoRegistro[]>;
@@ -124,6 +138,7 @@ export function memoryPontoStore() {
       state.set(estabId, { nsr: ev.nsr, hash: prev.hash });
       return clone(ev);
     }),
+    getMarcacao: async (id) => (marc.has(id) ? clone(marc.get(id)!) : undefined),
     listMarcacoes: async (o, f) => [...marc.values()].filter((m) => m.orgId === o && (!f.rhId || m.rhId === f.rhId) && inRange(m.dia, f.desde, f.ate)).map(clone),
     listMarcacoesEstab: async (e, d, a) => [...marc.values()].filter((m) => m.estabId === e && inRange(m.diaGrav, d, a)).map(clone),
     listEventosEstab: async (e, d, a) => [...evts.values()].filter((v) => v.estabId === e && inRange(v.dia, d, a)).map(clone),
@@ -206,6 +221,7 @@ export function firestorePontoStore(): PontoStore | null {
       tx.set(sref, { lastNsr: ev.nsr }, { merge: true });
       return ev;
     }),
+    getMarcacao: async (id) => data<MarcacaoRegistro>(await C.marc.doc(id).get()),
     listMarcacoes: (o, f) => (f.rhId
       ? porDias<MarcacaoRegistro>(C.marc, 'pessoaDia', `${o}__${f.rhId}`, f.desde, f.ate)
       : porDias<MarcacaoRegistro>(C.marc, 'orgDia', o, f.desde, f.ate)),
