@@ -455,7 +455,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               onFocusHandled={() => setFocusEmployeeId(null)}
               onSaveEmployee={handleSaveEmployee}
               onDeleteEmployee={handleDeleteEmployee}
-              canEdit={canEdit}
+              canEdit={canEditEmployees}
               canViewFinancials={canViewFinancials}
               onNavigateToImport={() => handleTabChange('rh-importacao')}
               onNavigateToOnboarding={() => handleTabChange('rh-admissoes')}
@@ -511,7 +511,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
               onReferenceYearChange={setReferenceYear}
               onSaveCalculation={handleSaveCalculation}
               onBatchSaveCalculations={handleBatchSaveCalculations}
-              canEdit={canEdit}
+              canEdit={canEditCalculations}
               canViewFinancials={canViewFinancials}
               userEmail={user?.email || ''}
             />
