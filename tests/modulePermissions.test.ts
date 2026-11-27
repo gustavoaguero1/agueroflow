@@ -33,6 +33,10 @@ test('níveis inválidos e seções desconhecidas não viram liberações', () =
   assert.deepEqual(sanitizeModuleDefaults({ Supervisor: { 'ops-diario': 3 }, hacker: { painel: 4 } }), { Supervisor: { 'ops-diario': 3 } });
   const areas = resolveAreas('Visualizador');
   assert.equal(canAccessModule('ops-diario', areas, { 'ops-diario': 0 }), false);
+  assert.equal(resolveModuleLevel('unknown-module', 'Admin', areas, null, { 'unknown-module': 4 }), 0);
+  assert.equal(canAccessModule('unknown-module', areas, { 'unknown-module': 4 }), false);
+  assert.equal(resolveModuleLevel('estrutura', 'Admin', areas), 4);
+  assert.equal(resolveModuleLevel('estrutura', 'Admin', { ...areas, estrutura: 1 }), 1);
 });
 
 test('matriz devolve apenas níveis válidos e apresenta cinco capacidades', () => {
