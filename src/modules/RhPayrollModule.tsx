@@ -18,7 +18,9 @@ import {
   X,
   HardHat,
   Link2,
+  Clock,
 } from 'lucide-react';
+import { RhPontoManager } from '../components/rhPayroll/RhPontoManager';
 import type { FieldWorker } from '../types';
 import {
   RhEmployee,
@@ -59,7 +61,8 @@ export type RhSubSection =
   | 'rh-calculo'
   | 'rh-historico'
   | 'rh-relatorios'
-  | 'rh-holerites';
+  | 'rh-holerites'
+  | 'rh-ponto';
 
 interface RhPayrollModuleProps {
   activeSubSection?: RhSubSection;
@@ -298,6 +301,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   const tabs: { id: RhSubSection; label: string; icon: any; badge?: number }[] = [
     { id: 'rh-painel', label: 'Painel RH/Salários', icon: LayoutDashboard },
     { id: 'rh-funcionarios', label: 'Funcionários', icon: Users },
+    { id: 'rh-ponto', label: 'Ponto', icon: Clock },
     {
       id: 'rh-pendencias',
       label: 'Pendências Legadas',
@@ -521,6 +525,10 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
           )}
 
           {/* 7. Demonstrativos / Holerites Direct View */}
+          {currentTab === 'rh-ponto' && organization?.id && (
+            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={role === 'Admin' || role === 'Gerente'} />
+          )}
+
           {currentTab === 'rh-holerites' && (
             <div className="bg-[#121826] border border-slate-800 rounded-xl p-8 text-center space-y-4">
               <div className="p-4 bg-blue-950/60 text-blue-400 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center border border-blue-800/40">

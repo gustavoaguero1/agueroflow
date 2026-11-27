@@ -101,6 +101,7 @@ export type NavSection =
   | 'rh-historico'
   | 'rh-relatorios'
   | 'rh-holerites'
+  | 'rh-ponto'
   | 'comercial'
   | 'comercial-painel'
   | 'comercial-funil'
@@ -398,6 +399,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       subItems: [
         { id: 'rh-painel' as NavSection, label: 'Painel RH/Salários' },
         { id: 'rh-funcionarios' as NavSection, label: 'Funcionários' },
+        { id: 'rh-ponto' as NavSection, label: 'Ponto' },
         { id: 'rh-pendencias' as NavSection, label: 'Pendências Legadas' },
         { id: 'rh-admissoes' as NavSection, label: 'Admissão Digital (Links)' },
         { id: 'rh-importacao' as NavSection, label: 'Importação de Planilha' },
@@ -583,6 +585,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         return 'Relatórios de RH';
       case 'rh-holerites':
         return 'Demonstrativos & Holerites';
+      case 'rh-ponto':
+        return 'Ponto';
       case 'comercial':
       case 'comercial-painel':
         return 'Comercial (OrçaÁgil)';

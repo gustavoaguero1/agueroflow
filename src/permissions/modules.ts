@@ -72,6 +72,7 @@ export const MODULE_PERMISSIONS = [
   ['rh-historico', 'Histórico de cálculos', 'RH'],
   ['rh-relatorios', 'Relatórios de RH', 'RH'],
   ['rh-holerites', 'Demonstrativos e holerites', 'RH'],
+  ['rh-ponto', 'Ponto eletrônico', 'RH'],
   ['comercial-painel', 'Painel de propostas', 'Comercial'],
   ['comercial-funil', 'Funil de vendas', 'Comercial'],
   ['comercial-nova', 'Nova proposta', 'Comercial'],

@@ -83,6 +83,7 @@ import { memberOrgOf, moduleLevelOf, requireArea, requireAuth, requireRole, requ
 import { createAreaRouter } from './server/areaRoutes';
 import { createModuleAccessRouter } from './server/moduleAccessRoutes';
 import { createTravelProviderRouter } from './server/travelProviderRoutes';
+import { createPontoRouter } from './server/pontoRoutes';
 import { createFinancePayableAuthorizationRouter } from './server/financePayableAuthorizationRoutes';
 import { createFinancePayableSettlementRouter } from './server/financePayableSettlementRoutes';
 import { createFinanceBankReconciliationRouter } from './server/financeBankReconciliationRoutes';
@@ -587,6 +588,7 @@ async function main() {
   app.use('/api/org', createAreaRouter());
   app.use('/api/org', createModuleAccessRouter());
   app.use('/api/travel', createTravelProviderRouter());
+  app.use('/api/ponto', createPontoRouter());
   app.use('/api/finance/payable-authorizations', createFinancePayableAuthorizationRouter());
   app.use('/api/finance/payable-settlements', createFinancePayableSettlementRouter());
   app.use('/api/finance/bank-reconciliation', createFinanceBankReconciliationRouter());

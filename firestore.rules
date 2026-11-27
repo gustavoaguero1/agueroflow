@@ -453,7 +453,7 @@ service cloud.firestore {
       }
       function opsSection() {
         return coll == 'obras' ? 'obras'
-          : (coll in ['diarios', 'diario', 'rdo'] ? 'ops-diario'
+          : (coll in ['diarios', 'diario', 'rdo', 'ponto_dia'] ? 'ops-diario'
             : (coll in ['contratacao', 'contratos_equipe'] ? 'ops-contratacao'
               : (coll in ['tarefas', 'auxiliares'] ? 'ops-tarefas'
                 : (coll in ['gases', 'controle_gases'] ? 'ops-gases'
@@ -463,7 +463,9 @@ service cloud.firestore {
                         : (coll in ['membros', 'config'] ? 'ops-config' : 'ops-inicio'))))))));
       }
       allow read: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 1) : moduleOk(orgId, opsSection(), A_OPS(), 1);
-      allow write: if coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 2)
+      // ponto_dia: horas do ponto para o Diário, gravadas só pelo servidor (server/ponto/diarioSync.ts).
+      allow write: if coll == 'ponto_dia' ? false
+        : coll == 'salarios' ? moduleOk(orgId, 'rh-holerites', A_RH(), 2)
         : (managerOnlyWrite() ? opsConfigCanWrite() : moduleOk(orgId, opsSection(), A_OPS(), 2));
     }
 
@@ -1616,6 +1618,16 @@ service cloud.firestore {
     match /travel_provider_accounts/{accountId} {
       allow read, write: if false;
     }
+    // Ponto eletrônico (REP-P): marcações, eventos, CPF/PIN, aparelhos e pareamentos. Só o servidor (server/ponto/*).
+    match /ponto_marcacoes/{id} { allow read, write: if false; }
+    match /ponto_eventos/{id} { allow read, write: if false; }
+    match /ponto_estab_state/{id} { allow read, write: if false; }
+    match /ponto_clientids/{id} { allow read, write: if false; }
+    match /ponto_pessoas/{id} { allow read, write: if false; }
+    match /ponto_devices/{id} { allow read, write: if false; }
+    match /ponto_pairings/{id} { allow read, write: if false; }
+    match /ponto_ajustes/{id} { allow read, write: if false; }
+    match /ponto_estabelecimentos/{id} { allow read, write: if false; }
     // Solicitações da Mar Travel puxadas da API Lemontech: só o servidor lê e grava (server/travelProviderRoutes.ts).
     match /travel_lemontech_solicitacoes/{solId} {
       allow read, write: if false;
