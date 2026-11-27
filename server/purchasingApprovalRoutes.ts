@@ -1,12 +1,11 @@
 import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   evaluatePurchasingApprovalAuthority,
   type PurchasingApprovalRule,
 } from '../src/services/productivityAndPurchasingRules.ts';
-import type { UserRole } from '../src/types/index.ts';
 
 const validId = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0 && v.length <= 180 && !v.includes('/');
@@ -17,15 +16,11 @@ const orgOf = (d: Record<string, any> | undefined): string =>
 export function createPurchasingApprovalRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/rules', requireArea('estoque', 2), async (req: Request, res: Response) => {
+  router.post('/rules', requireModuleAccess('compras-cotacoes', 4, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const b = req.body ?? {};
     if (!orgId || !actor) return res.status(401).json({ ok: false, error: 'Não autenticado.' });
-    const role = (actor.orgs?.[orgId] || 'Visualizador') as UserRole;
-    if (!actor.master && !['Admin', 'Gerente'].includes(role)) {
-      return res.status(403).json({ ok: false, error: 'Apenas Admin ou Gerente pode configurar alçadas de compra.' });
-    }
     const minAmount = Number(b.minAmount);
     const maxAmount = b.maxAmount === null || b.maxAmount === undefined || b.maxAmount === '' ? null : Number(b.maxAmount);
     const requiredRoles = Array.isArray(b.requiredRoles) ? b.requiredRoles.filter(Boolean) : [];
@@ -48,7 +43,7 @@ export function createPurchasingApprovalRouter(getH: () => AdminHandles | null =
     return res.status(201).json({ ok: true, rule });
   });
 
-  router.post('/orders/:orderId/approve', requireArea('estoque', 2), async (req: Request, res: Response) => {
+  router.post('/orders/:orderId/approve', requireModuleAccess('compras-cotacoes', 3, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const orderId = req.params.orderId;
@@ -77,7 +72,7 @@ export function createPurchasingApprovalRouter(getH: () => AdminHandles | null =
         }
 
         const po = poSnap.data() as Record<string, any>;
-        const actorRole = (actor.orgs?.[orgId] || 'Visualizador') as UserRole;
+        const actorRole = actor.orgs?.[orgId] || 'Visualizador';
         const rules = rulesSnap.docs.map((d) => ({ ...(d.data() as PurchasingApprovalRule), id: d.id }));
         const authCheck = evaluatePurchasingApprovalAuthority({
           amount: Number(po.totalValue) || 0,
