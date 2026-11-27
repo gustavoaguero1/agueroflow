@@ -162,10 +162,10 @@ function splitNames(value: string): string[] {
 }
 
 export const SafetyManagementPanel: React.FC = () => {
-  const { user, organization, units, contracts, logAudit, areaLevel, isSupervisorOrAbove, isMaster } = useAuth();
+  const { user, organization, units, contracts, logAudit, moduleLevel } = useAuth();
   const organizationId = organization?.id || '';
-  const canEdit = areaLevel('operacoes') >= 2;
-  const canApprove = (isMaster || isSupervisorOrAbove) && canEdit;
+  const canEdit = moduleLevel('ordens') >= 2;
+  const canApprove = moduleLevel('ordens') >= 3;
 
   const [permits, setPermits] = useState<SafetyPermitRecord[]>([]);
   const [states, setStates] = useState<SafetyPermitState[]>([]);
@@ -182,7 +182,7 @@ export const SafetyManagementPanel: React.FC = () => {
   const [occurrenceDraft, setOccurrenceDraft] = useState<OccurrenceDraftState>(() => emptyOccurrenceDraft());
   const [complianceSnapshot, setComplianceSnapshot] = useState<SafetyComplianceSnapshot>({ loading: true, employees: [], ppeCatalog: [], ppeMovements: [], trainingCatalog: [], trainingRecords: [], legacyTrainingRecords: [] });
   const onComplianceSnapshotChange = useCallback((snapshot: SafetyComplianceSnapshot) => setComplianceSnapshot(snapshot), []);
-  const canManageSafetyCatalog = isMaster || isSupervisorOrAbove;
+  const canManageSafetyCatalog = moduleLevel('ordens') >= 4;
 
   useEffect(() => {
     if (!organizationId) {
@@ -386,11 +386,11 @@ export const SafetyManagementPanel: React.FC = () => {
       return;
     }
     if (eventType === 'approved' && (!canApprove || permit.createdByUid === user.uid)) {
-      alert('A aprovação exige Supervisor, Gerente ou Admin diferente da pessoa que criou a APR/PT.');
+      alert('A aprovação exige nível Aprovar em Ordens de Serviço e uma pessoa diferente de quem criou a APR/PT.');
       return;
     }
     if (['rejected', 'closed', 'cancelled'].includes(eventType) && !canApprove) {
-      alert('Esta movimentação exige Supervisor, Gerente ou Admin com Operações nível 2.');
+      alert('Esta movimentação exige nível Aprovar em Ordens de Serviço.');
       return;
     }
     const comment = actionComment.trim();
