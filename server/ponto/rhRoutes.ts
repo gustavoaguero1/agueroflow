@@ -9,7 +9,7 @@
  */
 import type { Router, Request, Response, RequestHandler } from 'express';
 import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
-import { requireArea, requireRole } from '../authMiddleware.ts';
+import { requireModuleAccess } from '../authMiddleware.ts';
 import { resolveConfig, TIPOS_MARCACAO, type PontoConfig, type TipoMarcacao } from '../../src/ponto/config.ts';
 import { proximaMarcacao } from '../../src/ponto/jornada.ts';
 import { isValidCpf, onlyDigitsCpf } from '../../src/ponto/cpf.ts';
@@ -75,8 +75,9 @@ function periodo(q: Record<string, unknown>, maxDias = MAX_DIAS) {
 export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
   const { wrap, now } = ctx;
   const org = (req: Request) => String(req.orgId ?? '');
-  const rhLer = requireArea('rh', 1);
-  const rhGravar = requireArea('rh', 2);
+  const rhLer = requireModuleAccess('rh-ponto', 1);
+  const rhGravar = requireModuleAccess('rh-ponto', 2);
+  const rhAdministrar = requireModuleAccess('rh-ponto', 4);
 
   const estabDaOrg = async (store: PontoStore, orgId: string, id: string) => {
     const e = await store.getEstab(id);
@@ -240,7 +241,7 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     const p = await criarPareamento(store, { orgId: org(req), modo: 'pessoal', rhId: String(req.body?.rhId ?? ''), criadoPor: String(req.user?.uid ?? '') }, now);
     res.json({ code: p.code, expiraEm: p.expiraEm });
   }));
-  r.post('/pareamentos/totem', requireRole('Admin', 'Gerente'), wrap(async (req, res, store) => {
+  r.post('/pareamentos/totem', rhAdministrar, wrap(async (req, res, store) => {
     const p = await criarPareamento(store, { orgId: org(req), modo: 'totem', unitId: String(req.body?.unitId ?? ''), criadoPor: String(req.user?.uid ?? '') }, now);
     res.json({ code: p.code, expiraEm: p.expiraEm });
   }));
