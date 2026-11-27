@@ -43,3 +43,14 @@ test('Admin inherits level 4 where the area is editable and cannot lock itself o
     explicitModules: ['configuracoes'],
   })), 4);
 });
+
+
+test('legacy Gerente capabilities remain available unless an explicit submodule grant restricts them', async () => {
+  const manager = { uid: 'uid-manager', master: false, orgs: { aguero: 'Gerente' } } as never;
+  assert.equal(await moduleLevelOf(manager, 'aguero', 'rh-ponto-admin', getAdminWithGrant(null)), 4);
+  assert.equal(await moduleLevelOf(manager, 'aguero', 'viagens-configuracoes', getAdminWithGrant(null)), 4);
+  assert.equal(await moduleLevelOf(manager, 'aguero', 'rh-ponto-admin', getAdminWithGrant({
+    modules: { 'rh-ponto-admin': 0 },
+    explicitModules: ['rh-ponto-admin'],
+  })), 0);
+});
