@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { CommercialPolicy } from '../../types/commercial';
 import { saveCommercialPolicy } from '../../services/commercialService';
+import type { CommercialEngineeringParams } from '../../services/agueroInoxPricingEngine';
+import { CommercialEngineeringParamsPanel } from './CommercialEngineeringParamsPanel';
 
 interface CommercialSettingsManagerProps {
   policy: CommercialPolicy | null;
@@ -27,7 +29,8 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
   userName,
   onRefresh,
 }) => {
-  const isAdmin = userRole === 'Super Admin' || userRole === 'Admin';
+  const isAdmin = ['Super Admin', 'Admin', 'Master', 'Gerente'].includes(userRole || '');
+  const [settingsTab, setSettingsTab] = useState<'engenharia' | 'bom'>('engenharia');
 
   const [defaultMarkup, setDefaultMarkup] = useState<number>(policy?.defaultMarkupPercent || 25);
   const [minMarkup, setMinMarkup] = useState<number>(policy?.minMarkupPercent || 15);
@@ -62,40 +65,46 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
+  const buildBasePolicy = (overrideEng?: CommercialEngineeringParams): CommercialPolicy => ({
+    id: organizationId,
+    organizationId,
+    defaultMarkupPercent: defaultMarkup,
+    minMarkupPercent: minMarkup,
+    maxMarkupPercent: maxMarkup,
+    categoryMarkups: {
+      Tubulações: tubulacoesMarkup,
+      Válvulas: valvulasMarkup,
+      Conexões: conexoesMarkup,
+      Instrumentação: instrumentacaoMarkup,
+      Fixação: fixacaoMarkup,
+    },
+    quoteValidityDaysByCategory: {
+      Tubulações: tubulacoesValidity,
+      Válvulas: valvulasValidity,
+      Conexões: conexoesValidity,
+      Instrumentação: instrumentacaoValidity,
+    },
+    allowedCurrencies: ['BRL', 'USD', 'EUR'],
+    ...(overrideEng || policy?.engineeringParams ? { engineeringParams: overrideEng || policy?.engineeringParams } : {}),
+    updatedAt: new Date().toISOString(),
+    updatedBy: userName,
+  });
+
+  const handleSaveEngineeringParams = async (nextParams: CommercialEngineeringParams) => {
+    await saveCommercialPolicy(buildBasePolicy(nextParams));
+    await onRefresh();
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) {
-      alert('Apenas administradores podem alterar as políticas comerciais da organização.');
+      alert('Apenas administradores ou gerentes podem alterar as políticas comerciais da organização.');
       return;
     }
 
     setSaving(true);
     try {
-      const updatedPolicy: CommercialPolicy = {
-        id: organizationId,
-        organizationId,
-        defaultMarkupPercent: defaultMarkup,
-        minMarkupPercent: minMarkup,
-        maxMarkupPercent: maxMarkup,
-        categoryMarkups: {
-          Tubulações: tubulacoesMarkup,
-          Válvulas: valvulasMarkup,
-          Conexões: conexoesMarkup,
-          Instrumentação: instrumentacaoMarkup,
-          Fixação: fixacaoMarkup,
-        },
-        quoteValidityDaysByCategory: {
-          Tubulações: tubulacoesValidity,
-          Válvulas: valvulasValidity,
-          Conexões: conexoesValidity,
-          Instrumentação: instrumentacaoValidity,
-        },
-        allowedCurrencies: ['BRL', 'USD', 'EUR'],
-        updatedAt: new Date().toISOString(),
-        updatedBy: userName,
-      };
-
-      await saveCommercialPolicy(updatedPolicy);
+      await saveCommercialPolicy(buildBasePolicy());
       setSuccessMsg('Políticas comerciais e regras de markup atualizadas com sucesso!');
       setTimeout(() => setSuccessMsg(''), 4000);
       await onRefresh();
@@ -110,18 +119,45 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
   const calculatedGrossMarginPct = calculatedTestPrice > 0 ? (calculatedGrossMarginAmt / calculatedTestPrice) * 100 : 0;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-6xl">
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Settings className="w-5 h-5 text-cyan-400" />
-          <span>Configurações Comerciais & Diretrizes de Preço (OrçaÁgil)</span>
-        </h2>
-        <p className="text-xs text-slate-400 mt-0.5">
-          Defina as políticas de markup autorizado sobre o custo-base, limites e prazos de validade por categoria.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Settings className="w-5 h-5 text-cyan-400" />
+            <span>Configurações &amp; Parâmetros Comerciais</span>
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Tabela permanente de HH, padrões de obra, calculadora de máquina própria e diretrizes de markup.
+          </p>
+        </div>
+
+        <div className="inline-flex items-center gap-1 p-1 rounded-xl af-seg">
+          <button
+            type="button"
+            onClick={() => setSettingsTab('engenharia')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs cursor-pointer ${settingsTab === 'engenharia' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'}`}
+          >
+            Engenharia (HH, Obra &amp; Máquinas)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('bom')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs cursor-pointer ${settingsTab === 'bom' ? 'af-seg-btn-active font-semibold' : 'af-seg-btn font-medium'}`}
+          >
+            Políticas de Markup BOM
+          </button>
+        </div>
       </div>
 
+      {settingsTab === 'engenharia' ? (
+        <CommercialEngineeringParamsPanel
+          initialParams={policy?.engineeringParams}
+          canEdit={isAdmin}
+          onSaveParams={handleSaveEngineeringParams}
+        />
+      ) : (
+        <>
       {successMsg && (
         <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-300 text-xs flex items-center space-x-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
@@ -356,6 +392,8 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
           </p>
         )}
       </form>
+        </>
+      )}
     </div>
   );
 };

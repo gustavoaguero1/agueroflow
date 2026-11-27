@@ -14,12 +14,15 @@ import {
   ArrowRight,
   Database,
   Building,
+  Calculator,
+  Target,
 } from 'lucide-react';
 import { CommercialProposal } from '../../types/commercial';
 
 interface CommercialDashboardProps {
   proposals: CommercialProposal[];
   onNewProposal: () => void;
+  onOpenCostStudio?: () => void;
   onReviewBom: (proposal: CommercialProposal) => void;
   onOpenProposalDetail: (proposal: CommercialProposal) => void;
   onDeleteProposal: (proposalId: string) => Promise<void>;
@@ -30,6 +33,7 @@ interface CommercialDashboardProps {
 export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
   proposals,
   onNewProposal,
+  onOpenCostStudio,
   onReviewBom,
   onOpenProposalDetail,
   onDeleteProposal,
@@ -42,7 +46,7 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
   const [seeding, setSeeding] = useState(false);
 
   const canViewMargins =
-    userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Gestor' || userRole === 'Revisor';
+    userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Gestor' || userRole === 'Gerente' || userRole === 'Revisor';
 
   // Distinct clients for filter
   const distinctClients = Array.from(new Set(proposals.map((p) => p.clientName).filter(Boolean)));
@@ -61,11 +65,33 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
     return matchesSearch && matchesStatus && matchesClient;
   });
 
-  // KPI calculations
-  const totalValue = proposals.reduce((acc, p) => acc + (p.proposedTotal || 0), 0);
-  const pendingItemsTotal = proposals.reduce((acc, p) => acc + (p.pendingItemsCount || 0), 0);
-  const approvedCount = proposals.filter((p) => p.status === 'aprovada' || p.status === 'finalizada').length;
-  const partialCount = proposals.filter((p) => p.status === 'parcial').length;
+  // Executive KPIs (Section 4.1)
+  const inDraftCount = proposals.filter((p) => p.status === 'rascunho' || p.status === 'parcial' || p.status === 'aguardando_revisao').length;
+  const sentOrNeg = proposals.filter((p) => p.status === 'enviada' || p.status === 'negociacao');
+  const inNegotiationValue = sentOrNeg.reduce((acc, p) => acc + (p.proposedTotal || 0), 0);
+  const wonProposals = proposals.filter((p) => p.status === 'ganha');
+  const lostProposals = proposals.filter((p) => p.status === 'perdida');
+  const closedTotal = wonProposals.length + lostProposals.length;
+  const conversionRate = closedTotal > 0 ? Math.round((wonProposals.length / closedTotal) * 100) : null;
+
+  const pricedProposals = proposals.filter((p) => (p.proposedTotal || 0) > 0);
+  const avgTicket = pricedProposals.length > 0
+    ? pricedProposals.reduce((acc, p) => acc + (p.proposedTotal || 0), 0) / pricedProposals.length
+    : 0;
+  const avgMargin = pricedProposals.length > 0
+    ? pricedProposals.reduce((acc, p) => acc + (p.grossMarginPercent || 0), 0) / pricedProposals.length
+    : 0;
+
+  const closingDaysSamples = wonProposals
+    .map((p) => {
+      const start = new Date(p.createdAt || p.issueDate).getTime();
+      const end = new Date(p.statusHistory?.find((h) => h.status === 'ganha')?.at || p.updatedAt || p.createdAt).getTime();
+      return Number.isFinite(start) && Number.isFinite(end) && end >= start ? Math.round((end - start) / 86400000) : null;
+    })
+    .filter((d): d is number => d !== null);
+  const avgClosingDays = closingDaysSamples.length > 0
+    ? Math.round(closingDaysSamples.reduce((a, b) => a + b, 0) / closingDaysSamples.length)
+    : null;
 
   const formatBrl = (val: number) => {
     return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -74,74 +100,97 @@ export const CommercialDashboard: React.FC<CommercialDashboardProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 af-card p-5 rounded-2xl">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>OrçaÁgil • Painel Comercial</span>
-            <span className="text-[11px] font-normal px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
-              Módulo 16
-            </span>
+          <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+            <span>Gestão Comercial &amp; Propostas</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Importação de listas de materiais (BOM), cotações internas, aplicação de markup e emissão de propostas.
+            Carteira comercial, engenharia de custos, funil de negociação, margens e emissão de propostas.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenCostStudio && (
+            <button
+              type="button"
+              onClick={onOpenCostStudio}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold text-xs rounded-xl transition cursor-pointer"
+            >
+              <Calculator className="w-4 h-4 text-cyan-400" />
+              <span>Engenharia de Custos</span>
+            </button>
+          )}
           <button
             onClick={onNewProposal}
-            className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs rounded-lg transition shadow-lg"
+            className="flex items-center space-x-1.5 px-4 py-2 af-btn-primary text-white font-semibold text-xs rounded-xl transition cursor-pointer apple-solid-btn"
           >
             <Plus className="w-4 h-4" />
-            <span>Nova Proposta Comercial</span>
+            <span>Nova Proposta</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl shadow-lg">
+      {/* Executive KPI Ribbon (Section 4.1) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="af-card p-3.5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-medium">Total de Propostas</span>
-            <FileText className="w-4 h-4 text-cyan-400" />
+            <span className="text-[11px] font-medium">Carteira Total</span>
+            <FileText className="w-3.5 h-3.5 text-blue-400" />
           </div>
-          <p className="text-2xl font-bold font-mono text-white">{proposals.length}</p>
-          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-            <span className="text-emerald-400 font-medium">{approvedCount} aprovadas</span>
-            <span>•</span>
-            <span className="text-amber-400 font-medium">{partialCount} parciais</span>
-          </div>
+          <p className="text-xl font-extrabold font-mono text-white">{proposals.length}</p>
+          <span className="text-[10px] text-slate-400">{inDraftCount} em elaboração</span>
         </div>
 
-        <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl shadow-lg">
+        <div className="af-card p-3.5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-medium">Volume Total Ofertado</span>
-            <DollarSign className="w-4 h-4 text-cyan-400" />
+            <span className="text-[11px] font-medium">Em Negociação</span>
+            <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
           </div>
-          <p className="text-xl sm:text-2xl font-bold font-mono text-cyan-300">{formatBrl(totalValue)}</p>
-          <span className="text-[11px] text-slate-400 mt-1 block">Soma dos preços propostos</span>
+          <p className="text-base sm:text-lg font-extrabold font-mono text-cyan-300 truncate">{formatBrl(inNegotiationValue)}</p>
+          <span className="text-[10px] text-slate-400">{sentOrNeg.length} proposta(s) ativa(s)</span>
         </div>
 
-        <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl shadow-lg">
+        <div className="af-card p-3.5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-medium">Itens Pendentes de Cotação</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span className="text-[11px] font-medium">Conversão</span>
+            <Target className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold font-mono text-amber-300">{pendingItemsTotal}</p>
-          <span className="text-[11px] text-slate-400 mt-1 block">Aguardando cotação de fornecedor</span>
-        </div>
-
-        <div className="bg-[#0B132B] border border-slate-700/80 p-4 rounded-xl shadow-lg">
-          <div className="flex items-center justify-between text-slate-400 mb-1">
-            <span className="text-xs font-medium">Taxa de Conclusão de BOM</span>
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-          </div>
-          <p className="text-2xl font-bold font-mono text-emerald-300">
-            {proposals.length > 0
-              ? `${Math.round(((proposals.length - partialCount) / proposals.length) * 100)}%`
-              : '100%'}
+          <p className="text-xl font-extrabold font-mono text-emerald-400">
+            {conversionRate === null ? '—' : `${conversionRate}%`}
           </p>
-          <span className="text-[11px] text-slate-400 mt-1 block">Propostas 100% precificadas</span>
+          <span className="text-[10px] text-slate-400">{wonProposals.length} ganhas · {lostProposals.length} perdidas</span>
+        </div>
+
+        <div className="af-card p-3.5 rounded-2xl">
+          <div className="flex items-center justify-between text-slate-400 mb-1">
+            <span className="text-[11px] font-medium">Ticket Médio</span>
+            <TrendingUp className="w-3.5 h-3.5 text-blue-400" />
+          </div>
+          <p className="text-base sm:text-lg font-extrabold font-mono text-white truncate">{formatBrl(avgTicket)}</p>
+          <span className="text-[10px] text-slate-400">{pricedProposals.length} precificadas</span>
+        </div>
+
+        <div className="af-card p-3.5 rounded-2xl">
+          <div className="flex items-center justify-between text-slate-400 mb-1">
+            <span className="text-[11px] font-medium">Margem Média</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          </div>
+          <p className="text-xl font-extrabold font-mono text-emerald-300">
+            {canViewMargins ? `${avgMargin.toFixed(1)}%` : 'Restrito'}
+          </p>
+          <span className="text-[10px] text-slate-400">Margem bruta média</span>
+        </div>
+
+        <div className="af-card p-3.5 rounded-2xl">
+          <div className="flex items-center justify-between text-slate-400 mb-1">
+            <span className="text-[11px] font-medium">Prazo Fecham.</span>
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <p className="text-xl font-extrabold font-mono text-amber-300">
+            {avgClosingDays === null ? '—' : `${avgClosingDays}d`}
+          </p>
+          <span className="text-[10px] text-slate-400">Média até ganho</span>
         </div>
       </div>
 

@@ -198,3 +198,37 @@ test('orçamento completo reconcilia Price Breakdown ao centavo, calcula adm por
   assert.equal(res.serviceDivisor, 0.8775);
   assert.equal(res.materialDivisor, 0.7275);
 });
+
+test('calculadora de custo-hora de máquina própria soma depreciação, energia, manutenção, área e consumíveis', async () => {
+  const { computeMachineHourlyRate } = await import('../src/services/agueroInoxPricingEngine.ts');
+  const res = computeMachineHourlyRate({
+    acquisitionValue: 211_200, // 211200 / (10 * 12 * 176) = R$ 10,00/h
+    usefulLifeYears: 10,
+    monthlyHours: 176,
+    powerKw: 10,
+    energyRatePerKwh: 1.0, // R$ 10,00/h
+    annualMaintenanceCost: 10_560, // 10560 / 2112 = R$ 5,00/h
+    occupiedAreaM2: 17.6,
+    monthlyRentPerM2: 20, // 352 / 176 = R$ 2,00/h
+    annualConsumablesCost: 6_336, // 6336 / 2112 = R$ 3,00/h
+  });
+  assert.equal(res.depreciationPerHour, 10);
+  assert.equal(res.energyPerHour, 10);
+  assert.equal(res.maintenancePerHour, 5);
+  assert.equal(res.spacePerHour, 2);
+  assert.equal(res.consumablesPerHour, 3);
+  assert.equal(res.totalHourlyCost, 30);
+});
+
+test('novo orçamento herda parâmetros permanentes da empresa sem alterar revisões antigas', () => {
+  const m = createDefaultAgueroInoxModel('2026-07-01', {
+    defaultHospedagemDiaria: 250,
+    defaultConsumablesPercent: 20,
+    defaultBillingCompany: 'aguero_abc',
+  });
+  assert.equal(m.personnelExpenses.hospedagemDiaria, 250);
+  assert.equal(m.consumables.percentOnMainLaborSell, 20);
+  assert.equal(m.taxes.company, 'aguero_abc');
+  assert.equal(m.taxes.serviceEffectiveRatePercent, 6.65);
+});
+

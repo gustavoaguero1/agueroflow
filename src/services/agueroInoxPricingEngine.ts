@@ -997,16 +997,138 @@ export function calculateAgueroInoxBudget(model: AgueroInoxBudgetModel): AgueroI
   };
 }
 
-/** Creates a clean default Aguero Inox Budget Model with sensible defaults from the spreadsheet. */
-export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOString().slice(0, 10)): AgueroInoxBudgetModel {
-  const preset = BILLING_COMPANY_TAX_PRESETS.aguero_inox;
+export interface MachineHourlyRateInput {
+  acquisitionValue: number;
+  usefulLifeYears: number;
+  monthlyHours: number;
+  powerKw: number;
+  energyRatePerKwh: number;
+  annualMaintenanceCost: number;
+  occupiedAreaM2: number;
+  monthlyRentPerM2: number;
+  annualConsumablesCost: number;
+}
+
+export interface MachineHourlyRateResult {
+  depreciationPerHour: number;
+  energyPerHour: number;
+  maintenancePerHour: number;
+  spacePerHour: number;
+  consumablesPerHour: number;
+  totalHourlyCost: number;
+}
+
+/** Calculates hourly cost of an owned industrial machine (Aba Custos: Depreciação, Energia, Manutenção, Área, Consumíveis). */
+export function computeMachineHourlyRate(input: MachineHourlyRateInput): MachineHourlyRateResult {
+  const monthlyHours = Math.max(1, input.monthlyHours || 176);
+  const annualHours = monthlyHours * 12;
+  const usefulLifeHours = Math.max(1, (input.usefulLifeYears || 10) * annualHours);
+  const depreciationPerHour = r2((input.acquisitionValue || 0) / usefulLifeHours);
+  const energyPerHour = r2((input.powerKw || 0) * (input.energyRatePerKwh || 0));
+  const maintenancePerHour = r2((input.annualMaintenanceCost || 0) / annualHours);
+  const spacePerHour = r2(((input.occupiedAreaM2 || 0) * (input.monthlyRentPerM2 || 0)) / monthlyHours);
+  const consumablesPerHour = r2((input.annualConsumablesCost || 0) / annualHours);
+  const totalHourlyCost = r2(
+    depreciationPerHour + energyPerHour + maintenancePerHour + spacePerHour + consumablesPerHour,
+  );
+  return {
+    depreciationPerHour,
+    energyPerHour,
+    maintenancePerHour,
+    spacePerHour,
+    consumablesPerHour,
+    totalHourlyCost,
+  };
+}
+
+export interface CommercialEngineeringParams {
+  roleRates: RoleRateTableEntry[];
+  defaultBillingCompany: BillingCompanyId;
+  defaultHospedagemDiaria: number;
+  defaultAlimentacaoDiaria: number;
+  defaultManutAlojDiaria: number;
+  defaultFolgaCampoUnit: number;
+  defaultFuelPricePerLiter: number;
+  defaultConsumablesPercent: number;
+  defaultAdminCentralPercent: number;
+  defaultGerenciamentoPercent: number;
+  defaultFixedOverheadPercent: number;
+  defaultTargetProfitPercent: number;
+  defaultServiceMarginPercent: number;
+  defaultRefatChapas: number;
+  defaultRefatTubos: number;
+  defaultRefatPintura: number;
+  defaultRefatFrete: number;
+  defaultIcmsCreditPercent: number;
+  machineCalculator?: MachineHourlyRateInput;
+}
+
+export function createDefaultEngineeringParams(): CommercialEngineeringParams {
+  return {
+    roleRates: DEFAULT_ROLE_RATES.map((r) => ({ ...r })),
+    defaultBillingCompany: 'aguero_inox',
+    defaultHospedagemDiaria: 200,
+    defaultAlimentacaoDiaria: 80,
+    defaultManutAlojDiaria: 30,
+    defaultFolgaCampoUnit: 1000,
+    defaultFuelPricePerLiter: 6.2,
+    defaultConsumablesPercent: 25,
+    defaultAdminCentralPercent: 1,
+    defaultGerenciamentoPercent: 2,
+    defaultFixedOverheadPercent: 23,
+    defaultTargetProfitPercent: 10,
+    defaultServiceMarginPercent: 30,
+    defaultRefatChapas: 30,
+    defaultRefatTubos: 30,
+    defaultRefatPintura: 60,
+    defaultRefatFrete: 20,
+    defaultIcmsCreditPercent: 18,
+    machineCalculator: {
+      acquisitionValue: 180000,
+      usefulLifeYears: 10,
+      monthlyHours: 176,
+      powerKw: 15,
+      energyRatePerKwh: 0.95,
+      annualMaintenanceCost: 9000,
+      occupiedAreaM2: 24,
+      monthlyRentPerM2: 35,
+      annualConsumablesCost: 6000,
+    },
+  };
+}
+
+/** Creates a clean default Aguero Inox Budget Model inheriting company permanent parameters when available. */
+export function createDefaultAgueroInoxModel(
+  startDateIso = new Date().toISOString().slice(0, 10),
+  companyParams?: Partial<CommercialEngineeringParams>,
+): AgueroInoxBudgetModel {
+  const defaults = createDefaultEngineeringParams();
+  const params: CommercialEngineeringParams = {
+    ...defaults,
+    ...companyParams,
+    roleRates:
+      companyParams?.roleRates && companyParams.roleRates.length > 0
+        ? companyParams.roleRates.map((r) => ({ ...r }))
+        : defaults.roleRates,
+  };
+  const preset = BILLING_COMPANY_TAX_PRESETS[params.defaultBillingCompany] || BILLING_COMPANY_TAX_PRESETS.aguero_inox;
+  const pickRole = (id: string, fallbackCost: number, fallbackSell: number) => {
+    const found = params.roleRates.find((r) => r.id === id);
+    if (!found) return { hhCusto: fallbackCost, hhVenda: fallbackSell };
+    return computeRoleHH(found);
+  };
+  const rMont = pickRole('montador', 59.51, 85.01);
+  const rSold = pickRole('soldador', 60.38, 86.25);
+  const rAjud = pickRole('ajudante', 35.36, 50.51);
+  const rSup = pickRole('supervisor', 75.89, 108.42);
+
   return {
     durationQty: 8,
     durationUnit: 'semanas',
     startDate: startDateIso,
     overtimeMult50: 1.5,
     overtimeMult100: 2.0,
-    roleRates: DEFAULT_ROLE_RATES.map((r) => ({ ...r })),
+    roleRates: params.roleRates,
     phases: [
       {
         id: 'phase_montagem',
@@ -1015,9 +1137,9 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
         durationWeeks: 8,
         weeklyHours: 44,
         rows: [
-          { id: 'r1', roleId: 'montador', roleName: 'Montador', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: 59.51, hhVenda: 85.01 },
-          { id: 'r2', roleId: 'soldador', roleName: 'Soldador', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: 60.38, hhVenda: 86.25 },
-          { id: 'r3', roleId: 'ajudante', roleName: 'Ajudante', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: 35.36, hhVenda: 50.51 },
+          { id: 'r1', roleId: 'montador', roleName: 'Montador', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: rMont.hhCusto, hhVenda: rMont.hhVenda },
+          { id: 'r2', roleId: 'soldador', roleName: 'Soldador', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: rSold.hhCusto, hhVenda: rSold.hhVenda },
+          { id: 'r3', roleId: 'ajudante', roleName: 'Ajudante', quantity: 2, horasNormais: 352, horasExtras50: 0, horasExtras100: 0, hhCusto: rAjud.hhCusto, hhVenda: rAjud.hhVenda },
         ],
       },
       {
@@ -1027,18 +1149,18 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
         durationWeeks: 2,
         weeklyHours: 44,
         rows: [
-          { id: 'rc1', roleId: 'supervisor', roleName: 'Supervisor', quantity: 1, horasNormais: 88, horasExtras50: 0, horasExtras100: 0, hhCusto: 75.89, hhVenda: 108.42 },
-          { id: 'rc2', roleId: 'montador', roleName: 'Montador', quantity: 1, horasNormais: 88, horasExtras50: 0, horasExtras100: 0, hhCusto: 59.51, hhVenda: 85.01 },
+          { id: 'rc1', roleId: 'supervisor', roleName: 'Supervisor', quantity: 1, horasNormais: 88, horasExtras50: 0, horasExtras100: 0, hhCusto: rSup.hhCusto, hhVenda: rSup.hhVenda },
+          { id: 'rc2', roleId: 'montador', roleName: 'Montador', quantity: 1, horasNormais: 88, horasExtras50: 0, horasExtras100: 0, hhCusto: rMont.hhCusto, hhVenda: rMont.hhVenda },
         ],
       },
     ],
     materialsFreightCost: 0,
-    materialsFreightRefatPercent: 20,
+    materialsFreightRefatPercent: params.defaultRefatFrete,
     sheets: [],
     barsTubes: [],
     connections: [
-      { id: 'mat_mec', description: 'Materiais Mecânicos (tubulações, conexões e suportes)', group: 'mecanico', unit: 'cj', quantity: 1, unitCost: 0, refaturamentoPercent: 30, icmsCreditPercent: 18 },
-      { id: 'mat_ele', description: 'Materiais Elétricos e Instrumentação', group: 'eletrico', unit: 'cj', quantity: 1, unitCost: 0, refaturamentoPercent: 15, icmsCreditPercent: 18 },
+      { id: 'mat_mec', description: 'Materiais Mecânicos (tubulações, conexões e suportes)', group: 'mecanico', unit: 'cj', quantity: 1, unitCost: 0, refaturamentoPercent: params.defaultRefatChapas, icmsCreditPercent: params.defaultIcmsCreditPercent },
+      { id: 'mat_ele', description: 'Materiais Elétricos e Instrumentação', group: 'eletrico', unit: 'cj', quantity: 1, unitCost: 0, refaturamentoPercent: 15, icmsCreditPercent: params.defaultIcmsCreditPercent },
     ],
     painting: {
       enabled: false,
@@ -1048,16 +1170,16 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
       lossPercent: 15,
       reservePercent: 10,
       pricePerGallon: 280,
-      refaturamentoPercent: 60,
+      refaturamentoPercent: params.defaultRefatPintura,
     },
     personnelExpenses: {
       useAutoHeadcount: true,
       manualHeadcount: 6,
       calendarDays: 56,
-      hospedagemDiaria: 200,
-      alimentacaoDiaria: 80,
-      manutencaoAlojamentoDiaria: 30,
-      folgaCampoUnit: 1000,
+      hospedagemDiaria: params.defaultHospedagemDiaria,
+      alimentacaoDiaria: params.defaultAlimentacaoDiaria,
+      manutencaoAlojamentoDiaria: params.defaultManutAlojDiaria,
+      folgaCampoUnit: params.defaultFolgaCampoUnit,
       folgasQuantidade: 0,
       includeHospedagem: true,
       includeAlimentacao: true,
@@ -1067,14 +1189,14 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
         vehicleType: 'van',
         kmPerDay: 40,
         workDays: 44,
-        fuelPricePerLiter: 6.2,
+        fuelPricePerLiter: params.defaultFuelPricePerLiter,
         monthsRental: 2,
       },
       extras: [],
     },
     consumables: {
       mode: 'percentual',
-      percentOnMainLaborSell: 25,
+      percentOnMainLaborSell: params.defaultConsumablesPercent,
       items: [],
     },
     machinery: [],
@@ -1085,13 +1207,13 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
     ],
     thirdParty: [],
     adminCosts: {
-      adminCentralPercent: 1,
-      gerenciamentoProjetoPercent: 2,
+      adminCentralPercent: params.defaultAdminCentralPercent,
+      gerenciamentoProjetoPercent: params.defaultGerenciamentoPercent,
       ohsGestaoPercent: 0,
       comissaoAdmPercent: 0,
     },
     taxes: {
-      company: 'aguero_inox',
+      company: params.defaultBillingCompany,
       purpose: 'material_servico',
       pisPercent: preset.pisPercent,
       cofinsPercent: preset.cofinsPercent,
@@ -1099,7 +1221,7 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
       icmsPercent: preset.icmsPercent,
       csllPercent: preset.csllPercent,
       irpjPercent: preset.irpjPercent,
-      icmsCreditDefaultPercent: 18,
+      icmsCreditDefaultPercent: params.defaultIcmsCreditPercent,
       serviceEffectiveRatePercent: preset.serviceEffectiveRatePercent,
       materialEffectiveRatePercent: preset.materialEffectiveRatePercent,
       industrializationEffectiveRatePercent: preset.industrializationEffectiveRatePercent,
@@ -1112,9 +1234,9 @@ export function createDefaultAgueroInoxModel(startDateIso = new Date().toISOStri
       plannedDiscountPercent: 5,
       commercialCommissionPercent: 5,
       extraClosingDiscountPercent: 0,
-      fixedOverheadPercent: 23,
-      targetProfitPercent: 10,
-      defaultServiceMarginPercent: 30,
+      fixedOverheadPercent: params.defaultFixedOverheadPercent,
+      targetProfitPercent: params.defaultTargetProfitPercent,
+      defaultServiceMarginPercent: params.defaultServiceMarginPercent,
     },
     categoryCriteria: {
       clientScore: 2,
