@@ -96,7 +96,7 @@ test('RH collections honor their granular submodule grants', () => {
 test('Ponto REP-P retains multi-pose biometrics and protects only its RH administration routes', () => {
   assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 1\)/);
   assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 2\)/);
-  assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 4\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto-admin', 4\)/);
   assert.match(pontoRhRoutes, /openFaceDescriptors/);
   assert.match(pontoRhRoutes, /FACE_MAX_POSES/);
 });
