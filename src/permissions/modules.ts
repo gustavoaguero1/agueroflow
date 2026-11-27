@@ -108,6 +108,7 @@ export const MODULE_PERMISSIONS = [
 ] as const satisfies ReadonlyArray<readonly [string, string, string]>;
 
 export type ModulePermissionId = (typeof MODULE_PERMISSIONS)[number][0];
+const MODULE_PERMISSION_IDS = new Set<string>(MODULE_PERMISSIONS.map(([id]) => id));
 
 export const MODULE_PERMISSION_DETAILS = MODULE_PERMISSIONS.map(([id, label, group]) => ({
   id, label, group, area: areaOfSection(id),
@@ -144,13 +145,16 @@ export function resolveModuleLevel(
   orgDefaults?: ModuleAccessDefaults | null,
   userOverrides?: ModuleAccessOverrides | null,
 ): ModuleAccessLevel {
+  if (!MODULE_PERMISSION_IDS.has(section)) return 0;
   const userValue = userOverrides?.[section];
   if (validLevel(userValue)) return userValue;
   const orgValue = orgDefaults?.[role]?.[section];
   if (validLevel(orgValue)) return orgValue;
   const area = areaOfSection(section);
-  if (!area) return 1;
-  return Math.max(0, Math.min(2, areas[area])) as ModuleAccessLevel;
+  if (!area) return 0;
+  const areaLevel = Math.max(0, Math.min(2, areas[area])) as ModuleAccessLevel;
+  // Admin herda administração (4) nos módulos com edição na área; uma restrição explícita da área continua prevalecendo.
+  return role === 'Admin' && areaLevel === 2 ? 4 : areaLevel;
 }
 
 export function resolveModuleLevels(
@@ -169,8 +173,9 @@ export function canAccessModule(
   areas: AreaLevels,
   overrides?: Record<string, number> | null,
 ): boolean {
+  if (!MODULE_PERMISSION_IDS.has(section)) return false;
   const value = overrides?.[section];
   if (validLevel(value)) return value >= 1;
   const area = areaOfSection(section);
-  return !area || areas[area] >= 1;
+  return !!area && areas[area] >= 1;
 }
