@@ -1,9 +1,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request, RequestHandler } from 'express';
 import type { Auth } from 'firebase-admin/auth';
-import { getAdmin } from './firebaseAdmin.ts';
+import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import type { Role } from './authService.ts';
-import { decodeAreas, resolveAreas, type AreaId, type AreaLevel } from '../src/permissions/areas.ts';
+import { areaOfSection, decodeAreas, resolveAreas, type AreaId, type AreaLevel } from '../src/permissions/areas.ts';
+import { MODULE_PERMISSIONS } from '../src/permissions/modules.ts';
+
+const MODULE_PERMISSION_IDS = new Set<string>(MODULE_PERMISSIONS.map(([id]) => id));
 
 export type AuthUser = {
   uid: string; email?: string; emailVerified?: boolean; master: boolean; orgs: Record<string, Role>;
@@ -123,6 +126,57 @@ export function areaLevelOf(u: AuthUser | undefined, org: string | undefined | n
 }
 
 /** Passa quem tem pelo menos `level` na área da empresa da requisição; marca req.orgId. */
+/** Nível granular de um submódulo. O grant é lido no servidor em toda requisição para aplicar revogações imediatamente. */
+export async function moduleLevelOf(
+  u: AuthUser | undefined,
+  org: string | undefined | null,
+  section: string,
+  getH: () => AdminHandles | null = getAdmin,
+): Promise<number> {
+  if (!u || !org || (!u.master && !u.orgs?.[org])) return 0;
+  if (u.master) return 4;
+  if (!MODULE_PERMISSION_IDS.has(section)) return 0;
+  const db = getH()?.db;
+  if (!db) return 0; // falha fechada
+  const snap = await db.collection('org_module_access').doc(`${org}__${u.uid}`).get();
+  const grant = snap.exists ? snap.data() : undefined;
+  const modules = grant?.modules && typeof grant.modules === 'object' ? grant.modules as Record<string, unknown> : {};
+  const explicitModules = Array.isArray(grant?.explicitModules) ? grant.explicitModules : [];
+  const configured = explicitModules.includes(section) ? modules[section] : undefined;
+  if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) {
+    return configured;
+  }
+  const area = areaOfSection(section);
+  if (!area) return 0;
+  const areaLevel = areaLevelOf(u, org, area);
+  return u.orgs?.[org] === 'Admin' && areaLevel === 2 ? 4 : areaLevel;
+}
+
+/** Autoriza acesso a uma tela/ação usando os cinco níveis cumulativos (0–4). */
+export function requireModuleAccess(
+  section: string,
+  level: 1 | 2 | 3 | 4,
+  getH: () => AdminHandles | null = getAdmin,
+): RequestHandler {
+  return async (req, res, next) => {
+    const u = req.user;
+    if (!u) return res.status(401).json({ error: 'unauthenticated' });
+    const org = orgIdOf(req);
+    if (!org || (!u.master && !u.orgs?.[org])) return res.status(403).json({ error: 'forbidden' });
+    try {
+      if (!u.master && !getH()?.db) return res.status(503).json({ error: 'permission_check_unavailable' });
+      if (await moduleLevelOf(u, org, section, getH) < level) {
+        return res.status(403).json({ error: 'forbidden', permission: section, requiredLevel: level });
+      }
+      req.orgId = org;
+      next();
+    } catch (e) {
+      console.error('[permissions] falha ao validar submódulo:', e);
+      return res.status(503).json({ error: 'permission_check_unavailable' });
+    }
+  };
+}
+
 export function requireArea(area: AreaId, level: 1 | 2): RequestHandler {
   return (req, res, next) => {
     const u = req.user;
