@@ -580,7 +580,7 @@ service cloud.firestore {
                 || moduleOk(o, 'rh-relatorios', A_RH(), 1))
               : (coll == 'rh_imports'
                 ? (moduleOk(o, 'rh-importacao', A_RH(), 1) || moduleOk(o, 'rh-historico', A_RH(), 1))
-                : (coll == 'hr_onboardings' && moduleOk(o, 'rh-admissoes', A_RH(), 1))));
+                : (coll == 'hr_onboardings' && moduleOk(o, 'rh-admissoes', A_RH(), 1)))));
       }
       function rhWrite(d) {
         let o = orgOf(d);
@@ -603,7 +603,7 @@ service cloud.firestore {
                 ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 1) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 1))
                 : (coll in ['purchasing_orders', 'purchasing_receipts']
                   ? (moduleOk(orgOf(d), 'compras-pedidos', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
-                  : (collArea() >= 0 && moduleOk(orgOf(d), collModule(), collArea(), 1))))));
+                  : (collArea() >= 0 && moduleOk(orgOf(d), collModule(), collArea(), 1)))))));
       }
       function areaWrite(d) {
         let approvedNow = coll == 'commercial_proposals'
