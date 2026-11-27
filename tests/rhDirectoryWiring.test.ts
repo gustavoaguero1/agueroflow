@@ -16,7 +16,7 @@ test('Operações lê pessoas do diretório, não do cadastro com salários', ()
 
 test('importar o backup do Inox exige editar o RH (cria funcionários no RH)', () => {
   const mod = src('src/modules/OperationsModule.tsx');
-  assert.match(mod, /const canImport = \(isMaster \|\| isManagerOrAbove\) && rhLevel === 2;/);
+  assert.match(mod, /const canImport = moduleLevel\('rh-importacao'\) >= 2 && rhLevel >= 2;/);
 });
 
 test('equipe de campo grava salário à parte', () => {
