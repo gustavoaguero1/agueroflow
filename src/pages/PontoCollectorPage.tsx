@@ -121,7 +121,13 @@ export const PontoCollectorPage: React.FC = () => {
 
   // PWA install
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [showIosInstallHint, setShowIosInstallHint] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [isStandalonePwa, setIsStandalonePwa] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const iosStandalone = Boolean((window.navigator as unknown as { standalone?: boolean }).standalone);
+    const mediaStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches ?? false;
+    return iosStandalone || mediaStandalone;
+  });
 
   // Pareamento
   const [pairCodeInput, setPairCodeInput] = useState(() => {
@@ -154,14 +160,18 @@ export const PontoCollectorPage: React.FC = () => {
   const [scanHint, setScanHint] = useState<string>('Olhe diretamente para a câmera');
   const [scanProgress, setScanProgress] = useState<number>(0);
   const [successReceipt, setSuccessReceipt] = useState<ComprovanteLocal | null>(null);
+  const [closedAfterPunch, setClosedAfterPunch] = useState<ComprovanteLocal | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
   const scanRunningRef = useRef(false);
 
-  // Registra Service Worker offline-first do Ponto
+  // Define título limpo do app isolado e registra Service Worker offline-first do Ponto
   useEffect(() => {
+    const prevTitle = document.title;
+    document.title = 'Aguero Ponto';
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/ponto-sw.js', { scope: '/' }).catch(() => {
         // Ignora em ambientes sem SW
@@ -171,8 +181,18 @@ export const PontoCollectorPage: React.FC = () => {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
     };
+    const onAppInstalled = () => {
+      setIsStandalonePwa(true);
+      setInstallPrompt(null);
+      setShowInstallGuide(false);
+    };
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onAppInstalled);
+    return () => {
+      document.title = prevTitle;
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
   }, []);
 
   const reloadLocalState = useCallback(async () => {
@@ -577,10 +597,24 @@ export const PontoCollectorPage: React.FC = () => {
   const handleInstallPwa = async () => {
     if (installPrompt) {
       await installPrompt.prompt();
-      await installPrompt.userChoice;
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setIsStandalonePwa(true);
+      }
       setInstallPrompt(null);
     } else {
-      setShowIosInstallHint((v) => !v);
+      setShowInstallGuide((v) => !v);
+    }
+  };
+
+  const handleCloseAfterPunch = () => {
+    const receipt = successReceipt;
+    setSuccessReceipt(null);
+    if (receipt) setClosedAfterPunch(receipt);
+    try {
+      window.close();
+    } catch {
+      // Navegadores móveis podem bloquear window.close() na aba principal; exibimos tela limpa de encerramento.
     }
   };
 
@@ -680,10 +714,16 @@ export const PontoCollectorPage: React.FC = () => {
   // ── TELA VERDE GIGANTE DE CONFIRMAÇÃO (PADRÃO RH-ID) ──
   if (successReceipt) {
     return (
-      <div className="ponto-success-screen min-h-screen bg-emerald-600 text-white flex flex-col items-center justify-center p-5">
+      <div
+        className="ponto-success-screen min-h-screen text-white flex flex-col items-center justify-center p-5"
+        style={{ backgroundColor: '#059669' }}
+      >
         <div className="w-full max-w-md bg-emerald-700/75 backdrop-blur-md border border-white/25 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-          <div className="ponto-success-cta w-20 h-20 mx-auto rounded-full flex items-center justify-center shadow-lg">
-            <CheckCircle2 className="w-12 h-12" />
+          <div
+            className="ponto-success-cta w-20 h-20 mx-auto rounded-full flex items-center justify-center shadow-lg"
+            style={{ backgroundColor: '#FFFFFF', color: '#047857' }}
+          >
+            <CheckCircle2 className="w-12 h-12" style={{ color: '#047857', stroke: '#047857' }} />
           </div>
 
           <div>
@@ -747,17 +787,69 @@ export const PontoCollectorPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setSuccessReceipt(null)}
-            className="ponto-success-cta w-full py-3.5 rounded-2xl font-bold text-sm shadow-md cursor-pointer"
+            onClick={() => (identity.modo === 'totem' ? setSuccessReceipt(null) : handleCloseAfterPunch())}
+            className="ponto-success-cta w-full py-3.5 rounded-2xl font-bold text-sm shadow-md cursor-pointer flex items-center justify-center gap-2 active:scale-[0.99] transition-transform"
+            style={{ backgroundColor: '#FFFFFF', color: '#047857' }}
           >
-            {identity.modo === 'totem' ? 'Próximo colaborador' : 'Voltar ao relógio'}
+            {identity.modo === 'totem' ? (
+              <span style={{ color: '#047857' }}>Próximo colaborador</span>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" style={{ color: '#047857', stroke: '#047857' }} />
+                <span style={{ color: '#047857' }}>Concluir e fechar</span>
+              </>
+            )}
           </button>
         </div>
       </div>
     );
   }
 
-  // ── TELA PRINCIPAL DO COLETOR (PADRÃO RH-ID) ──
+  // ── TELA DE ENCERRAMENTO (fallback limpo se o navegador móvel bloquear window.close) ──
+  if (closedAfterPunch) {
+    return (
+      <div className="min-h-screen bg-[#090D16] text-white flex flex-col items-center justify-center p-5">
+        <div className="w-full max-w-sm rounded-3xl bg-[#111827] border border-slate-800 p-7 text-center space-y-4 shadow-xl">
+          <div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/15 border border-emerald-500/35 flex items-center justify-center text-emerald-400">
+            <CheckCircle2 className="w-9 h-9" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-extrabold text-white">Ponto concluído!</h2>
+            <p className="text-xs font-mono text-emerald-400">
+              {TIPO_LABEL[closedAfterPunch.tipo]} · {fmtIsoHora(closedAfterPunch.dataHora)}
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed pt-1">
+              Tudo certo! Você já pode fechar esta aba ou sair do aplicativo.
+            </p>
+          </div>
+          <div className="pt-2 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  window.close();
+                } catch {
+                  // Ignorado quando bloqueado pelo sistema operacional
+                }
+              }}
+              className="apple-solid-btn w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+            >
+              Fechar aba
+            </button>
+            <button
+              type="button"
+              onClick={() => setClosedAfterPunch(null)}
+              className="w-full py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+            >
+              Voltar ao relógio
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── TELA PRINCIPAL DO APP DE PONTO (EXCLUSIVO PARA BATER PONTO) ──
   return (
     <div className="min-h-screen bg-[#090D16] text-white flex flex-col">
       {/* Topbar limpa */}
@@ -766,7 +858,7 @@ export const PontoCollectorPage: React.FC = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-extrabold tracking-tight text-blue-400 uppercase">
-                AgueroFlow Ponto
+                Aguero Ponto
               </span>
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
@@ -823,27 +915,35 @@ export const PontoCollectorPage: React.FC = () => {
       </header>
 
       <main className="flex-1 max-w-lg w-full mx-auto px-4 py-5 flex flex-col gap-4">
-        {/* Banner de instalação PWA */}
-        {(installPrompt || showIosInstallHint) && (
-          <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-between gap-3 text-xs">
-            <div className="text-blue-100">
-              {showIosInstallHint ? (
-                <span>
-                  No iPhone: toque em <b>Compartilhar</b> (ícone de seta) e depois em <b>Adicionar à Tela de Início</b> para usar offline.
-                </span>
-              ) : (
-                <span>Instale o <b>Aguero Ponto</b> na tela inicial para abrir em 1 toque e bater ponto sem internet.</span>
-              )}
-            </div>
-            {installPrompt && (
+        {/* Banner para instalar o app exclusivo Aguero Ponto na Tela Inicial (some quando já aberto como app) */}
+        {!isStandalonePwa && (
+          <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-white leading-tight">App Aguero Ponto na tela inicial</p>
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    Abra direto já vinculado ao seu celular — só tocar e bater o ponto (mesmo offline).
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => void handleInstallPwa()}
-                className="px-3 py-1.5 rounded-xl bg-blue-600 text-white font-semibold shrink-0 flex items-center gap-1 cursor-pointer"
+                className="apple-solid-btn px-3 py-2 rounded-xl bg-blue-600 text-white font-semibold shrink-0 flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Instalar</span>
+                <span>{installPrompt ? 'Instalar app' : 'Instalar'}</span>
               </button>
+            </div>
+            {showInstallGuide && !installPrompt && (
+              <div className="pt-2 border-t border-blue-500/20 text-[11px] text-slate-300 space-y-1">
+                <p><b>Android (Chrome):</b> toque nos 3 pontinhos (<b>⋮</b>) no canto superior e escolha <b>Adicionar à tela inicial</b> ou <b>Instalar aplicativo</b>.</p>
+                <p><b>iPhone (Safari):</b> toque em <b>Compartilhar</b> (quadrado com seta) e depois em <b>Adicionar à Tela de Início</b>.</p>
+              </div>
             )}
           </div>
         )}
@@ -1040,41 +1140,6 @@ export const PontoCollectorPage: React.FC = () => {
                 </button>
               )}
 
-              {/* Plano B: PIN + ações secundárias */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErrorMsg(null);
-                    setShowPinModal(true);
-                  }}
-                  className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <KeyRound className="w-4 h-4 text-amber-400" />
-                  <span>Bater com PIN</span>
-                </button>
-
-                {identity.modo === 'pessoal' ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowEnrollModal(true)}
-                    className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <ScanFace className="w-4 h-4 text-cyan-400" />
-                    <span>{identity.biometria.status === 'cadastrada' ? 'Recadastrar rosto' : 'Cadastrar rosto'}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void handleInstallPwa()}
-                    className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4 text-blue-400" />
-                    <span>Instalar na tela</span>
-                  </button>
-                )}
-              </div>
-
               {/* Marcações de hoje (modo pessoal) */}
               {identity.modo === 'pessoal' && identity.ultimasDoDia.length > 0 && (
                 <section className="rounded-2xl bg-[#111827] border border-slate-800 p-4 space-y-2">
@@ -1092,6 +1157,41 @@ export const PontoCollectorPage: React.FC = () => {
                   </div>
                 </section>
               )}
+
+              {/* Opções secundárias discretas (não competem com BATER PONTO) */}
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1 text-[11px] text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setShowPinModal(true);
+                  }}
+                  className="inline-flex items-center gap-1 hover:text-slate-200 cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Bater com PIN</span>
+                </button>
+                <span className="opacity-30">·</span>
+                {identity.modo === 'pessoal' ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowEnrollModal(true)}
+                    className="inline-flex items-center gap-1 hover:text-slate-200 cursor-pointer"
+                  >
+                    <ScanFace className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{identity.biometria.status === 'cadastrada' ? 'Atualizar rosto' : 'Cadastrar rosto'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleInstallPwa()}
+                    className="inline-flex items-center gap-1 hover:text-slate-200 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Instalar na tela</span>
+                  </button>
+                )}
+              </div>
             </>
           );
         })()}

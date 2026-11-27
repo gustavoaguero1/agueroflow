@@ -109,31 +109,6 @@ html.dark .af-glass-modal {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
 }
 
-/* Always-white readable HUD over camera video or solid colored confirmation screens */
-.ponto-camera-hud {
-  background: rgba(9, 13, 22, 0.86) !important;
-  color: #FFFFFF !important;
-}
-.ponto-camera-hud * {
-  color: #FFFFFF !important;
-}
-.ponto-camera-hud .ponto-hud-accent {
-  color: #67E8F9 !important;
-}
-.ponto-camera-hud .ponto-hud-ok {
-  color: #6EE7B7 !important;
-}
-
-.ponto-success-screen,
-.ponto-success-screen * {
-  color: #FFFFFF !important;
-}
-.ponto-success-screen .ponto-success-cta,
-.ponto-success-screen .ponto-success-cta * {
-  background: #FFFFFF !important;
-  color: #047857 !important;
-}
-
 /* Solid high-contrast Apple card for operational & financial data */
 .af-card {
   background: var(--af-surface);
@@ -298,6 +273,8 @@ html.light .bg-\[\#0F1420\],
 html.light .bg-\[\#070D1E\],
 html.light .bg-\[\#0A0F1D\],
 html.light .bg-\[\#090D1A\],
+html.light .bg-\[\#090D16\],
+html.light .bg-\[\#090D16\]\/90,
 html.light .bg-\[\#040711\],
 html.light .bg-\[\#0B1120\],
 html.light .bg-\[\#0c111d\] {
@@ -675,3 +652,44 @@ html.light .fixed.inset-0 .bg-\[\#121826\] {
   border-color: rgba(0, 0, 0, 0.08) !important;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.14), 0 4px 16px rgba(0, 0, 0, 0.06) !important;
 }
+
+/* =============================================================
+   PONTO COLLECTOR: CAMERA HUD & GREEN CONFIRMATION SCREEN
+   Always placed last so light-mode overrides never wash out text
+   ============================================================= */
+
+html .ponto-camera-hud,
+html.light .ponto-camera-hud {
+  background: rgba(9, 13, 22, 0.88) !important;
+  color: #FFFFFF !important;
+}
+html .ponto-camera-hud *,
+html.light .ponto-camera-hud * {
+  color: #FFFFFF !important;
+}
+html .ponto-camera-hud .ponto-hud-accent,
+html.light .ponto-camera-hud .ponto-hud-accent {
+  color: #67E8F9 !important;
+}
+html .ponto-camera-hud .ponto-hud-ok,
+html.light .ponto-camera-hud .ponto-hud-ok {
+  color: #6EE7B7 !important;
+}
+
+html .ponto-success-screen,
+html.light .ponto-success-screen,
+html .ponto-success-screen *,
+html.light .ponto-success-screen * {
+  color: #FFFFFF !important;
+}
+html .ponto-success-screen .ponto-success-cta,
+html.light .ponto-success-screen .ponto-success-cta {
+  background-color: #FFFFFF !important;
+  color: #047857 !important;
+}
+html .ponto-success-screen .ponto-success-cta *,
+html.light .ponto-success-screen .ponto-success-cta * {
+  color: #047857 !important;
+  stroke: #047857 !important;
+}
+

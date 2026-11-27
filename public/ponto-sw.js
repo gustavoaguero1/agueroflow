@@ -3,8 +3,9 @@
  * - Faz cache apenas dos 3 modelos leves (6.5 MB total) para bater ponto sem internet na obra.
  * - Nunca faz cache de rotas /api/* (a fila offline de marcações é gerida pelo IndexedDB assinado).
  */
-const CACHE_NAME = 'agueroflow-ponto-v3';
+const CACHE_NAME = 'agueroflow-ponto-v4';
 const MODEL_ASSETS = [
+  '/?ponto=1',
   '/ponto-models/tiny_face_detector_model-weights_manifest.json',
   '/ponto-models/tiny_face_detector_model.bin',
   '/ponto-models/face_landmark_68_tiny_model-weights_manifest.json',
