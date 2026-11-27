@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { FinancePayable, FinancePayableAuthorization, FinanceReconciliationCase } from '../src/types/finance.ts';
 import { financePayableAuthorizationId, validateFinancePayableAuthorizationEligibility } from '../src/services/financePayableAuthorizationRules.ts';
-import { requireArea, requireRole } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class RouteError extends Error {
@@ -13,7 +13,7 @@ const validDocId = (value: unknown): value is string => typeof value === 'string
 export function createFinancePayableAuthorizationRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/', requireRole('Admin', 'Gerente'), requireArea('financeiro', 2), async (req: Request, res: Response) => {
+  router.post('/', requireModuleAccess('financeiro-pagar', 3, getH), async (req: Request, res: Response) => {
     const h = getH();
     if (!h) return res.status(503).json({ ok: false, error: 'Servidor sem acesso ao banco.' });
 
