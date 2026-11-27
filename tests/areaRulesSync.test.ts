@@ -72,7 +72,7 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
   // Estrutura collections enforce A_EST()
   assert.match(rules, /function A_EST\(\) \{ return 8; \}/);
   assert.match(rules, /\['assets', 'contracts', 'cost_centers', 'teams', 'units'\] \? A_EST\(\)/);
-  assert.match(rules, /coll == 'audit_logs'\s*\?\s*moduleOk\(orgOf\(d\), 'auditoria', A_EST\(\), 1\)/);
+  assert.match(rules, /coll == 'audit_logs'\s*&&\s*moduleOk\(orgOf\(d\), 'auditoria', A_EST\(\), 1\)/);
 
   // Storage rules enforce Operações (index 1) and RH onboardings (index 5)
   assert.match(storageRules, /moduleLevel\(orgId, 'ordens', 1\)/);
