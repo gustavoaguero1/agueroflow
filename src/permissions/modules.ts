@@ -136,6 +136,7 @@ export function sanitizeModuleDefaults(value: unknown): ModuleAccessDefaults {
   for (const role of ['Admin', 'Gerente', 'Supervisor', 'Operacional', 'Visualizador'] as UserRole[]) {
     if (role in value) out[role] = sanitizeModuleOverrides(value[role]);
   }
+  if (out.Admin) out.Admin.configuracoes = 4; // Admin nunca perde acesso ao painel de permissões.
   return out;
 }
 
@@ -147,6 +148,7 @@ export function resolveModuleLevel(
   userOverrides?: ModuleAccessOverrides | null,
 ): ModuleAccessLevel {
   if (!MODULE_PERMISSION_IDS.has(section)) return 0;
+  if (role === 'Admin' && section === 'configuracoes') return 4;
   const userValue = userOverrides?.[section];
   if (validLevel(userValue)) return userValue;
   const orgValue = orgDefaults?.[role]?.[section];
