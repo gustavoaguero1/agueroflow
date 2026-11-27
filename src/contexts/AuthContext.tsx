@@ -1127,11 +1127,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const areaLevel = useCallback((area: AreaId): AreaLevel => areaLevels[area], [areaLevels]);
   const moduleLevel = useCallback((section: string): number => {
     if (isMasterUser) return 4;
+    if (!MODULE_PERMISSION_ID_LIST.includes(section)) return 0;
+    if (role === 'Admin' && section === 'configuracoes') return 4;
     const configured = activeModuleAccess[section];
     if (activeExplicitModules.includes(section) && typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured;
     const area = areaOfSection(section);
-    return area ? areaLevels[area] : 1;
-  }, [isMasterUser, activeModuleAccess, activeExplicitModules, areaLevels]);
+    if (!area) return 0;
+    return role === 'Admin' && areaLevels[area] === 2 ? 4 : areaLevels[area];
+  }, [isMasterUser, role, activeModuleAccess, activeExplicitModules, areaLevels]);
   const canSeeSectionFn = useCallback(
     (section: string) => moduleLevel(section) >= 1 && canSeeSection(section, areaLevels, activeModuleAccess),
     [moduleLevel, areaLevels, activeModuleAccess],
