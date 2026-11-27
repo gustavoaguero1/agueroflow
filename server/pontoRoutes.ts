@@ -18,7 +18,7 @@ import { concluirPareamento, verificarAssinatura } from './ponto/devices.ts';
 import { registerRhRoutes } from './ponto/rhRoutes.ts';
 import { recalcularPontoDia, firestorePontoDiaWriter } from './ponto/diarioSync.ts';
 import { openFaceDescriptors, sealFaceDescriptors } from './ponto/bioCrypto.ts';
-import { FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../src/ponto/faceMath.ts';
+import { FACE_MAX_POSES, FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../src/ponto/faceMath.ts';
 
 export const MAX_ITENS_LOTE = 200;
 
@@ -170,14 +170,20 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
     }
     const descriptors = sanitizeDescriptors(parsed.descriptors);
     if (!descriptors) {
-      throw new PontoErro(400, 'Vetores faciais inválidos. Refaça a captura pela câmera.');
+      throw new PontoErro(400, 'Vetores faciais inválidos. Refaça a captura pela câmera ou envie uma foto frontal nítida.');
     }
+    const existingDescriptors =
+      parsed.adicionar === true && pessoa.biometria?.status === 'cadastrada' && pessoa.biometria.vetoresSelados
+        ? openFaceDescriptors(pessoa.biometria.vetoresSelados) ?? []
+        : [];
+    const finalDescriptors = [...existingDescriptors, ...descriptors].slice(-FACE_MAX_POSES);
+
     const biometria: BiometriaPessoa = {
       status: 'cadastrada',
       modelo: String(parsed.modelo ?? FACE_MODEL_VERSION).slice(0, 60),
-      poses: descriptors.length,
-      vetoresSelados: sealFaceDescriptors(descriptors),
-      lgpdAceitoEm: at,
+      poses: finalDescriptors.length,
+      vetoresSelados: sealFaceDescriptors(finalDescriptors),
+      lgpdAceitoEm: pessoa.biometria?.lgpdAceitoEm ?? at,
       lgpdVersao: String(parsed.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
       atualizadoEm: at,
       atualizadoPor: `device:${d.id}`,

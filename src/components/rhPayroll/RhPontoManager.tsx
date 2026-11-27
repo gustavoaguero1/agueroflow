@@ -1145,6 +1145,7 @@ const Pessoas: React.FC<{
         <FaceEnrollModal
           personName={enrollPerson.nome}
           context="rh"
+          existingPoses={enrollPerson.biometriaPoses ?? 0}
           openInNewTabUrl={`/?ponto-rosto=1&orgId=${encodeURIComponent(orgId)}&rhId=${encodeURIComponent(enrollPerson.rhId)}&nome=${encodeURIComponent(enrollPerson.nome)}`}
           onSaveFace={async (payload) => {
             await pontoApi.salvarRosto(orgId, enrollPerson.rhId, payload);

@@ -19,8 +19,8 @@ import { montarEspelho } from './espelho.ts';
 import { criarPareamento } from './devices.ts';
 import { PontoErro } from './registrar.ts';
 import { nsrKey, type Alerta, type BiometriaPessoa, type Estabelecimento, type PessoaPonto, type PontoStore } from './store.ts';
-import { sealFaceDescriptors } from './bioCrypto.ts';
-import { FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../../src/ponto/faceMath.ts';
+import { openFaceDescriptors, sealFaceDescriptors } from './bioCrypto.ts';
+import { FACE_MAX_POSES, FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../../src/ponto/faceMath.ts';
 
 export interface RhRouteCtx {
   getStore: () => PontoStore | null;
@@ -210,14 +210,20 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     }
     const descriptors = sanitizeDescriptors(b.descriptors);
     if (!descriptors) {
-      throw new PontoErro(400, 'Vetores faciais inválidos. Capture pelo menos 1 pose válida pela câmera.');
+      throw new PontoErro(400, 'Vetores faciais inválidos. Capture pela câmera ou envie uma foto frontal nítida.');
     }
+    const existingDescriptors =
+      b.adicionar === true && pessoa.biometria?.status === 'cadastrada' && pessoa.biometria.vetoresSelados
+        ? openFaceDescriptors(pessoa.biometria.vetoresSelados) ?? []
+        : [];
+    const finalDescriptors = [...existingDescriptors, ...descriptors].slice(-FACE_MAX_POSES);
+
     const biometria: BiometriaPessoa = {
       status: 'cadastrada',
       modelo: String(b.modelo ?? FACE_MODEL_VERSION).slice(0, 60),
-      poses: descriptors.length,
-      vetoresSelados: sealFaceDescriptors(descriptors),
-      lgpdAceitoEm: at,
+      poses: finalDescriptors.length,
+      vetoresSelados: sealFaceDescriptors(finalDescriptors),
+      lgpdAceitoEm: pessoa.biometria?.lgpdAceitoEm ?? at,
       lgpdVersao: String(b.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
       atualizadoEm: at,
       atualizadoPor: autor,

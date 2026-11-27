@@ -1331,10 +1331,12 @@ export const PontoCollectorPage: React.FC = () => {
         <FaceEnrollModal
           personName={identity.pessoa?.nome ?? 'Colaborador'}
           context="self"
+          existingPoses={identity.biometria.poses}
           onSaveFace={async (payload) => {
             const updated = await enrollDeviceFace({
               descriptors: payload.descriptors,
               lgpdAceito: true,
+              adicionar: payload.adicionar,
             });
             setIdentity(updated);
           }}

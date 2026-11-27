@@ -237,6 +237,188 @@ export async function extractFaceDescriptor(video: HTMLVideoElement): Promise<Vi
 /** Mantido por compatibilidade — delega para extractFaceDescriptor. */
 export const analyzeVideoFrame = extractFaceDescriptor;
 
+export interface ImageFaceAnalysis {
+  status: 'ok' | 'no_face' | 'multiple_faces' | 'low_quality';
+  descriptor?: number[];
+  confidence?: number;
+  brightness?: number;
+  qualityLabel?: 'otima' | 'boa' | 'atencao';
+  message: string;
+  /** Miniatura local com retângulo verde no rosto para conferência imediata (nunca enviada ao servidor). */
+  previewDataUrl?: string;
+}
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Não foi possível abrir esta imagem. Use JPG, PNG ou WebP.'));
+    };
+    img.src = url;
+  });
+}
+
+function computeRegionBrightness(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): number {
+  const sx = Math.max(0, Math.floor(x));
+  const sy = Math.max(0, Math.floor(y));
+  const sw = Math.max(1, Math.min(ctx.canvas.width - sx, Math.floor(w)));
+  const sh = Math.max(1, Math.min(ctx.canvas.height - sy, Math.floor(h)));
+  const data = ctx.getImageData(sx, sy, sw, sh).data;
+  let sum = 0;
+  let count = 0;
+  // Amostra a cada 4 pixels para ser instantâneo
+  for (let i = 0; i < data.length; i += 16) {
+    sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    count += 1;
+  }
+  return count > 0 ? Math.round(sum / count) : 128;
+}
+
+/**
+ * Analisa uma foto enviada (3x4, foto de admissão ou selfie frontal), valida qualidade
+ * (rosto único, tamanho mínimo, brilho) e extrai o vetor 128-D localmente no navegador.
+ */
+export async function analyzeImageFile(file: File): Promise<ImageFaceAnalysis> {
+  const img = await loadImageElement(file);
+  const maxDim = 640;
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+  const w = Math.max(120, Math.round(img.naturalWidth * scale));
+  const h = Math.max(120, Math.round(img.naturalHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    return { status: 'low_quality', message: 'Erro ao preparar a imagem no navegador.' };
+  }
+  ctx.drawImage(img, 0, 0, w, h);
+
+  await loadFaceModels();
+  const faceapi = await getFaceApi();
+  await yieldToMain(20);
+
+  // Tenta inputSize 320 primeiro (rápido e ótimo para selfies/3x4) e 416 como segunda chance para fotos mais distantes
+  let detections = await faceapi
+    .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.24 }))
+    .withFaceLandmarks(true)
+    .withFaceDescriptors();
+
+  if (!detections || detections.length === 0) {
+    await yieldToMain(20);
+    detections = await faceapi
+      .detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.20 }))
+      .withFaceLandmarks(true)
+      .withFaceDescriptors();
+  }
+
+  await yieldToMain(16);
+
+  if (!detections || detections.length === 0) {
+    return {
+      status: 'no_face',
+      message: 'Nenhum rosto nítido detectado. Use uma foto frontal bem iluminada, sem boné ou óculos escuros.',
+    };
+  }
+
+  const sorted = [...detections].sort(
+    (a, b) => b.detection.box.width * b.detection.box.height - a.detection.box.width * a.detection.box.height,
+  );
+  const mainArea = sorted[0].detection.box.width * sorted[0].detection.box.height;
+  const foreground = sorted.filter((it) => it.detection.box.width * it.detection.box.height >= mainArea * 0.35);
+
+  if (foreground.length > 1) {
+    return {
+      status: 'multiple_faces',
+      message: 'Mais de uma pessoa aparece na foto. Envie uma foto individual (3x4 ou selfie só do colaborador).',
+    };
+  }
+
+  const d = foreground[0];
+  const box = d.detection.box;
+  const descriptor = sanitizeDescriptor(d.descriptor);
+  if (!descriptor) {
+    return { status: 'low_quality', message: 'Não foi possível extrair o vetor facial desta imagem.' };
+  }
+
+  const brightness = computeRegionBrightness(ctx, box.x, box.y, box.width, box.height);
+  const confidence = Math.round(d.detection.score * 100) / 100;
+
+  if (box.width < 48 || box.height < 48) {
+    return {
+      status: 'low_quality',
+      brightness,
+      confidence,
+      message: 'O rosto está muito pequeno ou distante na foto. Envie uma foto mais próxima (tipo 3x4 ou selfie).',
+    };
+  }
+  if (brightness < 38) {
+    return {
+      status: 'low_quality',
+      brightness,
+      confidence,
+      message: 'A foto está muito escura no rosto. Tire ou envie uma foto em local mais iluminado.',
+    };
+  }
+  if (brightness > 242) {
+    return {
+      status: 'low_quality',
+      brightness,
+      confidence,
+      message: 'A foto está estourada de luz no rosto. Evite flash direto ou sol forte atrás/na frente.',
+    };
+  }
+
+  // Gera miniatura local com moldura verde no rosto detectado para feedback visual imediato
+  const previewCanvas = document.createElement('canvas');
+  const pScale = Math.min(1, 220 / Math.max(w, h));
+  previewCanvas.width = Math.max(80, Math.round(w * pScale));
+  previewCanvas.height = Math.max(80, Math.round(h * pScale));
+  const pCtx = previewCanvas.getContext('2d');
+  let previewDataUrl: string | undefined;
+  if (pCtx) {
+    pCtx.drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
+    pCtx.strokeStyle = '#10B981';
+    pCtx.lineWidth = 3;
+    pCtx.strokeRect(box.x * pScale, box.y * pScale, box.width * pScale, box.height * pScale);
+    previewDataUrl = previewCanvas.toDataURL('image/jpeg', 0.75);
+  }
+
+  const qualityLabel: 'otima' | 'boa' | 'atencao' =
+    confidence >= 0.72 && brightness >= 70 && brightness <= 215
+      ? 'otima'
+      : confidence >= 0.45
+      ? 'boa'
+      : 'atencao';
+
+  return {
+    status: 'ok',
+    descriptor,
+    confidence,
+    brightness,
+    qualityLabel,
+    previewDataUrl,
+    message:
+      qualityLabel === 'otima'
+        ? `Rosto validado com ótima nitidez (${Math.round(confidence * 100)}%).`
+        : qualityLabel === 'boa'
+        ? `Rosto validado com boa qualidade (${Math.round(confidence * 100)}%).`
+        : `Rosto aceito (${Math.round(confidence * 100)}%), mas recomenda-se adicionar mais 1 selfie bem iluminada.`,
+  };
+}
+
 /**
  * Captura selfie comprimida (~18-30 KB em JPEG 300px) para conferência visual no Espelho do RH.
  */

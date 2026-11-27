@@ -81,7 +81,7 @@ export const pontoApi = {
   salvarEstabelecimento: (orgId: string, id: string, e: Omit<Estabelecimento, 'id' | 'orgId'>) => call('PUT', `/estabelecimentos/${encodeURIComponent(id)}`, orgId, e as Record<string, unknown>),
   pessoas: (orgId: string) => call<{ items: PessoaPontoView[] }>('GET', '/pessoas', orgId).then((r) => r.items),
   salvarPessoa: (orgId: string, rhId: string, p: Record<string, unknown>) => call('PUT', `/pessoas/${encodeURIComponent(rhId)}`, orgId, p),
-  salvarRosto: (orgId: string, rhId: string, body: { descriptors?: number[][]; lgpdAceito?: boolean; recusar?: boolean; modelo?: string; lgpdVersao?: string }) =>
+  salvarRosto: (orgId: string, rhId: string, body: { descriptors?: number[][]; lgpdAceito?: boolean; recusar?: boolean; adicionar?: boolean; modelo?: string; lgpdVersao?: string }) =>
     call<{ ok: boolean; status: string; poses?: number; atualizadoEm: string }>('POST', `/pessoas/${encodeURIComponent(rhId)}/rosto`, orgId, body as Record<string, unknown>),
   removerRosto: (orgId: string, rhId: string) => call<{ ok: boolean }>('DELETE', `/pessoas/${encodeURIComponent(rhId)}/rosto`, orgId),
   fotoMarcacao: (orgId: string, marcacaoId: string) => call<MarcacaoFotoDetalhe>('GET', `/marcacoes/${encodeURIComponent(marcacaoId)}/foto`, orgId),
