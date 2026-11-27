@@ -18,7 +18,6 @@ A Aguero Inox paga mensalidade ao RH-ID e usa o produto basicamente para bater p
 
 ## Fora da etapa 1 (etapas 2 e 3)
 
-- Reconhecimento facial 1:N no totem para equipes grandes. Na etapa 1, o totem identifica por matrícula/PIN e confirma o rosto 1:1.
 - Banco de horas, regras de hora extra, intervalos e escalas complexas, e AEJ.
 - Assinatura eletrônica do espelho pelo funcionário.
 - Ajustes e atestados com fluxo de aprovação completo. Na etapa 1, o ajuste é manual pelo RH, com justificativa.
@@ -32,6 +31,7 @@ A Aguero Inox paga mensalidade ao RH-ID e usa o produto basicamente para bater p
 - Um cadastro de pessoas novo, separado do `rh_directory`.
 - Um módulo novo no menu. O ponto é uma aba do **RH**.
 - Funcionário sem conseguir bater ponto por falta de sinal, ou por não ter celular.
+- **Dar trabalho para bater o ponto.** O padrão do RH-ID é: um botão, a câmera abre, reconhece, pronto. O público é peão de obra, então nada de PIN, gesto ou menu no caminho normal. PIN e afins são só o plano B, quando o rosto não é reconhecido.
 - Biometria tratada sem aviso, sem alternativa, ou em texto aberto.
 
 ## Restrições
@@ -69,7 +69,8 @@ Também foi decidido:
 
 - **Celular pessoal:** no RH, o responsável abre o funcionário e clica em "Parear aparelho". Aparece um QR de uso único, válido por 10 min. O funcionário escaneia no app, e o aparelho gera um **par de chaves** e manda a chave pública ao servidor, ligada ao funcionário. Um aparelho atende um funcionário, e trocar de aparelho revoga o anterior.
 - **Totem:** o mesmo fluxo, mas pareado a **uma obra** por um Gerente ou Admin.
-- O PIN de 4 a 6 dígitos é definido no pareamento. Ele serve de alternativa sem biometria e é o que identifica a pessoa no totem.
+- O PIN de 4 a 6 dígitos é definido no pareamento. Ele é **só plano B**: quando o rosto não é reconhecido, ou para quem recusou a biometria.
+- **O canal é o app.** O WhatsApp não bate ponto, porque não funciona offline e não faz rosto nem prova de vida com confiança. Ele fica para lembretes e comprovantes (etapa 2).
 
 ### Cadastro do rosto (presencial com o RH, uma vez)
 
@@ -79,8 +80,14 @@ Também foi decidido:
 
 ### Marcação
 
-1. O app mostra o **relógio com segundos** e o botão "Registrar ponto".
-2. **Prova de vida:** um desafio aleatório (piscar, virar a cabeça). Em seguida a foto, a comparação 1:1 com o vetor do funcionário e a localização GPS.
+1. O app abre direto no **relógio com segundos** e num botão grande "Bater ponto". Ele mostra qual é a próxima marcação esperada (Entrada, Saída almoço, Volta almoço ou Saída).
+2. Tocou, a câmera abre e captura cerca de 1,5 s de vídeo. O app faz:
+   - **prova de vida passiva**, sem pedir gesto: piscada natural, movimento e textura da pele contra foto ou tela. Só se ficar em dúvida pede "pisque";
+   - o reconhecimento:
+     - **no celular pessoal:** compara com o rosto daquele funcionário (1:1);
+     - **no totem da obra:** compara com **todos os funcionários daquela obra** (1:N; são poucas dezenas). Ninguém digita nada. Só se não reconhecer aparece a lista com o nome e o PIN;
+   - a leitura do GPS.
+   O resultado aparece numa tela verde enorme, com nome, hora e "Ponto registrado".
 3. O app monta a marcação:
    - CPF;
    - data e hora (com fuso);
@@ -101,7 +108,7 @@ Também foi decidido:
 - O hash SHA-256 de cada registro inclui o hash do anterior, formando uma corrente. Quebrar a corrente denuncia a alteração.
 - Ninguém edita nem apaga. Um ajuste é um **registro novo do tipo ajuste**, com justificativa, autor e referência ao original. O original continua no espelho, riscado.
 - Também ficam registrados os ajustes de relógio, as alterações do CNPJ ou dos dados do empregador, e as alterações de CPF ou nome do funcionário.
-- A foto de cada marcação fica no Storage, só no servidor. O prazo de guarda é uma decisão do jurídico; o padrão é 5 anos.
+- A foto de cada marcação fica no Storage, só no servidor, **comprimida** (cerca de 300 px, aproximadamente 20–30 KB) para não encher o armazenamento. O prazo de guarda é uma decisão do jurídico; o padrão é 5 anos. A política fina de retenção fica para depois.
 
 ### Comprovante
 
@@ -135,17 +142,18 @@ O funcionário vê o histórico dos próprios comprovantes no app.
 ### Estabelecimentos e jornada (configuráveis)
 
 - **Estabelecimentos:** o RH cadastra quantos quiser, cada um com CNPJ, razão social e endereço. O funcionário fica ligado a um deles, normalmente pelo campo "Empresa" (`companyName`) que já existe. Cada estabelecimento tem **sua própria sequência de NSR e seu próprio AFD**.
-- **Tipo de vínculo por pessoa:** CLT ou PJ. Por padrão, **o PJ fica fora do ponto**, porque controlar a jornada de um prestador PJ pode caracterizar vínculo de emprego. O RH pode ligar, caso a caso.
-- **Jornada padrão: 07:00–17:00 com 1 h de almoço, de segunda a sexta (9 h por dia).** É configurável por estabelecimento e, se preciso, por pessoa.
+- **Quem bate ponto é configurado por pessoa.** O cadastro tem o tipo de vínculo (CLT ou PJ) e, separado dele, a chave **"bate ponto" (sim ou não)**. O padrão é *sim* para todos. O vínculo não decide nada sozinho, porque há PJs que batem ponto e exceções em geral.
+- **Jornada padrão: 07:00–17:00 com 1 h de almoço, de segunda a sexta (9 h por dia).** É configurável por estabelecimento e por pessoa: horário, dias da semana e duração do almoço.
   - Atenção: 9 h × 5 dias = 45 h por semana. Isso passa 1 h do limite de 44 h da CLT, a menos que haja acordo de compensação. O RH ou o contador precisa confirmar como essa hora é tratada, se compensada ou paga como extra. O sistema segue a regra configurada.
-- **Intervalo:** o padrão é o **intervalo pré-assinalado**, que a CLT permite (art. 74 §2º). O funcionário marca só a entrada e a saída. Pode ser trocado para 4 marcações por estabelecimento ou por pessoa.
+- **4 marcações por dia (padrão):** entrada, saída para o almoço, volta do almoço e saída. O app sugere sozinho qual é a próxima. O RH pode trocar para 2 marcações, com almoço pré-assinalado, por estabelecimento ou por pessoa.
+- **Princípio geral:** o que for regra de empresa (jornada, marcações, raio, tolerância, feriados, quem bate ponto) é **configuração, não código**. Cada item tem um padrão por estabelecimento e pode ser sobrescrito por pessoa.
 
 ### Dados novos nos cadastros existentes
 
 - `rh_directory`: **`cpf`**, criptografado ou com acesso restrito à área RH, e `pontoPinHash`.
 - `units`: **`geo: { lat, lng, raioM }`**, com raio padrão de 300 m e mapa para marcar a obra.
-- `rh_directory`: `vinculo` (`CLT` | `PJ`), `estabelecimentoId` e uma jornada própria opcional.
-- `ponto_estabelecimentos` (nova, ligada à org): CNPJ, razão social, endereço, jornada padrão e modo de intervalo.
+- `rh_directory`: `vinculo` (`CLT` | `PJ`), `batePonto` (padrão `true`), `estabelecimentoId` e uma configuração própria opcional, que sobrescreve a do estabelecimento.
+- `ponto_estabelecimentos` (nova, ligada à org): CNPJ, razão social, endereço, jornada, quantidade de marcações, raio padrão, tolerância e feriados.
 
 ### Permissões
 
@@ -156,19 +164,18 @@ O funcionário vê o histórico dos próprios comprovantes no app.
 
 ## Decidido pelo Claude (pode corrigir)
 
-- Celular com **chave do aparelho + PIN** no lugar do login, porque o pessoal de campo não tem conta no AgueroFlow.
-- No totem da etapa 1, a identificação é por PIN e o rosto é confirmado 1:1. O 1:N fica para a etapa 2.
+- Celular pareado com o RH por QR, com a chave do aparelho no lugar do login. O PIN é só plano B.
+- No totem, o rosto é reconhecido entre os funcionários da obra (1:N) sem digitar nada. O PIN só aparece se não reconhecer.
+- Prova de vida passiva, sem pedir gesto. Só pede "pisque" se ficar em dúvida.
 - A marcação fora da cerca **grava com alerta**, sem bloquear, porque a portaria proíbe restringir a marcação.
 - Raio padrão de 300 m, configurável.
-- PJ fica fora do ponto por padrão, e o RH pode ligar.
-- Intervalo pré-assinalado por padrão (só entrada e saída), configurável.
 - Domingo e feriado viram h100. A lista de feriados é configurável.
-- Guarda padrão de 5 anos, a confirmar com o jurídico.
-- O modelo de rosto precisa ter **licença comercial**. Os modelos pré-treinados do InsightFace não servem por isso.
+- Guarda padrão de 5 anos, a confirmar com o jurídico, com foto comprimida.
+- **Modelos de rosto grátis que liberam uso em empresa:** YuNet (detecção) e SFace (reconhecimento) do OpenCV Zoo, mais o MediaPipe do Google. Custo zero. Os modelos pré-treinados do InsightFace ficam de fora: são liberados só para pesquisa, e usá-los na empresa traria risco jurídico.
 
 ## Deixado para quem constrói
 
-- A biblioteca de detecção de rosto e de prova de vida. MediaPipe ou similar, desde que rode offline no app e tenha licença comercial.
+- A combinação exata dos modelos e a calibração dos limites (score para aceitar, para alertar e para pedir piscada). Tudo dentro dos modelos citados acima, ou outros grátis que liberem uso em empresa e rodem offline.
 - O plugin de câmera, GPS e armazenamento do Capacitor.
 - Detalhes visuais. As telas seguem o design system do app, com botões grandes, pensando em quem está de luva e no sol.
 - A publicação nas lojas (Play Store e App Store) é um passo próprio. Antes disso, o Android pode ser distribuído por APK.
