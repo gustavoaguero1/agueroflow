@@ -73,6 +73,7 @@ export const MODULE_PERMISSIONS = [
   ['rh-relatorios', 'Relatórios de RH', 'RH'],
   ['rh-holerites', 'Demonstrativos e holerites', 'RH'],
   ['rh-ponto', 'Ponto eletrônico', 'RH'],
+  ['rh-ponto-admin', 'Administração do Ponto e totens', 'RH'],
   ['comercial-painel', 'Painel de propostas', 'Comercial'],
   ['comercial-funil', 'Funil de vendas', 'Comercial'],
   ['comercial-nova', 'Nova proposta', 'Comercial'],
@@ -153,6 +154,8 @@ export function resolveModuleLevel(
   if (validLevel(userValue)) return userValue;
   const orgValue = orgDefaults?.[role]?.[section];
   if (validLevel(orgValue)) return orgValue;
+  // Compatibilidade: Gerentes podiam administrar totens e sincronizar a integração de viagens.
+  if (role === 'Gerente' && ['rh-ponto-admin', 'viagens-configuracoes'].includes(section)) return 4;
   const area = areaOfSection(section);
   if (!area) return 0;
   const areaLevel = Math.max(0, Math.min(2, areas[area])) as ModuleAccessLevel;
