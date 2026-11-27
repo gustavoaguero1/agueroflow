@@ -42,7 +42,18 @@ Vale se o app roda no Cloud Run do AI Studio.
 | `AUTHORIZED_PHONES` | Telefones autorizados a falar com o bot, separados por vírgula. |
 | `DEFAULT_ORG_ID` | ID da empresa Aguero. Veja na tela **Estrutura** do app ou na coleção `organizations` do Firestore (campo ID do documento). |
 | `APP_URL` | Endereço público do app (usado nos links de primeiro acesso), sem barra no final. |
+| `MARTRAVEL_SECRET_KEY` | Chave do cofre onde fica o login da Mar Travel de cada colaborador (senha cifrada). Texto base64 de 32 bytes, gerado uma vez (veja abaixo). **Não troque depois:** trocar apaga o acesso às senhas salvas, e cada colaborador precisa salvar a conta de novo. |
 | `COMPOSIO_WEBHOOK_SECRET` | Obrigatório se você usa o webhook do Composio: segredo de assinatura dos webhooks. Sem ele o webhook do Composio fica desativado (responde 403). |
+
+### Como gerar a `MARTRAVEL_SECRET_KEY`
+
+Gere no seu computador (não peça para ninguém gerar por você e não mande o valor por chat):
+
+- **Windows (PowerShell):**
+  `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)`
+- **Mac ou Linux (Terminal):** `openssl rand -base64 32`
+
+Copie o texto que aparecer (termina com `=`) e cole no Secret `MARTRAVEL_SECRET_KEY` do AI Studio.
 
 ## Passo 3 - Máximo de instâncias = 1
 Cloud Run -> serviço -> **Editar e implantar nova revisão** -> **Escalonamento automático** -> máximo de instâncias = **1**. Implante.
