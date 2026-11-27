@@ -18,12 +18,21 @@ test('memberOrgOf: com uma empresa só, usa ela; sem usuário, nada', () => {
   assert.equal(memberOrgOf(req(undefined, { orgId: 'o1' })), undefined);
 });
 
+const noModuleOverrides = () => ({
+  db: {
+    collection: () => ({
+      doc: () => ({ get: async () => ({ exists: false, data: () => undefined }) }),
+    }),
+  },
+}) as any;
+
 /** App de teste com a cadeia real: usuário falso → middlewares do WhatsApp → rota que mostra o contexto. */
 async function serve(user: object) {
   const calls: string[] = [];
   const mws = createWhatsAppMiddlewares({
     runInSession: (s, fn) => { calls.push(`own:${s.key}:${s.orgId}`); return fn(); },
     runAsOrgSender: (org, fn) => { calls.push(`org:${org}`); return fn(); },
+    getAdminHandles: noModuleOverrides,
   });
   const app = express();
   app.use((r, _s, n) => { (r as { user?: object }).user = user; n(); });
@@ -55,7 +64,7 @@ test('cadeia real: canal da empresa (enviar, grupos, keepalive) usa o número of
 });
 
 test('dados do WhatsApp sem empresa válida: 403 para quem não é master (não cai na empresa padrão)', async () => {
-  const mws = createWhatsAppMiddlewares({ runInSession: (_s, fn) => fn(), runAsOrgSender: (_o, fn) => fn() });
+  const mws = createWhatsAppMiddlewares({ runInSession: (_s, fn) => fn(), runAsOrgSender: (_o, fn) => fn(), getAdminHandles: noModuleOverrides });
   const app = express();
   app.use((r, _s, n) => { (r as { user?: object }).user = { uid: 'b', master: false, orgs: { B: 'Operacional', C: 'Admin' } }; n(); });
   app.use('/api', mws.companyContext);
