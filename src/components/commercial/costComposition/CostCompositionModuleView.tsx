@@ -32,6 +32,7 @@ import {
   roundMoney,
 } from '../../../services/costCompositionService';
 import { CommercialProposal, CommercialMaterial, CommercialClient } from '../../../types/commercial';
+import { createDefaultAgueroInoxModel } from '../../../services/agueroInoxPricingEngine';
 import { CostCompositionEditor } from './CostCompositionEditor';
 
 interface CostCompositionModuleViewProps {
@@ -173,6 +174,10 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
       notes: `Iniciado a partir do modelo: ${selectedTemplate.name}`,
       status: 'rascunho',
       templateId: selectedTemplate.id,
+      agueroInoxModel: {
+        ...createDefaultAgueroInoxModel(new Date().toISOString().split('T')[0]),
+        presentationTemplate: selectedTemplate.id.includes('tetrapak') ? 'tetrapak' : 'padrao',
+      },
       items: defaultItems,
       operationalCosts: {
         averageHourlyCostRef: 58.50,
