@@ -23,7 +23,7 @@ function identities(memberId: string, member: FirebaseFirestore.DocumentData): s
 export async function syncModuleAccessForMember(h: AdminHandles, memberId: string): Promise<void> {
   const memberRef = h.db.doc(`org_members/${memberId}`);
   const snap = await memberRef.get();
-  if (!snap.exists || snap.get('active') !== true) return;
+  if (!snap.exists) return;
   const member = snap.data() || {};
   const orgId = memberOrg(member);
   if (!orgId || orgId.includes('/')) return;
@@ -40,8 +40,9 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
   const hasOverrides = explicitModules.length > 0;
   const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
 
-  if (!hasOverrides) {
-    await Promise.all(refs.map((ref) => ref.delete().catch(() => undefined)));
+  // Desativar um membro também revoga seus grants; não deixe acessos antigos vivos no Firestore.
+  if (member.active !== true || !hasOverrides) {
+    await Promise.all(refs.map((ref) => ref.delete()));
     return;
   }
 
@@ -58,8 +59,8 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
 export async function syncModuleAccessForOrganization(h: AdminHandles, orgId: string): Promise<number> {
   const members = h.db.collection('org_members');
   const [byOrg, byLegacyOrg] = await Promise.all([
-    members.where('orgId', '==', orgId).where('active', '==', true).get(),
-    members.where('organizationId', '==', orgId).where('active', '==', true).get(),
+    members.where('orgId', '==', orgId).get(),
+    members.where('organizationId', '==', orgId).get(),
   ]);
   const docs = new Map([...byOrg.docs, ...byLegacyOrg.docs].map((d) => [d.id, d]));
   const ids = [...docs.keys()];
