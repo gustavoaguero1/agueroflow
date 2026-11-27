@@ -42,6 +42,8 @@ export interface Unit {
   city?: string;
   state?: string;
   managerName?: string;
+  /** Local da obra para a cerca do ponto eletrônico (raio padrão do estabelecimento se vazio). */
+  geo?: { lat: number; lng: number; raioM?: number } | null;
   createdAt: string;
   updatedAt: string;
 }
