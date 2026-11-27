@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { requireArea } from './authMiddleware.ts';
+import { requireModuleAccess } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 import {
   protheusSyncDocId,
@@ -20,7 +20,7 @@ export function createProtheusSyncRouter(getH: () => AdminHandles | null = getAd
   const router = Router();
 
   // Idempotent registration / export queue entry for Protheus fiscal/accounting sync
-  router.post('/sync', requireArea('financeiro', 2), async (req: Request, res: Response) => {
+  router.post('/sync', requireModuleAccess('financeiro-pagar', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const b = req.body ?? {};
     if (!orgId) return res.status(401).json({ ok: false, error: 'Não autenticado.' });
