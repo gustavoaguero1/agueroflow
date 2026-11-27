@@ -92,19 +92,42 @@ export type PesquisarSolicitacaoParams =
       tipoSolicitacao?: string; dataAlteracaoInicial?: string; dataAlteracaoFinal?: string;
     };
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) =>
+type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) =>
   Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
-export function createWsSelfBookingClient(config: LemontechConfig, fetchImpl: FetchLike = fetch as any) {
+/** Tempo máximo de uma chamada à Lemontech (o proxy da hospedagem corta chamadas longas antes). */
+export const LEMONTECH_TIMEOUT_MS = 20_000;
+
+export function createWsSelfBookingClient(config: LemontechConfig, fetchImpl: FetchLike = fetch as any, opts: { timeoutMs?: number } = {}) {
+  const timeoutMs = opts.timeoutMs ?? LEMONTECH_TIMEOUT_MS;
   async function call(operation: string, body: XmlObject): Promise<string> {
-    const res = await fetchImpl(config.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '' },
-      body: buildSoapEnvelope(operation, body, config.creds),
-    });
-    const text = await res.text();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res: Awaited<ReturnType<FetchLike>>;
+    let text: string;
+    try {
+      res = await fetchImpl(config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '' },
+        body: buildSoapEnvelope(operation, body, config.creds),
+        signal: ctrl.signal,
+      });
+      text = await res.text();
+    } catch (e: any) {
+      if (ctrl.signal.aborted || e?.name === 'AbortError') {
+        const seg = (timeoutMs / 1000).toLocaleString('pt-BR');
+        throw new Error(`A Mar Travel não respondeu em ${seg} s. Normalmente é o servidor da Lemontech só aceitando IPs liberados: peça para liberarem o IP do nosso servidor.`);
+      }
+      const code = e?.cause?.code || e?.code || e?.message || 'erro de rede';
+      throw new Error(`Não foi possível conectar à Mar Travel (${code}).`);
+    } finally {
+      clearTimeout(timer);
+    }
     // SOAP devolve Fault com HTTP 500: o parse transforma em erro legível.
-    if (!res.ok && !/Fault/.test(text)) throw new Error(`Lemontech HTTP ${res.status}`);
+    if (!res.ok && !/Fault/.test(text)) {
+      if (res.status === 401 || res.status === 403) throw new Error(`Mar Travel recusou o acesso (HTTP ${res.status}): confira as credenciais do conector e a liberação de IP.`);
+      throw new Error(`Mar Travel respondeu HTTP ${res.status}.`);
+    }
     return text;
   }
 
