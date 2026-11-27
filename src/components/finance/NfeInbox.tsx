@@ -25,7 +25,9 @@ type SyncStatus = { configured: boolean; lastRunAt?: string; nextRunAt?: string;
 const fmtDateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString('pt-BR') : '—');
 
 export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; costCenters: CostCenter[] }> = ({ orgId, categories, costCenters }) => {
-  const { isManagerOrAbove, isSupervisorOrAbove } = useAuth();
+  const { moduleLevel } = useAuth();
+  const canOperate = moduleLevel('financeiro-notas') >= 2;
+  const canAdmin = moduleLevel('financeiro-notas') >= 4;
   const [docs, setDocs] = useState<NfeDocument[]>([]);
   const [filter, setFilter] = useState<'todas' | NfeStatus>('todas');
   const [busy, setBusy] = useState<'' | 'upload' | 'sync'>('');
@@ -107,7 +109,7 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
               : 'Busca automática na SEFAZ não configurada neste servidor — importe os XML manualmente.'}
           </p>
         </div>
-        {isManagerOrAbove && (
+        {canOperate && (
           <div className="flex flex-col sm:flex-row gap-2">
             <input ref={fileRef} type="file" accept=".xml" multiple className="hidden" data-testid="nfe-upload" onChange={(e) => upload(e.target.files)} />
             <button type="button" className={btnPrimary} disabled={!!busy} onClick={() => fileRef.current?.click()}>
@@ -173,12 +175,12 @@ export const NfeInbox: React.FC<{ orgId: string; categories: FinanceCategory[]; 
                     <div className="mt-2"><NfeTaxSummary nfe={d} /></div>
                   </details>
                 )}
-                {isSupervisorOrAbove && (d.status === 'aguardando_classificacao' || d.status === 'erro_classificacao') && (
+                {canOperate && (d.status === 'aguardando_classificacao' || d.status === 'erro_classificacao') && (
                   <button type="button" className={`${btnPrimary} w-full`} onClick={() => setClassifying(d)}>
                     <FileText className="w-3.5 h-3.5" />{d.status === 'erro_classificacao' ? 'Tentar novamente' : 'Informar obra'}
                   </button>
                 )}
-                {isManagerOrAbove && stuck && (
+                {canAdmin && stuck && (
                   <button type="button" className={`${btnGhost} w-full`} onClick={() => release(d)}>Classificação interrompida — liberar</button>
                 )}
               </div>
