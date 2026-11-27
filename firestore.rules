@@ -427,7 +427,9 @@ service cloud.firestore {
       function opsManager() { return isMaster() || hasRole(orgId, ['Admin', 'Gerente']); }
       function managerOnlyWrite() { return coll in ['membros'] || (coll == 'config' && docId == 'params'); }
       allow read: if coll == 'salarios' ? areaOk(orgId, A_RH(), 1) : areaOk(orgId, A_OPS(), 1);
-      allow write: if coll == 'salarios' ? areaOk(orgId, A_RH(), 2)
+      // ponto_dia: horas do ponto para o Diário, gravadas só pelo servidor (server/ponto/diarioSync.ts).
+      allow write: if coll == 'ponto_dia' ? false
+        : coll == 'salarios' ? areaOk(orgId, A_RH(), 2)
         : (managerOnlyWrite() ? opsManager() && areaOk(orgId, A_OPS(), 2) : areaOk(orgId, A_OPS(), 2));
     }
 
@@ -1533,5 +1535,15 @@ service cloud.firestore {
     match /travel_provider_accounts/{accountId} {
       allow read, write: if false;
     }
+    // Ponto eletrônico (REP-P): marcações, eventos, CPF/PIN, aparelhos e pareamentos. Só o servidor (server/ponto/*).
+    match /ponto_marcacoes/{id} { allow read, write: if false; }
+    match /ponto_eventos/{id} { allow read, write: if false; }
+    match /ponto_estab_state/{id} { allow read, write: if false; }
+    match /ponto_clientids/{id} { allow read, write: if false; }
+    match /ponto_pessoas/{id} { allow read, write: if false; }
+    match /ponto_devices/{id} { allow read, write: if false; }
+    match /ponto_pairings/{id} { allow read, write: if false; }
+    match /ponto_ajustes/{id} { allow read, write: if false; }
+    match /ponto_estabelecimentos/{id} { allow read, write: if false; }
   }
 }
