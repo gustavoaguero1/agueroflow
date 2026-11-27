@@ -9,7 +9,10 @@ type Ref = { path: string; id: string };
 type QueryRef = { collection: string; filters: Array<[string, unknown]>; where: (field: string, operator: string, value: unknown) => QueryRef; limit: (count: number) => QueryRef };
 function mockAdmin(seed: Record<string, unknown>) {
   const docs = new Map(Object.entries(seed));
-  const ref = (collection: string, id: string): Ref => ({ path: collection + '/' + id, id });
+  const ref = (collection: string, id: string): Ref => ({
+    path: collection + '/' + id, id,
+    get: async () => { const data = docs.get(collection + '/' + id); return { id, exists: data !== undefined, data: () => data }; },
+  } as Ref);
   const queryResult = (query: QueryRef) => [...docs.entries()]
     .filter(([path, value]) => path.startsWith(query.collection + '/') && query.filters.every(([field, expected]) => (value as any)?.[field] === expected))
     .map(([path, data]) => ({ id: path.split('/').pop(), exists: true, data: () => data }));
