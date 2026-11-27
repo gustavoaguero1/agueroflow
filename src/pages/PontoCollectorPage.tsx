@@ -39,7 +39,14 @@ import {
   matchFace1toN,
   type LivenessSample,
 } from '../ponto/faceMath';
-import { analyzeVideoFrame, captureCompressedSelfie, loadFaceModels } from '../ponto/faceEngine';
+import {
+  captureCompressedSelfie,
+  detectFacePreview,
+  extractFaceDescriptor,
+  loadFaceModels,
+  loadPreviewModels,
+  yieldToMain,
+} from '../ponto/faceEngine';
 import {
   clearDeviceIdentity,
   computeCurrentTimestamp,
@@ -142,6 +149,7 @@ export const PontoCollectorPage: React.FC = () => {
 
   // Captura facial para bater ponto
   const [scanning, setScanning] = useState(false);
+  const [scanFaceDetected, setScanFaceDetected] = useState(false);
   const [scanPhase, setScanPhase] = useState<string>('Abrindo câmera...');
   const [scanHint, setScanHint] = useState<string>('Olhe diretamente para a câmera');
   const [scanProgress, setScanProgress] = useState<number>(0);
@@ -150,7 +158,7 @@ export const PontoCollectorPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
-  const scanBusyRef = useRef(false);
+  const scanRunningRef = useRef(false);
 
   // Registra Service Worker offline-first do Ponto
   useEffect(() => {
@@ -219,9 +227,9 @@ export const PontoCollectorPage: React.FC = () => {
         if (id && navigator.onLine) {
           await handleSyncAll(true);
         }
-        // Pré-aquece modelos faciais em segundo plano quando já pareado
+        // Pré-aquece apenas o detector leve (265 KB) em segundo plano quando já pareado
         if (id) {
-          loadFaceModels().catch(() => undefined);
+          loadPreviewModels().catch(() => undefined);
         }
       } finally {
         if (active) setBooting(false);
@@ -292,15 +300,16 @@ export const PontoCollectorPage: React.FC = () => {
   }, [gps, identity]);
 
   const stopScanCamera = useCallback(() => {
+    scanRunningRef.current = false;
     if (scanTimerRef.current !== null) {
-      window.clearInterval(scanTimerRef.current);
+      window.clearTimeout(scanTimerRef.current);
       scanTimerRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    scanBusyRef.current = false;
+    setScanFaceDetected(false);
     setScanning(false);
   }, []);
 
@@ -318,8 +327,8 @@ export const PontoCollectorPage: React.FC = () => {
         window.history.replaceState({}, '', '/?ponto=1');
       }
       await reloadLocalState();
-      // Pré-aquece os modelos faciais para cache offline
-      loadFaceModels().catch(() => undefined);
+      // Pré-aquece apenas o detector leve (265 KB) em segundo plano
+      loadPreviewModels().catch(() => undefined);
       // No celular pessoal sem rosto cadastrado, já abre o onboarding de LGPD + cadastro facial
       if (paired.modo === 'pessoal' && paired.biometria.status === 'pendente') {
         setShowEnrollModal(true);
@@ -371,156 +380,153 @@ export const PontoCollectorPage: React.FC = () => {
     [gps, identity, reloadLocalState, selectedTipo],
   );
 
-  // Fluxo principal: 1 botão → abre câmera → prova de vida passiva → reconhece rosto 1:1 ou 1:N → bate ponto!
+  // Fluxo principal em 2 estágios (ZERO congelamento): preview leve (265 KB) → 1 extração 128-D na confirmação!
   const handleStartFacialPunch = async () => {
     if (!identity) return;
+    if (
+      identity.modo === 'pessoal' &&
+      !(identity.biometria.status === 'cadastrada' && identity.biometria.descriptors.length > 0)
+    ) {
+      setErrorMsg(
+        'Seu rosto ainda não está cadastrado. Conclua o cadastro facial ou entre em contato com o departamento de RH para emissão do link de cadastro.',
+      );
+      return;
+    }
+
+    stopScanCamera();
     setErrorMsg(null);
     setStatusBanner(null);
     setScanning(true);
+    setScanFaceDetected(false);
     setScanPhase('Abrindo câmera...');
     setScanHint('Centralize seu rosto no oval');
     setScanProgress(10);
+    scanRunningRef.current = true;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 } },
         audio: false,
       });
+      if (!scanRunningRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
 
-      setScanPhase('Carregando reconhecimento facial...');
+      await loadPreviewModels((msg) => setScanPhase(msg));
+      if (!scanRunningRef.current) return;
       await loadFaceModels((msg) => setScanPhase(msg));
+      if (!scanRunningRef.current) return;
+
       setScanPhase('Reconhecendo rosto...');
-      setScanProgress(35);
+      setScanProgress(30);
 
       const startedAt = Date.now();
       const samples: LivenessSample[] = [];
-      let bestDescriptor: number[] | null = null;
-      let bestMatchScore = 0;
-      let bestTotemMatch: { rhId: string; nome: string; score: number; matched: boolean } | null = null;
 
-      scanTimerRef.current = window.setInterval(async () => {
-        if (scanBusyRef.current || !videoRef.current) return;
-        scanBusyRef.current = true;
-
+      const tick = async () => {
+        if (!scanRunningRef.current || !videoRef.current) return;
         try {
           const elapsed = Date.now() - startedAt;
-          const res = await analyzeVideoFrame(videoRef.current);
+          const preview = await detectFacePreview(videoRef.current);
+          if (!scanRunningRef.current) return;
 
-          if (res.status === 'no_face') {
+          if (preview.status === 'no_face') {
+            setScanFaceDetected(false);
             setScanHint('Nenhum rosto encontrado — olhe para a câmera');
-            return;
-          }
-          if (res.status === 'multiple_faces') {
+          } else if (preview.status === 'multiple_faces') {
+            setScanFaceDetected(false);
             setScanHint('Mais de um rosto na câmera — deixe apenas uma pessoa');
-            return;
-          }
-          if (!res.descriptor) return;
-
-          samples.push({
-            ear: res.ear ?? 0.28,
-            yaw: res.yaw ?? 0,
-            boxCx: res.boxCx ?? 0.5,
-            boxCy: res.boxCy ?? 0.5,
-          });
-          if (samples.length > 14) samples.shift();
-
-          const live = evaluateLiveness(samples);
-
-          if (identity.modo === 'pessoal') {
-            const hasEnrolled = identity.biometria.status === 'cadastrada' && identity.biometria.descriptors.length > 0;
-            const match = hasEnrolled
-              ? matchFace1to1(res.descriptor, identity.biometria.descriptors, FACE_MATCH_THRESHOLD)
-              : null;
-
-            if (!bestDescriptor || (match && match.score >= bestMatchScore)) {
-              bestDescriptor = res.descriptor;
-              bestMatchScore = match?.score ?? 0;
-            }
-
-            const progress = Math.min(95, 35 + Math.round((samples.length / 5) * 45) + (live.passed ? 15 : 0));
-            setScanProgress(progress);
-
-            if (!live.passed && elapsed > 2000) {
-              setScanHint('Pisque uma vez para confirmar prova de vida');
-            } else if (hasEnrolled && match && !match.matched) {
-              setScanHint(`Conferindo rosto... (${Math.round(match.score * 100)}%)`);
-            } else {
-              setScanHint('Rosto detectado! Confirmando...');
-            }
-
-            // Conclui quando prova de vida passou (ou após 4.2s de captura real sem travar o trabalhador — Portaria 671)
-            const ready = (samples.length >= 4 && live.passed && (!hasEnrolled || (match && match.matched))) || elapsed >= 4500;
-            if (ready) {
-              const selfie = captureCompressedSelfie(videoRef.current);
-              stopScanCamera();
-              setScanPhase('Registrando ponto...');
-
-              await finalizePunch({
-                rhId: identity.rhId!,
-                pessoaNome: identity.pessoa?.nome ?? 'Colaborador',
-                metodo: hasEnrolled ? 'rosto' : 'nenhum',
-                face: hasEnrolled
-                  ? { score: bestMatchScore, liveness: live.score, modelo: FACE_MODEL_VERSION }
-                  : null,
-                faceDescriptor: hasEnrolled ? bestDescriptor : null,
-                fotoDataUrl: selfie,
-              });
-            }
           } else {
-            // Modo Totem (1:N entre funcionários cadastrados)
-            const candidates = identity.totemPessoas.filter((p) => p.descriptors.length > 0);
-            const idMatch = matchFace1toN(res.descriptor, candidates, FACE_MATCH_THRESHOLD);
+            setScanFaceDetected(true);
+            samples.push({
+              ear: preview.ear ?? 0.28,
+              yaw: preview.yaw ?? 0,
+              boxCx: preview.boxCx ?? 0.5,
+              boxCy: preview.boxCy ?? 0.5,
+            });
+            if (samples.length > 10) samples.shift();
 
-            if (idMatch && (!bestTotemMatch || idMatch.score > bestTotemMatch.score)) {
-              bestTotemMatch = idMatch;
-              bestDescriptor = res.descriptor;
+            const live = evaluateLiveness(samples);
+            setScanProgress(Math.min(85, 30 + Math.round((samples.length / 3) * 40) + (live.passed ? 15 : 0)));
+
+            if (!live.passed && elapsed > 1800) {
+              setScanHint('Pisque uma vez para confirmar prova de vida');
+            } else {
+              setScanHint('Rosto enquadrado ✓ — confirmando identidade...');
             }
 
-            setScanProgress(Math.min(95, 35 + Math.round((samples.length / 5) * 60)));
+            // Assim que temos 3 quadros estáveis + prova de vida (ou 3.2s com rosto enquadrado), extrai 1 único vetor 128-D!
+            if (samples.length >= 3 && (live.passed || elapsed >= 3200)) {
+              setScanPhase('Validando identidade...');
+              setScanProgress(92);
+              await yieldToMain(35);
+              if (!scanRunningRef.current || !videoRef.current) return;
 
-            if (bestTotemMatch?.matched) {
-              setScanHint(`Identificado: ${bestTotemMatch.nome} (${Math.round(bestTotemMatch.score * 100)}%)`);
-              if (samples.length >= 4 && (live.passed || elapsed >= 2600)) {
+              const extracted = await extractFaceDescriptor(videoRef.current);
+              if (!scanRunningRef.current || !videoRef.current) return;
+
+              if (extracted.status === 'ok' && extracted.descriptor) {
                 const selfie = captureCompressedSelfie(videoRef.current);
-                stopScanCamera();
-                await finalizePunch({
-                  rhId: bestTotemMatch.rhId,
-                  pessoaNome: bestTotemMatch.nome,
-                  metodo: 'rosto',
-                  face: { score: bestTotemMatch.score, liveness: live.score, modelo: FACE_MODEL_VERSION },
-                  faceDescriptor: bestDescriptor,
-                  fotoDataUrl: selfie,
-                });
+
+                if (identity.modo === 'pessoal') {
+                  const match = matchFace1to1(extracted.descriptor, identity.biometria.descriptors, FACE_MATCH_THRESHOLD);
+                  stopScanCamera();
+                  await finalizePunch({
+                    rhId: identity.rhId!,
+                    pessoaNome: identity.pessoa?.nome ?? 'Colaborador',
+                    metodo: 'rosto',
+                    face: { score: match.score, liveness: live.score, modelo: FACE_MODEL_VERSION },
+                    faceDescriptor: extracted.descriptor,
+                    fotoDataUrl: selfie,
+                  });
+                  return;
+                } else {
+                  const candidates = identity.totemPessoas.filter((p) => p.descriptors.length > 0);
+                  const idMatch = matchFace1toN(extracted.descriptor, candidates, FACE_MATCH_THRESHOLD);
+                  if (idMatch?.matched) {
+                    stopScanCamera();
+                    await finalizePunch({
+                      rhId: idMatch.rhId,
+                      pessoaNome: idMatch.nome,
+                      metodo: 'rosto',
+                      face: { score: idMatch.score, liveness: live.score, modelo: FACE_MODEL_VERSION },
+                      faceDescriptor: extracted.descriptor,
+                      fotoDataUrl: selfie,
+                    });
+                    return;
+                  }
+                  stopScanCamera();
+                  setErrorMsg(
+                    'Rosto não encontrado nos cadastros desta obra. Entre em contato com o departamento de RH para realizar o cadastro facial.',
+                  );
+                  return;
+                }
               }
-            } else if (elapsed >= 5200) {
-              stopScanCamera();
-              setShowPinModal(true);
-              setErrorMsg('Rosto não reconhecido automaticamente. Selecione seu nome e digite seu PIN.');
-            } else {
-              setScanHint(
-                candidates.length === 0
-                  ? 'Nenhum rosto cadastrado ainda na obra. Use o botão PIN abaixo.'
-                  : 'Identificando colaborador...',
-              );
             }
           }
         } catch (err) {
           stopScanCamera();
           setErrorMsg(err instanceof Error ? err.message : 'Erro ao registrar o ponto.');
-        } finally {
-          scanBusyRef.current = false;
+          return;
         }
-      }, 320);
+
+        if (scanRunningRef.current) {
+          scanTimerRef.current = window.setTimeout(() => void tick(), 280);
+        }
+      };
+
+      scanTimerRef.current = window.setTimeout(() => void tick(), 200);
     } catch (err) {
       stopScanCamera();
       setErrorMsg(
         err instanceof Error
-          ? `Câmera indisponível (${err.message}). Você pode bater o ponto usando o PIN.`
+          ? `Câmera indisponível (${err.message}).`
           : 'Permissão de câmera negada.',
       );
     }
@@ -842,35 +848,13 @@ export const PontoCollectorPage: React.FC = () => {
           </div>
         )}
 
-        {/* Alerta de cadastro facial pendente no celular pessoal */}
-        {identity.modo === 'pessoal' && identity.biometria.status === 'pendente' && (
-          <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <p className="text-xs font-bold text-cyan-200 flex items-center gap-1.5">
-                <ScanFace className="w-4 h-4" />
-                <span>Cadastre seu rosto para bater ponto em 2 segundos</span>
-              </p>
-              <p className="text-[11px] text-slate-300">
-                Leva 20 segundos, funciona offline na obra e segue a LGPD.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowEnrollModal(true)}
-              className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shrink-0 cursor-pointer"
-            >
-              Cadastrar rosto
-            </button>
-          </div>
-        )}
-
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start justify-between gap-2">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
-            <button type="button" onClick={() => setErrorMsg(null)} className="text-rose-200 hover:text-white">
+            <button type="button" onClick={() => setErrorMsg(null)} className="text-rose-200 hover:text-white cursor-pointer">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -879,155 +863,238 @@ export const PontoCollectorPage: React.FC = () => {
         {statusBanner && (
           <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs flex items-center justify-between gap-2">
             <span>{statusBanner}</span>
-            <button type="button" onClick={() => setStatusBanner(null)} className="text-emerald-200 hover:text-white">
+            <button type="button" onClick={() => setStatusBanner(null)} className="text-emerald-200 hover:text-white cursor-pointer">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* Relógio Oficial + GPS */}
-        <section className="rounded-3xl bg-[#111827] border border-slate-800 p-6 text-center space-y-2.5 shadow-xl">
-          <p className="text-xs text-slate-400 capitalize">{fmtDateLong(nowDate)}</p>
-          <div className="text-5xl sm:text-6xl font-mono font-black tracking-tight text-white tabular-nums">
-            {fmtClock(nowDate)}
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-[11px]">
-            <span
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${
-                nearestObra?.dentro
-                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                  : gps
-                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              {nearestObra?.dentro
-                ? `${identity.obras.find((o) => o.id === nearestObra.unitId)?.nome ?? 'Na obra'} (${nearestObra.distM} m)`
-                : gps
-                ? nearestObra
-                  ? `Fora da cerca (${nearestObra.distM} m)`
-                  : 'GPS ativo'
-                : 'Obtendo GPS...'}
-            </span>
+        {/* Trava obrigatória: tela de bater ponto SÓ libera após rosto cadastrado (ou recusa LGPD com PIN ativo pelo RH) */}
+        {(() => {
+          const hasRegisteredFace =
+            identity.modo === 'pessoal'
+              ? identity.biometria.status === 'cadastrada' && identity.biometria.descriptors.length > 0
+              : identity.totemPessoas.some((p) => p.temRosto);
+          const hasLgpdPinFallback =
+            identity.modo === 'pessoal'
+              ? identity.biometria.status === 'recusada' && identity.pessoa?.temPin === true
+              : identity.totemPessoas.some((p) => p.temPin);
+          const isReadyToPunch = hasRegisteredFace || hasLgpdPinFallback;
 
-            {identity.modo === 'pessoal' && (
-              <span
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${
-                  identity.biometria.status === 'cadastrada'
-                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                <ScanFace className="w-3.5 h-3.5" />
-                {identity.biometria.status === 'cadastrada'
-                  ? `Facial ativa (${identity.biometria.poses} poses)`
-                  : identity.biometria.status === 'recusada'
-                  ? 'Modo PIN (sem biometria)'
-                  : 'Rosto pendente'}
-              </span>
-            )}
-          </div>
-        </section>
+          if (!isReadyToPunch) {
+            return (
+              <section className="rounded-3xl bg-[#111827] border border-amber-500/35 p-6 text-center space-y-4 shadow-xl">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/35 flex items-center justify-center text-amber-400">
+                  <ScanFace className="w-9 h-9" />
+                </div>
+                <div className="space-y-1.5">
+                  <h2 className="text-lg font-extrabold text-white">
+                    {identity.modo === 'totem'
+                      ? 'Nenhum rosto cadastrado nesta obra'
+                      : identity.biometria.status === 'recusada'
+                      ? 'PIN pendente no departamento de RH'
+                      : 'Cadastro facial obrigatório'}
+                  </h2>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {identity.modo === 'totem'
+                      ? 'A tela de bater ponto só é liberada após pelo menos um colaborador da obra ter o rosto cadastrado. Entre em contato com o departamento de RH para emissão do link ou cadastro presencial.'
+                      : identity.biometria.status === 'recusada'
+                      ? 'Você optou por não usar reconhecimento facial, mas ainda não possui um PIN cadastrado. Entre em contato com o departamento de RH para definir seu PIN ou realize o cadastro facial abaixo.'
+                      : 'A tela de bater ponto só é liberada depois que o seu rosto estiver cadastrado. Conclua o cadastro facial abaixo ou entre em contato com o departamento de RH para emissão do link de cadastro.'}
+                  </p>
+                </div>
 
-        {/* Seletor rápido do tipo da marcação */}
-        <section className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-slate-400 px-1">
-            Marcação selecionada (sugerida automaticamente):
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {TIPOS_MARCACAO.map((tipo) => {
-              const active = selectedTipo === tipo;
-              return (
+                <div className="space-y-2.5 pt-1">
+                  {identity.modo === 'pessoal' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowEnrollModal(true)}
+                      className="apple-solid-btn w-full py-3.5 rounded-2xl af-btn-primary text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <ScanFace className="w-5 h-5" />
+                      <span>Cadastrar meu rosto agora</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={syncing || !isOnline}
+                    onClick={() => void handleSyncAll(false)}
+                    className="w-full py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                    <span>Já cadastrei no RH — Atualizar status</span>
+                  </button>
+                </div>
+              </section>
+            );
+          }
+
+          return (
+            <>
+              {/* Relógio Oficial + GPS */}
+              <section className="rounded-3xl bg-[#111827] border border-slate-800 p-6 text-center space-y-2.5 shadow-xl">
+                <p className="text-xs text-slate-400 capitalize">{fmtDateLong(nowDate)}</p>
+                <div className="text-5xl sm:text-6xl font-mono font-black tracking-tight text-white tabular-nums">
+                  {fmtClock(nowDate)}
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-[11px]">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${
+                      nearestObra?.dentro
+                        ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        : gps
+                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    {nearestObra?.dentro
+                      ? `${identity.obras.find((o) => o.id === nearestObra.unitId)?.nome ?? 'Na obra'} (${nearestObra.distM} m)`
+                      : gps
+                      ? nearestObra
+                        ? `Fora da cerca (${nearestObra.distM} m)`
+                        : 'GPS ativo'
+                      : 'Obtendo GPS...'}
+                  </span>
+
+                  {identity.modo === 'pessoal' && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${
+                        identity.biometria.status === 'cadastrada'
+                          ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <ScanFace className="w-3.5 h-3.5" />
+                      {identity.biometria.status === 'cadastrada'
+                        ? `Facial ativa (${identity.biometria.poses} poses)`
+                        : 'Modo PIN (sem biometria)'}
+                    </span>
+                  )}
+                </div>
+              </section>
+
+              {/* Seletor rápido do tipo da marcação */}
+              <section className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-400 px-1">
+                  Marcação selecionada (sugerida automaticamente):
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {TIPOS_MARCACAO.map((tipo) => {
+                    const active = selectedTipo === tipo;
+                    return (
+                      <button
+                        key={tipo}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTipo(tipo);
+                          setManualTipoOverride(true);
+                        }}
+                        className={`py-2.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                          active
+                            ? 'bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-600/25 apple-solid-btn'
+                            : 'bg-[#111827] border-slate-800 text-slate-300 hover:border-slate-600'
+                        }`}
+                      >
+                        {TIPO_LABEL[tipo]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Botão Gigante BATER PONTO */}
+              {hasRegisteredFace ? (
                 <button
-                  key={tipo}
+                  type="button"
+                  onClick={() => void handleStartFacialPunch()}
+                  className="apple-solid-btn w-full py-6 rounded-3xl bg-gradient-to-b from-[#0A84FF] to-[#0066CC] hover:brightness-110 active:scale-[0.99] text-white shadow-2xl shadow-blue-600/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <Camera className="w-8 h-8" />
+                  </div>
+                  <span className="text-xl font-extrabold tracking-tight">BATER PONTO</span>
+                  <span className="text-xs opacity-90">
+                    {identity.modo === 'totem'
+                      ? 'Toque e olhe para a câmera — identificação automática'
+                      : `Registrar ${TIPO_LABEL[selectedTipo]} com reconhecimento facial`}
+                  </span>
+                </button>
+              ) : (
+                <button
                   type="button"
                   onClick={() => {
-                    setSelectedTipo(tipo);
-                    setManualTipoOverride(true);
+                    setErrorMsg(null);
+                    setShowPinModal(true);
                   }}
-                  className={`py-2.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                    active
-                      ? 'bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-600/25 apple-solid-btn'
-                      : 'bg-[#111827] border-slate-800 text-slate-300 hover:border-slate-600'
-                  }`}
+                  className="apple-solid-btn w-full py-6 rounded-3xl bg-gradient-to-b from-[#0A84FF] to-[#0066CC] hover:brightness-110 active:scale-[0.99] text-white shadow-2xl shadow-blue-600/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer"
                 >
-                  {TIPO_LABEL[tipo]}
+                  <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <KeyRound className="w-8 h-8" />
+                  </div>
+                  <span className="text-xl font-extrabold tracking-tight">BATER PONTO COM PIN</span>
+                  <span className="text-xs opacity-90">
+                    Registrar {TIPO_LABEL[selectedTipo]} (modo sem biometria)
+                  </span>
                 </button>
-              );
-            })}
-          </div>
-        </section>
+              )}
 
-        {/* Botão Gigante BATER PONTO */}
-        <button
-          type="button"
-          onClick={() => void handleStartFacialPunch()}
-          className="apple-solid-btn w-full py-6 rounded-3xl bg-gradient-to-b from-[#0A84FF] to-[#0066CC] hover:brightness-110 active:scale-[0.99] text-white shadow-2xl shadow-blue-600/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer"
-        >
-          <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
-            <Camera className="w-8 h-8" />
-          </div>
-          <span className="text-xl font-extrabold tracking-tight">BATER PONTO</span>
-          <span className="text-xs opacity-90">
-            {identity.modo === 'totem'
-              ? 'Toque e olhe para a câmera — identificação automática'
-              : `Registrar ${TIPO_LABEL[selectedTipo]} com reconhecimento facial`}
-          </span>
-        </button>
-
-        {/* Plano B: PIN + ações secundárias */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setErrorMsg(null);
-              setShowPinModal(true);
-            }}
-            className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <KeyRound className="w-4 h-4 text-amber-400" />
-            <span>Bater com PIN</span>
-          </button>
-
-          {identity.modo === 'pessoal' ? (
-            <button
-              type="button"
-              onClick={() => setShowEnrollModal(true)}
-              className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ScanFace className="w-4 h-4 text-cyan-400" />
-              <span>{identity.biometria.status === 'cadastrada' ? 'Recadastrar rosto' : 'Cadastrar rosto'}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleInstallPwa()}
-              className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Download className="w-4 h-4 text-blue-400" />
-              <span>Instalar na tela</span>
-            </button>
-          )}
-        </div>
-
-        {/* Marcações de hoje (modo pessoal) */}
-        {identity.modo === 'pessoal' && identity.ultimasDoDia.length > 0 && (
-          <section className="rounded-2xl bg-[#111827] border border-slate-800 p-4 space-y-2">
-            <h3 className="text-xs font-bold text-slate-300">Suas marcações de hoje</h3>
-            <div className="flex flex-wrap gap-2">
-              {identity.ultimasDoDia.map((m, i) => (
-                <span
-                  key={`${m.dataHora}-${i}`}
-                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-100"
+              {/* Plano B: PIN + ações secundárias */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setShowPinModal(true);
+                  }}
+                  className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span className="text-slate-400 mr-1.5 font-sans">{TIPO_LABEL[m.tipo]}</span>
-                  {m.dataHora.slice(11, 16)}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
+                  <KeyRound className="w-4 h-4 text-amber-400" />
+                  <span>Bater com PIN</span>
+                </button>
+
+                {identity.modo === 'pessoal' ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowEnrollModal(true)}
+                    className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <ScanFace className="w-4 h-4 text-cyan-400" />
+                    <span>{identity.biometria.status === 'cadastrada' ? 'Recadastrar rosto' : 'Cadastrar rosto'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleInstallPwa()}
+                    className="py-3 px-3 rounded-2xl bg-[#111827] border border-slate-800 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-blue-400" />
+                    <span>Instalar na tela</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Marcações de hoje (modo pessoal) */}
+              {identity.modo === 'pessoal' && identity.ultimasDoDia.length > 0 && (
+                <section className="rounded-2xl bg-[#111827] border border-slate-800 p-4 space-y-2">
+                  <h3 className="text-xs font-bold text-slate-300">Suas marcações de hoje</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {identity.ultimasDoDia.map((m, i) => (
+                      <span
+                        key={`${m.dataHora}-${i}`}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-slate-100"
+                      >
+                        <span className="text-slate-400 mr-1.5 font-sans">{TIPO_LABEL[m.tipo]}</span>
+                        {m.dataHora.slice(11, 16)}
+                      </span>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          );
+        })()}
 
         {/* Rodapé discreto */}
         <footer className="mt-auto pt-3 flex items-center justify-between text-[11px] text-slate-500">
@@ -1060,7 +1127,7 @@ export const PontoCollectorPage: React.FC = () => {
           <div className="ponto-camera-hud p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-bold">{scanPhase}</p>
-              <p className="text-xs ponto-hud-accent">{scanHint}</p>
+              <p className={`text-xs ${scanFaceDetected ? 'ponto-hud-ok' : 'ponto-hud-accent'}`}>{scanHint}</p>
             </div>
             <button
               type="button"
@@ -1081,12 +1148,16 @@ export const PontoCollectorPage: React.FC = () => {
               className="w-full h-full object-cover scale-x-[-1]"
             />
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-60 h-76 rounded-full border-4 border-cyan-400/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.48)]" />
+              <div
+                className={`w-60 h-76 rounded-full border-4 transition-colors duration-200 shadow-[0_0_0_9999px_rgba(0,0,0,0.48)] ${
+                  scanFaceDetected ? 'border-emerald-400' : 'border-cyan-400/90'
+                }`}
+              />
             </div>
             <div className="absolute bottom-6 left-4 right-4 max-w-md mx-auto space-y-3">
               <div className="h-2 rounded-full bg-white/20 overflow-hidden">
                 <div
-                  className="h-full bg-cyan-400 transition-all duration-300"
+                  className="h-full bg-emerald-400 transition-all duration-300"
                   style={{ width: `${scanProgress}%` }}
                 />
               </div>
