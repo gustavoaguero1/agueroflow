@@ -11,11 +11,11 @@ import {
 } from 'lucide-react';
 import { CommercialPolicy } from '../../types/commercial';
 import { saveCommercialPolicy } from '../../services/commercialService';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CommercialSettingsManagerProps {
   policy: CommercialPolicy | null;
   organizationId: string;
-  userRole?: string;
   userName: string;
   onRefresh: () => Promise<void>;
 }
@@ -23,11 +23,11 @@ interface CommercialSettingsManagerProps {
 export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps> = ({
   policy,
   organizationId,
-  userRole,
   userName,
   onRefresh,
 }) => {
-  const isAdmin = userRole === 'Super Admin' || userRole === 'Admin';
+  const { moduleLevel } = useAuth();
+  const canAdminister = moduleLevel('comercial-configuracoes') >= 4;
 
   const [defaultMarkup, setDefaultMarkup] = useState<number>(policy?.defaultMarkupPercent || 25);
   const [minMarkup, setMinMarkup] = useState<number>(policy?.minMarkupPercent || 15);
@@ -64,8 +64,8 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) {
-      alert('Apenas administradores podem alterar as políticas comerciais da organização.');
+    if (!canAdminister) {
+      alert('A alteração das políticas comerciais exige nível Administrar em Configurações Comerciais.');
       return;
     }
 
@@ -198,7 +198,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-300 mb-1">Markup Padrão Global (%) *</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={defaultMarkup}
                 onChange={(e) => setDefaultMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono font-bold"
@@ -209,7 +209,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-300 mb-1">Markup Mínimo Autorizado (%) *</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={minMarkup}
                 onChange={(e) => setMinMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono font-bold"
@@ -220,7 +220,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-300 mb-1">Markup Máximo Autorizado (%) *</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={maxMarkup}
                 onChange={(e) => setMaxMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono font-bold"
@@ -240,7 +240,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Tubulações (%)</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={tubulacoesMarkup}
                 onChange={(e) => setTubulacoesMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -250,7 +250,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Válvulas (%)</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={valvulasMarkup}
                 onChange={(e) => setValvulasMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -260,7 +260,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Conexões (%)</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={conexoesMarkup}
                 onChange={(e) => setConexoesMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -270,7 +270,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Instrumentação (%)</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={instrumentacaoMarkup}
                 onChange={(e) => setInstrumentacaoMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -280,7 +280,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Fixação (%)</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={fixacaoMarkup}
                 onChange={(e) => setFixacaoMarkup(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -300,7 +300,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Tubulações Inox</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={tubulacoesValidity}
                 onChange={(e) => setTubulacoesValidity(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -310,7 +310,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Válvulas & Atuadores</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={valvulasValidity}
                 onChange={(e) => setValvulasValidity(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -320,7 +320,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Conexões & Flanges</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={conexoesValidity}
                 onChange={(e) => setConexoesValidity(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -330,7 +330,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
               <label className="block text-slate-400 mb-1">Instrumentação</label>
               <input
                 type="number"
-                disabled={!isAdmin}
+                disabled={!canAdminister}
                 value={instrumentacaoValidity}
                 onChange={(e) => setInstrumentacaoValidity(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono"
@@ -339,7 +339,7 @@ export const CommercialSettingsManager: React.FC<CommercialSettingsManagerProps>
           </div>
         </div>
 
-        {isAdmin ? (
+        {canAdminister ? (
           <div className="flex justify-end pt-3 border-t border-slate-800">
             <button
               type="submit"
