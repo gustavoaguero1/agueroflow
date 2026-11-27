@@ -23,7 +23,13 @@ import {
   ExternalLink,
   ScanFace,
 } from 'lucide-react';
-import { analyzeVideoFrame, loadFaceModels } from '../../ponto/faceEngine';
+import {
+  detectFacePreview,
+  extractFaceDescriptor,
+  loadFaceModels,
+  loadPreviewModels,
+  yieldToMain,
+} from '../../ponto/faceEngine';
 import { FACE_MODEL_VERSION, LGPD_TERM_VERSION } from '../../ponto/faceMath';
 
 interface FaceEnrollModalProps {
@@ -68,16 +74,18 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const loopTimerRef = useRef<number | null>(null);
-  const busyFrameRef = useRef(false);
+  const runningRef = useRef(false);
   const poseIndexRef = useRef(0);
   const descriptorsRef = useRef<number[][]>([]);
   const lastCaptureAtRef = useRef(0);
+  const stableHitsRef = useRef(0);
 
   const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   const stopCamera = useCallback(() => {
+    runningRef.current = false;
     if (loopTimerRef.current !== null) {
-      window.clearInterval(loopTimerRef.current);
+      window.clearTimeout(loopTimerRef.current);
       loopTimerRef.current = null;
     }
     if (streamRef.current) {
@@ -117,6 +125,7 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
       descriptorsRef.current = nextCollected;
       setDescriptors(nextCollected);
       lastCaptureAtRef.current = Date.now();
+      stableHitsRef.current = 0;
 
       if (nextCollected.length >= POSES.length) {
         await finishAndSave(nextCollected);
@@ -130,6 +139,7 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
   );
 
   const startCapture = useCallback(async () => {
+    stopCamera();
     setError(null);
     setCameraBlockedInIframe(false);
     setPoseIndex(0);
@@ -137,8 +147,10 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
     setDescriptors([]);
     descriptorsRef.current = [];
     lastCaptureAtRef.current = 0;
+    stableHitsRef.current = 0;
     setFaceDetectedNow(false);
     setStep('capture');
+    runningRef.current = true;
 
     try {
       setModelStatus('Abrindo câmera...');
@@ -148,11 +160,15 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 480 },
+          height: { ideal: 360 },
         },
         audio: false,
       });
+      if (!runningRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -160,49 +176,63 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
       }
       setCameraReady(true);
 
+      // Estágio 1: carrega apenas 265 KB do detector rápido primeiro para resposta imediata
+      await loadPreviewModels((msg) => setModelStatus(msg));
+      if (!runningRef.current) return;
+      // Carrega reconhecimento 128-D com yield para a UI respirar
       await loadFaceModels((msg) => setModelStatus(msg));
+      if (!runningRef.current) return;
+
       setModelsReady(true);
-      setFeedback('Câmera pronta — olhe para o círculo para captura automática.');
+      setFeedback('Câmera pronta — centralize o rosto no círculo.');
 
-      loopTimerRef.current = window.setInterval(async () => {
-        if (busyFrameRef.current || !videoRef.current) return;
-        const nowMs = Date.now();
-        if (nowMs - lastCaptureAtRef.current < 1050) return;
-
-        busyFrameRef.current = true;
+      const tick = async () => {
+        if (!runningRef.current || !videoRef.current) return;
         try {
-          const res = await analyzeVideoFrame(videoRef.current);
-          if (res.status === 'no_face') {
-            setFaceDetectedNow(false);
-            setFeedback('Aguardando rosto no círculo... procure boa iluminação.');
-            return;
-          }
-          if (res.status === 'multiple_faces') {
-            setFaceDetectedNow(false);
-            setFeedback('Mais de um rosto em destaque. Deixe apenas o colaborador na imagem.');
-            return;
-          }
-          if (!res.descriptor) {
-            setFaceDetectedNow(false);
-            return;
-          }
+          const preview = await detectFacePreview(videoRef.current);
+          if (!runningRef.current) return;
 
-          setFaceDetectedNow(true);
-
-          if ((res.boxAreaRatio ?? 0) < 0.025) {
-            setFeedback('Rosto detectado! Aproxime só um pouco mais da câmera.');
-            return;
+          if (preview.status === 'no_face') {
+            stableHitsRef.current = 0;
+            setFaceDetectedNow(false);
+            setFeedback('Aguardando rosto no círculo... mantenha boa iluminação.');
+          } else if (preview.status === 'multiple_faces') {
+            stableHitsRef.current = 0;
+            setFaceDetectedNow(false);
+            setFeedback('Mais de um rosto detectado. Deixe apenas o colaborador na câmera.');
+          } else {
+            setFaceDetectedNow(true);
+            if ((preview.boxAreaRatio ?? 0) < 0.025) {
+              stableHitsRef.current = 0;
+              setFeedback('Rosto detectado! Aproxime só um pouco mais da câmera.');
+            } else {
+              stableHitsRef.current += 1;
+              const cooldownOk = Date.now() - lastCaptureAtRef.current >= 1200;
+              if (stableHitsRef.current >= 2 && cooldownOk) {
+                setFeedback(`Capturando pose ${descriptorsRef.current.length + 1} de ${POSES.length}...`);
+                await yieldToMain(40);
+                if (!runningRef.current || !videoRef.current) return;
+                const extracted = await extractFaceDescriptor(videoRef.current);
+                if (!runningRef.current) return;
+                if (extracted.status === 'ok' && extracted.descriptor) {
+                  await registerCapturedPose(extracted.descriptor);
+                }
+              } else {
+                setFeedback('Rosto enquadrado ✓ — segure 1 segundo...');
+              }
+            }
           }
-
-          setFeedback(`Rosto detectado (${Math.round((res.confidence ?? 0.9) * 100)}%) — capturando...`);
-          await registerCapturedPose(res.descriptor);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Falha na leitura do quadro facial.';
+          const msg = err instanceof Error ? err.message : 'Falha na leitura do quadro.';
           setFeedback(`Aviso: ${msg}`);
-        } finally {
-          busyFrameRef.current = false;
         }
-      }, 450);
+
+        if (runningRef.current) {
+          loopTimerRef.current = window.setTimeout(() => void tick(), 320);
+        }
+      };
+
+      loopTimerRef.current = window.setTimeout(() => void tick(), 250);
     } catch (e) {
       stopCamera();
       const rawMsg = e instanceof Error ? e.message : 'Permissão de câmera negada.';
@@ -224,8 +254,10 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({
     if (!videoRef.current || manualBusy) return;
     setManualBusy(true);
     setError(null);
+    setFeedback('Processando captura...');
     try {
-      const res = await analyzeVideoFrame(videoRef.current);
+      await yieldToMain(30);
+      const res = await extractFaceDescriptor(videoRef.current);
       if (res.status === 'ok' && res.descriptor) {
         setFaceDetectedNow(true);
         await registerCapturedPose(res.descriptor);

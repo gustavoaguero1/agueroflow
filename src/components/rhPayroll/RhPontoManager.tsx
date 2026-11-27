@@ -78,7 +78,7 @@ function getInitialPublicBase(serverPublicBase?: string | null): string {
 function isPrivatePreviewHost(urlStr: string): boolean {
   try {
     const host = new URL(urlStr).hostname;
-    return host === 'localhost' || host === '127.0.0.1' || /^ais-dev-/i.test(host);
+    return host === 'localhost' || host === '127.0.0.1' || /^ais-(dev|pre)-/i.test(host);
   } catch {
     return false;
   }
@@ -771,16 +771,16 @@ const PairingQrModal: React.FC<{
           <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs space-y-2">
             <p className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>Atenção: você está no link de preview privado (só abre neste notebook)</span>
+              <span>Link de preview privado do AI Studio (redireciona o celular para "Page not found")</span>
             </p>
-            <p className="text-[11px] text-slate-700 dark:text-slate-300">
-              Para o celular não dar <b>Page not found</b>, cole abaixo o endereço publicado do AgueroFlow (ex.: <code className="font-mono">https://...run.app</code>) — o QR Code atualiza na hora e fica salvo.
+            <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
+              Endereços <code className="font-mono">ais-pre-...</code> / <code className="font-mono">ais-dev-...</code> exigem login na sua conta do Google AI Studio e por isso dão <b>Page not found</b> em outros celulares. Cole abaixo a URL publicada do Cloud Run (botão <b>Deploy</b> no AI Studio, ex.: <code className="font-mono">https://agueroflow-...run.app</code>) — o QR atualiza na hora e fica salvo:
             </p>
             <input
               type="url"
               value={baseUrl}
               onChange={(e) => handleBaseChange(e.target.value)}
-              placeholder="https://seu-agueroflow.run.app"
+              placeholder="https://agueroflow-xxxxx.run.app"
               className={input}
             />
           </div>
