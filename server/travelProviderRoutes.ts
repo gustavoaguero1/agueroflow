@@ -11,6 +11,11 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { getAdmin } from './firebaseAdmin.ts';
 import { requireArea, requireRole } from './authMiddleware.ts';
 import { sealSecret, openSecret, parseSecretKey, type SealedSecret } from './secretBox.ts';
+import { createWsSelfBookingClient, readLemontechConfig } from './lemontech/wsSelfBooking.ts';
+import {
+  fetchAllSolicitacoes, normalizeSolicitacao, matchUnit,
+  type SolicitacaoClient, type SolicitacaoNormalizada, type UnitRef,
+} from './lemontech/sync.ts';
 
 export interface StoredMarTravelAccount {
   orgId: string;
@@ -27,7 +32,19 @@ export interface TravelProviderStore {
   getAccount(key: string): Promise<StoredMarTravelAccount | undefined>;
   setAccount(key: string, acc: StoredMarTravelAccount): Promise<void>;
   deleteAccount(key: string): Promise<void>;
+  /** Solicitações da Mar Travel (Lemontech) já normalizadas, uma por id. */
+  saveSolicitacoes(orgId: string, items: StoredSolicitacao[]): Promise<void>;
+  listSolicitacoes(orgId: string): Promise<StoredSolicitacao[]>;
+  getSolicitacao(orgId: string, id: string): Promise<StoredSolicitacao | undefined>;
+  getLemontechMeta(orgId: string): Promise<LemontechMeta | undefined>;
+  setLemontechMeta(orgId: string, meta: LemontechMeta): Promise<void>;
+  listUnits(orgId: string): Promise<UnitRef[]>;
 }
+
+export type StoredSolicitacao = Omit<SolicitacaoNormalizada, 'raw'> & {
+  orgId: string; unitId: string | null; unitName: string | null; rawJson: string; syncedAt: string;
+};
+export interface LemontechMeta { lastSync: string; desde: string; ate: string; total: number; by: string }
 
 export const accountKey = (orgId: string, uid: string) => `${orgId}__${uid}`;
 
@@ -36,12 +53,26 @@ export function firestoreTravelProviderStore(): TravelProviderStore | null {
   const h = getAdmin();
   if (!h) return null;
   const accounts = h.db.collection('travel_provider_accounts');
+  const sols = h.db.collection('travel_lemontech_solicitacoes');
   return {
     getSettings: async (o) => (await h.db.doc(`organizations/${o}`).get()).get('travelSettings'),
     setSettings: async (o, p) => { await h.db.doc(`organizations/${o}`).set({ travelSettings: p }, { merge: true }); },
     getAccount: async (k) => { const d = await accounts.doc(k).get(); return d.exists ? (d.data() as StoredMarTravelAccount) : undefined; },
     setAccount: async (k, a) => { await accounts.doc(k).set(a); },
     deleteAccount: async (k) => { await accounts.doc(k).delete(); },
+    saveSolicitacoes: async (o, items) => {
+      for (let i = 0; i < items.length; i += 400) {
+        const batch = h.db.batch();
+        for (const it of items.slice(i, i + 400)) batch.set(sols.doc(accountKey(o, it.id)), JSON.parse(JSON.stringify(it)));
+        await batch.commit();
+      }
+    },
+    listSolicitacoes: async (o) => (await sols.where('orgId', '==', o).get()).docs.map((d) => d.data() as StoredSolicitacao),
+    getSolicitacao: async (o, id) => { const d = await sols.doc(accountKey(o, id)).get(); return d.exists ? (d.data() as StoredSolicitacao) : undefined; },
+    getLemontechMeta: async (o) => (await h.db.doc(`organizations/${o}`).get()).get('travelSettings.lemontech'),
+    setLemontechMeta: async (o, m) => { await h.db.doc(`organizations/${o}`).set({ travelSettings: { lemontech: m } }, { merge: true }); },
+    listUnits: async (o) => (await h.db.collection('units').where('orgId', '==', o).get()).docs
+      .map((d) => ({ id: d.id, code: d.get('code'), name: d.get('name') })),
   };
 }
 
@@ -49,7 +80,17 @@ export function firestoreTravelProviderStore(): TravelProviderStore | null {
 export function memoryTravelProviderStore() {
   const settings = new Map<string, Record<string, unknown>>();
   const accounts = new Map<string, StoredMarTravelAccount>();
-  const store: TravelProviderStore & { dump: () => IterableIterator<[string, unknown]> } = {
+  const sols = new Map<string, StoredSolicitacao>();
+  const metas = new Map<string, LemontechMeta>();
+  const units = new Map<string, UnitRef[]>();
+  const store: TravelProviderStore & { units: Map<string, UnitRef[]>; dump: () => IterableIterator<[string, unknown]> } = {
+    units,
+    saveSolicitacoes: async (o, items) => { for (const it of items) sols.set(accountKey(o, it.id), JSON.parse(JSON.stringify(it))); },
+    listSolicitacoes: async (o) => [...sols.values()].filter((x) => x.orgId === o),
+    getSolicitacao: async (o, id) => sols.get(accountKey(o, id)),
+    getLemontechMeta: async (o) => metas.get(o),
+    setLemontechMeta: async (o, m) => { metas.set(o, m); },
+    listUnits: async (o) => units.get(o) ?? [],
     getSettings: async (o) => settings.get(o),
     setSettings: async (o, p) => { settings.set(o, { ...(settings.get(o) || {}), ...p }); },
     getAccount: async (k) => accounts.get(k),
@@ -70,8 +111,12 @@ export async function loadMarTravelCredentials(store: TravelProviderStore, keyB6
 export function createTravelProviderRouter(opts: {
   store?: () => TravelProviderStore | null;
   secretKey?: () => string | undefined;
+  /** API Lemontech configurada (secrets LEMONTECH_WS_*), ou null. `orgId` trava a conta numa empresa só. */
+  lemontech?: () => { client: SolicitacaoClient; orgId?: string } | null;
+  sleep?: (ms: number) => Promise<void>;
 } = {}): Router {
   const getStore = opts.store ?? firestoreTravelProviderStore;
+  const getLemon = opts.lemontech ?? defaultLemontech;
   const getKey = opts.secretKey ?? (() => process.env.MARTRAVEL_SECRET_KEY);
   const r = Router();
   const wrap = (fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler => (req, res) => {
@@ -125,5 +170,70 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, connected: false });
   }));
 
+  // ── Mar Travel pela API oficial (Lemontech WsSelfBooking) ──
+  const lemonFor = (orgId: string) => {
+    const l = getLemon();
+    return l && (!l.orgId || l.orgId === orgId) ? l : null;
+  };
+
+  r.get('/lemontech/status', requireArea('operacoes', 1), wrap(async (req, res) => {
+    if (!lemonFor(org(req))) return res.json({ configured: false });
+    const s = storeOr503(res); if (!s) return;
+    res.json({ configured: true, lastSync: (await s.getLemontechMeta(org(req))) ?? null });
+  }));
+
+  r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), wrap(async (req, res) => {
+    const desde = req.body?.desde ?? isoDaysAgo(730);
+    const ate = req.body?.ate ?? isoDaysAgo(0);
+    if (!DATE_RE.test(String(desde)) || !DATE_RE.test(String(ate)) || desde > ate) {
+      return res.status(400).json({ error: 'Use datas no formato AAAA-MM-DD, com o início antes do fim.' });
+    }
+    const lemon = lemonFor(org(req));
+    if (!lemon) return res.status(503).json({ error: 'lemontech_nao_configurada' });
+    const s = storeOr503(res); if (!s) return;
+    let raws: any[];
+    try {
+      raws = await fetchAllSolicitacoes(lemon.client, desde, ate, { sleep: opts.sleep });
+    } catch (e) {
+      return res.status(502).json({ error: e instanceof Error ? e.message : 'Falha ao consultar a Mar Travel.' });
+    }
+    const units = await s.listUnits(org(req));
+    const syncedAt = new Date().toISOString();
+    const items: StoredSolicitacao[] = raws.map((raw) => {
+      const { raw: _r, ...n } = normalizeSolicitacao(raw);
+      const unit = matchUnit(n.centroDeCusto, units);
+      return { ...n, orgId: org(req), unitId: unit?.id ?? null, unitName: unit?.name ?? null, rawJson: JSON.stringify(raw), syncedAt };
+    }).filter((i) => i.id);
+    await s.saveSolicitacoes(org(req), items);
+    const meta: LemontechMeta = { lastSync: syncedAt, desde, ate, total: items.length, by: uid(req) };
+    await s.setLemontechMeta(org(req), meta);
+    res.json({ ok: true, ...meta });
+  }));
+
+  r.get('/lemontech/solicitacoes', requireArea('operacoes', 1), wrap(async (req, res) => {
+    const s = storeOr503(res); if (!s) return;
+    const items = (await s.listSolicitacoes(org(req)))
+      .map(({ rawJson: _r, ...i }) => i)
+      .sort((a, b) => String(b.criadaEm ?? '').localeCompare(String(a.criadaEm ?? '')) || b.id.localeCompare(a.id));
+    res.json({ items });
+  }));
+
+  r.get('/lemontech/solicitacoes/:id', requireArea('operacoes', 1), wrap(async (req, res) => {
+    const s = storeOr503(res); if (!s) return;
+    const it = await s.getSolicitacao(org(req), String(req.params.id));
+    if (!it) return res.status(404).json({ error: 'nao_encontrada' });
+    const { rawJson, ...rest } = it;
+    res.json({ ...rest, raw: JSON.parse(rawJson) });
+  }));
+
   return r;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const isoDaysAgo = (d: number) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+
+function defaultLemontech() {
+  const cfg = readLemontechConfig(process.env);
+  if (!cfg) return null;
+  return { client: createWsSelfBookingClient(cfg), orgId: process.env.LEMONTECH_WS_ORG_ID?.trim() || undefined };
 }

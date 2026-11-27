@@ -432,7 +432,7 @@ export const TravelModule: React.FC<TravelModuleProps> = ({
       </div>
 
       {/* TAB 1: PAINEL GERAL (DASHBOARD) */}
-      {activeTab === 'viagens-painel' && <MarTravelPanel orgId={currentOrgId} />}
+      {activeTab === 'viagens-painel' && <MarTravelPanel orgId={currentOrgId} canManage={canManageSources} />}
 
       {activeTab === 'viagens-painel' && legacyEnabled && (
         <div className="space-y-6 max-w-5xl mx-auto text-slate-100">
