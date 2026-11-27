@@ -117,8 +117,18 @@ test('router: org scoping, roles, approve/reimburse week, obra manual', async ()
   app.use((req, _res, next) => { req.user = user; next(); });
   const contracts: Record<string, any> = { c1: { orgId: 'o', title: 'Contrato Obra Z' }, cx: { orgId: 'other', title: 'Alheio' } };
   let db: any = null;
+  const moduleGrants = new Map<string, any>([['o__u', { orgId: 'o', uid: 'u', modules: { 'ops-reembolso': 3 }, explicitModules: ['ops-reembolso'] }]]);
+  const permissionAdmin = {
+    db: { collection: (name: string) => ({ doc: (id: string) => ({
+      get: async () => { const data = name === 'org_module_access' ? moduleGrants.get(id) : undefined; return { exists: data !== undefined, data: () => data }; },
+    }) }) },
+  } as any;
   const fakeDb = { collection: (c: string) => ({ doc: (id: string) => ({ get: async () => ({ data: () => (c === 'contracts' ? contracts[id] : undefined) }) }) }) };
-  app.use('/r', createReembolsosRouter({ receipts: () => data, persist: () => persisted++, db: () => db, now: () => new Date('2026-11-23T12:00:00Z') }));
+  app.use('/r', createReembolsosRouter({
+    receipts: () => data, persist: () => persisted++, db: () => db,
+    getAdminHandles: () => permissionAdmin,
+    now: () => new Date('2026-11-23T12:00:00Z'),
+  }));
   const srv = app.listen(0);
   const base = `http://127.0.0.1:${(srv.address() as any).port}/r`;
   const post = (p: string, body: object, method = 'POST') => fetch(base + p, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -154,10 +164,11 @@ test('router: org scoping, roles, approve/reimburse week, obra manual', async ()
     assert.ok(persisted >= 3);
 
     user = { uid: 'm', master: true, orgs: {} };
-    assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16' })).status, 400); // master must name the org
+    assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16' })).status, 403); // master must name the org
     assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16', orgId: 'o' })).status, 200);
 
     user = { uid: 'op', master: false, orgs: { o: 'Operacional' } };
+    moduleGrants.set('o__op', { orgId: 'o', uid: 'op', modules: { 'ops-reembolso': 1 }, explicitModules: ['ops-reembolso'] });
     assert.equal((await post('/semana/aprovar', { inicio: '2026-11-16' })).status, 403);
     assert.equal((await post('/a/obra', { obraName: 'Z' }, 'PUT')).status, 403);
     assert.equal((await fetch(`${base}/semana?inicio=2026-11-16`)).status, 200);
