@@ -20,9 +20,9 @@ const moneyText = (value: number) => value.toLocaleString('pt-BR', { minimumFrac
 type ReceiptRecord = FinanceReceivableReceipt & { id: string };
 
 export const ReceivablesView: React.FC<{ orgId: string }> = ({ orgId }) => {
-  const { user, role, isMaster, isSupervisorOrAbove, areaLevel, contracts } = useAuth();
-  const canCreate = isMaster || (isSupervisorOrAbove && areaLevel('financeiro') >= 2);
-  const canReceive = isMaster || (role === 'Supervisor' ? areaLevel('financeiro') >= 1 : ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2));
+  const { user, contracts, moduleLevel } = useAuth();
+  const canCreate = moduleLevel('financeiro-receber') >= 2;
+  const canReceive = moduleLevel('financeiro-receber') >= 2;
   const [receivables, setReceivables] = useState<FinanceReceivable[]>([]);
   const [receipts, setReceipts] = useState<ReceiptRecord[]>([]);
   const [error, setError] = useState('');
