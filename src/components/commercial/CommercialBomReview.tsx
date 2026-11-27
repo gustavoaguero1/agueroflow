@@ -36,6 +36,7 @@ interface CommercialBomReviewProps {
   catalog: CommercialMaterial[];
   organizationName: string;
   userRole?: string;
+  canApprove: boolean;
   userName: string;
   onRefresh: () => Promise<void>;
   onNavigateBack: () => void;
@@ -47,6 +48,7 @@ export const CommercialBomReview: React.FC<CommercialBomReviewProps> = ({
   catalog,
   organizationName,
   userRole,
+  canApprove: canApproveOverride,
   userName,
   onRefresh,
   onNavigateBack,
@@ -70,7 +72,7 @@ export const CommercialBomReview: React.FC<CommercialBomReviewProps> = ({
   const [manualQuoteDoc, setManualQuoteDoc] = useState('');
   const [enrichCatalog, setEnrichCatalog] = useState(true);
 
-  const canApprove = userRole === 'Super Admin' || userRole === 'Admin' || userRole === 'Revisor';
+  const canApprove = !!canApproveOverride;
 
   const formatBrl = (val: number) => {
     return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: proposal.currency || 'BRL' });
