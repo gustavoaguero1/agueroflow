@@ -7,7 +7,7 @@ import type { MarcacaoRegistro, Ajuste } from '../server/ponto/store.ts';
 let nsr = 0;
 const mk = (tipo: any, dataHora: string, o: Partial<MarcacaoRegistro> = {}): MarcacaoRegistro => ({
   id: 'e1__' + ++nsr, orgId: 'org', estabId: 'e1', nsr, rhId: 'r1', cpf: '52998224725', tipo, dataHora, dia: dataHora.slice(0, 10),
-  gravadoEm: dataHora, coletor: '01', offline: false, campos: '', hash: 'h', prevHash: null, clientId: 'c' + nsr, deviceId: 'd',
+  gravadoEm: dataHora, diaGrav: dataHora.slice(0, 10), metodo: 'rosto', coletor: '01', offline: false, campos: '', hash: 'h', prevHash: null, clientId: 'c' + nsr, deviceId: 'd',
   gps: null, face: null, unitId: 'u1', distM: 5, alertas: [], ...o,
 });
 const aj = (o: Partial<Ajuste>): Ajuste => ({ id: 'a' + Math.random(), orgId: 'org', rhId: 'r1', data: '2026-11-25', acao: 'incluir', justificativa: 'esqueceu de bater', autorUid: 'u', criadoEm: 'x', ...o });

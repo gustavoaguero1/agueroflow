@@ -2,13 +2,15 @@
 import { apiFetch } from '../apiAuthFetch';
 import type { PontoConfig, TipoMarcacao } from '../ponto/config';
 
-export type Alerta = 'fora_da_cerca' | 'sem_gps' | 'rosto' | 'relogio' | 'offline';
+export type Alerta = 'fora_da_cerca' | 'sem_gps' | 'rosto' | 'relogio' | 'offline' | 'sem_biometria' | 'aparelho_revogado';
 export const ALERTA_LABEL: Record<Alerta, string> = {
   fora_da_cerca: 'Fora da obra',
   sem_gps: 'Sem localização',
   rosto: 'Rosto não conferiu',
   relogio: 'Relógio do celular diferente',
   offline: 'Marcado sem internet',
+  sem_biometria: 'Sem rosto (PIN ou sem identificação)',
+  aparelho_revogado: 'Celular já desativado',
 };
 
 export interface Estabelecimento { id: string; orgId: string; cnpj: string; razaoSocial: string; endereco?: string; config?: Partial<PontoConfig> }

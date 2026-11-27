@@ -25,11 +25,13 @@ export interface RhRouteCtx {
   now: () => Date;
   wrap: (fn: (req: Request, res: Response, store: PontoStore) => Promise<unknown>) => RequestHandler;
   /** Recalcula o Diário do dia depois de uma mudança. */
-  after: (orgId: string, dia: string) => Promise<void>;
+  after: (orgId: string, dia: string, rhId?: string) => Promise<void>;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DIAS = 62;
+/** AFD carregado inteiro na memória: até 31 dias por arquivo (exportar mês a mês). */
+const MAX_DIAS_AFD = 31;
 
 export const mascaraCpf = (cpf: string) => {
   const d = onlyDigitsCpf(cpf);
@@ -241,13 +243,13 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
     } else {
       throw new PontoErro(400, 'Ação inválida.');
     }
-    await ctx.after(org(req), base.data).catch((e) => console.warn('ponto: pós-ajuste', e));
+    await ctx.after(org(req), base.data, pessoa.rhId).catch((e) => console.warn('ponto: pós-ajuste', e));
     res.json({ ok: true, id: base.id });
   }));
 
   // ── AFD ──
   r.get('/afd', rhLer, wrap(async (req, res, store) => {
-    const { inicio, fim } = periodo(req.query as Record<string, unknown>, 366);
+    const { inicio, fim } = periodo(req.query as Record<string, unknown>, MAX_DIAS_AFD);
     const estab = await estabDaOrg(store, org(req), String(req.query.estabId ?? ''));
     const [eventos, marcacoes] = await Promise.all([store.listEventosEstab(estab.id, inicio, fim), store.listMarcacoesEstab(estab.id, inicio, fim)]);
     const txt = gerarAfd({

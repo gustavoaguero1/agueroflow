@@ -16,5 +16,5 @@ test('mascaraCpf', () => {
 });
 
 test('todo alerta tem texto em português', () => {
-  for (const k of ['fora_da_cerca', 'sem_gps', 'rosto', 'relogio', 'offline']) assert.ok(ALERTA_LABEL[k as keyof typeof ALERTA_LABEL]);
+  for (const k of ['fora_da_cerca', 'sem_gps', 'rosto', 'relogio', 'offline', 'sem_biometria', 'aparelho_revogado']) assert.ok(ALERTA_LABEL[k as keyof typeof ALERTA_LABEL], k);
 });

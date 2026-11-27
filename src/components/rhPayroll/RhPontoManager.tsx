@@ -442,7 +442,7 @@ const Afd: React.FC<{ orgId: string; estabs: Estabelecimento[] }> = ({ orgId, es
   };
   return (
     <div className={`${card} space-y-3`}>
-      <p className="text-xs text-slate-400">Arquivo Fonte de Dados (Portaria 671) para entregar à fiscalização. Período de até 1 ano.</p>
+      <p className="text-xs text-slate-400">Arquivo Fonte de Dados (Portaria 671) para entregar à fiscalização. Até 31 dias por arquivo (exporte mês a mês).</p>
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
         <label className="sm:col-span-2"><span className={label}>Estabelecimento</span><select className={input} value={estabId} onChange={(e) => setEstabId(e.target.value)}>{estabs.map((x) => <option key={x.id} value={x.id}>{x.razaoSocial} ({x.cnpj})</option>)}</select></label>
         <label><span className={label}>De</span><input type="date" className={input} value={inicio} onChange={(e) => setInicio(e.target.value)} /></label>

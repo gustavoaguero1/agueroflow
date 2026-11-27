@@ -92,8 +92,11 @@ test('aparelho revogado ou desconhecido → 401', async () => {
     const body = { items: [{ payload: p, signature: await d.sign(p) }] };
     assert.equal((await a.call('POST', '/device/marcacoes', body, { 'x-ponto-device': 'dev_x' })).status, 401);
     assert.equal((await a.call('POST', '/device/marcacoes', body)).status, 401);
-    await a.store.revokeDevice(d.id, 'agora');
-    assert.equal((await a.call('POST', '/device/marcacoes', body, { 'x-ponto-device': d.id })).status, 401);
+    await a.store.revokeDevice(d.id, '2026-11-25T06:00:00-03:00');
+    const rev = await a.call('POST', '/device/marcacoes', body, { 'x-ponto-device': d.id });
+    assert.equal(rev.status, 200); // revogado: o lote é aceito, mas marcação depois da revogação é recusada item a item
+    assert.equal(rev.body.results[0].ok, false);
+    assert.equal(rev.body.results[0].retry, false);
   } finally { await a.close(); }
 });
 

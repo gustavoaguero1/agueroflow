@@ -31,8 +31,9 @@ export function horasDoDia(
 
   let trabalhado = 0;
   for (let i = 0; i < ts.length; i += 2) trabalhado += (ts[i + 1] - ts[i]) / 60000;
-  // Almoço pré-assinalado só vale para jornada acima de 6 h (CLT art. 71).
-  if (cfg.marcacoesPorDia === 2 && trabalhado > 360) trabalhado = Math.max(0, trabalhado - cfg.almocoMin);
+  // Só entrada e saída (modo 2, ou modo 4 sem as marcações do almoço): desconta o almoço,
+  // que só vale para jornada acima de 6 h (CLT art. 71). Evita que esquecer o almoço vire hora extra.
+  if ((cfg.marcacoesPorDia === 2 || ts.length === 2) && trabalhado > 360) trabalhado = Math.max(0, trabalhado - cfg.almocoMin);
   trabalhado = Math.round(trabalhado);
 
   const dow = diaSemana(dataISO);

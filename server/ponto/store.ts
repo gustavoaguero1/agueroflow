@@ -10,10 +10,12 @@ export interface PessoaPonto {
   orgId: string; rhId: string; nome: string; cpf: string; estabelecimentoId: string; vinculo: 'CLT' | 'PJ';
   pinHash?: string; config?: Partial<PontoConfig>;
 }
-export type Alerta = 'fora_da_cerca' | 'sem_gps' | 'rosto' | 'relogio' | 'offline';
+export type Alerta = 'fora_da_cerca' | 'sem_gps' | 'rosto' | 'relogio' | 'offline' | 'sem_biometria' | 'aparelho_revogado';
+export type MetodoIdent = 'rosto' | 'pin' | 'nenhum';
 export interface MarcacaoRegistro {
   id: string; orgId: string; estabId: string; nsr: number; rhId: string; cpf: string; tipo: TipoMarcacao;
-  dataHora: string; dia: string; gravadoEm: string; coletor: '01'; offline: boolean;
+  /** `dia` = dia da marcação (espelho); `diaGrav` = dia da gravação (AFD, que segue a ordem do NSR). */
+  dataHora: string; dia: string; gravadoEm: string; diaGrav: string; coletor: '01'; offline: boolean; metodo: MetodoIdent;
   campos: string; hash: string; prevHash: string | null; clientId: string; deviceId: string;
   gps: { lat: number; lng: number; precisaoM?: number } | null;
   face: { score: number; liveness?: number; modelo: string } | null;
@@ -47,11 +49,12 @@ export interface PontoStore {
   listObras(orgId: string): Promise<ObraGeo[]>;
   /** Cadastro de pessoas do RH (rh_directory), só o necessário ao ponto. */
   listRh(orgId: string): Promise<RhRef[]>;
-  /** Atômico por estabelecimento: devolve o registro já existente se o clientId repetir. */
-  appendMarcacao(estabId: string, orgId: string, clientId: string, build: (prev: Prev) => MarcacaoRegistro): Promise<{ registro: MarcacaoRegistro; duplicada: boolean }>;
+  /** Atômico por estabelecimento: devolve o registro já existente se a chave (aparelho + clientId) repetir. */
+  appendMarcacao(estabId: string, orgId: string, clientKey: string, build: (prev: Prev) => MarcacaoRegistro): Promise<{ registro: MarcacaoRegistro; duplicada: boolean }>;
   /** Mesma sequência de NSR das marcações; não mexe no último hash. */
   appendEvento(estabId: string, build: (nsr: number) => EventoRegistro): Promise<EventoRegistro>;
   listMarcacoes(orgId: string, f: { rhId?: string; desde: string; ate: string }): Promise<MarcacaoRegistro[]>;
+  /** Por dia de GRAVAÇÃO (para o AFD sair contínuo na ordem do NSR). */
   listMarcacoesEstab(estabId: string, desde: string, ate: string): Promise<MarcacaoRegistro[]>;
   listEventosEstab(estabId: string, desde: string, ate: string): Promise<EventoRegistro[]>;
   addAjuste(a: Ajuste): Promise<void>;
@@ -122,7 +125,7 @@ export function memoryPontoStore() {
       return clone(ev);
     }),
     listMarcacoes: async (o, f) => [...marc.values()].filter((m) => m.orgId === o && (!f.rhId || m.rhId === f.rhId) && inRange(m.dia, f.desde, f.ate)).map(clone),
-    listMarcacoesEstab: async (e, d, a) => [...marc.values()].filter((m) => m.estabId === e && inRange(m.dia, d, a)).map(clone),
+    listMarcacoesEstab: async (e, d, a) => [...marc.values()].filter((m) => m.estabId === e && inRange(m.diaGrav, d, a)).map(clone),
     listEventosEstab: async (e, d, a) => [...evts.values()].filter((v) => v.estabId === e && inRange(v.dia, d, a)).map(clone),
     addAjuste: async (a) => { ajustes.push(clone(a)); },
     listAjustes: async (o, f) => ajustes.filter((a) => a.orgId === o && (!f.rhId || a.rhId === f.rhId) && inRange(a.data, f.desde, f.ate)).map(clone),
@@ -166,7 +169,8 @@ export function firestorePontoStore(): PontoStore | null {
     }
     return out;
   };
-  const withKeys = (m: MarcacaoRegistro) => ({ ...m, orgDia: `${m.orgId}|${m.dia}`, estabDia: `${m.estabId}|${m.dia}`, pessoaDia: `${m.orgId}__${m.rhId}|${m.dia}` });
+  // estabDia usa o dia da GRAVAÇÃO: o AFD segue a ordem do NSR; orgDia/pessoaDia usam o dia da marcação (espelho).
+  const withKeys = (m: MarcacaoRegistro) => ({ ...m, orgDia: `${m.orgId}|${m.dia}`, estabDia: `${m.estabId}|${m.diaGrav}`, pessoaDia: `${m.orgId}__${m.rhId}|${m.dia}` });
 
   return {
     getEstab: async (id) => data<Estabelecimento>(await C.estabs.doc(id).get()),

@@ -1465,9 +1465,12 @@ const diarioDe=iso=>S.diario.find(d=>d.id===iso);
 function ativosDiario(){return S.colab.filter(c=>c.status!=='Desligado')}
 /* folga pela escala naquele dia */
 function folgaNoDia(c,iso){const e=linhaEscala(c);if(iso===hojeISO())return e.volta!=null?e.retEf:null;const proj=folgasProj(c,e,addDias(iso,1));const f=proj.find(([a,b])=>iso>=a&&iso<b);return f?f[1]:null}
-function pontoDoDia(iso){const P=S.pontoDia||(S.pontoDia={});if(P[iso]===undefined){P[iso]=null;db.doc('ponto_dia/'+iso).get().then(s=>{P[iso]=s&&s.exists?s.data():{};if(S.route==='diario')render()}).catch(()=>{P[iso]={}})}return P[iso]}
+const PONTO_TTL=60000;
+function pontoDoDia(iso){const P=S.pontoDia||(S.pontoDia={});const T=S.pontoDiaEm||(S.pontoDiaEm={});const velho=!T[iso]||Date.now()-T[iso]>PONTO_TTL;
+  if(velho){T[iso]=Date.now();db.doc('ponto_dia/'+iso).get().then(s=>{const novo=s&&s.exists?s.data():{};const mudou=JSON.stringify(novo)!==JSON.stringify(P[iso]);P[iso]=novo;if(mudou&&S.route==='diario')render()}).catch(()=>{if(P[iso]===undefined)P[iso]={}})}
+  return P[iso]||null}
 function linhaDiario(d,c,iso){const l=d&&d.linhas&&d.linhas[c.id];if(l)return{...l,lancado:true};
-  const pt=window.PontoDiario&&PontoDiario.sugestao(pontoDoDia(iso),c,S.obras);if(pt)return{...pt,lancado:false,auto:true};
+  const pt=window.PontoDiario&&PontoDiario.sugestao(pontoDoDia(iso),c,S.obras);if(pt)return{...pt,obra:pt.obra||c.obraAtual||'',lancado:false,auto:true};
   const r=folgaNoDia(c,iso);
   if(r)return{obra:c.obraAtual||'',sit:'Folga',hn:0,h50:0,h100:0,obs:'folga (escala) – volta '+dbr(r),lancado:true,auto:true};return{obra:c.obraAtual||'',sit:'',hn:'',h50:'',h100:'',lancado:false}}
 function faltandoDiario(iso){const d=diarioDe(iso);return ativosDiario().filter(c=>!linhaDiario(d,c,iso).lancado||!linhaDiario(d,c,iso).sit)}
@@ -1524,6 +1527,7 @@ function vDiario(){const V=S.view.di||(S.view.di={data:hojeISO(),ord:(()=>{try{r
     <span class="sp"></span><label class="f" style="min-width:160px"><span>Ordenar por</span><select id="dd-ord"><option value="obra" ${V.ord==='obra'?'selected':''}>Obra</option><option value="alfa" ${V.ord==='alfa'?'selected':''}>Ordem alfabética</option><option value="funcao" ${V.ord==='funcao'?'selected':''}>Função</option></select></label></div>
     ${prazoPassou?`<div class="notice">Passou das ${esc(cfg.prazo)} e o diário de hoje ainda não foi enviado.</div>`:''}
     <div class="row" style="gap:10px"><b>${at.length-falt.length} de ${at.length} lançados</b>${falt.length?`<span style="color:var(--bad)" class="small">Faltam ${falt.length}: ${falt.slice(0,12).map(x=>esc(x.c.nome)).join(', ')}${falt.length>12?'…':''}</span>`:'<span class="small" style="color:var(--good)">Todos lançados.</span>'}</div>
+    ${(()=>{const pd=pontoDoDia(iso);const dv=window.PontoDiario?rows.filter(x=>x.l.lancado&&PontoDiario.diverge(pd,x.c,x.l)):[];return dv.length?`<div class="small" style="color:var(--bad)">${dv.length} linha(s) diferem do ponto: ${dv.slice(0,8).map(x=>esc(x.c.nome)).join(', ')}${dv.length>8?'…':''}. Confira com o RH (ajuste no ponto) antes de validar.</div>`:''})()}
     ${ed?`<div class="row" style="gap:8px;flex-wrap:wrap">${(()=>{const n=rows.filter(x=>x.l.doPonto&&!x.l.incompleto).length;return n?`<button class="btn pri" data-act="dd-ponto">Confirmar horas do ponto (${n})</button>`:''})()}<button class="btn" data-act="dd-txt">Lançar por texto</button><button class="btn" data-act="dd-print">Lançar por print</button>
       ${st!=='Enviado'?`<button class="btn pri" data-act="dd-enviar" ${falt.length?'disabled title="Lance todos os colaboradores primeiro"':''}>Enviar para validação</button>`:''}</div>`:podeDiario()?'':'<div class="small muted">Só quem foi liberado lança o diário. Você está vendo.</div>'}
     ${G&&st==='Enviado'?`<div class="row"><button class="btn pri" data-act="dd-validar">Validar diário</button><button class="btn" data-act="dd-reabrir">Devolver para correção</button></div>`:''}${G&&st==='Validado'?'<div class="row"><button class="btn" data-act="dd-reabrir">Reabrir</button></div>':''}

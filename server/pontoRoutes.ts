@@ -12,7 +12,7 @@
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { resolveConfig } from '../src/ponto/config.ts';
 import { toBrt, diaBrt } from '../src/ponto/tempo.ts';
-import { firestorePontoStore, type Device, type PontoStore } from './ponto/store.ts';
+import { firestorePontoStore, type Alerta, type Device, type PontoStore } from './ponto/store.ts';
 import { registrarMarcacao, PontoErro, type MarcacaoInput } from './ponto/registrar.ts';
 import { concluirPareamento, verificarAssinatura } from './ponto/devices.ts';
 import { registerRhRoutes } from './ponto/rhRoutes.ts';
@@ -24,15 +24,15 @@ export interface PontoRouterOpts {
   store?: () => PontoStore | null;
   now?: () => Date;
   /** Chamado depois de cada marcação nova (ex.: recalcular o Diário do dia). Falha só gera log. */
-  afterRegistro?: (orgId: string, dataISO: string) => Promise<void>;
+  afterRegistro?: (orgId: string, dataISO: string, rhId?: string) => Promise<void>;
 }
 
 export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
   const getStore = opts.store ?? firestorePontoStore;
   const now = opts.now ?? (() => new Date());
-  const after = opts.afterRegistro ?? (async (orgId: string, dia: string) => {
+  const after = opts.afterRegistro ?? (async (orgId: string, dia: string, rhId?: string) => {
     const s = getStore();
-    if (s) await recalcularPontoDia(s, firestorePontoDiaWriter, orgId, dia, now);
+    if (s) await recalcularPontoDia(s, firestorePontoDiaWriter, orgId, dia, now, rhId);
   });
   const r = Router();
 
@@ -46,10 +46,11 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
     });
   };
 
-  const deviceFrom = async (req: Request, store: PontoStore): Promise<Device> => {
+  /** `aceitaRevogado`: o lote offline de um celular trocado ainda entrega o que foi marcado antes da troca. */
+  const deviceFrom = async (req: Request, store: PontoStore, aceitaRevogado = false): Promise<Device> => {
     const id = String(req.header('x-ponto-device') ?? '');
     const d = id ? await store.getDevice(id) : undefined;
-    if (!d || d.revogadoEm) throw new PontoErro(401, 'Aparelho não pareado ou desativado. Peça ao RH para parear de novo.');
+    if (!d || (d.revogadoEm && !aceitaRevogado)) throw new PontoErro(401, 'Aparelho não pareado ou desativado. Peça ao RH para parear de novo.');
     return d;
   };
 
@@ -95,13 +96,13 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
   }));
 
   r.post('/device/marcacoes', wrap(async (req, res, store) => {
-    const d = await deviceFrom(req, store);
+    const d = await deviceFrom(req, store, true);
     const items = req.body?.items;
     if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITENS_LOTE) {
       throw new PontoErro(400, `Envie de 1 a ${MAX_ITENS_LOTE} marcações por vez.`);
     }
     const results: unknown[] = [];
-    const dias = new Set<string>();
+    const dias = new Map<string, { dia: string; rhId: string }>();
     for (const it of items) {
       let clientId: string | undefined;
       try {
@@ -111,15 +112,25 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
         if (!(await verificarAssinatura(d.publicKeyJwk, payload, it?.signature))) throw new PontoErro(401, 'Assinatura inválida.');
         if (!parsed) throw new PontoErro(400, 'Marcação vazia.');
         if (d.modo === 'pessoal' && parsed.rhId !== d.rhId) throw new PontoErro(403, 'Este celular só registra o ponto do próprio dono.');
-        const out = await registrarMarcacao(store, d.orgId, { ...parsed, deviceId: d.id }, now);
-        if (!out.duplicada) dias.add(out.registro.dia);
+        const extra: Alerta[] = [];
+        if (d.revogadoEm) {
+          if (!(Date.parse(String(parsed.dataHora)) < Date.parse(d.revogadoEm))) throw new PontoErro(401, 'Aparelho desativado. Peça ao RH para parear de novo.');
+          extra.push('aparelho_revogado');
+        }
+        const out = await registrarMarcacao(store, d.orgId, { ...parsed, deviceId: d.id }, now, { alertasExtra: extra });
+        if (!out.duplicada) dias.set(`${out.registro.dia}|${out.registro.rhId}`, { dia: out.registro.dia, rhId: out.registro.rhId });
         results.push({ clientId, ok: true, comprovante: out.comprovante });
       } catch (e) {
-        if (!(e instanceof PontoErro) && !(e instanceof SyntaxError)) console.error('ponto marcação:', e);
-        results.push({ clientId, ok: false, error: e instanceof PontoErro ? e.message : 'Marcação inválida.' });
+        // retry:false = o app descarta o item (dado inválido); retry:true = falha temporária, o app reenvia depois.
+        if (e instanceof PontoErro || e instanceof SyntaxError) {
+          results.push({ clientId, ok: false, retry: false, error: e instanceof PontoErro ? e.message : 'Marcação inválida.' });
+        } else {
+          console.error('ponto marcação:', e);
+          results.push({ clientId, ok: false, retry: true, error: 'Falha temporária. O app tenta de novo.' });
+        }
       }
     }
-    for (const dia of dias) await after(d.orgId, dia).catch((e) => console.warn('ponto: pós-registro', e));
+    for (const x of dias.values()) await after(d.orgId, x.dia, x.rhId).catch((e) => console.warn('ponto: pós-registro', e));
     res.json({ results });
   }));
 

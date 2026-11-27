@@ -29,9 +29,9 @@ test('recalcularPontoDia grava as sugestões do dia com os ajustes aplicados', a
   await registrarMarcacao(store, 'org', { clientId: 'a', deviceId: 'd', rhId: 'r1', tipo: 'entrada', dataHora: '2026-11-25T07:00:00-03:00', offline: false, gps: { lat: -23.5505, lng: -46.6333 }, face: null, relogio: null }, now);
   await store.addAjuste({ id: 'aj', orgId: 'org', rhId: 'r1', data: '2026-11-25', acao: 'incluir', tipo: 'saida', dataHora: '2026-11-25T11:00:00-03:00', justificativa: 'saiu cedo', autorUid: 'u', criadoEm: 'x' });
   const gravados: any[] = [];
-  await recalcularPontoDia(store, async (orgId, dia, doc) => { gravados.push({ orgId, dia, doc }); }, 'org', '2026-11-25', now);
+  await recalcularPontoDia(store, async (orgId, dia, linhas, atualizadoEm) => { gravados.push({ orgId, dia, linhas, atualizadoEm }); }, 'org', '2026-11-25', now);
   assert.equal(gravados.length, 1);
-  assert.equal(gravados[0].doc.linhas.r1.obra, 'u1');
-  assert.equal(gravados[0].doc.linhas.r1.hn, 4);
-  assert.ok(gravados[0].doc.atualizadoEm);
+  assert.equal(gravados[0].linhas.r1.obra, 'u1');
+  assert.equal(gravados[0].linhas.r1.hn, 4);
+  assert.ok(gravados[0].atualizadoEm);
 });
