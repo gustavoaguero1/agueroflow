@@ -33,3 +33,12 @@ test('conta da Mar Travel: nem o próprio dono lê ou grava pelo navegador (só 
   await assertFails(deleteDoc(doc(dono, 'travel_provider_accounts/org_a__u_admin')));
   await assertFails(getDoc(doc(asUser('u_x', 'org_b', 'Admin'), 'travel_provider_accounts/org_a__u_admin')));
 });
+
+test('solicitações da Mar Travel (API Lemontech): o navegador não lê nem grava', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'travel_lemontech_solicitacoes/org_a__555'), { orgId: 'org_a', id: '555' });
+  });
+  const admin = asUser('u_admin', 'org_a', 'Admin');
+  await assertFails(getDoc(doc(admin, 'travel_lemontech_solicitacoes/org_a__555')));
+  await assertFails(setDoc(doc(admin, 'travel_lemontech_solicitacoes/org_a__556'), { orgId: 'org_a', id: '556' }));
+});

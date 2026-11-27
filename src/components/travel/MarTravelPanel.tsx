@@ -6,13 +6,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, KeyRound, Plane, Bus, Hotel, ShieldCheck, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../apiAuthFetch';
 import { MARTRAVEL_LOGIN_URL } from '../../services/marTravel';
+import { MarTravelCompras } from './MarTravelCompras';
 
 interface Account { connected: boolean; login?: string; updatedAt?: string }
 
 const card = 'bg-[#111827] border border-slate-700/80 rounded-2xl p-6 shadow-xl';
 const input = 'w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500';
 
-export const MarTravelPanel: React.FC<{ orgId: string }> = ({ orgId }) => {
+export const MarTravelPanel: React.FC<{ orgId: string; canManage?: boolean }> = ({ orgId, canManage = false }) => {
   const [acc, setAcc] = useState<Account | null>(null);
   const [editing, setEditing] = useState(false);
   const [login, setLogin] = useState('');
@@ -85,6 +86,8 @@ export const MarTravelPanel: React.FC<{ orgId: string }> = ({ orgId }) => {
         </a>
       </div>
 
+      <MarTravelCompras orgId={orgId} canManage={canManage} />
+
       <div className={`${card} space-y-3`}>
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-white flex items-center gap-2"><KeyRound className="w-4 h-4 text-cyan-400" /> Minha conta Mar Travel</h3>
@@ -125,8 +128,8 @@ export const MarTravelPanel: React.FC<{ orgId: string }> = ({ orgId }) => {
           </form>
         )}
         <p className="text-[11px] text-slate-500 leading-relaxed">
-          A senha fica cifrada no servidor e nunca volta para esta tela. Ela será usada só para buscar e comprar na Mar Travel em seu nome.
-          A busca e a compra direto por aqui chegam na próxima etapa; até lá, use o botão "Abrir Mar Travel".
+          A senha fica cifrada no servidor e nunca volta para esta tela. As compras acima chegam pela integração oficial da empresa
+          com a Mar Travel e não dependem desta senha; para comprar, use o botão "Abrir Mar Travel".
         </p>
         {msg && <p className="text-xs text-cyan-300">{msg}</p>}
       </div>

@@ -1545,5 +1545,9 @@ service cloud.firestore {
     match /ponto_pairings/{id} { allow read, write: if false; }
     match /ponto_ajustes/{id} { allow read, write: if false; }
     match /ponto_estabelecimentos/{id} { allow read, write: if false; }
+    // Solicitações da Mar Travel puxadas da API Lemontech: só o servidor lê e grava (server/travelProviderRoutes.ts).
+    match /travel_lemontech_solicitacoes/{solId} {
+      allow read, write: if false;
+    }
   }
 }
