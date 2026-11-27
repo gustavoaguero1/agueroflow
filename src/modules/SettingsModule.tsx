@@ -57,9 +57,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     logAudit,
     isMaster,
     areaLevel,
+    moduleLevel,
   } = useAuth();
-  // Lista de acessos: Admin, Gerente ou quem edita Configurações (todo mundo abre a tela por tema e dispositivos).
-  const canSeeAreaAccess = isMaster || areaLevel('configuracoes') === 2;
+  // O gerenciamento de permissões exige nível Administrar no submódulo Configurações.
+  const canSeeAreaAccess = isMaster || moduleLevel('configuracoes') >= 4;
   const { theme, setTheme } = useTheme();
 
   const [slaHours, setSlaHours] = useState('24');
