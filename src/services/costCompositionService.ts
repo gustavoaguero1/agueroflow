@@ -37,6 +37,7 @@ import {
 } from '../types/costComposition';
 import { CommercialProposal, CommercialProposalItem } from '../types/commercial';
 import { getProposalItems, getProposals, saveProposal } from './commercialService';
+import { calculateAgueroInoxBudget } from './agueroInoxPricingEngine';
 
 // ----------------------------------------------------------------------------
 // DETERMINISTIC CALCULATION ENGINE
@@ -726,13 +727,40 @@ export const CostCompositionService = {
     };
 
     // Recalculate price formation using the full cost model before persistence.
-    updated.priceFormation = calculatePriceFormation(
-      updated.items,
-      updated.risks,
-      updated.taxConfig,
-      updated.financialSettings,
-      updated
-    );
+    if (updated.agueroInoxModel) {
+      const eng = calculateAgueroInoxBudget(updated.agueroInoxModel);
+      updated.priceFormation = {
+        totalDirectCosts: eng.totalDirectCost,
+        totalIndirectCosts: eng.totalAdminCost,
+        baseCostSubtotal: eng.totalProjectCost,
+        riskContingencyAmount: eng.contingencyAmount,
+        subtotalWithContingency: roundMoney(eng.totalProjectCost + eng.contingencyAmount),
+        financialCostAmount: roundMoney(eng.financialCostAmount + eng.anticipationAmount + eng.bankInsuranceAmount),
+        commercialCommissionAmount: eng.commercialCommissionAmount,
+        taxesTotalAmount: eng.totalTaxesAmount,
+        netProfitAmount: eng.estimatedNetResult,
+        effectiveNetMarginPercent: eng.estimatedNetResultPercent,
+        effectiveGrossMarginPercent:
+          eng.finalSellingPrice > 0
+            ? roundMoney(((eng.finalSellingPrice - eng.totalDirectCost) / eng.finalSellingPrice) * 100)
+            : 0,
+        bdiCalculatedPercent:
+          eng.totalProjectCost > 0
+            ? roundMoney(((eng.finalSellingPrice - eng.totalProjectCost) / eng.totalProjectCost) * 100)
+            : 0,
+        suggestedSellingPrice: eng.finalSellingPrice,
+        breakEvenPrice: roundMoney(eng.totalProjectCost + eng.variableCostsTotal + eng.fixedOverheadAmount + eng.totalTaxesAmount),
+        costPerManHour: eng.totalLaborHours > 0 ? roundMoney(eng.totalProjectCost / eng.totalLaborHours) : 0,
+      };
+    } else {
+      updated.priceFormation = calculatePriceFormation(
+        updated.items,
+        updated.risks,
+        updated.taxConfig,
+        updated.financialSettings,
+        updated
+      );
+    }
     updated.classificationResult = calculateProjectClassification(updated.classificationCriteria);
     updated.scenarios = generatePricingScenarios(
       updated.priceFormation.suggestedSellingPrice,

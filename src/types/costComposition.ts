@@ -531,6 +531,9 @@ export interface CostComposition {
   // Simulação de Cenários
   scenarios: PricingScenario[];
 
+  // Modelo Unificado Engenharia de Custos Aguero Inox (18 abas reconciliadas)
+  agueroInoxModel?: import('../services/agueroInoxPricingEngine').AgueroInoxBudgetModel;
+
   // Auditoria e Histórico
   createdBy: string;
   createdByName: string;
