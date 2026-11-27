@@ -457,12 +457,20 @@ export async function enrollDeviceFace(params: {
   descriptors?: number[][];
   lgpdAceito?: boolean;
   recusar?: boolean;
+  adicionar?: boolean;
 }): Promise<DeviceIdentity> {
   const current = await getDeviceIdentity();
   if (!current) throw new Error('Aparelho não pareado.');
 
   const payload = JSON.stringify({
-    ...(params.recusar ? { recusar: true } : { lgpdAceito: params.lgpdAceito === true, descriptors: params.descriptors, modelo: FACE_MODEL_VERSION }),
+    ...(params.recusar
+      ? { recusar: true }
+      : {
+          lgpdAceito: params.lgpdAceito === true,
+          descriptors: params.descriptors,
+          adicionar: params.adicionar === true,
+          modelo: FACE_MODEL_VERSION,
+        }),
     lgpdVersao: LGPD_TERM_VERSION,
     ts: Date.now(),
   });
@@ -482,14 +490,18 @@ export async function enrollDeviceFace(params: {
     throw new Error(data.error || 'Não foi possível salvar a biometria.');
   }
 
+  const mergedDescriptors = params.adicionar
+    ? [...current.biometria.descriptors, ...(params.descriptors ?? [])].slice(-5)
+    : (params.descriptors ?? []);
+
   const next: DeviceIdentity = {
     ...current,
     biometria: params.recusar
       ? { status: 'recusada', poses: 0, descriptors: [], atualizadoEm: data.atualizadoEm }
       : {
           status: 'cadastrada',
-          poses: params.descriptors?.length ?? 0,
-          descriptors: params.descriptors ?? [],
+          poses: mergedDescriptors.length,
+          descriptors: mergedDescriptors,
           lgpdAceitoEm: data.atualizadoEm,
           atualizadoEm: data.atualizadoEm,
         },
