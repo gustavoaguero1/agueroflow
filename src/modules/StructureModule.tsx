@@ -26,6 +26,7 @@ import {
 } from '../types';
 import { subscribeProjects } from '../services/projectService';
 import { ProjectsManager } from '../components/structure/ProjectsManager';
+import { ObraGeoEditor } from '../components/structure/ObraGeoEditor';
 import {
   Building,
   FileText,
@@ -68,6 +69,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
   }, [initialTab]);
 
   const [units, setUnits] = useState<Unit[]>([]);
+  const [geoUnit, setGeoUnit] = useState<Unit | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -586,6 +588,7 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                 <th className="py-3 px-4">Nome da Unidade</th>
                 <th className="py-3 px-4">Cidade / UF</th>
                 <th className="py-3 px-4">Responsável</th>
+                <th className="py-3 px-4">Local do ponto</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -597,10 +600,16 @@ export const StructureModule: React.FC<StructureModuleProps> = ({ initialTab = '
                     {u.city ? `${u.city} - ${u.state}` : '—'}
                   </td>
                   <td className="py-3 px-4 text-slate-400">{u.managerName || '—'}</td>
+                  <td className="py-3 px-4">
+                    <button type="button" onClick={() => setGeoUnit(u)} className="text-xs text-blue-400 hover:text-blue-300">
+                      {u.geo ? `Definido · ${u.geo.raioM ?? 300} m` : 'Definir local'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {geoUnit && <ObraGeoEditor unit={geoUnit} onClose={() => setGeoUnit(null)} />}
         </div>
       )}
 
