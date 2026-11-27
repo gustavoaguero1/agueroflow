@@ -148,6 +148,7 @@ export async function moduleLevelOf(
   if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) {
     return configured;
   }
+  if (u.orgs?.[org] === 'Gerente' && ['rh-ponto-admin', 'viagens-configuracoes'].includes(section)) return 4;
   const area = areaOfSection(section);
   if (!area) return 0;
   const areaLevel = areaLevelOf(u, org, area);
