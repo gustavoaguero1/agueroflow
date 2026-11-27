@@ -4,7 +4,7 @@ import { evaluateSafetyCrewCompliance, type SafetyComplianceSnapshot } from '../
 import { getSafetyNextStatus } from '../src/services/safetyManagement.ts';
 import { safetyPermitCode, validateSafetyPermitInput } from '../src/services/safetyManagement.ts';
 import type { SafetyPermitEventType } from '../src/types/safety.ts';
-import { requireArea } from './authMiddleware.ts';
+import { moduleLevelOf, requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
 
 class SafetyRouteError extends Error {
@@ -17,12 +17,6 @@ const validId = (value: unknown): value is string =>
 const managerEvents = new Set(['approved', 'rejected', 'closed', 'cancelled']);
 const supportedEvents = new Set(['submitted_for_approval', ...managerEvents, 'note_added']);
 
-function canManagePermits(req: Request, orgId: string): boolean {
-  const actor = req.user;
-  if (!actor) return false;
-  return actor.master || ['Admin', 'Gerente', 'Supervisor'].includes(actor.orgs?.[orgId] || '');
-}
-
 function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): T[] {
   return snap.docs.map((item) => ({ ...item.data(), id: item.id }) as unknown as T);
 }
@@ -30,7 +24,7 @@ function toRows<T>(snap: { docs: Array<{ id: string; data: () => Record<string, 
 export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): Router {
   const router = Router();
 
-  router.post('/permits', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/permits', requireModuleAccess('ordens', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const draft = req.body?.permit as Record<string, any> | undefined;
@@ -162,7 +156,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/permits/:permitId/transition', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/permits/:permitId/transition', requireModuleAccess('ordens', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const permitId = req.params.permitId;
     const eventType = req.body?.eventType;
@@ -173,8 +167,8 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     if (typeof eventType !== 'string' || !supportedEvents.has(eventType)) {
       return res.status(400).json({ ok: false, error: 'Movimentação de APR/PT inválida.' });
     }
-    if (managerEvents.has(eventType) && !canManagePermits(req, orgId)) {
-      return res.status(403).json({ ok: false, error: 'Somente Supervisor, Gerente ou Admin podem concluir esta movimentação.' });
+    if (managerEvents.has(eventType) && await moduleLevelOf(actor, orgId, 'ordens', getH) < 3) {
+      return res.status(403).json({ ok: false, error: 'Esta movimentação exige nível Aprovar em Ordens de Serviço.' });
     }
     const comment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
     if (['rejected', 'closed', 'cancelled'].includes(eventType) && comment.length < 5) {
@@ -194,9 +188,6 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
         const state = { ...(stateSnap.data() || {}), id: stateSnap.id } as Record<string, any>;
         if (permit.orgId !== orgId || state.orgId !== orgId || state.permitId !== permitId) {
           throw new SafetyRouteError(403, 'APR/PT não pertence à empresa selecionada.');
-        }
-        if (managerEvents.has(eventType) && !canManagePermits(req, orgId)) {
-          throw new SafetyRouteError(403, 'Perfil não autorizado para esta movimentação.');
         }
         if (['submitted_for_approval', 'approved'].includes(eventType)
           && (!permit.validUntil || new Date(permit.validUntil).getTime() <= Date.now())) {
@@ -327,7 +318,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
       || String(a.movementDate || '').localeCompare(String(b.movementDate || '')))
     .at(-1);
 
-  router.post('/ppe-movements', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/ppe-movements', requireModuleAccess('ordens', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const { employeeId, ppeId, eventType, movementDate, referenceMovementId } = req.body || {};
@@ -394,7 +385,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/ppe-movements/replace', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/ppe-movements/replace', requireModuleAccess('ordens', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const { employeeId, oldMovementId, newPpeId, movementDate } = req.body || {};
@@ -470,7 +461,7 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
     }
   });
 
-  router.post('/training-records', requireArea('operacoes', 2), async (req: Request, res: Response) => {
+  router.post('/training-records', requireRole('Supervisor', 'Gerente', 'Admin'), requireModuleAccess('ordens', 2, getH), async (req: Request, res: Response) => {
     const orgId = req.orgId;
     const actor = req.user;
     const {
@@ -489,9 +480,6 @@ export function createSafetyRouter(getH: () => AdminHandles | null = getAdmin): 
       || expirationDate < issueDate || issueDate > dateToday()
       || entity.length > 160 || certificate.length > 100 || fileName.length > 180 || note.length > 700) {
       return res.status(400).json({ ok: false, error: 'Dados do certificado ou qualificação inválidos.' });
-    }
-    if (!canManagePermits(req, orgId)) {
-      return res.status(403).json({ ok: false, error: 'Somente Supervisor, Gerente ou Admin pode registrar certificados oficiais de segurança.' });
     }
     if (!filePath && !externalUrl) {
       return res.status(400).json({ ok: false, error: 'Anexe o certificado ou informe um link HTTPS de evidência.' });
