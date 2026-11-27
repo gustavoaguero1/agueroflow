@@ -12,11 +12,13 @@
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { resolveConfig } from '../src/ponto/config.ts';
 import { toBrt, diaBrt } from '../src/ponto/tempo.ts';
-import { firestorePontoStore, type Alerta, type Device, type PontoStore } from './ponto/store.ts';
+import { firestorePontoStore, type Alerta, type BiometriaPessoa, type Device, type PontoStore } from './ponto/store.ts';
 import { registrarMarcacao, PontoErro, type MarcacaoInput } from './ponto/registrar.ts';
 import { concluirPareamento, verificarAssinatura } from './ponto/devices.ts';
 import { registerRhRoutes } from './ponto/rhRoutes.ts';
 import { recalcularPontoDia, firestorePontoDiaWriter } from './ponto/diarioSync.ts';
+import { openFaceDescriptors, sealFaceDescriptors } from './ponto/bioCrypto.ts';
+import { FACE_MODEL_VERSION, LGPD_TERM_VERSION, sanitizeDescriptors } from '../src/ponto/faceMath.ts';
 
 export const MAX_ITENS_LOTE = 200;
 
@@ -54,45 +56,163 @@ export function createPontoRouter(opts: PontoRouterOpts = {}): Router {
     return d;
   };
 
+  const verificarGetAssinado = async (req: Request, d: Device, path: string) => {
+    const minuto = Math.floor(now().getTime() / 60000);
+    const sig = String(req.header('x-ponto-sig') ?? '');
+    for (const m of [minuto, minuto - 1, minuto + 1]) {
+      if (await verificarAssinatura(d.publicKeyJwk, `GET ${path}|${m}`, sig)) return;
+    }
+    throw new PontoErro(401, 'Assinatura do aparelho inválida.');
+  };
+
   const configPara = async (store: PontoStore, orgId: string, rhId?: string) => {
     const pessoa = rhId ? await store.getPessoa(orgId, rhId) : undefined;
     const estab = pessoa ? await store.getEstab(pessoa.estabelecimentoId) : undefined;
-    return { pessoa, config: resolveConfig(estab?.config, pessoa?.config) };
+    return { pessoa, estab, config: resolveConfig(estab?.config, pessoa?.config) };
   };
 
   r.get('/device/time', (_req, res) => { res.json({ agora: toBrt(now()) }); });
 
   r.post('/device/pair', wrap(async (req, res, store) => {
     const d = await concluirPareamento(store, { code: req.body?.code, publicKeyJwk: req.body?.publicKeyJwk, nome: req.body?.nome }, now);
-    const { pessoa, config } = await configPara(store, d.orgId, d.rhId);
-    res.json({ deviceId: d.id, modo: d.modo, rhId: d.rhId, unitId: d.unitId, pessoa: pessoa ? { nome: pessoa.nome } : undefined, config });
+    const { pessoa, estab, config } = await configPara(store, d.orgId, d.rhId);
+    res.json({
+      deviceId: d.id, modo: d.modo, rhId: d.rhId, unitId: d.unitId,
+      pessoa: pessoa ? { nome: pessoa.nome } : undefined,
+      estabelecimento: estab ? { razaoSocial: estab.razaoSocial, cnpj: estab.cnpj } : undefined,
+      config,
+    });
   }));
 
   r.get('/device/me', wrap(async (req, res, store) => {
     const d = await deviceFrom(req, store);
-    const minuto = Math.floor(now().getTime() / 60000);
-    const sig = String(req.header('x-ponto-sig') ?? '');
-    let ok = false;
-    for (const m of [minuto, minuto - 1, minuto + 1]) {
-      if (await verificarAssinatura(d.publicKeyJwk, `GET /device/me|${m}`, sig)) { ok = true; break; }
-    }
-    if (!ok) throw new PontoErro(401, 'Assinatura do aparelho inválida.');
+    await verificarGetAssinado(req, d, '/device/me');
     const hoje = diaBrt(now());
+    const obras = await store.listObras(d.orgId);
+
     if (d.modo === 'pessoal') {
-      const { pessoa, config } = await configPara(store, d.orgId, d.rhId);
+      const { pessoa, estab, config } = await configPara(store, d.orgId, d.rhId);
       const ultimas = await store.listMarcacoes(d.orgId, { rhId: d.rhId, desde: hoje, ate: hoje });
+      const bio = pessoa?.biometria;
+      const descriptors = bio?.status === 'cadastrada' && bio.vetoresSelados
+        ? openFaceDescriptors(bio.vetoresSelados) ?? []
+        : [];
       return res.json({
-        modo: d.modo, pessoa: pessoa ? { rhId: pessoa.rhId, nome: pessoa.nome } : null, config,
-        ultimasDoDia: ultimas.sort((a, b) => a.dataHora.localeCompare(b.dataHora)).map((m) => ({ tipo: m.tipo, dataHora: m.dataHora })),
+        modo: d.modo,
+        pessoa: pessoa ? { rhId: pessoa.rhId, nome: pessoa.nome, temPin: !!pessoa.pinHash } : null,
+        estabelecimento: estab ? { razaoSocial: estab.razaoSocial, cnpj: estab.cnpj } : null,
+        biometria: {
+          status: bio?.status ?? 'pendente',
+          poses: descriptors.length,
+          descriptors,
+          lgpdAceitoEm: bio?.lgpdAceitoEm ?? null,
+          atualizadoEm: bio?.atualizadoEm ?? null,
+        },
+        obras,
+        config,
+        ultimasDoDia: ultimas
+          .sort((a, b) => a.dataHora.localeCompare(b.dataHora))
+          .map((m) => ({ tipo: m.tipo, dataHora: m.dataHora, nsr: m.nsr, hash: m.hash, alertas: m.alertas })),
       });
     }
+
     const [pessoas, rh] = await Promise.all([store.listPessoas(d.orgId), store.listRh(d.orgId)]);
     const rhById = new Map(rh.map((x) => [x.id, x]));
     const lista = pessoas
-      .filter((p) => p.cpf && p.estabelecimentoId && rhById.get(p.rhId)?.active !== false)
-      .map((p) => ({ rhId: p.rhId, nome: p.nome, daObra: rhById.get(p.rhId)?.unitId === d.unitId }))
+      .filter((p) => p.cpf && p.estabelecimentoId && p.config?.batePonto !== false && rhById.get(p.rhId)?.active !== false)
+      .map((p) => {
+        const descriptors = p.biometria?.status === 'cadastrada' && p.biometria.vetoresSelados
+          ? openFaceDescriptors(p.biometria.vetoresSelados) ?? []
+          : [];
+        return {
+          rhId: p.rhId,
+          nome: p.nome,
+          daObra: rhById.get(p.rhId)?.unitId === d.unitId,
+          temPin: !!p.pinHash,
+          temRosto: descriptors.length > 0,
+          descriptors,
+        };
+      })
       .sort((a, b) => Number(b.daObra) - Number(a.daObra) || a.nome.localeCompare(b.nome));
-    res.json({ modo: d.modo, unitId: d.unitId, pessoas: lista, config: resolveConfig() });
+    const obra = obras.find((o) => o.id === d.unitId) ?? null;
+    res.json({ modo: d.modo, unitId: d.unitId, obra, obras, pessoas: lista, config: resolveConfig() });
+  }));
+
+  r.post('/device/rosto', wrap(async (req, res, store) => {
+    const d = await deviceFrom(req, store);
+    if (d.modo !== 'pessoal' || !d.rhId) {
+      throw new PontoErro(403, 'Cadastro facial pelo coletor só é permitido no celular pessoal do funcionário.');
+    }
+    const payload = typeof req.body?.payload === 'string' ? req.body.payload : '';
+    const signature = String(req.body?.signature ?? req.header('x-ponto-sig') ?? '');
+    if (!payload || !(await verificarAssinatura(d.publicKeyJwk, payload, signature))) {
+      throw new PontoErro(401, 'Assinatura do aparelho inválida.');
+    }
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(payload); } catch { throw new PontoErro(400, 'Payload inválido.'); }
+    const pessoa = await store.getPessoa(d.orgId, d.rhId);
+    if (!pessoa || !pessoa.cpf || !pessoa.estabelecimentoId) {
+      throw new PontoErro(404, 'Pessoa sem cadastro de ponto.');
+    }
+    const at = toBrt(now());
+    if (parsed.recusar === true) {
+      const biometria: BiometriaPessoa = {
+        status: 'recusada',
+        lgpdVersao: String(parsed.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
+        atualizadoEm: at,
+        atualizadoPor: `device:${d.id}`,
+      };
+      await store.savePessoa({ ...pessoa, biometria });
+      return res.json({ ok: true, status: biometria.status, atualizadoEm: at });
+    }
+    if (parsed.lgpdAceito !== true) {
+      throw new PontoErro(400, 'Aceite o termo LGPD antes de cadastrar seu rosto.');
+    }
+    const descriptors = sanitizeDescriptors(parsed.descriptors);
+    if (!descriptors) {
+      throw new PontoErro(400, 'Vetores faciais inválidos. Refaça a captura pela câmera.');
+    }
+    const biometria: BiometriaPessoa = {
+      status: 'cadastrada',
+      modelo: String(parsed.modelo ?? FACE_MODEL_VERSION).slice(0, 60),
+      poses: descriptors.length,
+      vetoresSelados: sealFaceDescriptors(descriptors),
+      lgpdAceitoEm: at,
+      lgpdVersao: String(parsed.lgpdVersao ?? LGPD_TERM_VERSION).slice(0, 40),
+      atualizadoEm: at,
+      atualizadoPor: `device:${d.id}`,
+    };
+    await store.savePessoa({ ...pessoa, biometria });
+    res.json({ ok: true, status: biometria.status, poses: biometria.poses, atualizadoEm: at });
+  }));
+
+  r.get('/device/comprovantes', wrap(async (req, res, store) => {
+    const d = await deviceFrom(req, store);
+    await verificarGetAssinado(req, d, '/device/comprovantes');
+    if (d.modo !== 'pessoal' || !d.rhId) return res.json({ items: [] });
+    const ate = diaBrt(now());
+    const desde = diaBrt(new Date(now().getTime() - 29 * 86400_000));
+    const [pessoa, marcacoes, obras] = await Promise.all([
+      store.getPessoa(d.orgId, d.rhId),
+      store.listMarcacoes(d.orgId, { rhId: d.rhId, desde, ate }),
+      store.listObras(d.orgId),
+    ]);
+    const estab = pessoa ? await store.getEstab(pessoa.estabelecimentoId) : undefined;
+    const obraMap = new Map(obras.map((o) => [o.id, o.nome]));
+    const items = marcacoes
+      .sort((a, b) => b.dataHora.localeCompare(a.dataHora))
+      .slice(0, 60)
+      .map((m) => ({
+        nsr: m.nsr,
+        empresa: estab ? { razaoSocial: estab.razaoSocial, cnpj: estab.cnpj } : { razaoSocial: '', cnpj: '' },
+        pessoa: pessoa ? { nome: pessoa.nome, cpf: pessoa.cpf } : { nome: '', cpf: '' },
+        tipo: m.tipo,
+        dataHora: m.dataHora,
+        obra: m.unitId ? { unitId: m.unitId, nome: obraMap.get(m.unitId) ?? '' } : null,
+        hash: m.hash,
+        alertas: m.alertas,
+      }));
+    res.json({ items });
   }));
 
   r.post('/device/marcacoes', wrap(async (req, res, store) => {

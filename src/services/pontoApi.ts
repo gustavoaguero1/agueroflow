@@ -17,9 +17,33 @@ export interface Estabelecimento { id: string; orgId: string; cnpj: string; raza
 export interface PessoaPontoView {
   rhId: string; nome: string; unitId: string | null; cpfMascarado: string | null; vinculo: 'CLT' | 'PJ' | null;
   batePonto: boolean; estabelecimentoId: string | null; temPin: boolean; temRosto: boolean;
+  biometriaStatus?: 'pendente' | 'cadastrada' | 'recusada';
+  biometriaPoses?: number;
+  biometriaAtualizadaEm?: string | null;
+  lgpdAceitoEm?: string | null;
   config: Partial<PontoConfig> | null; aparelho: { id: string; nome: string; criadoEm: string } | null;
 }
-export interface LinhaMarcacao { nsr?: number; tipo: TipoMarcacao; dataHora: string; origem: 'ponto' | 'ajuste'; desconsiderada: boolean; alertas: Alerta[]; unitId?: string | null; justificativa?: string }
+export interface LinhaMarcacao {
+  id?: string; nsr?: number; tipo: TipoMarcacao; dataHora: string; origem: 'ponto' | 'ajuste'; desconsiderada: boolean;
+  alertas: Alerta[]; unitId?: string | null; justificativa?: string;
+  temFoto?: boolean; metodo?: 'rosto' | 'pin' | 'nenhum'; faceScore?: number | null; distM?: number | null;
+}
+export interface MarcacaoFotoDetalhe {
+  id: string;
+  nsr: number;
+  tipo: TipoMarcacao;
+  dataHora: string;
+  gravadoEm: string;
+  metodo: 'rosto' | 'pin' | 'nenhum';
+  offline: boolean;
+  face: { score: number; liveness?: number; modelo: string } | null;
+  gps: { lat: number; lng: number; precisaoM?: number } | null;
+  distM: number | null;
+  obraNome: string | null;
+  alertas: Alerta[];
+  hash: string;
+  fotoDataUrl: string | null;
+}
 export interface Horas { hn: number; h50: number; h100: number; trabalhadoMin: number; incompleto: boolean }
 export interface DiaEspelho { data: string; marcacoes: LinhaMarcacao[]; horas: Horas }
 export interface Espelho { pessoa: { rhId: string; nome: string; cpfMascarado: string | null }; dias: DiaEspelho[]; totais: { hn: number; h50: number; h100: number; diasIncompletos: number } }
@@ -57,6 +81,10 @@ export const pontoApi = {
   salvarEstabelecimento: (orgId: string, id: string, e: Omit<Estabelecimento, 'id' | 'orgId'>) => call('PUT', `/estabelecimentos/${encodeURIComponent(id)}`, orgId, e as Record<string, unknown>),
   pessoas: (orgId: string) => call<{ items: PessoaPontoView[] }>('GET', '/pessoas', orgId).then((r) => r.items),
   salvarPessoa: (orgId: string, rhId: string, p: Record<string, unknown>) => call('PUT', `/pessoas/${encodeURIComponent(rhId)}`, orgId, p),
+  salvarRosto: (orgId: string, rhId: string, body: { descriptors?: number[][]; lgpdAceito?: boolean; recusar?: boolean; modelo?: string; lgpdVersao?: string }) =>
+    call<{ ok: boolean; status: string; poses?: number; atualizadoEm: string }>('POST', `/pessoas/${encodeURIComponent(rhId)}/rosto`, orgId, body as Record<string, unknown>),
+  removerRosto: (orgId: string, rhId: string) => call<{ ok: boolean }>('DELETE', `/pessoas/${encodeURIComponent(rhId)}/rosto`, orgId),
+  fotoMarcacao: (orgId: string, marcacaoId: string) => call<MarcacaoFotoDetalhe>('GET', `/marcacoes/${encodeURIComponent(marcacaoId)}/foto`, orgId),
   parearPessoal: (orgId: string, rhId: string) => call<{ code: string; expiraEm: string }>('POST', '/pareamentos/pessoal', orgId, { rhId }),
   parearTotem: (orgId: string, unitId: string) => call<{ code: string; expiraEm: string }>('POST', '/pareamentos/totem', orgId, { unitId }),
   espelho: (orgId: string, rhId: string, inicio: string, fim: string) => call<Espelho>('GET', `/espelho?${q({ rhId, inicio, fim })}`, orgId),
