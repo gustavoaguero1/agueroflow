@@ -11,6 +11,7 @@ import {
 import { db } from '../firebase';
 import { apiFetch } from '../apiAuthFetch';
 import { assessChecklistCompletion, createInitialChecklistAnswers } from '../services/checklistValidation';
+import { EvidenceCaptureInput } from '../components/common/EvidenceCaptureInput';
 import {
   ChecklistTemplate,
   ChecklistItemDef,
@@ -401,10 +402,30 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
               </div>
 
               {/* Progress Bar */}
-              <div className="my-4 p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-300 font-medium">Progresso de Preenchimento:</span>
-                <span className="font-mono font-bold text-emerald-400">{calculateProgress()}%</span>
-              </div>
+              {(() => {
+                const assessment = assessChecklistCompletion(activeRunTemplate, currentAnswers);
+                return (
+                  <div className="my-4 p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-300 font-medium">
+                        Progresso: {assessment.answeredCount}/{activeRunTemplate.items.length} itens
+                        {assessment.nonConformityCount > 0 && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                            {assessment.nonConformityCount} NC
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-mono font-bold text-emerald-400">{assessment.progressPercent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 transition-all duration-300"
+                        style={{ width: `${assessment.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Questions List */}
               <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
@@ -508,18 +529,16 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                       )}
 
                       {(it.type === 'foto' || it.type === 'assinatura') && (
-                        <input
-                          type="url"
-                          value={ans?.value ?? ''}
-                          onChange={(e) => {
+                        <EvidenceCaptureInput
+                          mode={it.type}
+                          value={typeof ans?.value === 'string' ? ans.value : ''}
+                          onChange={(nextVal) => {
                             setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
-                              [it.id]: { ...ans, value: e.target.value },
+                              [it.id]: { ...ans, value: nextVal },
                             });
                           }}
-                          placeholder={it.type === 'foto' ? 'Cole a referência HTTPS do arquivo no Storage...' : 'Cole a referência HTTPS da assinatura no Storage...'}
-                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
                       )}
                     </div>

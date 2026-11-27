@@ -114,3 +114,28 @@ test('server validation reconstructs title and answer type from the saved templa
   assert.equal(result.answers.sim.itemTitle, 'Proteção instalada');
   assert.equal(result.answers.sim.type, 'sim_nao');
 });
+
+test('server validation accepts compressed inline image and signature data URLs and rejects invalid data URIs', () => {
+  const mediaTemplate: ChecklistTemplate = {
+    ...template,
+    items: [
+      { id: 'foto', title: 'Foto da válvula', type: 'foto', required: true },
+      { id: 'ass', title: 'Assinatura do técnico', type: 'assinatura', required: true },
+    ],
+  };
+
+  const valid = validateChecklistSubmission(mediaTemplate, {
+    foto: { value: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/' },
+    ass: { value: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB' },
+  });
+  assert.equal(valid.canComplete, true);
+  assert.equal(valid.answeredCount, 2);
+
+  const invalidType = validateChecklistSubmission(mediaTemplate, {
+    foto: { value: 'data:text/html;base64,PHNjcmlwdD4=' },
+    ass: { value: 'https://storage.example.com/sig.png' },
+  });
+  assert.equal(invalidType.canComplete, false);
+  assert.ok(invalidType.errors.some((e) => e.includes('Foto da válvula')));
+});
+
