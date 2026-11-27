@@ -84,3 +84,12 @@ test('Firestore routes contracts through the Contratos module grant', async () =
   const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
   assert.match(rules, /coll == 'contracts' \? 'contratos'/);
 });
+
+
+test('RH collections honor their granular submodule grants', () => {
+  assert.match(rules, /function rhRead\\(d\\)/);
+  assert.match(rules, /function rhWrite\\(d\\)/);
+  assert.match(rules, /moduleOk\\(o, 'rh-ponto'/); // REP-P remains an API-protected module, not a Firestore salary collection.
+  assert.match(rules, /moduleOk\\(o, 'rh-importacao', A_RH\\(\\), 2\\)/);
+  assert.match(rules, /moduleOk\\(o, 'rh-calculo', A_RH\\(\\), 2\\)/);
+});
