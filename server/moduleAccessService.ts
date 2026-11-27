@@ -1,7 +1,7 @@
 import type { AdminHandles } from './firebaseAdmin.ts';
 import { resolveAreas } from '../src/permissions/areas.ts';
 import {
-  resolveModuleLevels, sanitizeModuleDefaults, sanitizeModuleOverrides,
+  MODULE_PERMISSION_ID_LIST, resolveModuleLevels, sanitizeModuleDefaults, sanitizeModuleOverrides,
   type ModuleAccessDefaults, type ModuleAccessOverrides,
 } from '../src/permissions/modules.ts';
 import type { UserRole } from '../src/types/index.ts';
@@ -27,6 +27,19 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
   const member = snap.data() || {};
   const orgId = memberOrg(member);
   if (!orgId || orgId.includes('/')) return;
+  const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
+  if (member.active !== true) {
+    const modules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
+    await Promise.all(refs.map((ref) => ref.set({
+      orgId,
+      uid: ref.id.slice(orgId.length + 2),
+      modules,
+      explicitModules: [...MODULE_PERMISSION_ID_LIST],
+      revoked: true,
+      updatedAt: new Date().toISOString(),
+    })));
+    return;
+  }
   const orgSnap = await h.db.doc(`organizations/${orgId}`).get();
   const org = orgSnap.data() || {};
   const role = member.role as UserRole;
@@ -38,10 +51,8 @@ export async function syncModuleAccessForMember(h: AdminHandles, memberId: strin
     ...Object.keys(personal),
   ])];
   const hasOverrides = explicitModules.length > 0;
-  const refs = identities(memberId, member).map((uid) => h.db.doc(`org_module_access/${moduleAccessDocId(orgId, uid)}`));
-
-  // Desativar um membro também revoga seus grants; não deixe acessos antigos vivos no Firestore.
-  if (member.active !== true || !hasOverrides) {
+  // Sem personalização, remova o grant e mantenha a herança por área.
+  if (!hasOverrides) {
     await Promise.all(refs.map((ref) => ref.delete()));
     return;
   }
@@ -65,13 +76,29 @@ export async function syncModuleAccessForOrganization(h: AdminHandles, orgId: st
   const docs = new Map([...byOrg.docs, ...byLegacyOrg.docs].map((d) => [d.id, d]));
   const ids = [...docs.keys()];
   const results = await Promise.allSettled(ids.map((id) => syncModuleAccessForMember(h, id)));
+  // Grants de membros removidos (sem documento em org_members) também precisam ser revogados;
+  // caso contrário, o token antigo poderia cair na herança permissiva por área.
+  const activeUids = new Set<string>();
+  for (const [id, doc] of docs) {
+    const data = doc.data();
+    if (data.active === true) identities(id, data).forEach((uid) => activeUids.add(uid));
+  }
+  const grantSnap = await h.db.collection('org_module_access').where('orgId', '==', orgId).get();
+  const zeroModules = Object.fromEntries(MODULE_PERMISSION_ID_LIST.map((id) => [id, 0]));
+  const orphanRevocations = await Promise.allSettled(grantSnap.docs
+    .filter((grant) => {
+      const uid = String(grant.get('uid') || grant.id.slice(orgId.length + 2));
+      return !activeUids.has(uid) && grant.get('revoked') !== true;
+    })
+    .map((grant) => grant.ref.set({ orgId, uid: String(grant.get('uid') || grant.id.slice(orgId.length + 2)), modules: zeroModules, explicitModules: [...MODULE_PERMISSION_ID_LIST], revoked: true, updatedAt: new Date().toISOString() }, { merge: true })));
   // Notifica os clientes conectados para que leiam o grant atualizado sem novo login.
   const stamp = new Date().toISOString();
   const stamps = await Promise.allSettled(ids.map((id) =>
     members.doc(id).update({ areasUpdatedAt: stamp, updatedAt: stamp }),
   ));
   return results.filter((r) => r.status === 'rejected').length
-    + stamps.filter((r) => r.status === 'rejected').length;
+    + stamps.filter((r) => r.status === 'rejected').length
+    + orphanRevocations.filter((r) => r.status === 'rejected').length;
 }
 
 export function resolvedMemberModuleAccess(
