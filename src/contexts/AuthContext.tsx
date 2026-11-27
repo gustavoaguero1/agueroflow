@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import {
   collection,
@@ -13,10 +13,10 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import {
-  canSeeSection, effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels,
+  areaOfSection, canSeeSection, effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels,
 } from '../permissions/areas';
 import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
-import { postJson, setApiOrgGetter } from '../apiAuthFetch';
+import { apiFetch, postJson, setApiOrgGetter } from '../apiAuthFetch';
 import {
   Organization,
   OrgMember,
@@ -44,6 +44,9 @@ interface AuthContextType {
   areaLevels: AreaLevels;
   areaLevel: (area: AreaId) => AreaLevel;
   canSeeSection: (section: string) => boolean;
+  moduleAccess: Record<string, number>;
+  moduleAccessExplicit: string[];
+  moduleLevel: (section: string) => number;
 
   // Global Context Multiempresa (Hierarchy: Org -> Contract -> Unit)
   selectedUnitId: string;
@@ -1050,8 +1053,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Acesso por área: vem do token (o servidor grava); sem áreas no token, padrão do perfil.
   const [tokenAreas, setTokenAreas] = useState<Record<string, string>>({});
+  const [moduleAccess, setModuleAccess] = useState<Record<string, number>>({});
+  const [moduleAccessExplicit, setModuleAccessExplicit] = useState<string[]>([]);
+  const [moduleAccessOrgId, setModuleAccessOrgId] = useState<string>('');
   const tokenIssuedAt = useRef<string>('');
   const lastAreasStamp = useRef<unknown>(undefined); // último areasUpdatedAt visto no cadastro da pessoa
+  const readModuleAccess = useCallback(async (u: User, orgId: string): Promise<void> => {
+    try {
+      const r = await apiFetch(`/api/org/module-access/self?orgId=${encodeURIComponent(orgId)}`);
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j?.ok && j.modules && typeof j.modules === 'object') {
+        setModuleAccess(j.modules as Record<string, number>);
+        setModuleAccessExplicit(Array.isArray(j.explicitModules) ? j.explicitModules.filter((x: unknown): x is string => typeof x === 'string') : []);
+        setModuleAccessOrgId(orgId);
+      } else {
+        setModuleAccess({});
+        setModuleAccessExplicit([]);
+        setModuleAccessOrgId(orgId);
+      }
+    } catch (err) {
+      console.warn('Não foi possível carregar as permissões por submódulo:', err);
+      setModuleAccess({});
+      setModuleAccessExplicit([]);
+      setModuleAccessOrgId('');
+    }
+  }, []);
   const readTokenAreas = useCallback(async (u: User, force = false): Promise<void> => {
     try {
       const r = await u.getIdTokenResult(force);
@@ -1068,6 +1094,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) readTokenAreas(user);
     else setTokenAreas({});
   }, [user, organization?.id, readTokenAreas]);
+
+  useEffect(() => {
+    if (!user || !organization?.id) {
+      setModuleAccess({});
+      setModuleAccessExplicit([]);
+      setModuleAccessOrgId('');
+      return;
+    }
+    setModuleAccess({});
+    setModuleAccessExplicit([]);
+    setModuleAccessOrgId('');
+    readModuleAccess(user, organization.id);
+  }, [user?.uid, organization?.id, readModuleAccess]);
   // Quando o Admin muda o acesso da pessoa, o servidor marca areasUpdatedAt: renova o login aqui.
   useEffect(() => {
     if (!user || !member?.id || isMasterUser) return;
@@ -1076,18 +1115,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (s) => {
         lastAreasStamp.current = s.get('areasUpdatedAt');
         if (needsTokenRefresh(lastAreasStamp.current, tokenIssuedAt.current)) readTokenAreas(user, true);
+        if (organization?.id) readModuleAccess(user, organization.id);
       },
       () => {},
     );
-  }, [user, member?.id, isMasterUser, readTokenAreas]);
-  const areaLevels = effectiveLevels(isMasterUser, role, organization ? tokenAreas[organization.id] : undefined);
-  const areaLevel = (area: AreaId): AreaLevel => areaLevels[area];
-  const canSeeSectionFn = (section: string) => canSeeSection(section, areaLevels);
+  }, [user, member?.id, isMasterUser, readTokenAreas, readModuleAccess, organization?.id]);
+  const areaCode = organization ? tokenAreas[organization.id] : undefined;
+  const areaLevels = useMemo(() => effectiveLevels(isMasterUser, role, areaCode), [isMasterUser, role, areaCode]);
+  const activeModuleAccess = useMemo(() => moduleAccessOrgId === (organization?.id || '') ? moduleAccess : {}, [moduleAccessOrgId, organization?.id, moduleAccess]);
+  const activeExplicitModules = useMemo(() => moduleAccessOrgId === (organization?.id || '') ? moduleAccessExplicit : [], [moduleAccessOrgId, organization?.id, moduleAccessExplicit]);
+  const areaLevel = useCallback((area: AreaId): AreaLevel => areaLevels[area], [areaLevels]);
+  const moduleLevel = useCallback((section: string): number => {
+    if (isMasterUser) return 4;
+    const configured = activeModuleAccess[section];
+    if (activeExplicitModules.includes(section) && typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured;
+    const area = areaOfSection(section);
+    return area ? areaLevels[area] : 1;
+  }, [isMasterUser, activeModuleAccess, activeExplicitModules, areaLevels]);
+  const canSeeSectionFn = useCallback(
+    (section: string) => moduleLevel(section) >= 1 && canSeeSection(section, areaLevels, activeModuleAccess),
+    [moduleLevel, areaLevels, activeModuleAccess],
+  );
   const isAdmin = isMasterUser || role === 'Admin';
   const isManagerOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente';
   const isSupervisorOrAbove = isMasterUser || role === 'Admin' || role === 'Gerente' || role === 'Supervisor';
-  // Financial numbers and 100% of modules visible to Admin, Gerente, and Master User
-  const canViewFinancials = isMasterUser || role === 'Admin' || role === 'Gerente';
+  // Custos financeiros só aparecem quando a pessoa tem consulta em Contas a Pagar.
+  const canViewFinancials = moduleLevel('financeiro-pagar') >= 1;
 
   return (
     <AuthContext.Provider
@@ -1106,6 +1159,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         areaLevels,
         areaLevel,
         canSeeSection: canSeeSectionFn,
+        moduleAccess: activeModuleAccess,
+        moduleAccessExplicit: activeExplicitModules,
+        moduleLevel,
         selectedUnitId,
         setSelectedUnitId,
         selectedContractId,
