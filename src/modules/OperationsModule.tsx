@@ -40,7 +40,7 @@ export const OperationsModule: React.FC<{
   const [importOpen, setImportOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   // Importações e ações internas herdam a permissão do submódulo correspondente.
-  const canImport = moduleLevel('rh-importacao') >= 2 && rhLevel >= 2;
+  const canImport = moduleLevel('rh-importacao') >= 2;
   const canImportGases = moduleLevel('ops-gases') >= 2;
   const canManageOperations = moduleLevel('ops-config') >= 4 || (isManagerOrAbove && !moduleAccessExplicit.includes('ops-config'));
   const orgId = organization?.id || '';
