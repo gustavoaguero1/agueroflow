@@ -77,7 +77,7 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
   const org = (req: Request) => String(req.orgId ?? '');
   const rhLer = requireModuleAccess('rh-ponto', 1);
   const rhGravar = requireModuleAccess('rh-ponto', 2);
-  const rhAdministrar = requireModuleAccess('rh-ponto', 4);
+  const rhAdministrar = requireModuleAccess('rh-ponto-admin', 4);
 
   const estabDaOrg = async (store: PontoStore, orgId: string, id: string) => {
     const e = await store.getEstab(id);
