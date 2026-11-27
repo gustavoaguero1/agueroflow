@@ -2,7 +2,7 @@
   "name": "AgueroFlow Ponto",
   "short_name": "Aguero Ponto",
   "description": "Registro de ponto eletrônico (REP-P) com reconhecimento facial, GPS e funcionamento offline.",
-  "start_url": "/ponto",
+  "start_url": "/?ponto=1",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

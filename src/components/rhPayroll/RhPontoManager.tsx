@@ -63,9 +63,30 @@ const inicioMes = () => `${hojeISO().slice(0, 8)}01`;
 const hora = (iso: string) => iso.slice(11, 16);
 const dataBR = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
-function buildPairingUrl(code: string): string {
-  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
-  return `${origin}/ponto?pair=${encodeURIComponent(code)}`;
+const PUBLIC_BASE_STORAGE_KEY = 'agueroflow_ponto_public_base_url';
+
+function getInitialPublicBase(serverPublicBase?: string | null): string {
+  if (serverPublicBase) return serverPublicBase.replace(/\/+$/, '');
+  if (typeof window !== 'undefined') {
+    const saved = window.localStorage.getItem(PUBLIC_BASE_STORAGE_KEY)?.trim().replace(/\/+$/, '');
+    if (saved && /^https?:\/\//i.test(saved)) return saved;
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  return '';
+}
+
+function isPrivatePreviewHost(urlStr: string): boolean {
+  try {
+    const host = new URL(urlStr).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || /^ais-dev-/i.test(host);
+  } catch {
+    return false;
+  }
+}
+
+function buildPairingUrl(code: string, baseUrl?: string | null): string {
+  const base = (baseUrl || getInitialPublicBase()).replace(/\/+$/, '');
+  return `${base}/?ponto=1&pair=${encodeURIComponent(code)}`;
 }
 
 const Alertas: React.FC<{ a: string[] }> = ({ a }) =>
@@ -146,14 +167,14 @@ export const RhPontoManager: React.FC<{ orgId: string; units: Unit[]; canEdit: b
         </div>
 
         <a
-          href="/ponto"
+          href="/?ponto=1"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl af-btn-glass text-xs font-medium"
           title="Abrir a tela do Coletor de Ponto (PWA para celular e totem)"
         >
           <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Abrir Coletor (/ponto)</span>
+          <span>Abrir Coletor de Ponto</span>
           <ExternalLink className="w-3 h-3 opacity-70" />
         </a>
       </div>
@@ -697,17 +718,41 @@ const EspelhoView: React.FC<{ orgId: string; pessoas: PessoaPontoView[]; canEdit
   );
 };
 
-// ── Modal de QR de Pareamento Didático (URL real + passo a passo + copiar link) ──
+// ── Modal de QR de Pareamento Didático (URL real na raiz /?ponto=1&pair=... + passo a passo + copiar link) ──
 const PairingQrModal: React.FC<{
   title: string;
   modo: 'pessoal' | 'totem';
   code: string;
-  url: string;
+  initialBaseUrl: string;
   expiraEm: string;
-  img: string;
   onClose: () => void;
-}> = ({ title, modo, code, url, expiraEm, img, onClose }) => {
+}> = ({ title, modo, code, initialBaseUrl, expiraEm, onClose }) => {
+  const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
+  const [qrImg, setQrImg] = useState<string>('');
   const [copied, setCopied] = useState(false);
+
+  const url = useMemo(() => buildPairingUrl(code, baseUrl), [code, baseUrl]);
+  const isPrivateHost = useMemo(() => isPrivatePreviewHost(url), [url]);
+
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(url, { margin: 1, width: 240 })
+      .then((img) => {
+        if (active) setQrImg(img);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [url]);
+
+  const handleBaseChange = (val: string) => {
+    setBaseUrl(val);
+    const cleaned = val.trim().replace(/\/+$/, '');
+    if (/^https?:\/\//i.test(cleaned) && !isPrivatePreviewHost(cleaned)) {
+      window.localStorage.setItem(PUBLIC_BASE_STORAGE_KEY, cleaned);
+    }
+  };
 
   const copiarLink = async () => {
     try {
@@ -722,12 +767,38 @@ const PairingQrModal: React.FC<{
   return (
     <Modal title={title} onClose={onClose}>
       <div className="space-y-4">
+        {isPrivateHost && (
+          <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs space-y-2">
+            <p className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Atenção: você está no link de preview privado (só abre neste notebook)</span>
+            </p>
+            <p className="text-[11px] text-slate-700 dark:text-slate-300">
+              Para o celular não dar <b>Page not found</b>, cole abaixo o endereço publicado do AgueroFlow (ex.: <code className="font-mono">https://...run.app</code>) — o QR Code atualiza na hora e fica salvo.
+            </p>
+            <input
+              type="url"
+              value={baseUrl}
+              onChange={(e) => handleBaseChange(e.target.value)}
+              placeholder="https://seu-agueroflow.run.app"
+              className={input}
+            />
+          </div>
+        )}
+
         <div className="text-center space-y-2">
-          <img src={img} alt={`QR de pareamento, código ${code}`} className="mx-auto rounded-2xl bg-white p-3 shadow-lg" />
-          <p className="text-2xl font-mono font-bold tracking-[0.28em] text-white">{code}</p>
-          <p className="text-[11px] text-slate-400">
+          {qrImg ? (
+            <img src={qrImg} alt={`QR de pareamento, código ${code}`} className="mx-auto rounded-2xl bg-white p-3 shadow-lg border border-slate-200" />
+          ) : (
+            <div className="w-60 h-60 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            </div>
+          )}
+          <p className="text-2xl font-mono font-bold tracking-[0.28em] text-slate-900 dark:text-white">{code}</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all px-2">{url}</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
             Válido uma única vez até{' '}
-            <b className="text-slate-200">
+            <b className="text-slate-800 dark:text-slate-200">
               {new Date(expiraEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
             </b>
           </p>
@@ -749,36 +820,36 @@ const PairingQrModal: React.FC<{
           </a>
         </div>
 
-        <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3.5 text-[11px] text-slate-300 space-y-1.5">
-          <p className="font-bold text-cyan-300 flex items-center gap-1.5">
+        <div className="rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-3.5 text-[11px] text-slate-700 dark:text-slate-300 space-y-1.5">
+          <p className="font-bold text-blue-600 dark:text-cyan-300 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Como parear e começar a bater ponto:</span>
           </p>
           {modo === 'pessoal' ? (
-            <ol className="list-decimal pl-4 space-y-1 text-slate-400">
+            <ol className="list-decimal pl-4 space-y-1 text-slate-600 dark:text-slate-400">
               <li>
-                Aponte a <b className="text-slate-200">câmera normal do celular</b> do funcionário para o QR Code acima (ou envie o link pelo WhatsApp).
+                Aponte a <b className="text-slate-900 dark:text-slate-200">câmera normal do celular</b> do funcionário para o QR Code acima (ou envie o link pelo WhatsApp).
               </li>
               <li>
-                O navegador abre o <b className="text-slate-200">AgueroFlow Ponto</b> já com o código preenchido — basta tocar em <b className="text-slate-200">Confirmar pareamento</b>.
+                O navegador abre o <b className="text-slate-900 dark:text-slate-200">AgueroFlow Ponto</b> já com o código preenchido — basta tocar em <b className="text-slate-900 dark:text-slate-200">Confirmar pareamento</b>.
               </li>
               <li>
-                Em seguida, o colaborador aceita o termo LGPD e faz o <b className="text-slate-200">cadastro rápido do rosto</b> (ou o RH pode cadastrar agora mesmo pelo botão <i>Cadastrar rosto</i>).
+                Em seguida, o colaborador aceita o termo LGPD e faz o <b className="text-slate-900 dark:text-slate-200">cadastro rápido do rosto</b> (ou o RH pode cadastrar agora mesmo pelo botão <i>Cadastrar rosto</i>).
               </li>
               <li>
-                Toque em <b className="text-slate-200">Instalar / Adicionar à Tela Inicial</b> para bater ponto em 1 toque, mesmo <b className="text-slate-200">sem internet na obra</b>.
+                Toque em <b className="text-slate-900 dark:text-slate-200">Instalar / Adicionar à Tela Inicial</b> para bater ponto em 1 toque, mesmo <b className="text-slate-900 dark:text-slate-200">sem internet na obra</b>.
               </li>
             </ol>
           ) : (
-            <ol className="list-decimal pl-4 space-y-1 text-slate-400">
+            <ol className="list-decimal pl-4 space-y-1 text-slate-600 dark:text-slate-400">
               <li>
                 No tablet da obra, aponte a câmera para o QR Code (ou abra o link copiado acima).
               </li>
               <li>
-                Toque em <b className="text-slate-200">Confirmar pareamento</b> — o tablet baixa os vetores faciais criptografados da equipe para operar offline.
+                Toque em <b className="text-slate-900 dark:text-slate-200">Confirmar pareamento</b> — o tablet baixa os vetores faciais criptografados da equipe para operar offline.
               </li>
               <li>
-                Adicione à Tela Inicial do tablet. Cada colaborador só toca em <b className="text-slate-200">Bater Ponto</b> e olha para a câmera (reconhecimento automático 1:N, sem digitar nada).
+                Adicione à Tela Inicial do tablet. Cada colaborador só toca em <b className="text-slate-900 dark:text-slate-200">Bater Ponto</b> e olha para a câmera (reconhecimento automático 1:N, sem digitar nada).
               </li>
             </ol>
           )}
@@ -810,7 +881,7 @@ const Pessoas: React.FC<{
     inicio: '',
     fim: '',
   });
-  const [qr, setQr] = useState<{ nome: string; code: string; url: string; expiraEm: string; img: string } | null>(null);
+  const [qr, setQr] = useState<{ nome: string; code: string; initialBaseUrl: string; expiraEm: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const lista = useMemo(() => pessoas.filter((p) => p.nome.toLowerCase().includes(busca.toLowerCase())), [pessoas, busca]);
 
@@ -853,13 +924,11 @@ const Pessoas: React.FC<{
     setMsg(null);
     try {
       const r = await pontoApi.parearPessoal(orgId, p.rhId);
-      const url = buildPairingUrl(r.code);
       setQr({
         nome: p.nome,
         code: r.code,
-        url,
+        initialBaseUrl: getInitialPublicBase(r.publicBaseUrl),
         expiraEm: r.expiraEm,
-        img: await QRCode.toDataURL(url, { margin: 1, width: 240 }),
       });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Erro');
@@ -1063,9 +1132,8 @@ const Pessoas: React.FC<{
           title={`Parear celular de ${qr.nome}`}
           modo="pessoal"
           code={qr.code}
-          url={qr.url}
+          initialBaseUrl={qr.initialBaseUrl}
           expiraEm={qr.expiraEm}
-          img={qr.img}
           onClose={() => {
             setQr(null);
             onChange();
@@ -1077,6 +1145,7 @@ const Pessoas: React.FC<{
         <FaceEnrollModal
           personName={enrollPerson.nome}
           context="rh"
+          openInNewTabUrl={`/?ponto-rosto=1&orgId=${encodeURIComponent(orgId)}&rhId=${encodeURIComponent(enrollPerson.rhId)}&nome=${encodeURIComponent(enrollPerson.nome)}`}
           onSaveFace={async (payload) => {
             await pontoApi.salvarRosto(orgId, enrollPerson.rhId, payload);
             onChange();
@@ -1312,7 +1381,7 @@ const Aparelhos: React.FC<{
 }> = ({ orgId, pessoas, units, canEdit, canPairTotem }) => {
   const [lista, setLista] = useState<Aparelho[] | null>(null);
   const [unitId, setUnitId] = useState('');
-  const [qr, setQr] = useState<{ code: string; url: string; expiraEm: string; img: string } | null>(null);
+  const [qr, setQr] = useState<{ code: string; initialBaseUrl: string; expiraEm: string } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
@@ -1331,8 +1400,7 @@ const Aparelhos: React.FC<{
     setMsg(null);
     try {
       const r = await pontoApi.parearTotem(orgId, unitId);
-      const url = buildPairingUrl(r.code);
-      setQr({ ...r, url, img: await QRCode.toDataURL(url, { margin: 1, width: 240 }) });
+      setQr({ code: r.code, expiraEm: r.expiraEm, initialBaseUrl: getInitialPublicBase(r.publicBaseUrl) });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : 'Erro');
     }
@@ -1409,9 +1477,8 @@ const Aparelhos: React.FC<{
           title="Parear tablet-totem da obra"
           modo="totem"
           code={qr.code}
-          url={qr.url}
+          initialBaseUrl={qr.initialBaseUrl}
           expiraEm={qr.expiraEm}
-          img={qr.img}
           onClose={() => {
             setQr(null);
             load();

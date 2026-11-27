@@ -86,7 +86,8 @@ test('bioCrypto: cifra e decifra vetores com AES-256-GCM e valida selfie comprim
   assert.equal(sanitizePontoPhoto(`data:image/jpeg;base64,${'A'.repeat(120_000)}`), null);
 });
 
-test('extractPairCode aceita URL /ponto?pair=, prefixo legado e código puro', () => {
+test('extractPairCode aceita URL /?ponto=1&pair=, /ponto?pair=, prefixo legado e código puro', () => {
+  assert.equal(extractPairCode('https://app.agueroflow.com/?ponto=1&pair=abcd1234'), 'ABCD1234');
   assert.equal(extractPairCode('https://app.agueroflow.com/ponto?pair=abcd1234'), 'ABCD1234');
   assert.equal(extractPairCode('agueroflow-ponto:xyzw9876'), 'XYZW9876');
   assert.equal(extractPairCode('  ab-cd 1234 '), 'ABCD1234');

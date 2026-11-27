@@ -1,10 +1,12 @@
 /**
- * Service Worker offline-first do AgueroFlow Ponto (/ponto).
+ * Service Worker offline-first do AgueroFlow Ponto (/?ponto=1 e /ponto).
  * - Faz cache dos modelos faciais (/ponto-models/*) e dos assets estáticos para bater ponto sem internet na obra.
  * - Nunca faz cache de rotas /api/* (a fila offline de marcações é gerida pelo IndexedDB assinado).
  */
-const CACHE_NAME = 'agueroflow-ponto-v1';
+const CACHE_NAME = 'agueroflow-ponto-v2';
 const MODEL_ASSETS = [
+  '/ponto-models/ssd_mobilenetv1_model-weights_manifest.json',
+  '/ponto-models/ssd_mobilenetv1_model.bin',
   '/ponto-models/tiny_face_detector_model-weights_manifest.json',
   '/ponto-models/tiny_face_detector_model.bin',
   '/ponto-models/face_landmark_68_tiny_model-weights_manifest.json',
@@ -40,7 +42,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
 
-  // Modelos faciais: Cache-First (nunca mudam de nome e precisam funcionar 100% offline)
+  // Modelos faciais: Cache-First (funcionam 100% offline na obra)
   if (url.pathname.startsWith('/ponto-models/')) {
     event.respondWith(
       caches.match(req).then((cached) => {
@@ -57,7 +59,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navegação (/ponto) e bundles JS/CSS: Network-First com fallback para cache offline
+  // Navegação e bundles JS/CSS: Network-First com fallback para cache offline
   if (req.mode === 'navigate' || url.pathname.startsWith('/assets/')) {
     event.respondWith(
       fetch(req)
@@ -68,7 +70,7 @@ self.addEventListener('fetch', (event) => {
           }
           return resp;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('/ponto') || caches.match('/'))),
+        .catch(() => caches.match(req).then((cached) => cached || caches.match('/?ponto=1') || caches.match('/'))),
     );
   }
 });

@@ -236,13 +236,19 @@ export function registerRhRoutes(r: Router, ctx: RhRouteCtx): void {
   }));
 
   // ── Pareamento ──
+  const publicBaseUrl = () => {
+    const raw = String(process.env.APP_URL ?? '').trim().replace(/\/+$/, '');
+    if (!raw || raw === 'MY_APP_URL' || !/^https?:\/\//i.test(raw)) return null;
+    if (/ais-dev-/i.test(raw)) return null;
+    return raw;
+  };
   r.post('/pareamentos/pessoal', rhGravar, wrap(async (req, res, store) => {
     const p = await criarPareamento(store, { orgId: org(req), modo: 'pessoal', rhId: String(req.body?.rhId ?? ''), criadoPor: String(req.user?.uid ?? '') }, now);
-    res.json({ code: p.code, expiraEm: p.expiraEm });
+    res.json({ code: p.code, expiraEm: p.expiraEm, publicBaseUrl: publicBaseUrl() });
   }));
   r.post('/pareamentos/totem', requireRole('Admin', 'Gerente'), wrap(async (req, res, store) => {
     const p = await criarPareamento(store, { orgId: org(req), modo: 'totem', unitId: String(req.body?.unitId ?? ''), criadoPor: String(req.user?.uid ?? '') }, now);
-    res.json({ code: p.code, expiraEm: p.expiraEm });
+    res.json({ code: p.code, expiraEm: p.expiraEm, publicBaseUrl: publicBaseUrl() });
   }));
 
   // ── Espelho, foto da marcação e painel do dia ──

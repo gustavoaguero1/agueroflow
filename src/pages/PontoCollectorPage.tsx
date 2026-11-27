@@ -315,7 +315,7 @@ export const PontoCollectorPage: React.FC = () => {
       setIdentity(paired);
       // Limpa o ?pair= da barra de endereço após parear
       if (window.location.search.includes('pair=')) {
-        window.history.replaceState({}, '', '/ponto');
+        window.history.replaceState({}, '', '/?ponto=1');
       }
       await reloadLocalState();
       // Pré-aquece os modelos faciais para cache offline
@@ -674,56 +674,56 @@ export const PontoCollectorPage: React.FC = () => {
   // ── TELA VERDE GIGANTE DE CONFIRMAÇÃO (PADRÃO RH-ID) ──
   if (successReceipt) {
     return (
-      <div className="min-h-screen bg-emerald-600 text-white flex flex-col items-center justify-center p-5">
-        <div className="w-full max-w-md bg-emerald-700/60 backdrop-blur-md border border-white/25 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-          <div className="w-20 h-20 mx-auto rounded-full bg-white text-emerald-600 flex items-center justify-center shadow-lg">
+      <div className="ponto-success-screen min-h-screen bg-emerald-600 text-white flex flex-col items-center justify-center p-5">
+        <div className="w-full max-w-md bg-emerald-700/75 backdrop-blur-md border border-white/25 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="ponto-success-cta w-20 h-20 mx-auto rounded-full flex items-center justify-center shadow-lg">
             <CheckCircle2 className="w-12 h-12" />
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-widest font-bold text-emerald-100">
+            <p className="text-xs uppercase tracking-widest font-bold opacity-90">
               {successReceipt.provisorio ? 'Ponto salvo offline' : 'Ponto registrado'}
             </p>
             <h2 className="text-2xl font-extrabold mt-1">{successReceipt.pessoa.nome}</h2>
             <p className="text-4xl font-mono font-black tracking-tight mt-2">
               {fmtIsoHora(successReceipt.dataHora)}
             </p>
-            <p className="text-sm font-semibold text-emerald-100 mt-1">
+            <p className="text-sm font-semibold opacity-95 mt-1">
               {TIPO_LABEL[successReceipt.tipo]} · {fmtIsoData(successReceipt.dataHora)}
             </p>
           </div>
 
-          <div className="bg-black/20 rounded-2xl p-3.5 text-left text-xs space-y-1.5">
+          <div className="bg-black/25 rounded-2xl p-3.5 text-left text-xs space-y-1.5">
             <div className="flex justify-between gap-2">
-              <span className="text-emerald-100/80">Empresa</span>
+              <span className="opacity-80">Empresa</span>
               <span className="font-semibold text-right">{successReceipt.empresa.razaoSocial || 'Grupo Aguero'}</span>
             </div>
             {successReceipt.empresa.cnpj && (
               <div className="flex justify-between gap-2">
-                <span className="text-emerald-100/80">CNPJ</span>
+                <span className="opacity-80">CNPJ</span>
                 <span className="font-mono">{successReceipt.empresa.cnpj}</span>
               </div>
             )}
             <div className="flex justify-between gap-2">
-              <span className="text-emerald-100/80">Local</span>
+              <span className="opacity-80">Local</span>
               <span className="font-semibold text-right">{successReceipt.obra?.nome ?? 'Registrado por GPS'}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-emerald-100/80">NSR</span>
+              <span className="opacity-80">NSR</span>
               <span className="font-mono font-bold">
                 {successReceipt.nsr ? `#${String(successReceipt.nsr).padStart(9, '0')}` : 'Pendente de envio'}
               </span>
             </div>
             {successReceipt.hash && (
               <div className="pt-1 border-t border-white/15">
-                <span className="text-[10px] text-emerald-100/75 block">Hash SHA-256 (Portaria 671)</span>
-                <span className="font-mono text-[10px] break-all text-white/90">{successReceipt.hash}</span>
+                <span className="text-[10px] opacity-80 block">Hash SHA-256 (Portaria 671)</span>
+                <span className="font-mono text-[10px] break-all">{successReceipt.hash}</span>
               </div>
             )}
           </div>
 
           {successReceipt.provisorio && (
-            <div className="p-2.5 rounded-xl bg-amber-400/20 border border-amber-200/40 text-xs text-amber-50 flex items-center justify-center gap-2">
+            <div className="p-2.5 rounded-xl bg-black/25 border border-white/30 text-xs flex items-center justify-center gap-2">
               <CloudOff className="w-4 h-4 shrink-0" />
               <span>Comprovante provisório — será enviado sozinho assim que voltar a internet.</span>
             </div>
@@ -742,7 +742,7 @@ export const PontoCollectorPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setSuccessReceipt(null)}
-            className="w-full py-3.5 rounded-2xl bg-white text-emerald-700 font-bold text-sm shadow-md hover:bg-emerald-50 cursor-pointer"
+            className="ponto-success-cta w-full py-3.5 rounded-2xl font-bold text-sm shadow-md cursor-pointer"
           >
             {identity.modo === 'totem' ? 'Próximo colaborador' : 'Voltar ao relógio'}
           </button>
@@ -948,7 +948,7 @@ export const PontoCollectorPage: React.FC = () => {
                   }}
                   className={`py-2.5 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
                     active
-                      ? 'bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-600/25'
+                      ? 'bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-600/25 apple-solid-btn'
                       : 'bg-[#111827] border-slate-800 text-slate-300 hover:border-slate-600'
                   }`}
                 >
@@ -963,13 +963,13 @@ export const PontoCollectorPage: React.FC = () => {
         <button
           type="button"
           onClick={() => void handleStartFacialPunch()}
-          className="w-full py-6 rounded-3xl bg-gradient-to-b from-[#0A84FF] to-[#0066CC] hover:brightness-110 active:scale-[0.99] text-white shadow-2xl shadow-blue-600/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer"
+          className="apple-solid-btn w-full py-6 rounded-3xl bg-gradient-to-b from-[#0A84FF] to-[#0066CC] hover:brightness-110 active:scale-[0.99] text-white shadow-2xl shadow-blue-600/30 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
             <Camera className="w-8 h-8" />
           </div>
           <span className="text-xl font-extrabold tracking-tight">BATER PONTO</span>
-          <span className="text-xs text-blue-100">
+          <span className="text-xs opacity-90">
             {identity.modo === 'totem'
               ? 'Toque e olhe para a câmera — identificação automática'
               : `Registrar ${TIPO_LABEL[selectedTipo]} com reconhecimento facial`}
@@ -1057,15 +1057,15 @@ export const PontoCollectorPage: React.FC = () => {
       {/* ── OVERLAY DA CÂMERA DE RECONHECIMENTO FACIAL ── */}
       {scanning && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
-          <div className="p-4 flex items-center justify-between bg-black/70">
+          <div className="ponto-camera-hud p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold text-white">{scanPhase}</p>
-              <p className="text-xs text-cyan-300">{scanHint}</p>
+              <p className="text-sm font-bold">{scanPhase}</p>
+              <p className="text-xs ponto-hud-accent">{scanHint}</p>
             </div>
             <button
               type="button"
               onClick={stopScanCamera}
-              className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 cursor-pointer"
+              className="p-2 rounded-xl bg-white/15 hover:bg-white/25 cursor-pointer"
               aria-label="Cancelar câmera"
             >
               <X className="w-5 h-5" />
@@ -1096,7 +1096,7 @@ export const PontoCollectorPage: React.FC = () => {
                   stopScanCamera();
                   setShowPinModal(true);
                 }}
-                className="w-full py-3 rounded-2xl bg-black/70 border border-white/20 text-xs font-semibold text-white cursor-pointer"
+                className="ponto-camera-hud w-full py-3 rounded-2xl border border-white/25 text-xs font-semibold cursor-pointer"
               >
                 Não reconheceu? Usar PIN
               </button>

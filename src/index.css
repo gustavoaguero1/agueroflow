@@ -94,6 +94,46 @@ body {
   box-shadow: var(--af-glass-shadow);
 }
 
+/* Modal high-contrast surface (works cleanly in both Claro and Escuro) */
+.af-glass-modal {
+  background: rgba(255, 255, 255, 0.97);
+  color: #1D1D1F;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+}
+
+html.dark .af-glass-modal {
+  background: rgba(17, 24, 39, 0.96);
+  color: #F5F5F7;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+/* Always-white readable HUD over camera video or solid colored confirmation screens */
+.ponto-camera-hud {
+  background: rgba(9, 13, 22, 0.86) !important;
+  color: #FFFFFF !important;
+}
+.ponto-camera-hud * {
+  color: #FFFFFF !important;
+}
+.ponto-camera-hud .ponto-hud-accent {
+  color: #67E8F9 !important;
+}
+.ponto-camera-hud .ponto-hud-ok {
+  color: #6EE7B7 !important;
+}
+
+.ponto-success-screen,
+.ponto-success-screen * {
+  color: #FFFFFF !important;
+}
+.ponto-success-screen .ponto-success-cta,
+.ponto-success-screen .ponto-success-cta * {
+  background: #FFFFFF !important;
+  color: #047857 !important;
+}
+
 /* Solid high-contrast Apple card for operational & financial data */
 .af-card {
   background: var(--af-surface);

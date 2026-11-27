@@ -44,13 +44,31 @@ import { PublicOnboardingPage } from './pages/PublicOnboardingPage';
 import { FirstAccessPage } from './pages/FirstAccessPage';
 import { Building2, LogOut } from 'lucide-react';
 import { apiFetch } from './apiAuthFetch';
+import { pontoApi } from './services/pontoApi';
 
 const PontoCollectorPage = lazy(() =>
   import('./pages/PontoCollectorPage').then((m) => ({ default: m.PontoCollectorPage })),
 );
+const FaceEnrollModal = lazy(() =>
+  import('./components/ponto/FaceEnrollModal').then((m) => ({ default: m.FaceEnrollModal })),
+);
 
 function MainRouter() {
-  const isPontoCollectorPath = window.location.pathname === '/ponto' || window.location.pathname.startsWith('/ponto/');
+  const initialSearch = new URLSearchParams(window.location.search);
+  const isPontoCollectorPath =
+    window.location.pathname === '/ponto' ||
+    window.location.pathname.startsWith('/ponto/') ||
+    initialSearch.get('ponto') === '1' ||
+    Boolean(initialSearch.get('pair'));
+  const isRhFaceEnrollPopup = initialSearch.get('ponto-rosto') === '1';
+  const rhFaceEnrollParams = isRhFaceEnrollPopup
+    ? {
+        orgId: initialSearch.get('orgId') || '',
+        rhId: initialSearch.get('rhId') || '',
+        nome: initialSearch.get('nome') || 'Colaborador',
+      }
+    : null;
+
   const { user, loading, organization, role, isMaster, clearActiveOrganization, signOut, canSeeSection } = useAuth();
 
   // Route state: default is 'login' (Public presentation site is kept on standby via ?site=apresentacao or /apresentacao)
@@ -126,7 +144,7 @@ function MainRouter() {
     };
   }, [user, isPontoCollectorPath]);
 
-  // Coletor PWA do Ponto Eletrônico (/ponto) abre sem depender de login do ERP nem de internet
+  // Coletor PWA do Ponto Eletrônico (/ponto ou /?ponto=1&pair=...) abre sem depender de login do ERP nem de internet
   if (isPontoCollectorPath) {
     return (
       <Suspense
@@ -137,6 +155,36 @@ function MainRouter() {
         }
       >
         <PontoCollectorPage />
+      </Suspense>
+    );
+  }
+
+  // Aba dedicada fora do iframe para o RH cadastrar o rosto sem bloqueio de Permissions-Policy
+  if (isRhFaceEnrollPopup && user && rhFaceEnrollParams?.orgId && rhFaceEnrollParams?.rhId) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10] flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-[#0071E3] border-t-transparent rounded-full animate-spin" />
+          </div>
+        }
+      >
+        <div className="min-h-screen bg-[#F5F5F7] dark:bg-[#0B0C10]">
+          <FaceEnrollModal
+            personName={rhFaceEnrollParams.nome}
+            context="rh"
+            onSaveFace={async (payload) => {
+              await pontoApi.salvarRosto(rhFaceEnrollParams.orgId, rhFaceEnrollParams.rhId, payload);
+            }}
+            onDeclineBiometrics={async (payload) => {
+              await pontoApi.salvarRosto(rhFaceEnrollParams.orgId, rhFaceEnrollParams.rhId, payload);
+            }}
+            onClose={() => {
+              if (window.opener) window.close();
+              else window.location.href = '/';
+            }}
+          />
+        </div>
       </Suspense>
     );
   }
