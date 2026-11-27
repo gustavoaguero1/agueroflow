@@ -9,7 +9,7 @@
  */
 import { Router, type Request, type Response, type RequestHandler } from 'express';
 import { getAdmin, type AdminHandles } from './firebaseAdmin.ts';
-import { requireModuleAccess } from './authMiddleware.ts';
+import { requireModuleAccess, requireRole } from './authMiddleware.ts';
 import { sealSecret, openSecret, parseSecretKey, type SealedSecret } from './secretBox.ts';
 import { createWsSelfBookingClient, readLemontechConfig } from './lemontech/wsSelfBooking.ts';
 import {
@@ -178,13 +178,14 @@ export function createTravelProviderRouter(opts: {
     return l && (!l.orgId || l.orgId === orgId) ? l : null;
   };
 
-  r.get('/lemontech/status', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/status', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     if (!lemonFor(org(req))) return res.json({ configured: false });
     const s = storeOr503(res); if (!s) return;
     res.json({ configured: true, lastSync: (await s.getLemontechMeta(org(req))) ?? null });
   }));
 
-  r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), wrap(async (req, res) => {
+  // Sincronizar consome a cota da API (60/min): Admin ou Gerente, e o submódulo não pode estar revogado.
+  r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), requireModuleAccess('viagens-painel', 2, getH), wrap(async (req, res) => {
     const desde = req.body?.desde ?? isoDaysAgo(730);
     const ate = req.body?.ate ?? isoDaysAgo(0);
     if (!DATE_RE.test(String(desde)) || !DATE_RE.test(String(ate)) || desde > ate) {
@@ -212,7 +213,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ ok: true, ...meta });
   }));
 
-  r.get('/lemontech/solicitacoes', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/solicitacoes', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const items = (await s.listSolicitacoes(org(req)))
       .map(({ rawJson: _r, ...i }) => i)
@@ -220,7 +221,7 @@ export function createTravelProviderRouter(opts: {
     res.json({ items });
   }));
 
-  r.get('/lemontech/solicitacoes/:id', requireArea('operacoes', 1), wrap(async (req, res) => {
+  r.get('/lemontech/solicitacoes/:id', requireModuleAccess('viagens-painel', 1, getH), wrap(async (req, res) => {
     const s = storeOr503(res); if (!s) return;
     const it = await s.getSolicitacao(org(req), String(req.params.id));
     if (!it) return res.status(404).json({ error: 'nao_encontrada' });
