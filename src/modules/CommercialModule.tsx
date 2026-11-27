@@ -222,6 +222,7 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
             <CommercialDashboard
               proposals={proposals}
               onNewProposal={() => setTab('comercial-nova')}
+              onOpenCostStudio={() => setTab('comercial-composicao')}
               onReviewBom={handleReviewBom}
               onOpenProposalDetail={handleOpenDetail}
               onDeleteProposal={handleDeleteProposal}
@@ -249,12 +250,15 @@ export const CommercialModule: React.FC<CommercialModuleProps> = ({
           {currentTab === 'comercial-composicao' && (
             <CostCompositionModuleView
               organizationId={organizationId}
+              userId={userId}
               userName={userName}
               userRole={role}
+              policy={policy}
               proposals={proposals}
               catalog={catalog}
               clients={clients}
               onNavigateProposal={handleOpenDetail}
+              onProposalsChanged={loadData}
             />
           )}
 

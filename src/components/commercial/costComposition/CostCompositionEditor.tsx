@@ -13,13 +13,21 @@ import {
   ChevronRight,
   BarChart3,
   Loader2,
+  Send,
+  Rocket,
+  ShoppingCart,
+  X,
 } from 'lucide-react';
 import type { CostComposition } from '../../../types/costComposition';
 import type { CommercialMaterial, CommercialProposal } from '../../../types/commercial';
 import { CostCompositionService } from '../../../services/costCompositionService';
+import { saveProposal } from '../../../services/commercialService';
+import { savePurchaseRequisition } from '../../../services/purchasingService';
 import {
   BILLING_COMPANY_TAX_PRESETS,
   calculateAgueroInoxBudget,
+  calculateBarTubeRow,
+  calculateSheetRow,
   createDefaultAgueroInoxModel,
   r2,
   type AgueroInoxBudgetModel,
@@ -36,7 +44,10 @@ interface CostCompositionEditorProps {
   catalog: CommercialMaterial[];
   onSave: (comp: CostComposition) => void;
   onBack: () => void;
+  userId?: string;
   userName: string;
+  userRole?: string;
+  onProposalsChanged?: () => void | Promise<void>;
 }
 
 type StudioPillar = 'resumo' | 'custos' | 'financeiro' | 'riscos_cliente';
@@ -89,9 +100,13 @@ const card = 'rounded-2xl bg-[#111827] border border-slate-800 p-4 space-y-3';
 export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
   composition,
   proposals,
+  catalog,
   onSave,
   onBack,
+  userId,
   userName,
+  userRole,
+  onProposalsChanged,
 }) => {
   const [comp, setComp] = useState<CostComposition>(composition);
   const [model, setModel] = useState<AgueroInoxBudgetModel>(() => hydrateModel(composition));
@@ -100,7 +115,10 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
 
+  const isDirectorOrAdmin = ['Super Admin', 'Admin', 'Master', 'Gerente'].includes(userRole || '');
   const result = useMemo(() => calculateAgueroInoxBudget(model), [model]);
 
   const updateModel = (updater: (prev: AgueroInoxBudgetModel) => AgueroInoxBudgetModel) => {
@@ -136,14 +154,278 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
       setComp(saved);
       onSave(saved);
       setSaveNotice('Orçamento salvo no Firestore com sucesso!');
+      return saved;
     } catch (err) {
       console.error('Erro ao salvar composição:', err);
       setSaveError(
         `${err instanceof Error ? err.message : 'Erro ao gravar no Firestore.'} Nenhum salvamento local foi simulado.`,
       );
+      return null;
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSyncToProposal = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveNotice(null);
+    try {
+      const now = new Date().toISOString();
+      const existing = proposals.find((p) => p.id === comp.proposalId);
+      const grossMarginAmt = r2(result.finalSellingPrice - result.totalProjectCost);
+      const grossMarginPct = result.finalSellingPrice > 0 ? r2((grossMarginAmt / result.finalSellingPrice) * 100) : 0;
+      const proposalId = existing?.id || `prop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const proposalCode = existing?.code || comp.code.replace(/^COMP-/, 'PROP-');
+      const validityDate = new Date(Date.now() + (comp.proposalValidityDays || 20) * 86400000).toISOString().slice(0, 10);
+
+      const proposalPayload: CommercialProposal = existing
+        ? {
+            ...existing,
+            title: comp.title,
+            clientName: comp.clientName,
+            deliveryLocation: comp.executionLocation,
+            deliveryTimeframeDays: result.calendarDays,
+            paymentTerms: `${model.conditions.paymentTermCode.replace('_', '–')} DDL`,
+            totalBaseCost: result.totalProjectCost,
+            totalTaxCost: result.totalTaxesAmount,
+            grossMarginAmount: grossMarginAmt,
+            grossMarginPercent: grossMarginPct,
+            proposedTotal: result.finalSellingPrice,
+            history: [
+              ...(existing.history || []),
+              {
+                date: now,
+                action: `Valor sincronizado da Engenharia de Custos (${comp.code} Rev ${comp.revision})`,
+                userName,
+                details: `Preço: ${brl(result.finalSellingPrice)} · Materiais: ${brl(result.breakdownMaterialsGross)} · Serviços: ${brl(result.breakdownServicesGross)}`,
+              },
+            ],
+            updatedAt: now,
+          }
+        : {
+            id: proposalId,
+            organizationId: comp.organizationId,
+            code: proposalCode,
+            title: comp.title,
+            clientId: comp.clientId || 'cli_generic',
+            clientName: comp.clientName,
+            clientCnpjCpf: comp.clientCnpj || '',
+            currency: 'BRL',
+            issueDate: now.slice(0, 10),
+            validityDate,
+            deliveryLocation: comp.executionLocation,
+            deliveryTimeframeDays: result.calendarDays,
+            paymentTerms: `${model.conditions.paymentTermCode.replace('_', '–')} DDL`,
+            warrantyTerms: '12 meses contra defeitos de fabricação e montagem',
+            scopeDescription: `Orçamento gerado via Engenharia de Custos (${comp.code} Rev ${comp.revision}). Materiais: ${brl(result.breakdownMaterialsGross)} | Serviços: ${brl(result.breakdownServicesGross)}.`,
+            totalItemsCount: model.sheets.length + model.barsTubes.length + model.connections.length,
+            pricedItemsCount: model.sheets.length + model.barsTubes.length + model.connections.length,
+            pendingItemsCount: 0,
+            totalBaseCost: result.totalProjectCost,
+            globalMarkupPercent: r2((result.effectiveMarkupMultiplier - 1) * 100),
+            totalFreightCost: model.materialsFreightCost,
+            totalTaxCost: result.totalTaxesAmount,
+            grossMarginAmount: grossMarginAmt,
+            grossMarginPercent: grossMarginPct,
+            proposedTotal: result.finalSellingPrice,
+            status: result.categoryResult.requiresDirectorApproval && !isDirectorOrAdmin ? 'aguardando_revisao' : 'aprovada',
+            isPartial: false,
+            createdBy: userId || userName,
+            createdByName: userName,
+            history: [
+              {
+                date: now,
+                action: `Proposta gerada pela Engenharia de Custos (${comp.code})`,
+                userName,
+                details: `Preço final: ${brl(result.finalSellingPrice)}`,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          };
+
+      await saveProposal(proposalPayload);
+      const updatedComp = await CostCompositionService.saveComposition({
+        ...comp,
+        proposalId,
+        proposalCode,
+        agueroInoxModel: model,
+        history: [
+          ...(comp.history || []),
+          {
+            date: now,
+            action: existing ? `Proposta ${proposalCode} atualizada no Funil` : `Proposta ${proposalCode} criada no Funil`,
+            userName,
+            details: `Valor sincronizado: ${brl(result.finalSellingPrice)}`,
+          },
+        ],
+      });
+      setComp(updatedComp);
+      onSave(updatedComp);
+      await onProposalsChanged?.();
+      setSaveNotice(`Proposta ${proposalCode} sincronizada com o Painel e Funil de Vendas!`);
+    } catch (err) {
+      setSaveError(
+        `${err instanceof Error ? err.message : 'Falha ao sincronizar proposta.'} Nenhum salvamento local foi simulado.`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGeneratePurchasingRc = async () => {
+    setHandoffBusy(true);
+    try {
+      const reqItems: Array<{ id: string; code: string; description: string; unit: string; quantity: number; notes?: string }> = [];
+      model.sheets.forEach((s) => {
+        const calc = calculateSheetRow(s);
+        if (s.quantity > 0) {
+          reqItems.push({
+            id: s.id,
+            code: s.alloy.toUpperCase(),
+            description: `${s.description} (${s.thicknessMm}mm x ${s.widthM}m x ${s.lengthM}m — ${calc.totalWeightKg} kg)`,
+            unit: 'kg',
+            quantity: Math.max(1, Math.round(calc.totalWeightKg)),
+            notes: `Orçamento ${comp.code}`,
+          });
+        }
+      });
+      model.barsTubes.forEach((b) => {
+        const calc = calculateBarTubeRow(b);
+        if (b.quantity > 0) {
+          reqItems.push({
+            id: b.id,
+            code: b.gauge || 'TUBO',
+            description: `${b.description} (${b.gauge} · ${b.lengthM}m — ${calc.totalWeightKg} kg)`,
+            unit: 'kg',
+            quantity: Math.max(1, Math.round(calc.totalWeightKg)),
+            notes: `Orçamento ${comp.code}`,
+          });
+        }
+      });
+      model.connections.forEach((c) => {
+        if (c.quantity > 0 && c.unitCost > 0) {
+          reqItems.push({
+            id: c.id,
+            code: c.group.toUpperCase(),
+            description: c.description,
+            unit: c.unit || 'un',
+            quantity: c.quantity,
+            notes: `Custo orçado: ${brl(c.unitCost)} · ${comp.code}`,
+          });
+        }
+      });
+
+      if (reqItems.length === 0) {
+        alert('Adicione ao menos um material (Chapa, Tubo ou Conexão) com quantidade e custo antes de enviar ao Compras.');
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const rcCode = `RC-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+      await savePurchaseRequisition({
+        id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        organizationId: comp.organizationId,
+        code: rcCode,
+        title: `Materiais Projeto ${comp.code} — ${comp.clientName}`,
+        requestedBy: userId || userName,
+        requestedByName: userName,
+        department: 'Comercial & Propostas',
+        urgency: 'normal',
+        neededByDate: model.startDate || now.slice(0, 10),
+        items: reqItems,
+        status: 'pendente',
+        notes: `Transferência direta da Engenharia de Custos (${comp.code} Rev ${comp.revision}) — orçamento de materiais ${brl(result.groups.find((g) => g.id === 'materiais')?.cost || 0)}.`,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const updated = await CostCompositionService.saveComposition({
+        ...comp,
+        status: 'aprovada',
+        approvedBy: userName,
+        approvedAt: now,
+        agueroInoxModel: model,
+        history: [
+          ...(comp.history || []),
+          {
+            date: now,
+            action: `Requisição de Compra ${rcCode} enviada ao Compras`,
+            userName,
+            details: `${reqItems.length} item(ns) de materiais transferidos do orçamento.`,
+          },
+        ],
+      });
+      setComp(updated);
+      onSave(updated);
+      setSaveNotice(`Requisição de Compra ${rcCode} gerada com ${reqItems.length} item(ns) no módulo Compras!`);
+    } catch (err) {
+      setSaveError(
+        `${err instanceof Error ? err.message : 'Falha ao gerar RC no Compras.'} Nenhum salvamento local foi simulado.`,
+      );
+    } finally {
+      setHandoffBusy(false);
+    }
+  };
+
+  const handlePrintOperationsHandoff = () => {
+    const win = window.open('', '_blank', 'width=920,height=780');
+    if (!win) {
+      alert('Permita pop-ups para gerar o Termo de Passagem para Operações.');
+      return;
+    }
+    const phasesHtml = model.phases
+      .map(
+        (ph) =>
+          `<h4>${escapeHtml(ph.name)} (${ph.durationWeeks} sem. · ${ph.weeklyHours}h/sem)</h4><ul>` +
+          ph.rows
+            .map((r) => `<li><strong>${r.quantity}× ${escapeHtml(r.roleName)}</strong> — ${r.horasNormais}h normais / ${r.horasExtras50}h HE50 / ${r.horasExtras100}h HE100</li>`)
+            .join('') +
+          '</ul>',
+      )
+      .join('');
+    const groupsHtml = result.groups
+      .filter((g) => g.cost > 0)
+      .map((g) => `<tr><td>${escapeHtml(g.label)}</td><td style="text-align:right;font-family:monospace;">${escapeHtml(brl(g.cost))}</td></tr>`)
+      .join('');
+
+    win.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Passagem Comercial → Operações — ${escapeHtml(comp.code)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1d1d1f; margin: 28px; line-height: 1.5; font-size: 12px; }
+    .top { border-bottom: 2px solid #0071e3; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f5f5f7; padding: 12px; border-radius: 10px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th, td { padding: 8px; border-bottom: 1px solid #e5e5ea; text-align: left; }
+    th { background: #f5f5f7; font-size: 10px; text-transform: uppercase; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div><strong style="font-size:16px;color:#0071e3;">Termo de Passagem Comercial → Operações</strong><br/>${escapeHtml(comp.code)} Rev ${comp.revision} · ${escapeHtml(comp.title)}</div>
+    <div style="text-align:right;">Categoria ${result.categoryResult.finalCategory}<br/>Emitido em ${escapeHtml(new Date().toLocaleDateString('pt-BR'))}</div>
+  </div>
+  <div class="grid">
+    <div><strong>Cliente:</strong> ${escapeHtml(comp.clientName)}</div>
+    <div><strong>Local:</strong> ${escapeHtml(comp.executionLocation)}</div>
+    <div><strong>Prazo:</strong> ${model.durationQty} ${escapeHtml(model.durationUnit)} (${escapeHtml(model.startDate)} → ${escapeHtml(result.endDate)})</div>
+    <div><strong>Equipe Total:</strong> ${result.totalHeadcount} profissionais (${result.totalLaborHours} h)</div>
+    <div><strong>Transporte Previsto:</strong> ${result.transportSummary.vehiclesNeeded} veículo(s) · ${escapeHtml(brl(result.transportSummary.totalTransportCost))}</div>
+    <div><strong>Teto de Custo Orçado:</strong> ${escapeHtml(brl(result.totalProjectCost))} (Venda: ${escapeHtml(brl(result.finalSellingPrice))})</div>
+  </div>
+  <h3>Dimensionamento de Equipe por Fase (RH &amp; Operações)</h3>
+  ${phasesHtml}
+  <h3>Baseline de Custos Disponíveis por Grupo</h3>
+  <table><thead><tr><th>Grupo</th><th style="text-align:right;">Orçamento Disponível</th></tr></thead><tbody>${groupsHtml}</tbody></table>
+  <p class="no-print" style="text-align:right;"><button onclick="window.print()" style="background:#0071e3;color:#fff;border:none;padding:9px 16px;border-radius:10px;font-weight:700;cursor:pointer;">Imprimir / Salvar PDF</button></p>
+</body>
+</html>`);
+    win.document.close();
   };
 
   const handleCreateNewRevision = async () => {
@@ -299,7 +581,26 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Proposta PDF</span>
+              <span>PDF</span>
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleSyncToProposal()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-200 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              title="Criar ou atualizar proposta vinculada no Painel e Funil de Vendas"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{comp.proposalCode ? `Atualizar ${comp.proposalCode}` : 'Enviar p/ Funil'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHandoffModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 text-xs font-semibold cursor-pointer"
+              title="Transferir projeto aprovado para Operações e Compras"
+            >
+              <Rocket className="w-3.5 h-3.5" />
+              <span>Operações &amp; Compras</span>
             </button>
             <button
               type="button"
@@ -308,7 +609,7 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               <Copy className="w-3.5 h-3.5" />
-              <span>Nova Revisão</span>
+              <span>Nova Rev.</span>
             </button>
             <button
               type="button"
@@ -317,7 +618,7 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-bold cursor-pointer apple-solid-btn disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span>{saving ? 'Salvando...' : 'Salvar Orçamento'}</span>
+              <span>{saving ? 'Salvando...' : 'Salvar'}</span>
             </button>
           </div>
         </div>
@@ -653,6 +954,7 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
         <StudioCostsTab
           model={model}
           result={result}
+          catalog={catalog}
           onChange={updateModel}
           activeSubTab={costSubTab}
           onSelectSubTab={setCostSubTab}
@@ -674,6 +976,60 @@ export const CostCompositionEditor: React.FC<CostCompositionEditorProps> = ({
           onPrintProposal={handlePrintProposal}
           onCreateNewRevision={() => void handleCreateNewRevision()}
         />
+      )}
+
+      {/* ── MODAL: TRANSFERÊNCIA COMERCIAL → OPERAÇÕES & COMPRAS (SEÇÃO 8) ── */}
+      {showHandoffModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-[#111827] border border-slate-700 p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Rocket className="w-4 h-4 text-emerald-400" />
+                Transferência do Orçamento → Operações &amp; Compras
+              </h3>
+              <button type="button" onClick={() => setShowHandoffModal(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {result.categoryResult.requiresDirectorApproval && !isDirectorOrAdmin && (
+              <div className="p-3 rounded-xl bg-rose-950/50 border border-rose-700 text-rose-200 flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                <span>
+                  Este projeto está na <strong>Categoria {result.categoryResult.finalCategory}</strong> e exige aprovação de um Administrador/Gerente (Diretoria) para liberar a transferência oficial para Compras.
+                </span>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+              <div className="flex justify-between"><span className="text-slate-400">Equipe dimensionada (RH / Operações)</span><strong className="text-white font-mono">{result.totalHeadcount} profissionais · {result.totalLaborHours} h</strong></div>
+              <div className="flex justify-between"><span className="text-slate-400">Logística / Despesas de campo</span><strong className="text-white font-mono">{result.transportSummary.vehiclesNeeded} veículo(s) · {brl(result.groups.find((g) => g.id === 'despesas_pessoal')?.cost || 0)}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-400">Materiais orçados (Compras)</span><strong className="text-cyan-300 font-mono">{brl(result.groups.find((g) => g.id === 'materiais')?.cost || 0)}</strong></div>
+              <div className="flex justify-between pt-1.5 border-t border-slate-800"><span className="text-slate-300 font-semibold">Baseline total disponível</span><strong className="text-emerald-400 font-mono">{brl(result.totalProjectCost)}</strong></div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={handoffBusy || (result.categoryResult.requiresDirectorApproval && !isDirectorOrAdmin)}
+                onClick={() => void handleGeneratePurchasingRc()}
+                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center justify-center gap-2 cursor-pointer apple-solid-btn disabled:opacity-40"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>{handoffBusy ? 'Gerando RC...' : '1. Gerar Requisição de Compra (RC) dos Materiais no Compras'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrintOperationsHandoff}
+                className="w-full py-2.5 px-4 rounded-xl af-btn-primary text-white font-bold flex items-center justify-center gap-2 cursor-pointer apple-solid-btn"
+              >
+                <Printer className="w-4 h-4" />
+                <span>2. Emitir Termo de Passagem para Operações (PDF / Equipe &amp; Baseline)</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

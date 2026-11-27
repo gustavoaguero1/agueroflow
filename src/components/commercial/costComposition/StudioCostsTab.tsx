@@ -29,11 +29,14 @@ import {
   type VehicleTypeId,
 } from '../../../services/agueroInoxPricingEngine';
 
+import type { CommercialMaterial } from '../../../types/commercial';
+
 export type CostSubTab = 'equipes' | 'materiais' | 'despesas' | 'consumiveis_maq' | 'canteiro_mob_terc' | 'parametros_hh';
 
 interface Props {
   model: AgueroInoxBudgetModel;
   result: AgueroInoxBudgetResult;
+  catalog?: CommercialMaterial[];
   onChange: (updater: (prev: AgueroInoxBudgetModel) => AgueroInoxBudgetModel) => void;
   activeSubTab: CostSubTab;
   onSelectSubTab: (t: CostSubTab) => void;
@@ -54,6 +57,7 @@ const card = 'rounded-2xl bg-[#111827] border border-slate-800 p-4 space-y-3';
 export const StudioCostsTab: React.FC<Props> = ({
   model,
   result,
+  catalog = [],
   onChange,
   activeSubTab,
   onSelectSubTab,
@@ -661,32 +665,68 @@ export const StudioCostsTab: React.FC<Props> = ({
 
           {matSub === 'conexoes' && (
             <div className={card}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-bold text-white">Conexões, Válvulas, Materiais Mecânicos e Elétricos (fator individual)</h4>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onChange((p) => ({
-                      ...p,
-                      connections: [
-                        ...p.connections,
-                        {
-                          id: `cn_${Date.now()}`,
-                          description: 'Novo lote / conexão / válvula',
-                          group: 'mecanico',
-                          unit: 'un',
-                          quantity: 1,
-                          unitCost: 0,
-                          refaturamentoPercent: 30,
-                          icmsCreditPercent: p.taxes.icmsCreditDefaultPercent,
-                        },
-                      ],
-                    }))
-                  }
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold cursor-pointer apple-solid-btn"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Item / Conjunto
-                </button>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {catalog.length > 0 && (
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const found = catalog.find((c) => c.id === e.target.value);
+                        e.target.value = '';
+                        if (!found) return;
+                        onChange((p) => ({
+                          ...p,
+                          connections: [
+                            ...p.connections,
+                            {
+                              id: `cn_${Date.now()}`,
+                              description: `${found.internalCode ? `[${found.internalCode}] ` : ''}${found.originalDescription || found.normalizedDescription}`,
+                              group: (found.category || '').toLowerCase().includes('eletr') ? 'eletrico' : 'mecanico',
+                              unit: found.unit || 'un',
+                              quantity: 1,
+                              unitCost: Number(found.baseCost) || 0,
+                              refaturamentoPercent: 30,
+                              icmsCreditPercent: p.taxes.icmsCreditDefaultPercent,
+                            },
+                          ],
+                        }));
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200 max-w-[240px] cursor-pointer"
+                    >
+                      <option value="">+ Importar do Catálogo ({catalog.length})...</option>
+                      {catalog.slice(0, 80).map((mat) => (
+                        <option key={mat.id} value={mat.id}>
+                          {mat.internalCode ? `[${mat.internalCode}] ` : ''}{mat.originalDescription || mat.normalizedDescription} ({brl(mat.baseCost || 0)})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange((p) => ({
+                        ...p,
+                        connections: [
+                          ...p.connections,
+                          {
+                            id: `cn_${Date.now()}`,
+                            description: 'Novo lote / conexão / válvula',
+                            group: 'mecanico',
+                            unit: 'un',
+                            quantity: 1,
+                            unitCost: 0,
+                            refaturamentoPercent: 30,
+                            icmsCreditPercent: p.taxes.icmsCreditDefaultPercent,
+                          },
+                        ],
+                      }))
+                    }
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold cursor-pointer apple-solid-btn"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Item / Conjunto
+                  </button>
+                </div>
               </div>
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-xs min-w-[740px]">

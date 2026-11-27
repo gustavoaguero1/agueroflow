@@ -231,6 +231,7 @@ export interface CommercialPolicy {
   quoteValidityDaysByCategory: Record<string, number>; // Category -> validity days (e.g., Inox: 15, Válvulas: 30)
   requireReviewForMarginBelowPercent?: number; // e.g., 20%
   allowedCurrencies: string[]; // ['BRL', 'USD', 'EUR']
+  engineeringParams?: import('../services/agueroInoxPricingEngine').CommercialEngineeringParams;
   updatedAt: string;
   updatedBy: string;
 }

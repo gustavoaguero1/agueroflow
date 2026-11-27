@@ -31,28 +31,34 @@ import {
   STANDARD_COMPOSITION_TEMPLATES,
   roundMoney,
 } from '../../../services/costCompositionService';
-import { CommercialProposal, CommercialMaterial, CommercialClient } from '../../../types/commercial';
+import { CommercialProposal, CommercialMaterial, CommercialClient, CommercialPolicy } from '../../../types/commercial';
 import { createDefaultAgueroInoxModel } from '../../../services/agueroInoxPricingEngine';
 import { CostCompositionEditor } from './CostCompositionEditor';
 
 interface CostCompositionModuleViewProps {
   organizationId: string;
+  userId?: string;
   userName: string;
   userRole?: string;
+  policy?: CommercialPolicy | null;
   proposals: CommercialProposal[];
   catalog: CommercialMaterial[];
   clients: CommercialClient[];
   onNavigateProposal?: (proposal: CommercialProposal) => void;
+  onProposalsChanged?: () => void | Promise<void>;
 }
 
 export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps> = ({
   organizationId,
+  userId,
   userName,
   userRole,
+  policy,
   proposals,
   catalog,
   clients,
   onNavigateProposal,
+  onProposalsChanged,
 }) => {
   const [compositions, setCompositions] = useState<CostComposition[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -175,7 +181,7 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
       status: 'rascunho',
       templateId: selectedTemplate.id,
       agueroInoxModel: {
-        ...createDefaultAgueroInoxModel(new Date().toISOString().split('T')[0]),
+        ...createDefaultAgueroInoxModel(new Date().toISOString().split('T')[0], policy?.engineeringParams),
         presentationTemplate: selectedTemplate.id.includes('tetrapak') ? 'tetrapak' : 'padrao',
       },
       items: defaultItems,
@@ -303,7 +309,10 @@ export const CostCompositionModuleView: React.FC<CostCompositionModuleViewProps>
         composition={editingComposition}
         proposals={proposals}
         catalog={catalog}
+        userId={userId}
         userName={userName}
+        userRole={userRole}
+        onProposalsChanged={onProposalsChanged}
         onSave={(updated) => {
           setEditingComposition(updated);
           setCompositions((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
