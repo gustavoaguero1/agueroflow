@@ -38,6 +38,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import { apiFetch } from '../apiAuthFetch';
 import { AreaAccessPanel } from '../components/settings/AreaAccessPanel';
+import { ModuleAccessPanel } from '../components/settings/ModuleAccessPanel';
 
 interface SettingsModuleProps {
   onNavigate?: (section: any) => void;
@@ -58,7 +59,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
     areaLevel,
   } = useAuth();
   // Lista de acessos: Admin, Gerente ou quem edita Configurações (todo mundo abre a tela por tema e dispositivos).
-  const canSeeAreaAccess = isMaster || role === 'Admin' || role === 'Gerente' || areaLevel('configuracoes') === 2;
+  const canSeeAreaAccess = isMaster || areaLevel('configuracoes') === 2;
   const { theme, setTheme } = useTheme();
 
   const [slaHours, setSlaHours] = useState('24');
@@ -420,8 +421,11 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({ onNavigate }) =>
         </div>
       </div>
 
-      {/* Quem vê e edita cada área do sistema */}
-      {canSeeAreaAccess && <AreaAccessPanel />}
+      {/* Permissões gerais por área e granularidade por submódulo/ação */}
+      {canSeeAreaAccess && <>
+        <AreaAccessPanel />
+        <ModuleAccessPanel />
+      </>}
 
       {/* Integração WhatsApp Webhook & OCR (Reembolsos de Campo) */}
       <div className="bg-[#121826] border border-slate-800 rounded-2xl p-5 space-y-5">
