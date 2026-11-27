@@ -11,6 +11,7 @@ import {
 import { db } from '../firebase';
 import { apiFetch } from '../apiAuthFetch';
 import { assessChecklistCompletion, createInitialChecklistAnswers } from '../services/checklistValidation';
+import { EvidenceCaptureInput } from '../components/common/EvidenceCaptureInput';
 import {
   ChecklistTemplate,
   ChecklistItemDef,
@@ -38,7 +39,9 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   initialSearchQuery = '',
   initialTemplateId,
 }) => {
-  const { user, organization, logAudit } = useAuth();
+  const { user, organization, logAudit, moduleLevel } = useAuth();
+  const canView = moduleLevel('checklists') >= 1;
+  const canEdit = moduleLevel('checklists') >= 2;
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [runs, setRuns] = useState<ChecklistRun[]>([]);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
@@ -66,16 +69,20 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   }, [initialSearchQuery]);
 
   useEffect(() => {
-    if (initialTemplateId && templates.length > 0) {
+    if (canEdit && initialTemplateId && templates.length > 0) {
       const found = templates.find((t) => t.id === initialTemplateId);
       if (found) {
         startChecklistRun(found);
       }
     }
-  }, [initialTemplateId, templates]);
+  }, [initialTemplateId, templates, canEdit]);
 
   useEffect(() => {
-    if (!organization) return;
+    if (!organization || !canView) {
+      setTemplates([]);
+      setRuns([]);
+      return;
+    }
 
     const qTemplates = query(collection(db, 'checklist_templates'), where('orgId', '==', organization.id));
     const unsubTemplates = onSnapshot(qTemplates, (snap) => {
@@ -91,7 +98,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
       unsubTemplates();
       unsubRuns();
     };
-  }, [organization]);
+  }, [organization, canView]);
 
   const handleAddItemDef = () => {
     setItems([
@@ -111,7 +118,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
 
   const handleCreateTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!organization || !user) return;
+    if (!canEdit || !organization || !user) return;
     if (items.length === 0 || items.some((item) => item.title.trim().length < 2)) {
       alert('Inclua ao menos um item e informe o título de todos os itens.');
       return;
@@ -159,6 +166,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   };
 
   const startChecklistRun = (tpl: ChecklistTemplate) => {
+    if (!canEdit) return;
     setActiveRunTemplate(tpl);
     setCurrentAnswers(createInitialChecklistAnswers(tpl));
     setValidationMessage('');
@@ -170,7 +178,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
   };
 
   const handleCompleteRun = async () => {
-    if (!activeRunTemplate || !organization || !user) return;
+    if (!canEdit || !activeRunTemplate || !organization || !user) return;
 
     const assessment = assessChecklistCompletion(activeRunTemplate, currentAnswers);
     if (!assessment.canComplete) {
@@ -234,13 +242,13 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
           </p>
         </div>
 
-        <button
+        {canEdit && <button
           onClick={() => setShowCreateModal(true)}
           className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl af-btn-primary text-xs font-semibold cursor-pointer apple-solid-btn"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Novo Template de Checklist</span>
-        </button>
+        </button>}
       </div>
 
       {/* Search & Actions Bar */}
@@ -302,6 +310,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
 
                 <div className="pt-2 border-t border-slate-800/80">
                   <button
+                    disabled={!canEdit}
                     onClick={() => startChecklistRun(tpl)}
                     className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
                   >
@@ -381,7 +390,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
       </div>
 
       {/* Runner Modal */}
-      {activeRunTemplate && (
+      {canEdit && activeRunTemplate && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#121826] border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl flex flex-col justify-between">
             <div>
@@ -401,10 +410,30 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
               </div>
 
               {/* Progress Bar */}
-              <div className="my-4 p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-300 font-medium">Progresso de Preenchimento:</span>
-                <span className="font-mono font-bold text-emerald-400">{calculateProgress()}%</span>
-              </div>
+              {(() => {
+                const assessment = assessChecklistCompletion(activeRunTemplate, currentAnswers);
+                return (
+                  <div className="my-4 p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-300 font-medium">
+                        Progresso: {assessment.answeredCount}/{activeRunTemplate.items.length} itens
+                        {assessment.nonConformityCount > 0 && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
+                            {assessment.nonConformityCount} NC
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-mono font-bold text-emerald-400">{assessment.progressPercent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 transition-all duration-300"
+                        style={{ width: `${assessment.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Questions List */}
               <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
@@ -508,18 +537,16 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
                       )}
 
                       {(it.type === 'foto' || it.type === 'assinatura') && (
-                        <input
-                          type="url"
-                          value={ans?.value ?? ''}
-                          onChange={(e) => {
+                        <EvidenceCaptureInput
+                          mode={it.type}
+                          value={typeof ans?.value === 'string' ? ans.value : ''}
+                          onChange={(nextVal) => {
                             setValidationMessage('');
                             setCurrentAnswers({
                               ...currentAnswers,
-                              [it.id]: { ...ans, value: e.target.value },
+                              [it.id]: { ...ans, value: nextVal },
                             });
                           }}
-                          placeholder={it.type === 'foto' ? 'Cole a referência HTTPS do arquivo no Storage...' : 'Cole a referência HTTPS da assinatura no Storage...'}
-                          className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
                         />
                       )}
                     </div>
@@ -555,7 +582,7 @@ export const ChecklistsModule: React.FC<ChecklistsModuleProps> = ({
       )}
 
       {/* Modal: Create Template */}
-      {showCreateModal && (
+      {canEdit && showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#121826] border border-slate-800 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
             <div className="flex justify-between items-center pb-3 border-b border-slate-800">
