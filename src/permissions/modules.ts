@@ -108,7 +108,8 @@ export const MODULE_PERMISSIONS = [
 ] as const satisfies ReadonlyArray<readonly [string, string, string]>;
 
 export type ModulePermissionId = (typeof MODULE_PERMISSIONS)[number][0];
-const MODULE_PERMISSION_IDS = new Set<string>(MODULE_PERMISSIONS.map(([id]) => id));
+export const MODULE_PERMISSION_ID_LIST: readonly string[] = MODULE_PERMISSIONS.map(([id]) => id);
+const MODULE_PERMISSION_IDS = new Set<string>(MODULE_PERMISSION_ID_LIST);
 
 export const MODULE_PERMISSION_DETAILS = MODULE_PERMISSIONS.map(([id, label, group]) => ({
   id, label, group, area: areaOfSection(id),
