@@ -242,8 +242,8 @@ export function createReembolsosRouter(deps: {
     res.json({ ok: true, ...w, alterados });
   };
 
-  r.get('/semana', (req, res) => { if (!badInicio(req, res)) res.json(summaryFor(req).s); });
-  r.get('/semana.xlsx', (req, res) => {
+  r.get('/semana', requireModuleAccess('ops-reembolso', 1), (req, res) => { if (!badInicio(req, res)) res.json(summaryFor(req).s); });
+  r.get('/semana.xlsx', requireModuleAccess('ops-reembolso', 1), (req, res) => {
     if (badInicio(req, res)) return;
     const { w, s } = summaryFor(req);
     res.setHeader('Content-Disposition', `attachment; filename="reembolsos_${w.inicio}.xlsx"`);
@@ -268,7 +268,7 @@ export function createReembolsosRouter(deps: {
     deps.persist();
     res.json({ ok: true, receipt: rec });
   });
-  r.get('/:id/imagem', async (req, res) => {
+  r.get('/:id/imagem', requireModuleAccess('ops-reembolso', 1), async (req, res) => {
     const rec = deps.receipts().find((x) => x.id === req.params.id);
     const db = deps.db();
     if (!rec || !visibleTo(req)(rec) || !db) return res.status(404).json({ error: 'imagem não encontrada' });
