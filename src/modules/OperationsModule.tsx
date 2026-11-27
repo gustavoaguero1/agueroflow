@@ -32,15 +32,17 @@ export const OperationsModule: React.FC<{
   /** Abre outra tela do AgueroFlow (ex.: 'rh-funcionarios'), pedida pela página. */
   onNavigate?: (section: string) => void;
 }> = ({ route = 'inicio', onRouteChange, onNavigate }) => {
-  const { user, organization, member, role, isMaster, isManagerOrAbove, areaLevel } = useAuth();
-  const rhLevel = areaLevel('rh');
+  const { user, organization, member, role, isMaster, isManagerOrAbove, moduleLevel, moduleAccessExplicit } = useAuth();
+  const rhLevel = moduleLevel('rh-funcionarios');
+  const salaryLevel = moduleLevel('rh-holerites');
   const { theme } = useTheme();
   const frame = useRef<HTMLIFrameElement>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  // Backup do Inox cria funcionários no RH: exige editar o RH. Gases: basta editar Operações.
-  const canImport = (isMaster || isManagerOrAbove) && rhLevel === 2;
-  const canImportGases = areaLevel('operacoes') === 2;
+  // Importações e ações internas herdam a permissão do submódulo correspondente.
+  const canImport = moduleLevel('rh-importacao') >= 2 && rhLevel >= 2;
+  const canImportGases = moduleLevel('ops-gases') >= 2;
+  const canManageOperations = moduleLevel('ops-config') >= 4 || (isManagerOrAbove && !moduleAccessExplicit.includes('ops-config'));
   const orgId = organization?.id || '';
 
   const bridge = useMemo(() => {
@@ -50,11 +52,12 @@ export const OperationsModule: React.FC<{
       user,
       userName: member?.userName || user.displayName || '',
       role,
-      isManager: isMaster || isManagerOrAbove,
-      canSeeSalaries: rhLevel >= 1,
-      canEditRh: rhLevel === 2,
+      isManager: isMaster || canManageOperations,
+      canWrite: moduleLevel(({ inicio: 'ops-inicio', direcionar: 'ops-direcionar', diario: 'ops-diario', viagem: 'ops-viagem', reembolso: 'ops-reembolso', contratacao: 'ops-contratacao', tarefas: 'ops-tarefas', gases: 'ops-gases', base: 'ops-base', config: 'ops-config' } as Record<string, string>)[normalizeRoute(route)] || 'ops-inicio') >= 2,
+      canSeeSalaries: salaryLevel >= 1,
+      canEditRh: rhLevel >= 2,
     });
-  }, [user, orgId, member?.userName, role, isMaster, isManagerOrAbove, rhLevel]);
+  }, [user, orgId, member?.userName, role, isMaster, canManageOperations, moduleLevel, route, rhLevel, salaryLevel]);
 
   // Publica a ponte antes do iframe carregar; troca de empresa recarrega a página.
   if (bridge) window.__agueroOps = bridge.api;
