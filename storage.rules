@@ -29,9 +29,12 @@ service firebase.storage {
       let modules = grant.get('modules', {});
       let explicitModules = grant.get('explicitModules', []);
       let fallback = int(areaCode(orgId)[areaIndex:areaIndex + 1]);
-      return grant.get('revoked', false) == true ? 0 : (explicitModules.hasAny([section])
-        ? int(modules[section])
-        : (request.auth.token.get('orgs', {}).get(orgId, '') == 'Admin' && fallback == 2 ? 4 : fallback));
+      let role = request.auth.token.get('orgs', {}).get(orgId, '');
+      return grant.get('revoked', false) == true ? 0
+        : (role == 'Admin' && section == 'configuracoes' ? 4
+          : (explicitModules.hasAny([section])
+            ? int(modules[section])
+            : (role == 'Admin' && fallback == 2 ? 4 : fallback)));
     }
     function engineeringCanRead(orgId, section) {
       return isMaster() || (isMember(orgId) && moduleLevel(orgId, section, 1) >= 1);
