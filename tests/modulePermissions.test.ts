@@ -36,8 +36,9 @@ test('níveis inválidos e seções desconhecidas não viram liberações', () =
   assert.equal(canAccessModule('ops-diario', areas, { 'ops-diario': 0 }), false);
   assert.equal(resolveModuleLevel('unknown-module', 'Admin', areas, null, { 'unknown-module': 4 }), 0);
   assert.equal(canAccessModule('unknown-module', areas, { 'unknown-module': 4 }), false);
-  assert.equal(resolveModuleLevel('estrutura', 'Admin', areas), 4);
-  assert.equal(resolveModuleLevel('estrutura', 'Admin', { ...areas, estrutura: 1 }), 1);
+  const adminAreas = resolveAreas('Admin');
+  assert.equal(resolveModuleLevel('estrutura', 'Admin', adminAreas), 4);
+  assert.equal(resolveModuleLevel('estrutura', 'Admin', { ...adminAreas, estrutura: 1 }), 1);
   assert.equal(resolveModuleLevel('configuracoes', 'Admin', areas, null, { configuracoes: 0 }), 4);
   const managerAreas = resolveAreas('Gerente');
   assert.equal(resolveModuleLevel('rh-ponto-admin', 'Gerente', managerAreas), 4);
