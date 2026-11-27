@@ -10,7 +10,7 @@ import type { UserRole } from '../src/types/index.ts';
 
 const validId = (v: unknown): v is string => typeof v === 'string' && !!v && !v.includes('/');
 const responseError = (res: Response, status: number, error: string) => res.status(status).json({ ok: false, error });
-const canManage = async (req: Request, orgId: string) => !!req.user?.master || await moduleLevelOf(req.user, orgId, 'configuracoes', getAdmin()) >= 4;
+const canManage = async (req: Request, orgId: string) => !!req.user?.master || await moduleLevelOf(req.user, orgId, 'configuracoes', getAdmin) >= 4;
 
 export function createModuleAccessRouter(): Router {
   const router = Router();
