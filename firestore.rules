@@ -65,10 +65,11 @@ service cloud.firestore {
     }
     function moduleOk(org, section, areaIndex, lvl) {
       let modules = moduleMap(org);
+      let adminRecovery = section == 'configuracoes' && orgClaims()[org] == 'Admin';
       return isMaster() || (isMemberOf(org) && !moduleRevoked(org)
-        && (moduleExplicit(org, section)
+        && (adminRecovery || (moduleExplicit(org, section)
           ? int(modules[section]) >= lvl
-          : fallbackModuleLevel(org, areaIndex) >= lvl));
+          : fallbackModuleLevel(org, areaIndex) >= lvl)));
     }
     function A_OPS() { return 1; }
     function A_STOCK() { return 2; }
