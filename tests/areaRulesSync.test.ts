@@ -35,7 +35,7 @@ test('as regras numeram as áreas na mesma ordem do app', () => {
     ['A_WA', 'whatsapp'],
     ['A_EST', 'estrutura'],
   ]) {
-    const v = new RegExp(`function ${fn}\\(\\) \\{ return (\\d+); \\}`).exec(rules)![1];
+    const v = new RegExp(`function ${fn}\(\) \{ return (\d+); \}`).exec(rules)![1];
     assert.equal(Number(v), AREA_IDS.indexOf(id as never), fn);
   }
 });
@@ -99,4 +99,12 @@ test('Ponto REP-P retains multi-pose biometrics and protects only its RH adminis
   assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto-admin', 4\)/);
   assert.match(pontoRhRoutes, /openFaceDescriptors/);
   assert.match(pontoRhRoutes, /FACE_MAX_POSES/);
+});
+
+
+test('legacy field and operations collections remain available only through their granular submodules', () => {
+  assert.match(rules, /function auxiliaryRead\(d\)/);
+  assert.match(rules, /function auxiliaryWrite\(d\)/);
+  assert.match(rules, /coll == 'worker_time_logs'[\s\S]*?moduleOk\(o, 'ops-diario', A_OPS\(\), 1\)/);
+  assert.match(rules, /coll == 'support_tickets'[\s\S]*?moduleOk\(o, 'suporte', 10, 1\)/);
 });
