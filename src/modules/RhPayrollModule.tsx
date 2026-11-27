@@ -542,7 +542,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
           {/* 7. Demonstrativos / Holerites Direct View */}
           {currentTab === 'rh-ponto' && organization?.id && (
-            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={moduleLevel('rh-ponto') >= 4} />
+            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={moduleLevel('rh-ponto-admin') >= 4} />
           )}
 
           {currentTab === 'rh-holerites' && (
