@@ -4,6 +4,7 @@ import type { AdminHandles } from './firebaseAdmin.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import type { OrgMember, Organization, UserRole } from '../src/types/index.ts';
 import { AREA_IDS, decodeAreas, encodeAreas, resolveAreas, sanitizeOrgDefaults, sanitizeOverrides, type AreaLevels } from '../src/permissions/areas.ts';
+import { syncModuleAccessForMember } from './moduleAccessService.ts';
 
 export type Role = UserRole;
 /** `areas`: níveis por área em cada empresa, codificados por encodeAreas (um dígito por área). */
@@ -98,6 +99,7 @@ async function mintMemberToken(h: AdminHandles, m: OrgMember): Promise<{ uid: st
   const uid = `member_${m.id}`;
   await ensureUser(h, uid, { displayName: m.userName });
   await h.auth.setCustomUserClaims(uid, await buildClaims(h, uid));
+  await syncModuleAccessForMember(h, m.id);
   return { uid, token: await h.auth.createCustomToken(uid) };
 }
 
@@ -310,6 +312,7 @@ export async function syncSession(
   if (own) {
     const claims = await orgClaims(h, own);
     await h.auth.setCustomUserClaims(uid, claims);
+    if (own[0]) await syncModuleAccessForMember(h, own[0].id);
     return { claims, member: own[0] ? toMember(own[0]) : null };
   }
   const email = emailVerified ? rawEmail ?? null : null;
@@ -317,6 +320,7 @@ export async function syncSession(
   await Promise.all(docs.filter((d) => d.get('userId') !== uid).map((d) => d.ref.update({ userId: uid, updatedAt: now() })));
   const claims = await claimsFor(h, uid, email, docs);
   await h.auth.setCustomUserClaims(uid, claims);
+  await Promise.all(docs.map((d) => syncModuleAccessForMember(h, d.id)));
   return { claims, member: docs[0] ? { ...toMember(docs[0]), userId: uid } : null };
 }
 
@@ -352,6 +356,7 @@ export async function refreshMemberClaims(h: AdminHandles, memberId: string): Pr
   await setClaimsIfExists(h, uid, () => buildClaims(h, uid));
   const bound = await boundUser(h, memberId);
   if (bound) await setClaimsIfExists(h, bound.uid, () => buildClaims(h, bound.uid, bound.email, bound.emailVerified));
+  await syncModuleAccessForMember(h, memberId);
 }
 
 /**
