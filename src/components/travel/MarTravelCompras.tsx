@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Loader2, Building2, ChevronDown, ChevronRight, Plane, Bus, Hotel, Car, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../apiAuthFetch';
-import { summarizeCompras, filterCompras, STATUS_LABEL, type CompraMarTravel } from '../../services/marTravelCompras';
+import { summarizeCompras, filterCompras, STATUS_LABEL, monthRanges, lerRespostaSync, type CompraMarTravel } from '../../services/marTravelCompras';
 
 interface Status { configured: boolean; lastSync?: { lastSync: string; desde: string; ate: string; total: number } | null }
 
@@ -49,16 +49,30 @@ export const MarTravelCompras: React.FC<{ orgId: string; canManage: boolean }> =
 
   const sync = async () => {
     setSyncing(true); setMsg(null);
+    const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+    const inicioTotal = new Date(Date.now() - periodo * 86400000).toISOString().slice(0, 10);
+    // Mês a mês (do mais recente para o mais antigo): cada chamada é curta e o que já veio fica salvo.
+    const meses = monthRanges(inicioTotal, hoje).reverse();
+    let novos = 0;
+    let geral = 0;
     try {
-      const desde = new Date(Date.now() - periodo * 86400000).toISOString().slice(0, 10);
-      const r = await apiFetch('/api/travel/lemontech/sync', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId, desde }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setMsg(j.error || 'Não foi possível sincronizar agora.'); return; }
-      setMsg(`${j.total} solicitações atualizadas.`);
+      for (let i = 0; i < meses.length; i++) {
+        setMsg(`Puxando da Mar Travel: mês ${i + 1} de ${meses.length}…`);
+        const r = await apiFetch('/api/travel/lemontech/sync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orgId, desde: meses[i].dataInicial, ate: meses[i].dataFinal, inicioTotal }),
+        });
+        const out = await lerRespostaSync(r);
+        novos += out.total;
+        geral = out.totalGeral;
+      }
+      setMsg(`${novos} solicitações lidas no período; ${geral} no total.`);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Não foi possível sincronizar agora.');
+    } finally {
+      setSyncing(false);
       await load();
-    } finally { setSyncing(false); }
+    }
   };
 
   const abrir = async (id: string) => {
@@ -109,7 +123,7 @@ export const MarTravelCompras: React.FC<{ orgId: string; canManage: boolean }> =
             </div>
           )}
         </div>
-        {syncing && <p className="text-[11px] text-slate-500">A API aceita 60 consultas por minuto; períodos longos levam alguns minutos.</p>}
+        {syncing && <p className="text-[11px] text-slate-500">A Mar Travel aceita 60 consultas por minuto: cada mês leva poucos segundos. Pode deixar a tela aberta.</p>}
         {msg && <p className="text-xs text-cyan-300">{msg}</p>}
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

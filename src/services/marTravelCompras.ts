@@ -24,6 +24,32 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+const isoDia = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Quebra o período em meses (sem buracos nem sobreposição). Usado no navegador e no servidor. */
+export function monthRanges(from: string, to: string): { dataInicial: string; dataFinal: string }[] {
+  const out: { dataInicial: string; dataFinal: string }[] = [];
+  let start = new Date(`${from}T00:00:00Z`);
+  const end = new Date(`${to}T00:00:00Z`);
+  while (start <= end) {
+    const monthEnd = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
+    const stop = monthEnd < end ? monthEnd : end;
+    out.push({ dataInicial: isoDia(start), dataFinal: isoDia(stop) });
+    start = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  }
+  return out;
+}
+
+/** Lê a resposta de um pedaço da sincronização; qualquer coisa fora do esperado vira erro com mensagem clara. */
+export async function lerRespostaSync(res: Response): Promise<{ total: number; totalGeral: number }> {
+  const texto = await res.text();
+  let j: any = null;
+  try { j = texto ? JSON.parse(texto) : null; } catch { j = null; }
+  if (!res.ok) throw new Error(j?.error || `Falha na sincronização (HTTP ${res.status}). Tente de novo em instantes.`);
+  if (!j || typeof j.total !== 'number') throw new Error(`Resposta inesperada (HTTP ${res.status}) ao sincronizar. Republique o app no AI Studio e tente de novo.`);
+  return { total: j.total, totalGeral: typeof j.totalGeral === 'number' ? j.totalGeral : j.total };
+}
 const contaNoCusto = (c: CompraMarTravel) => c.status !== 'CANCELADA';
 
 export function summarizeCompras(items: CompraMarTravel[]) {
