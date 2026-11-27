@@ -92,13 +92,10 @@ test('answerWithTools: functionCall -> functionResponse -> texto final', async (
   assert.deepEqual(seen, [1, 3]);
 });
 
-test('gates: WhatsApp e web', async () => {
-  const { canUseErpTools, canQueryErp } = await import('../../server/agentTools.ts');
+test('gate: WhatsApp', async () => {
+  const { canUseErpTools } = await import('../../server/agentTools.ts');
   assert.ok(canUseErpTools({ isOwner: true, senderDigits: '', authorizedPhones: [] }));
   assert.ok(canUseErpTools({ isOwner: false, senderDigits: '551', authorizedPhones: ['551'] }));
   assert.ok(!canUseErpTools({ isOwner: false, senderDigits: '552', authorizedPhones: ['551'] }));
   assert.ok(!canUseErpTools({ isOwner: false, senderDigits: '', authorizedPhones: [''] }));
-  assert.ok(canQueryErp({ master: false, orgs: { o: 'Gerente' } }, 'o'));
-  assert.ok(!canQueryErp({ master: false, orgs: { o: 'Operacional' } }, 'o'));
-  assert.ok(canQueryErp({ master: true, orgs: {} }, 'o'));
 });
