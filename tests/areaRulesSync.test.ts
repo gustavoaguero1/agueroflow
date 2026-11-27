@@ -78,3 +78,9 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
   assert.match(storageRules, /match \/hr-onboardings\/\{orgId\}\/\{onboardingId\}\/\{fileId\}/);
   assert.match(storageRules, /moduleLevel\(orgId, 'rh-admissoes', 5\)/);
 });
+
+
+test('Firestore routes contracts through the Contratos module grant', async () => {
+  const rules = await readFile(new URL('../firestore.rules', import.meta.url), 'utf8');
+  assert.match(rules, /coll == 'contracts' \? 'contratos'/);
+});
