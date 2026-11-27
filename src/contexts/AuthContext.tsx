@@ -15,6 +15,7 @@ import {
 import {
   areaOfSection, canSeeSection, effectiveLevels, needsTokenRefresh, type AreaId, type AreaLevel, type AreaLevels,
 } from '../permissions/areas';
+import { MODULE_PERMISSION_ID_LIST } from '../permissions/modules';
 import { auth, googleProvider, db, handleFirestoreError, OperationType, isolatedAuth } from '../firebase';
 import { apiFetch, postJson, setApiOrgGetter } from '../apiAuthFetch';
 import {
