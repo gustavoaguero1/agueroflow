@@ -85,7 +85,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
     selectedUnitId,
     selectedContractId,
     logAudit,
-    areaLevel,
+    moduleLevel,
   } = useAuth();
 
   // Tab State
@@ -132,20 +132,21 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
   // Role Security Check
   // Super Admin/Master, Admin, RH/Gestor autorizado têm acesso; Operador/Almoxarife não têm acesso
   // Acesso por área: "ver" abre o RH, "editar" grava (Configurações → Acessos por área).
-  const isAuthorized = areaLevel('rh') >= 1;
-  const canEdit = areaLevel('rh') === 2;
+  const isAuthorized = moduleLevel(currentTab) >= 1;
+  const canEdit = moduleLevel(currentTab) >= 2;
 
   // Sync tab with props
   useEffect(() => {
-    if (activeSubSection) {
+    if (activeSubSection && moduleLevel(activeSubSection) >= 1) {
       setCurrentTab(activeSubSection);
       if (activeSubSection === 'rh-holerites') {
         setShowHoleriteModal(true);
       }
     }
-  }, [activeSubSection]);
+  }, [activeSubSection, moduleLevel]);
 
   const handleTabChange = (tabId: RhSubSection) => {
+    if (moduleLevel(tabId) < 1) return;
     setCurrentTab(tabId);
     if (onNavigateSubSection) {
       onNavigateSubSection(tabId);
@@ -157,7 +158,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
   // Subscriptions to Firestore Collections
   useEffect(() => {
-    if (!organization?.id || !isAuthorized) {
+    if (!organization?.id || !isAuthorized || currentTab === 'rh-ponto') {
       setLoading(false);
       return;
     }
@@ -193,7 +194,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
       unsubBatches();
       unsubImports();
     };
-  }, [organization?.id, referenceYear, isAuthorized, canEdit]);
+  }, [organization?.id, referenceYear, isAuthorized, canEdit, currentTab]);
 
   const legacyAuditReport = useMemo(
     () =>
@@ -355,7 +356,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
         {/* Sub-Navigation Tabs — Apple Segmented Control */}
         <div className="af-seg rounded-xl p-1 flex items-center gap-1 overflow-x-auto custom-scrollbar">
-          {tabs.map((t) => {
+          {tabs.filter((t) => moduleLevel(t.id) >= 1).map((t) => {
             const Icon = t.icon;
             const isActive = currentTab === t.id;
             return (
@@ -522,7 +523,7 @@ export const RhPayrollModule: React.FC<RhPayrollModuleProps> = ({
 
           {/* 7. Demonstrativos / Holerites Direct View */}
           {currentTab === 'rh-ponto' && organization?.id && (
-            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={role === 'Admin' || role === 'Gerente'} />
+            <RhPontoManager orgId={organization.id} units={units} canEdit={canEdit} canPairTotem={moduleLevel('rh-ponto') >= 4} />
           )}
 
           {currentTab === 'rh-holerites' && (
