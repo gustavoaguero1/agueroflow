@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { getAdmin } from './firebaseAdmin.ts';
-import { areaLevelOf, orgIdOf } from './authMiddleware.ts';
+import { moduleLevelOf, orgIdOf } from './authMiddleware.ts';
 import { resolveAreas } from '../src/permissions/areas.ts';
 import {
   MODULE_PERMISSION_DETAILS, resolveModuleLevels, sanitizeModuleDefaults, sanitizeModuleOverrides,
@@ -10,7 +10,7 @@ import type { UserRole } from '../src/types/index.ts';
 
 const validId = (v: unknown): v is string => typeof v === 'string' && !!v && !v.includes('/');
 const responseError = (res: Response, status: number, error: string) => res.status(status).json({ ok: false, error });
-const canManage = (req: Request, orgId: string) => !!req.user?.master || areaLevelOf(req.user, orgId, 'configuracoes') >= 2;
+const canManage = async (req: Request, orgId: string) => !!req.user?.master || await moduleLevelOf(req.user, orgId, 'configuracoes', getAdmin()) >= 4;
 
 export function createModuleAccessRouter(): Router {
   const router = Router();
@@ -38,7 +38,7 @@ export function createModuleAccessRouter(): Router {
     if (!validId(orgId) || (!req.user?.master && !req.user?.orgs?.[orgId])) {
       return responseError(res, 403, 'Empresa não autorizada.');
     }
-    if (!canManage(req, orgId)) return responseError(res, 403, 'Somente quem administra Configurações pode gerenciar acessos granulares.');
+    if (!(await canManage(req, orgId))) return responseError(res, 403, 'Somente quem administra Configurações pode gerenciar acessos granulares.');
     const store = db();
     if (!store) return responseError(res, 503, 'Serviço de autenticação indisponível.');
     const [orgSnap, a, b] = await Promise.all([
@@ -62,7 +62,7 @@ export function createModuleAccessRouter(): Router {
         levels: resolveModuleLevels(role, areaLevels, roleDefaults, overrides),
       };
     }).sort((x, y) => x.userName.localeCompare(y.userName, 'pt-BR'));
-    return res.json({ ok: true, catalog: MODULE_PERMISSION_DETAILS, areaDefaults: org.areaDefaults || {}, roleDefaults, members: people, canEdit: canManage(req, orgId) });
+    return res.json({ ok: true, catalog: MODULE_PERMISSION_DETAILS, areaDefaults: org.areaDefaults || {}, roleDefaults, members: people, canEdit: await canManage(req, orgId) });
   }));
 
   router.put('/module-access/roles', wrap(async (req, res) => {
@@ -70,7 +70,7 @@ export function createModuleAccessRouter(): Router {
     if (!validId(orgId) || (!req.user?.master && !req.user?.orgs?.[orgId])) {
       return responseError(res, 403, 'Empresa não autorizada.');
     }
-    if (!canManage(req, orgId)) return responseError(res, 403, 'Somente quem administra Configurações pode alterar os padrões.');
+    if (!(await canManage(req, orgId))) return responseError(res, 403, 'Somente quem administra Configurações pode alterar os padrões.');
     const store = db();
     if (!store) return responseError(res, 503, 'Serviço de autenticação indisponível.');
     const currentSnap = await store.doc(`organizations/${orgId}`).get();
@@ -82,7 +82,8 @@ export function createModuleAccessRouter(): Router {
     }
     await store.doc(`organizations/${orgId}`).set({ moduleAccessDefaults: next, updatedAt: new Date().toISOString() }, { merge: true });
     const failed = await syncModuleAccessForOrganization(getAdmin()!, orgId);
-    return res.json({ ok: true, refreshFailed: failed });
+    if (failed > 0) return responseError(res, 503, `Padrões salvos, mas ${failed} sincronização(ões) de acesso falharam. Repita a operação para concluir a atualização.`);
+    return res.json({ ok: true, refreshFailed: 0 });
   }));
 
   router.put('/members/:id/module-access', wrap(async (req, res) => {
@@ -90,7 +91,7 @@ export function createModuleAccessRouter(): Router {
     const memberId = req.params.id;
     if (!validId(orgId) || !validId(memberId)) return responseError(res, 400, 'Pessoa ou empresa não informada.');
     if (!req.user?.master && !req.user?.orgs?.[orgId]) return responseError(res, 403, 'Empresa não autorizada.');
-    if (!canManage(req, orgId)) return responseError(res, 403, 'Somente quem administra Configurações pode alterar acessos.');
+    if (!(await canManage(req, orgId))) return responseError(res, 403, 'Somente quem administra Configurações pode alterar acessos.');
     const store = db();
     if (!store) return responseError(res, 503, 'Serviço de autenticação indisponível.');
     const ref = store.doc(`org_members/${memberId}`);
@@ -103,7 +104,12 @@ export function createModuleAccessRouter(): Router {
     }
     const overrides = sanitizeModuleOverrides(req.body?.overrides);
     await ref.update({ moduleAccessOverrides: overrides, updatedAt: new Date().toISOString() });
-    await syncModuleAccessForMember(getAdmin()!, memberId);
+    try {
+      await syncModuleAccessForMember(getAdmin()!, memberId);
+    } catch (error) {
+      console.error('[module-access] falha ao sincronizar grant individual:', error);
+      return responseError(res, 503, 'O acesso foi salvo, mas a permissão ainda não foi sincronizada. Repita a operação.');
+    }
     // Publica a marca somente depois de gravar o grant, para o listener do usuário nunca ler dados antigos.
     await ref.update({ areasUpdatedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     return res.json({ ok: true });
