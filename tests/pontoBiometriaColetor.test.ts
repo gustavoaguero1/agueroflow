@@ -86,7 +86,8 @@ test('bioCrypto: cifra e decifra vetores com AES-256-GCM e valida selfie comprim
   assert.equal(sanitizePontoPhoto(`data:image/jpeg;base64,${'A'.repeat(120_000)}`), null);
 });
 
-test('extractPairCode aceita URL /ponto?pair=, prefixo legado e código puro', () => {
+test('extractPairCode aceita URL /?ponto=1&pair=, /ponto?pair=, prefixo legado e código puro', () => {
+  assert.equal(extractPairCode('https://app.agueroflow.com/?ponto=1&pair=abcd1234'), 'ABCD1234');
   assert.equal(extractPairCode('https://app.agueroflow.com/ponto?pair=abcd1234'), 'ABCD1234');
   assert.equal(extractPairCode('agueroflow-ponto:xyzw9876'), 'XYZW9876');
   assert.equal(extractPairCode('  ab-cd 1234 '), 'ABCD1234');
@@ -163,6 +164,16 @@ test('fluxo completo E2E: pareamento, cadastro facial LGPD, batida com selfie + 
     });
     assert.equal(okEnroll.status, 200);
 
+    // 3b. RH adiciona +1 foto (ex: 3x4) com adicionar: true sem perder a pose anterior (total 2 poses)
+    const addRes = await fetch(`${base}/pessoas/rh_1/rosto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId, descriptors: [makeVec(8)], lgpdAceito: true, adicionar: true }),
+    });
+    assert.equal(addRes.status, 200);
+    const addJson = (await addRes.json()) as { poses: number };
+    assert.equal(addJson.poses, 2);
+
     // 4. GET /device/me retorna biometria e obras para operar offline
     const min = Math.floor(now().getTime() / 60000);
     const meRes = await fetch(`${base}/device/me`, {
@@ -171,7 +182,7 @@ test('fluxo completo E2E: pareamento, cadastro facial LGPD, batida com selfie + 
     assert.equal(meRes.status, 200);
     const me = (await meRes.json()) as any;
     assert.equal(me.biometria.status, 'cadastrada');
-    assert.equal(me.biometria.descriptors.length, 1);
+    assert.equal(me.biometria.descriptors.length, 2);
     assert.equal(me.obras.length, 1);
 
     // 5. Editar dados da pessoa no RH NÃO apaga o rosto cadastrado
