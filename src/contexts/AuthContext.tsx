@@ -1132,6 +1132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (role === 'Admin' && section === 'configuracoes') return 4;
     const configured = activeModuleAccess[section];
     if (activeExplicitModules.includes(section) && typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) return configured;
+    if (role === 'Gerente' && ['rh-ponto-admin', 'viagens-configuracoes'].includes(section)) return 4;
     const area = areaOfSection(section);
     if (!area) return 0;
     return role === 'Admin' && areaLevels[area] === 2 ? 4 : areaLevels[area];
