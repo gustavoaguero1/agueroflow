@@ -83,20 +83,20 @@ test('enforcedInDatabase está reconciliado com firestore.rules, storage.rules e
 
 
 test('Firestore routes contracts through the Contratos module grant', () => {
-  assert.match(rules, /coll == 'contracts' \\? 'contratos'/);
+  assert.match(rules, /coll == 'contracts' \? 'contratos'/);
 });
 
 test('RH collections honor their granular submodule grants', () => {
-  assert.match(rules, /function rhRead\\(d\\)/);
-  assert.match(rules, /function rhWrite\\(d\\)/);
-  assert.match(rules, /moduleOk\\(o, 'rh-importacao', A_RH\\(\\), 2\\)/);
-  assert.match(rules, /moduleOk\\(o, 'rh-calculo', A_RH\\(\\), 2\\)/);
+  assert.match(rules, /function rhRead\(d\)/);
+  assert.match(rules, /function rhWrite\(d\)/);
+  assert.match(rules, /moduleOk\(o, 'rh-importacao', A_RH\(\), 2\)/);
+  assert.match(rules, /moduleOk\(o, 'rh-calculo', A_RH\(\), 2\)/);
 });
 
 test('Ponto REP-P retains multi-pose biometrics and protects only its RH administration routes', () => {
-  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 1\\)/);
-  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 2\\)/);
-  assert.match(pontoRhRoutes, /requireModuleAccess\\('rh-ponto', 4\\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 1\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 2\)/);
+  assert.match(pontoRhRoutes, /requireModuleAccess\('rh-ponto', 4\)/);
   assert.match(pontoRhRoutes, /openFaceDescriptors/);
   assert.match(pontoRhRoutes, /FACE_MAX_POSES/);
 });
