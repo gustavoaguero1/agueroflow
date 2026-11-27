@@ -12,6 +12,7 @@ test('catálogo cobre as áreas e não contém identificadores duplicados', () =
   assert.ok(ids.includes('ops-contratacao'));
   assert.ok(ids.includes('rh-holerites'));
   assert.ok(ids.includes('compras-recebimento'));
+  assert.ok(ids.includes('rh-ponto-admin'));
 });
 
 test('níveis granulares preservam o acesso herdado da área', () => {
@@ -38,6 +39,10 @@ test('níveis inválidos e seções desconhecidas não viram liberações', () =
   assert.equal(resolveModuleLevel('estrutura', 'Admin', areas), 4);
   assert.equal(resolveModuleLevel('estrutura', 'Admin', { ...areas, estrutura: 1 }), 1);
   assert.equal(resolveModuleLevel('configuracoes', 'Admin', areas, null, { configuracoes: 0 }), 4);
+  const managerAreas = resolveAreas('Gerente');
+  assert.equal(resolveModuleLevel('rh-ponto-admin', 'Gerente', managerAreas), 4);
+  assert.equal(resolveModuleLevel('viagens-configuracoes', 'Gerente', managerAreas), 4);
+  assert.equal(resolveModuleLevel('rh-ponto-admin', 'Gerente', managerAreas, null, { 'rh-ponto-admin': 0 }), 0);
   assert.equal(sanitizeModuleDefaults({ Admin: { configuracoes: 0, estrutura: 2 } }).Admin?.configuracoes, 4);
 });
 
