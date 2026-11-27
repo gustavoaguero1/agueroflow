@@ -564,8 +564,36 @@ service cloud.firestore {
       }
       // Financeiro may read OCs/receipts to reconcile invoices; only Estoque may create or change them.
       // Auditoria (audit_logs) pode ser gravada por membros da empresa ao executar ações, mas leitura exige área Estrutura.
+      function rhRead(d) {
+        let o = orgOf(d);
+        return coll == 'rh_employees'
+          ? (moduleOk(o, 'rh-funcionarios', A_RH(), 1) || moduleOk(o, 'rh-painel', A_RH(), 1)
+            || moduleOk(o, 'rh-pendencias', A_RH(), 1) || moduleOk(o, 'rh-importacao', A_RH(), 1)
+            || moduleOk(o, 'rh-calculo', A_RH(), 1) || moduleOk(o, 'rh-historico', A_RH(), 1)
+            || moduleOk(o, 'rh-relatorios', A_RH(), 1) || moduleOk(o, 'rh-admissoes', A_RH(), 1))
+          : (coll == 'rh_calculations'
+            ? (moduleOk(o, 'rh-painel', A_RH(), 1) || moduleOk(o, 'rh-calculo', A_RH(), 1)
+              || moduleOk(o, 'rh-historico', A_RH(), 1) || moduleOk(o, 'rh-relatorios', A_RH(), 1)
+              || moduleOk(o, 'rh-holerites', A_RH(), 1))
+            : (coll == 'rh_batches'
+              ? (moduleOk(o, 'rh-calculo', A_RH(), 1) || moduleOk(o, 'rh-historico', A_RH(), 1)
+                || moduleOk(o, 'rh-relatorios', A_RH(), 1))
+              : (coll == 'rh_imports'
+                ? (moduleOk(o, 'rh-importacao', A_RH(), 1) || moduleOk(o, 'rh-historico', A_RH(), 1))
+                : (coll == 'hr_onboardings' && moduleOk(o, 'rh-admissoes', A_RH(), 1))));
+      }
+      function rhWrite(d) {
+        let o = orgOf(d);
+        return coll == 'rh_employees'
+          ? (moduleOk(o, 'rh-funcionarios', A_RH(), 2) || moduleOk(o, 'rh-importacao', A_RH(), 2)
+            || moduleOk(o, 'rh-admissoes', A_RH(), 2))
+          : (coll in ['rh_calculations', 'rh_batches']
+            ? moduleOk(o, 'rh-calculo', A_RH(), 2)
+            : (coll == 'rh_imports' ? moduleOk(o, 'rh-importacao', A_RH(), 2) : false));
+      }
       function areaRead(d) {
-        return coll == 'projects'
+        return coll in ['rh_employees', 'rh_calculations', 'rh_batches', 'rh_imports', 'hr_onboardings'] ? rhRead(d)
+          : (coll == 'projects'
           ? (moduleOk(orgOf(d), 'obras', A_OPS(), 1) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 1) || moduleOk(orgOf(d), 'compras-painel', A_STOCK(), 1) || moduleOk(orgOf(d), 'financeiro-notas', A_FIN(), 1))
           : (coll == 'audit_logs'
             ? moduleOk(orgOf(d), 'auditoria', A_EST(), 1)
@@ -581,7 +609,9 @@ service cloud.firestore {
         let approvedNow = coll == 'commercial_proposals'
           && d.get('status', '') == 'aprovada'
           && resource.data.get('status', '') != 'aprovada';
-        return approvedNow
+        return coll in ['rh_employees', 'rh_calculations', 'rh_batches', 'rh_imports', 'hr_onboardings']
+          ? rhWrite(d)
+          : (approvedNow
           ? moduleOk(orgOf(resource.data), 'comercial-revisao', A_COM(), 3)
           : (coll == 'projects'
             ? (moduleOk(orgOf(d), 'obras', A_OPS(), 2) || moduleOk(orgOf(d), 'comercial-painel', A_COM(), 2))
@@ -589,7 +619,7 @@ service cloud.firestore {
               ? (moduleOk(orgOf(d), 'pecas-catalogo', A_STOCK(), 2) || moduleOk(orgOf(d), 'comercial-materiais', A_COM(), 2))
               : (coll in ['stock_balances', 'stock_movements']
                 ? (moduleOk(orgOf(d), 'estoque', A_STOCK(), 2) || moduleOk(orgOf(d), 'ops-base', A_OPS(), 2))
-                : (collArea() >= 0 && moduleOk(orgOf(d), collModule(), collArea(), 2)))));
+                : (collArea() >= 0 && moduleOk(orgOf(d), collModule(), collArea(), 2))))));
       }
       function projectUnitValid(d) {
         let unitId = d.get('unitId', '');
