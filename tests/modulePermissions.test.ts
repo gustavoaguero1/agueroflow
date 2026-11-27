@@ -37,6 +37,8 @@ test('níveis inválidos e seções desconhecidas não viram liberações', () =
   assert.equal(canAccessModule('unknown-module', areas, { 'unknown-module': 4 }), false);
   assert.equal(resolveModuleLevel('estrutura', 'Admin', areas), 4);
   assert.equal(resolveModuleLevel('estrutura', 'Admin', { ...areas, estrutura: 1 }), 1);
+  assert.equal(resolveModuleLevel('configuracoes', 'Admin', areas, null, { configuracoes: 0 }), 4);
+  assert.equal(sanitizeModuleDefaults({ Admin: { configuracoes: 0, estrutura: 2 } }).Admin?.configuracoes, 4);
 });
 
 test('matriz devolve apenas níveis válidos e apresenta cinco capacidades', () => {
