@@ -142,6 +142,7 @@ export async function moduleLevelOf(
   const grant = snap.exists ? snap.data() : undefined;
   const modules = grant?.modules && typeof grant.modules === 'object' ? grant.modules as Record<string, unknown> : {};
   if (grant?.revoked === true) return 0;
+  if (u.orgs?.[org] === 'Admin' && section === 'configuracoes') return 4;
   const explicitModules = Array.isArray(grant?.explicitModules) ? grant.explicitModules : [];
   const configured = explicitModules.includes(section) ? modules[section] : undefined;
   if (typeof configured === 'number' && Number.isInteger(configured) && configured >= 0 && configured <= 4) {
