@@ -190,6 +190,20 @@ export const CollectiveCheckoutsManager: React.FC<CollectiveCheckoutsManagerProp
       return;
     }
 
+    const assetCalc = calculatedAssetsMap.get(selectedAsset.id);
+    const isCalibExpired =
+      selectedAsset.alert === 'VENCIDO' ||
+      selectedAsset.alertLevel === 'VENCIDO' ||
+      assetCalc?.alert === 'VENCIDO' ||
+      assetCalc?.alertLevel === 'VENCIDO' ||
+      (typeof assetCalc?.daysRemaining === 'number' && assetCalc.daysRemaining < 0);
+    if (isCalibExpired) {
+      setCheckoutError(
+        `Retirada bloqueada pela Qualidade: o bem [${selectedAsset.code}] está com calibração/manutenção periódica VENCIDA. Regularize em Manutenções & Calibrações antes de liberar para campo.`
+      );
+      return;
+    }
+
     try {
       setCheckoutSubmitting(true);
       await executeAssetCheckout({
@@ -579,12 +593,38 @@ export const CollectiveCheckoutsManager: React.FC<CollectiveCheckoutsManagerProp
                   className="w-full bg-[#0b101b] border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-amber-500"
                 >
                   <option value="">Selecione o bem a ser retirado...</option>
-                  {availableAssetsForCheckout.map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      [{asset.code}] {asset.description} - {asset.categoryName} ({asset.storageLocation || 'Local Padrão'})
-                    </option>
-                  ))}
+                  {availableAssetsForCheckout.map((asset) => {
+                    const calc = calculatedAssetsMap.get(asset.id);
+                    const expired =
+                      asset.alert === 'VENCIDO' ||
+                      asset.alertLevel === 'VENCIDO' ||
+                      calc?.alert === 'VENCIDO' ||
+                      calc?.alertLevel === 'VENCIDO' ||
+                      (typeof calc?.daysRemaining === 'number' && calc.daysRemaining < 0);
+                    return (
+                      <option key={asset.id} value={asset.id}>
+                        [{asset.code}] {asset.description} - {asset.categoryName} ({asset.storageLocation || 'Local Padrão'}){expired ? ' [CALIBRAÇÃO VENCIDA]' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {(() => {
+                  const chosen = availableAssetsForCheckout.find((a) => a.id === checkoutAssetId);
+                  const calc = chosen ? calculatedAssetsMap.get(chosen.id) : undefined;
+                  const expired =
+                    chosen &&
+                    (chosen.alert === 'VENCIDO' ||
+                      chosen.alertLevel === 'VENCIDO' ||
+                      calc?.alert === 'VENCIDO' ||
+                      calc?.alertLevel === 'VENCIDO' ||
+                      (typeof calc?.daysRemaining === 'number' && calc.daysRemaining < 0));
+                  return expired ? (
+                    <p className="mt-1.5 p-2 rounded-lg bg-rose-950/60 border border-rose-700/60 text-[11px] text-rose-300 flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                      <span>Trava de Qualidade: este instrumento está com calibração vencida e não poderá ser liberado até regularização.</span>
+                    </p>
+                  ) : null;
+                })()}
                 {availableAssetsForCheckout.length === 0 && (
                   <p className="text-[11px] text-amber-400 mt-1">
                     Nenhum bem disponível para retirada no momento (todos em uso, em manutenção ou bloqueados por vencimento).

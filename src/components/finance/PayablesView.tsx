@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
-import { ArrowLeftRight, CheckCircle2, Plus, Wallet, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Download, Plus, Wallet, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { brl, payableKpis } from '../../services/financeService';
@@ -31,6 +31,7 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
   const [settlementRequestKey, setSettlementRequestKey] = useState('');
   const [settlementForm, setSettlementForm] = useState({ paymentDate: today(), paymentAmount: '', discountAmount: '0', paymentMethod: 'pix' as FinancePaymentMethod, discountReason: '', paymentReference: '', proofReference: '', notes: '', confirmAuthorizationDivergence: false });
   const [f, setF] = useState({ status: 'aberto', de: '', ate: '', categoriaId: '', contractId: '' });
+  const [duePreset, setDuePreset] = useState<'custom' | 'vencidos' | 'hoje' | '7d'>('custom');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState(false);
@@ -56,13 +57,42 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
   }, [orgId]);
 
   const t = today();
+  const in7d = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const kpis = useMemo(() => payableKpis(ps, t, settlements), [ps, t, settlements]);
+  const dueTodayCount = useMemo(() => ps.filter((p) => p.status === 'aberto' && p.vencimento === t).length, [ps, t]);
   const catName = (id: string) => categories.find((c) => c.id === id)?.nome ?? 'Sem categoria';
   const ctName = (id?: string) => { const c = contracts.find((x) => x.id === id); return c ? c.title || c.name || c.contractNumber : ''; };
-  const shown = ps.filter((p) => (!f.status || p.status === f.status)
-    && (!f.de || p.vencimento >= f.de) && (!f.ate || p.vencimento <= f.ate)
-    && (!f.categoriaId || p.categoriaId === f.categoriaId || p.rateio?.some((r) => r.categoriaId === f.categoriaId))
-    && (!f.contractId || p.contractId === f.contractId || p.rateio?.some((r) => r.contractId === f.contractId)));
+  const shown = ps.filter((p) => {
+    if (duePreset === 'vencidos' && !(p.status === 'aberto' && p.vencimento < t)) return false;
+    if (duePreset === 'hoje' && !(p.status === 'aberto' && p.vencimento === t)) return false;
+    if (duePreset === '7d' && !(p.status === 'aberto' && p.vencimento >= t && p.vencimento <= in7d)) return false;
+    return (!f.status || p.status === f.status)
+      && (!f.de || p.vencimento >= f.de) && (!f.ate || p.vencimento <= f.ate)
+      && (!f.categoriaId || p.categoriaId === f.categoriaId || p.rateio?.some((r) => r.categoriaId === f.categoriaId))
+      && (!f.contractId || p.contractId === f.contractId || p.rateio?.some((r) => r.contractId === f.contractId));
+  });
+
+  const exportCsv = () => {
+    const headers = ['Fornecedor', 'CNPJ', 'Documento', 'Vencimento', 'Valor Original', 'Saldo Aberto', 'Status', 'Categoria', 'Contrato/Obra'];
+    const rows = shown.map((p) => [
+      p.fornecedor?.nome || '',
+      p.fornecedor?.cnpj || '',
+      p.documento || '',
+      fmtDate(p.vencimento),
+      p.valor.toFixed(2).replace('.', ','),
+      (p.status === 'pago' ? 0 : financePayableBalance(p)).toFixed(2).replace('.', ','),
+      p.status,
+      catName(p.categoriaId),
+      ctName(p.contractId),
+    ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'));
+    const blob = new Blob(['\uFEFF' + [headers.join(';'), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contas_a_pagar_${t}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const canSettle = isSupervisorOrAbove && areaLevel('financeiro') >= (role === 'Supervisor' ? 1 : 2);
   const canApplyDiscount = isMaster || ((role === 'Admin' || role === 'Gerente') && areaLevel('financeiro') >= 2);
@@ -125,10 +155,10 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
   };
 
   const kpiCards = [
-    { l: 'Atrasadas', k: kpis.atrasadas, cls: 'text-red-400' },
-    { l: 'Vencem em 7 dias', k: kpis.vence7, cls: 'text-amber-300' },
-    { l: 'A pagar no mês', k: kpis.aPagarMes, cls: 'text-blue-300' },
-    { l: 'Pago no mês', k: kpis.pagoMes, cls: 'text-emerald-400' },
+    { l: 'Atrasadas', k: kpis.atrasadas, cls: 'text-red-400', preset: 'vencidos' as const },
+    { l: 'Vencem em 7 dias', k: kpis.vence7, cls: 'text-amber-300', preset: '7d' as const },
+    { l: 'A pagar no mês', k: kpis.aPagarMes, cls: 'text-blue-300', preset: 'custom' as const },
+    { l: 'Pago no mês', k: kpis.pagoMes, cls: 'text-emerald-400', preset: 'custom' as const },
   ];
   const activeCats = categories.filter((c) => c.ativo !== false);
 
@@ -139,9 +169,14 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
           <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-blue-400" />Contas a Pagar</h2>
           <p className="text-xs text-slate-400 mt-0.5">Parcelas geradas pelas NF-e classificadas e lançamentos manuais.</p>
         </div>
-        {isSupervisorOrAbove && (
-          <button type="button" className={btnPrimary} onClick={() => setShowForm((v) => !v)}><Plus className="w-3.5 h-3.5" />Lançamento manual</button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={btnGhost} onClick={exportCsv} disabled={shown.length === 0}>
+            <Download className="w-3.5 h-3.5" />Exportar CSV ({shown.length})
+          </button>
+          {isSupervisorOrAbove && (
+            <button type="button" className={btnPrimary} onClick={() => setShowForm((v) => !v)}><Plus className="w-3.5 h-3.5" />Lançamento manual</button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-950/40 p-1">
@@ -156,6 +191,33 @@ export const PayablesView: React.FC<{ orgId: string; categories: FinanceCategory
             <p className={`text-base sm:text-lg font-extrabold font-mono ${c.cls}`}>{brl.format(c.k.valor)}</p>
             <p className="text-[11px] text-slate-500">{c.k.qtd} título(s)</p>
           </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {([
+          ['custom', 'Todos os filtrados'],
+          ['vencidos', `Vencidos (${kpis.atrasadas.qtd})`],
+          ['hoje', `Vence hoje (${dueTodayCount})`],
+          ['7d', `Próximos 7 dias (${kpis.vence7.qtd})`],
+        ] as const).map(([key, text]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              setDuePreset(key);
+              if (key !== 'custom') setF((cur) => ({ ...cur, status: 'aberto', de: '', ate: '' }));
+            }}
+            className={`px-3 py-1.5 rounded-xl font-semibold border transition cursor-pointer ${
+              duePreset === key
+                ? key === 'vencidos'
+                  ? 'bg-rose-600 text-white border-rose-500 apple-solid-btn'
+                  : 'bg-blue-600 text-white border-blue-500 apple-solid-btn'
+                : 'bg-[#121826] border-slate-800 text-slate-300 hover:border-slate-600'
+            }`}
+          >
+            {text}
+          </button>
         ))}
       </div>
 

@@ -43,10 +43,28 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
   const [error, setError] = useState('');
 
   const [period, setPeriod] = useState<'mes' | '90d' | 'ano' | 'tudo'>('tudo');
+  const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const summary = funnelSummary(proposals, periodRange(period));
   const readyToSend = proposals.filter((p) => p.status === 'aprovada' || p.status === 'finalizada');
   const days = (p: CommercialProposal) =>
     Math.floor((Date.now() - new Date(p.statusHistory?.at(-1)?.at || p.updatedAt || p.createdAt).getTime()) / 86400000);
+
+  const staleActiveCount = proposals.filter(
+    (p) => (p.status === 'enviada' || p.status === 'negociacao') && days(p) >= 7,
+  ).length;
+
+  const copySummary = async (p: CommercialProposal) => {
+    const stageLabel = COLUMNS.find((c) => c.id === p.status)?.label || p.status;
+    const text = `Proposta ${p.code} — ${p.clientName}\nEscopo: ${p.title}\nValor: ${brl(p.proposedTotal || 0)}\nEtapa: ${stageLabel} (${days(p)} dia(s) sem movimentação)`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(p.id);
+      window.setTimeout(() => setCopiedId((cur) => (cur === p.id ? null : cur)), 2000);
+    } catch {
+      window.prompt('Copie o resumo da proposta:', text);
+    }
+  };
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -63,19 +81,35 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
     }
   };
 
-  const btn = 'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition disabled:opacity-50';
+  const btn = 'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition disabled:opacity-50 cursor-pointer';
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <span>Período (ganhas/perdidas):</span>
-        <select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}
-          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
-          <option value="mes">Mês atual</option>
-          <option value="90d">Últimos 90 dias</option>
-          <option value="ano">Ano atual</option>
-          <option value="tudo">Tudo</option>
-        </select>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2">
+          <span>Período (ganhas/perdidas):</span>
+          <select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}
+            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+            <option value="mes">Mês atual</option>
+            <option value="90d">Últimos 90 dias</option>
+            <option value="ano">Ano atual</option>
+            <option value="tudo">Tudo</option>
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOnlyNeedsAttention((v) => !v)}
+          className={`px-3 py-1.5 rounded-xl font-semibold border transition cursor-pointer ${
+            onlyNeedsAttention
+              ? 'bg-amber-600 text-white border-amber-500 apple-solid-btn'
+              : staleActiveCount > 0
+              ? 'bg-amber-950/50 text-amber-300 border-amber-700/60 hover:bg-amber-900/50'
+              : 'bg-slate-900 text-slate-400 border-slate-700'
+          }`}
+        >
+          {onlyNeedsAttention ? 'Mostrando apenas follow-up (≥7d)' : `Precisam de atenção (${staleActiveCount})`}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
@@ -103,42 +137,72 @@ export const CommercialFunnelBoard: React.FC<Props> = ({ proposals, user, onRefr
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
         {COLUMNS.map((col) => {
-          const cards = proposals.filter((p) => p.status === col.id);
+          const cards = proposals.filter((p) => {
+            if (p.status !== col.id) return false;
+            if (onlyNeedsAttention) {
+              return (p.status === 'enviada' || p.status === 'negociacao') && days(p) >= 7;
+            }
+            return true;
+          });
           const s = summary.byStatus[col.id];
           return (
             <div key={col.id} className="bg-[#0B132B] border border-slate-700/80 rounded-xl p-3 space-y-2">
               <div className="flex justify-between text-xs font-semibold text-slate-200">
-                <span>{col.label} ({s.count})</span>
+                <span>{col.label} ({cards.length}{onlyNeedsAttention && cards.length !== s.count ? `/${s.count}` : ''})</span>
                 <span className="font-mono text-cyan-300 truncate">{brl(s.value)}</span>
               </div>
-              {cards.map((p) => (
+              {cards.map((p) => {
+                const ageDays = days(p);
+                const isActive = p.status === 'enviada' || p.status === 'negociacao';
+                return (
                 <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs space-y-1">
-                  <p className="font-semibold text-white">{p.code} · {p.clientName}</p>
+                  <div className="flex items-start justify-between gap-1.5">
+                    <p className="font-semibold text-white">{p.code} · {p.clientName}</p>
+                    {isActive && ageDays >= 15 && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800/60 text-[10px] font-bold">
+                        {ageDays}d · Urgente
+                      </span>
+                    )}
+                    {isActive && ageDays >= 7 && ageDays < 15 && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 text-[10px] font-bold">
+                        {ageDays}d · Follow-up
+                      </span>
+                    )}
+                  </div>
                   <p className="text-slate-400 truncate">{p.title}</p>
                   <p className="font-mono text-slate-200">
                     {brl(p.proposedTotal || 0)}
-                    {(p.status === 'enviada' || p.status === 'negociacao') &&
-                      ` · ${p.probabilidade ?? DEFAULT_PROB[p.status]}%`}
+                    {isActive && ` · ${p.probabilidade ?? DEFAULT_PROB[p.status]}%`}
                   </p>
-                  <p className="text-slate-500">{days(p)} dia(s) desde a última atualização</p>
+                  <p className="text-slate-500">{ageDays} dia(s) desde a última atualização</p>
                   {p.status === 'perdida' && p.motivoPerda && <p className="text-rose-300">{p.motivoPerda}</p>}
                   {p.status === 'ganha' && p.workOrderId && <p className="text-emerald-300">OS criada</p>}
-                  {(p.status === 'enviada' || p.status === 'negociacao') && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {p.status === 'enviada' && (
-                        <button disabled={busy} className={`${btn} bg-cyan-600 text-white`}
-                          onClick={() => run(() => moveProposalStage(db, p, 'negociacao', user))}>
-                          Mover para negociação
-                        </button>
-                      )}
-                      <button disabled={busy} className={`${btn} bg-emerald-600 text-white`}
-                        onClick={() => setDialog({ kind: 'won', proposal: p })}>Marcar ganha</button>
-                      <button disabled={busy} className={`${btn} bg-rose-700 text-white`}
-                        onClick={() => setDialog({ kind: 'lost', proposal: p })}>Marcar perdida</button>
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {isActive && p.status === 'enviada' && (
+                      <button disabled={busy} className={`${btn} bg-cyan-600 text-white apple-solid-btn`}
+                        onClick={() => run(() => moveProposalStage(db, p, 'negociacao', user))}>
+                        Negociação
+                      </button>
+                    )}
+                    {isActive && (
+                      <>
+                        <button disabled={busy} className={`${btn} bg-emerald-600 text-white apple-solid-btn`}
+                          onClick={() => setDialog({ kind: 'won', proposal: p })}>Ganha</button>
+                        <button disabled={busy} className={`${btn} bg-rose-700 text-white apple-solid-btn`}
+                          onClick={() => setDialog({ kind: 'lost', proposal: p })}>Perdida</button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void copySummary(p)}
+                      className={`${btn} bg-slate-800 hover:bg-slate-700 text-slate-200`}
+                      title="Copiar resumo pronto para WhatsApp/e-mail"
+                    >
+                      {copiedId === p.id ? 'Copiado ✓' : 'Copiar resumo'}
+                    </button>
+                  </div>
                 </div>
-              ))}
+              );})}
             </div>
           );
         })}

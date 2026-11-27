@@ -39,6 +39,10 @@ import {
   Settings,
   Sparkles,
   BarChart3,
+  Download,
+  AlertTriangle,
+  Clock,
+  ShieldAlert,
 } from 'lucide-react';
 
 export type CollectiveAssetsSubSection =
@@ -190,6 +194,45 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
     return enrichedAssets.find((a) => a.id === selectedAssetForDetail.id) || selectedAssetForDetail;
   }, [enrichedAssets, selectedAssetForDetail]);
 
+  const radarStats = useMemo(() => {
+    const expiredCalib = enrichedAssets.filter(
+      (a) =>
+        a.alert === 'VENCIDO' ||
+        a.alertLevel === 'VENCIDO' ||
+        (typeof a.daysRemaining === 'number' && a.daysRemaining < 0)
+    );
+    const expiringSoon = enrichedAssets.filter(
+      (a) =>
+        a.alert === 'A_VENCER' ||
+        a.alertLevel === 'A_VENCER' ||
+        (typeof a.daysRemaining === 'number' && a.daysRemaining >= 0 && a.daysRemaining <= (policy.defaultWarningDays || 30))
+    );
+    const overdueCheckouts = movements.filter((m) => String(m.status).toUpperCase() === 'ATRASADO');
+    return { expiredCalib, expiringSoon, overdueCheckouts };
+  }, [enrichedAssets, movements, policy.defaultWarningDays]);
+
+  const handleExportAuditCsv = () => {
+    const headers = ['Código', 'Descrição', 'Categoria', 'Localização', 'Situação', 'Alerta', 'Próx. Calibração/Manut.', 'Dias Restantes', 'Em posse de'];
+    const rows = enrichedAssets.map((a) => [
+      a.code || '',
+      a.description || '',
+      a.categoryName || '',
+      a.storageLocation || '',
+      a.situation || '',
+      a.alert || a.alertLevel || '',
+      a.nextDueDate || a.nextCalibrationDate || a.nextMaintenanceDate || '',
+      a.daysRemaining !== undefined && a.daysRemaining !== null ? String(a.daysRemaining) : '',
+      a.currentCheckout?.workerName || 'Almoxarifado',
+    ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'));
+    const blob = new Blob(['\uFEFF' + [headers.join(';'), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bens_coletivos_auditoria_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       {/* Module Title & Context Banner */}
@@ -213,8 +256,19 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
           </div>
         </div>
 
-        {/* Global Policy, Overview Toggle & Demo Buttons */}
-        <div className="flex items-center gap-2">
+        {/* Global Policy, Overview Toggle & Audit CSV */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportAuditCsv}
+            disabled={enrichedAssets.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer disabled:opacity-40"
+            title="Exportar inventário e mapa de calibrações em CSV (Auditoria ISO)"
+          >
+            <Download className="w-4 h-4 text-blue-400" />
+            <span>CSV Auditoria</span>
+          </button>
+
           <button
             onClick={() => setShowOverview(!showOverview)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
@@ -239,6 +293,66 @@ export const CollectiveAssetsModule: React.FC<CollectiveAssetsModuleProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Semáforo de Calibração & Devoluções */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        <button
+          type="button"
+          onClick={() => handleSubNavigate('bens-manutencoes')}
+          className={`text-left p-4 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+            radarStats.expiredCalib.length > 0
+              ? 'bg-rose-950/35 border-rose-800/60 hover:border-rose-500'
+              : 'bg-[#121826] border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div>
+            <p className="text-[11px] text-slate-400 font-medium">Calibrações / Manut. Vencidas</p>
+            <p className={`text-2xl font-black font-mono mt-0.5 ${radarStats.expiredCalib.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {radarStats.expiredCalib.length}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Bloqueados para retirada em campo</p>
+          </div>
+          <ShieldAlert className={`w-7 h-7 ${radarStats.expiredCalib.length > 0 ? 'text-rose-400' : 'text-slate-600'}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSubNavigate('bens-manutencoes')}
+          className={`text-left p-4 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+            radarStats.expiringSoon.length > 0
+              ? 'bg-amber-950/30 border-amber-800/60 hover:border-amber-500'
+              : 'bg-[#121826] border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div>
+            <p className="text-[11px] text-slate-400 font-medium">Vencendo nos próx. {policy.defaultWarningDays || 30} dias</p>
+            <p className={`text-2xl font-black font-mono mt-0.5 ${radarStats.expiringSoon.length > 0 ? 'text-amber-300' : 'text-slate-200'}`}>
+              {radarStats.expiringSoon.length}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Programar calibração preventiva</p>
+          </div>
+          <AlertTriangle className={`w-7 h-7 ${radarStats.expiringSoon.length > 0 ? 'text-amber-400' : 'text-slate-600'}`} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSubNavigate('bens-movimentacoes')}
+          className={`text-left p-4 rounded-2xl border transition cursor-pointer flex items-center justify-between ${
+            radarStats.overdueCheckouts.length > 0
+              ? 'bg-rose-950/30 border-rose-800/60 hover:border-rose-500'
+              : 'bg-[#121826] border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div>
+            <p className="text-[11px] text-slate-400 font-medium">Retiradas em Atraso</p>
+            <p className={`text-2xl font-black font-mono mt-0.5 ${radarStats.overdueCheckouts.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {radarStats.overdueCheckouts.length}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Cobrar devolução ao almoxarifado</p>
+          </div>
+          <Clock className={`w-7 h-7 ${radarStats.overdueCheckouts.length > 0 ? 'text-rose-400' : 'text-slate-600'}`} />
+        </button>
       </div>
 
       {/* Overview Executive Dashboard Component with Simple Charts */}
