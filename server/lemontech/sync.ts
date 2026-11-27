@@ -2,23 +2,10 @@
 // Puxa tudo: concluídas, canceladas, pendentes e aprovadas, todos os produtos, mês a mês e
 // página a página. Guarda o registro original inteiro (raw) para nada se perder.
 import { MAX_REGISTROS } from './wsSelfBooking.ts';
+import { monthRanges } from '../../src/services/marTravelCompras.ts';
 
+export { monthRanges };
 export interface SolicitacaoClient { pesquisarSolicitacao(p: any): Promise<any[]> }
-
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-
-export function monthRanges(from: string, to: string): { dataInicial: string; dataFinal: string }[] {
-  const out: { dataInicial: string; dataFinal: string }[] = [];
-  let start = new Date(`${from}T00:00:00Z`);
-  const end = new Date(`${to}T00:00:00Z`);
-  while (start <= end) {
-    const monthEnd = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
-    const stop = monthEnd < end ? monthEnd : end;
-    out.push({ dataInicial: iso(start), dataFinal: iso(stop) });
-    start = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
-  }
-  return out;
-}
 
 /** 60 requisições por minuto na API: uma a cada ~1,1 s. */
 export const RATE_DELAY_MS = 1100;

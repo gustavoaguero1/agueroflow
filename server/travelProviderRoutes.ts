@@ -13,7 +13,7 @@ import { requireArea, requireRole } from './authMiddleware.ts';
 import { sealSecret, openSecret, parseSecretKey, type SealedSecret } from './secretBox.ts';
 import { createWsSelfBookingClient, readLemontechConfig } from './lemontech/wsSelfBooking.ts';
 import {
-  fetchAllSolicitacoes, normalizeSolicitacao, matchUnit,
+  fetchAllSolicitacoes, normalizeSolicitacao, matchUnit, RATE_DELAY_MS,
   type SolicitacaoClient, type SolicitacaoNormalizada, type UnitRef,
 } from './lemontech/sync.ts';
 
@@ -117,6 +117,8 @@ export function createTravelProviderRouter(opts: {
 } = {}): Router {
   const getStore = opts.store ?? firestoreTravelProviderStore;
   const getLemon = opts.lemontech ?? defaultLemontech;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let proximaConsulta = 0;
   const getKey = opts.secretKey ?? (() => process.env.MARTRAVEL_SECRET_KEY);
   const r = Router();
   const wrap = (fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler => (req, res) => {
@@ -182,18 +184,28 @@ export function createTravelProviderRouter(opts: {
     res.json({ configured: true, lastSync: (await s.getLemontechMeta(org(req))) ?? null });
   }));
 
+  // Um pedaço de até 62 dias por chamada: o navegador percorre o período mês a mês. Chamada longa
+  // demais é cortada pelo proxy da hospedagem antes de o servidor responder.
   r.post('/lemontech/sync', requireRole('Admin', 'Gerente'), wrap(async (req, res) => {
-    const desde = req.body?.desde ?? isoDaysAgo(730);
+    const desde = req.body?.desde ?? isoDaysAgo(30);
     const ate = req.body?.ate ?? isoDaysAgo(0);
     if (!DATE_RE.test(String(desde)) || !DATE_RE.test(String(ate)) || desde > ate) {
       return res.status(400).json({ error: 'Use datas no formato AAAA-MM-DD, com o início antes do fim.' });
     }
+    if ((Date.parse(ate) - Date.parse(desde)) / 86400000 + 1 > MAX_DIAS_POR_CHAMADA) {
+      return res.status(400).json({ error: `Sincronize no máximo ${MAX_DIAS_POR_CHAMADA} dias por vez.` });
+    }
+    const inicioTotal = DATE_RE.test(String(req.body?.inicioTotal ?? '')) ? String(req.body.inicioTotal) : desde;
     const lemon = lemonFor(org(req));
     if (!lemon) return res.status(503).json({ error: 'lemontech_nao_configurada' });
     const s = storeOr503(res); if (!s) return;
     let raws: any[];
     try {
-      raws = await fetchAllSolicitacoes(lemon.client, desde, ate, { sleep: opts.sleep });
+      // Respeita 60 consultas/min também entre chamadas seguidas do navegador.
+      const espera = proximaConsulta - Date.now();
+      if (espera > 0) await sleep(espera);
+      raws = await fetchAllSolicitacoes(lemon.client, desde, ate, { sleep });
+      proximaConsulta = Date.now() + RATE_DELAY_MS;
     } catch (e) {
       return res.status(502).json({ error: e instanceof Error ? e.message : 'Falha ao consultar a Mar Travel.' });
     }
@@ -205,9 +217,10 @@ export function createTravelProviderRouter(opts: {
       return { ...n, orgId: org(req), unitId: unit?.id ?? null, unitName: unit?.name ?? null, rawJson: JSON.stringify(raw), syncedAt };
     }).filter((i) => i.id);
     await s.saveSolicitacoes(org(req), items);
-    const meta: LemontechMeta = { lastSync: syncedAt, desde, ate, total: items.length, by: uid(req) };
+    const totalGeral = (await s.listSolicitacoes(org(req))).length;
+    const meta: LemontechMeta = { lastSync: syncedAt, desde: inicioTotal, ate, total: totalGeral, by: uid(req) };
     await s.setLemontechMeta(org(req), meta);
-    res.json({ ok: true, ...meta });
+    res.json({ ok: true, ...meta, total: items.length, totalGeral });
   }));
 
   r.get('/lemontech/solicitacoes', requireArea('operacoes', 1), wrap(async (req, res) => {
@@ -230,6 +243,7 @@ export function createTravelProviderRouter(opts: {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_DIAS_POR_CHAMADA = 62;
 const isoDaysAgo = (d: number) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
 
 function defaultLemontech() {
